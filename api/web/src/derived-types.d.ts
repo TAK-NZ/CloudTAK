@@ -742,7 +742,7 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            id: string;
+                            id?: string;
                             /** @constant */
                             type: "Feature";
                             properties: Record<string, never>;
@@ -836,8 +836,8 @@ export interface paths {
                         "group::Dark Green"?: string;
                         "group::Brown"?: string;
                         "oidc::enabled"?: boolean;
-                        "odic::enforced"?: boolean;
-                        "odic::name"?: string;
+                        "oidc::enforced"?: boolean;
+                        "oidc::name"?: string;
                         "oidc::discovery"?: string;
                         "oidc::client"?: string;
                         "oidc::secret"?: string;
@@ -896,6 +896,44 @@ export interface paths {
                             logo?: string;
                             signup?: string;
                             forgot?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config/tiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return Tile Config */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            url: string;
                         };
                     };
                 };
@@ -3259,6 +3297,11 @@ export interface paths {
                                     updated: string;
                                     environment: unknown;
                                     ephemeral: Record<string, never>;
+                                    filters: {
+                                        queries?: {
+                                            query: string;
+                                        }[];
+                                    };
                                 };
                             }[];
                         };
@@ -3455,6 +3498,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -4060,7 +4108,13 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        filters?: {
+                            queries?: {
+                                query: string;
+                            }[];
+                        };
+                    };
                 };
             };
             responses: {
@@ -4076,6 +4130,11 @@ export interface paths {
                             updated: string;
                             environment: unknown;
                             ephemeral: Record<string, never>;
+                            filters: {
+                                queries?: {
+                                    query: string;
+                                }[];
+                            };
                         };
                     };
                 };
@@ -4119,6 +4178,11 @@ export interface paths {
                 content: {
                     "application/json": {
                         environment?: unknown;
+                        filters?: {
+                            queries?: {
+                                query: string;
+                            }[];
+                        };
                     };
                 };
             };
@@ -4135,6 +4199,11 @@ export interface paths {
                             updated: string;
                             environment: unknown;
                             ephemeral: Record<string, never>;
+                            filters: {
+                                queries?: {
+                                    query: string;
+                                }[];
+                            };
                         };
                     };
                 };
@@ -4321,6 +4390,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -4542,6 +4616,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -7256,6 +7335,11 @@ export interface paths {
                                     updated: string;
                                     environment: unknown;
                                     ephemeral: Record<string, never>;
+                                    filters: {
+                                        queries?: {
+                                            query: string;
+                                        }[];
+                                    };
                                 };
                             }[];
                         };
@@ -7454,6 +7538,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -7659,6 +7748,11 @@ export interface paths {
                                     updated: string;
                                     environment: unknown;
                                     ephemeral: Record<string, never>;
+                                    filters: {
+                                        queries?: {
+                                            query: string;
+                                        }[];
+                                    };
                                 };
                             }[];
                         };
@@ -7848,6 +7942,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -8036,6 +8135,11 @@ export interface paths {
                                 updated: string;
                                 environment: unknown;
                                 ephemeral: Record<string, never>;
+                                filters: {
+                                    queries?: {
+                                        query: string;
+                                    }[];
+                                };
                             };
                         };
                     };
@@ -13226,6 +13330,9 @@ export interface paths {
                                 mode_id: string | null;
                                 url: string;
                             }[];
+                            available: {
+                                terrain: boolean;
+                            };
                             items: {
                                 id: number;
                                 name: string;
