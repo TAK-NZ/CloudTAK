@@ -74,6 +74,26 @@ export type LoginConfig = paths["/config/login"]["get"]["responses"]["200"]["con
 export type Login_Create = paths["/login"]["post"]["requestBody"]["content"]["application/json"]
 export type Login_CreateRes = paths["/login"]["post"]["responses"]["200"]["content"]["application/json"]
 
+// OIDC Types
+export type OIDC_Config = {
+    enabled: boolean;
+    provider_name?: string;
+    client_id?: string;
+    authorize_url?: string;
+    token_url?: string;
+}
+
+export type OIDC_AuthorizeResponse = {
+    url: string;
+    state: string;
+}
+
+export type OIDC_CallbackRequest = {
+    code: string;
+    state: string;
+    redirect_uri: string;
+}
+
 export type Import = paths["/import/{:import}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ImportBatch = paths["/import/{:import}/batch"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ImportList = paths["/import"]["get"]["responses"]["200"]["content"]["application/json"]

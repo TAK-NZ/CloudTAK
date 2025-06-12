@@ -25,6 +25,11 @@ services:
             - API_URL=http://localhost:5000
             - ROOT_URL=http://localhost:5001
             - PMTILES_URL=http://tiles:5002
+            - OIDC_AUTHORIZE_URL=https://account.dev.tak.nz/application/o/authorize/
+            - OIDC_TOKEN_URL=https://account.dev.tak.nz/application/o/token/
+            - OIDC_CLIENT_ID=<myoidcid>
+            - OIDC_CLIENT_SECRET=<myoidcsecret>
+            - OIDC_PROVIDER_NAME=TAK.NZ SSO
 
     tiles:
         platform: linux/amd64

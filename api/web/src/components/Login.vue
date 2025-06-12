@@ -62,6 +62,24 @@
                                 <h2 class='h2 text-center mb-4'>
                                     Login to your account
                                 </h2>
+                                
+                                <!-- OIDC Login Section -->
+                                <div v-if='oidcEnabled' class='mb-4'>
+                                    <button
+                                        :disabled='loading'
+                                        type='button'
+                                        class='btn btn-outline-primary w-100 mb-3'
+                                        @click='loginWithOIDC'
+                                    >
+                                        Sign in with {{ oidcConfig?.provider_name || 'SSO' }}
+                                    </button>
+                                    
+                                    <div class='hr-text'>
+                                        or
+                                    </div>
+                                </div>
+                                
+                                <!-- Traditional Login Form -->
                                 <TablerLoading
                                     v-if='loading'
                                     desc='Logging in'
@@ -129,8 +147,13 @@
 </template>
 
 <script setup lang='ts'>
-import type { Login_Create, Login_CreateRes } from '../types.ts'
-import { ref, onMounted } from 'vue';
+// Component name for linting
+defineOptions({
+    name: 'LoginPage'
+});
+
+import type { Login_Create, Login_CreateRes, OIDC_Config, OIDC_AuthorizeResponse } from '../types.ts'
+import { ref, onMounted, computed } from 'vue';
 import { useBrandStore } from '../stores/brand.ts';
 import { useRouter, useRoute } from 'vue-router'
 import { std } from '../std.ts';
@@ -146,14 +169,83 @@ const router = useRouter();
 const brandStore = useBrandStore();
 
 const loading = ref(false);
+const oidcConfig = ref<OIDC_Config | null>(null);
 const body = ref<Login_Create>({
     username: '',
     password: ''
 });
 
+const oidcEnabled = computed(() => {
+    return oidcConfig.value && oidcConfig.value.enabled;
+});
+
 onMounted(async () => {
     await brandStore.init();
-})
+    await loadOIDCConfig();
+    
+    // Handle OIDC callback
+    if (route.query.code) {
+        await handleOIDCCallback();
+    }
+});
+
+async function loadOIDCConfig() {
+    try {
+        const config = await std('/api/auth/oidc/config') as OIDC_Config;
+        oidcConfig.value = config;
+    } catch {
+        console.log('OIDC not configured');
+        oidcConfig.value = { enabled: false };
+    }
+}
+
+async function loginWithOIDC() {
+    loading.value = true;
+    
+    try {
+        const authResponse = await std('/api/auth/oidc/authorize', {
+            method: 'POST',
+            body: {
+                redirect_uri: `${window.location.origin}/login`
+            }
+        }) as OIDC_AuthorizeResponse;
+        
+        // Redirect to OIDC provider
+        window.location.href = authResponse.url;
+    } catch (err) {
+        loading.value = false;
+        throw err;
+    }
+}
+
+async function handleOIDCCallback() {
+    loading.value = true;
+    
+    try {
+        const login = await std('/api/auth/oidc/callback', {
+            method: 'POST',
+            body: {
+                code: route.query.code,
+                state: route.query.state,
+                redirect_uri: `${window.location.origin}/login`
+            }
+        }) as Login_CreateRes;
+
+        localStorage.token = login.token;
+        emit('login');
+
+        if (route.query.redirect && !String(route.query.redirect).includes('/login')) {
+            router.push(String(route.query.redirect));
+        } else {
+            router.push("/");
+        }
+    } catch (err) {
+        loading.value = false;
+        // Clear URL params on error
+        router.replace('/login');
+        throw err;
+    }
+}
 
 async function createLogin() {
     loading.value = true;
