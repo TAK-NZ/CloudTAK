@@ -263,7 +263,6 @@ test('Server Env: P12 certificate processing from secret ARN', async (t) => {
     process.env.CLOUDTAK_Server_auth_password = originalPassword;
     t.end();
 });
-
 test('Server Env: multiple fields update database', async (t) => {
     const originalVars = {
         name: process.env.CLOUDTAK_Server_name,
@@ -314,7 +313,7 @@ test('Server Env: schema validation with invalid field', async (t) => {
         });
         
         t.fail('Should have thrown error for invalid field');
-    } catch {
+    } catch (err) {
         t.pass('Correctly rejected invalid field');
     }
     
