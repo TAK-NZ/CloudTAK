@@ -374,7 +374,6 @@ test('Admin Env: Admin user creation requires server auth configuration', async 
     process.env.CLOUDTAK_ADMIN_PASSWORD = originalPassword;
     t.end();
 });
-
 test('Admin Env: Missing credentials skip admin creation', async (t) => {
     const originalUsername = process.env.CLOUDTAK_ADMIN_USERNAME;
     const originalPassword = process.env.CLOUDTAK_ADMIN_PASSWORD;
