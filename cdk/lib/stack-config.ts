@@ -45,4 +45,7 @@ export interface ContextEnvironmentConfig {
   s3: {
     enableVersioning: boolean;
   };
+  mediainfra: {
+    mediaHostname: string;
+  };
 }

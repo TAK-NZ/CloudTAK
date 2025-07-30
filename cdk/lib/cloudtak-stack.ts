@@ -372,6 +372,11 @@ export class CloudTakStack extends cdk.Stack {
       exportName: `TAK-${envConfig.stackName}-CloudTAK-EtlEcrRepoArn`
     });
 
+    new cdk.CfnOutput(this, 'MediaUrl', {
+      value: `https://${envConfig.mediainfra.mediaHostname}.${hostedZone.zoneName}:9997`,
+      exportName: `TAK-${envConfig.stackName}-CloudTAK-MediaUrl`
+    });
+
 
   }
 }
