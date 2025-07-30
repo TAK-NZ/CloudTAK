@@ -54,6 +54,9 @@
       },
       "s3": {
         "enableVersioning": true
+      },
+      "mediainfra": {
+        "mediaHostname": "media"
       }
     },
     "prod": {
@@ -93,6 +96,9 @@
       },
       "s3": {
         "enableVersioning": true
+      },
+      "mediainfra": {
+        "mediaHostname": "media"
       }
     },
     "tak-defaults": {
