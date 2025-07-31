@@ -367,7 +367,9 @@ export class CloudTakApi extends Construct {
         'CLOUDTAK_Server_auth_p12_secret_arn': cdk.Fn.importValue(createTakImportValue(envConfig.stackName, TAK_EXPORT_NAMES.TAK_ADMIN_CERT_SECRET_ARN)),
         // PR #717 - Configurable ECR and ECS names
         'ECR_TASKS_REPOSITORY_NAME': etlEcrRepository.repositoryName,
-        'ECS_CLUSTER_PREFIX': `TAK-${envConfig.stackName}-BaseInfra`
+        'ECS_CLUSTER_PREFIX': `TAK-${envConfig.stackName}-BaseInfra`,
+        // Media server URL
+        'MEDIA_URL': `https://${envConfig.mediainfra.mediaHostname}.${cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.HOSTED_ZONE_NAME))}:9997`
       },
       secrets: {
         'SigningSecret': ecs.Secret.fromSecretsManager(signingSecret),

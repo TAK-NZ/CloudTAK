@@ -26,7 +26,8 @@ export const MOCK_CONFIGS = {
     },
     cloudtak: {
       hostname: 'map',
-      takAdminEmail: 'admin@test.com'
+      takAdminEmail: 'admin@test.com',
+      useS3CloudTAKConfigFile: false
     },
     ecr: {
       imageRetentionCount: 5,
@@ -39,6 +40,9 @@ export const MOCK_CONFIGS = {
     },
     s3: {
       enableVersioning: false
+    },
+    mediainfra: {
+      mediaHostname: 'media'
     }
   } as ContextEnvironmentConfig,
 
@@ -64,7 +68,8 @@ export const MOCK_CONFIGS = {
     },
     cloudtak: {
       hostname: 'map',
-      takAdminEmail: 'admin@prod.com'
+      takAdminEmail: 'admin@prod.com',
+      useS3CloudTAKConfigFile: true
     },
     ecr: {
       imageRetentionCount: 20,
@@ -77,6 +82,9 @@ export const MOCK_CONFIGS = {
     },
     s3: {
       enableVersioning: true
+    },
+    mediainfra: {
+      mediaHostname: 'media'
     }
   } as ContextEnvironmentConfig,
 
@@ -100,7 +108,8 @@ export const MOCK_CONFIGS = {
     },
     cloudtak: {
       hostname: 'test',
-      takAdminEmail: 'test@example.com'
+      takAdminEmail: 'test@example.com',
+      useS3CloudTAKConfigFile: false
     },
     ecr: {
       imageRetentionCount: 1,
@@ -113,6 +122,9 @@ export const MOCK_CONFIGS = {
     },
     s3: {
       enableVersioning: false
+    },
+    mediainfra: {
+      mediaHostname: 'media'
     }
   } as ContextEnvironmentConfig
 };
