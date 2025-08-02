@@ -78,6 +78,24 @@ export class SecurityGroups extends Construct {
     this.ecs.addEgressRule(ec2.Peer.ipv6(vpcCidrIpv6), ec2.Port.tcp(8089), 'TAK Streaming CoT IPv6');
     this.ecs.addEgressRule(ec2.Peer.ipv6(vpcCidrIpv6), ec2.Port.tcp(8443), 'TAK Server API IPv6');
     this.ecs.addEgressRule(ec2.Peer.ipv6(vpcCidrIpv6), ec2.Port.tcp(8446), 'TAK Server WebTAK IPv6');
+    // Media server connections
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(9997), 'Media server outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(9997), 'Media server outbound IPv6');
+    // Additional media server protocol ports
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(1935), 'RTMP outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(1935), 'RTMP outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(8554), 'RTSP outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(8554), 'RTSP outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(1936), 'RTMPS outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(1936), 'RTMPS outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(8555), 'RTSPS outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(8555), 'RTSPS outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.udp(8890), 'SRT outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.udp(8890), 'SRT outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(8888), 'HLS outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(8888), 'HLS outbound IPv6');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(9996), 'Media server playback outbound');
+    this.ecs.addEgressRule(ec2.Peer.anyIpv6(), ec2.Port.tcp(9996), 'Media server playback outbound IPv6');
 
 
   }
