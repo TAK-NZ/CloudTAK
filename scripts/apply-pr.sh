@@ -2,13 +2,25 @@
 
 set -e
 
-if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 <PR_NUMBER>"
-    echo "Example: $0 712"
+SKIP_FILES=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-files)
+            IFS=',' read -ra SKIP_FILES <<< "$2"
+            shift 2
+            ;;
+        *)
+            PR_NUMBER=$1
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$PR_NUMBER" ]]; then
+    echo "Usage: $0 <PR_NUMBER> [--skip-files file1,file2,...]"
+    echo "Example: $0 712 --skip-files docs/ENVIRONMENT_VARIABLES.md"
     exit 1
 fi
-
-PR_NUMBER=$1
 
 echo "🔄 Applying commits from PR #$PR_NUMBER..."
 
@@ -44,7 +56,22 @@ fi
 
 # Apply commits from the PR
 echo "🔀 Applying commits..."
-git cherry-pick upstream/main..pr-$PR_NUMBER
+if [[ ${#SKIP_FILES[@]} -gt 0 ]]; then
+    echo "📋 Skipping files: ${SKIP_FILES[*]}"
+    # Use interactive cherry-pick to handle conflicts
+    git cherry-pick upstream/main..pr-$PR_NUMBER || {
+        # Remove skipped files if they cause conflicts
+        for file in "${SKIP_FILES[@]}"; do
+            if git status --porcelain | grep -q "$file"; then
+                echo "🗑️  Removing conflicted file: $file"
+                git rm "$file" 2>/dev/null || git add "$file"
+            fi
+        done
+        git cherry-pick --continue
+    }
+else
+    git cherry-pick upstream/main..pr-$PR_NUMBER
+fi
 
 # Clean up
 git branch -D pr-$PR_NUMBER

@@ -407,7 +407,6 @@ export default class TileJSON {
             try {
                 const stream = await undici.pipeline(url, {
                     method: 'GET',
-                    maxRedirections: 3,
                     headers: opts.headers
                 }, ({ statusCode, headers, body }) => {
                     if (headers) {
@@ -416,9 +415,10 @@ export default class TileJSON {
                                 ![
                                     'content-type',
                                     'content-length',
+                                    'cache-control',
                                     'content-encoding',
                                     'last-modified',
-                                ].includes(key)
+                                ].includes(key.toLowerCase())
                             ) {
                                 delete headers[key];
                             }
