@@ -4,12 +4,29 @@ set -e
 
 echo "🔄 Syncing CloudTAK api/tasks from upstream..."
 
-# Check for --current-branch flag
+# Parse command line arguments
 USE_CURRENT_BRANCH=false
-if [[ "$1" == "--current-branch" ]]; then
-    USE_CURRENT_BRANCH=true
-    echo "📍 Syncing on current branch"
-fi
+TARGET_REF="main"
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --current-branch)
+            USE_CURRENT_BRANCH=true
+            echo "📍 Syncing on current branch"
+            shift
+            ;;
+        --tag|--release)
+            TARGET_REF="$2"
+            echo "🏷️  Syncing from tag/release: $TARGET_REF"
+            shift 2
+            ;;
+        *)
+            echo "❌ Unknown option: $1"
+            echo "Usage: $0 [--current-branch] [--tag|--release <tag>]"
+            exit 1
+            ;;
+    esac
+done
 
 # Check if upstream remote exists
 ADDED_UPSTREAM=false
@@ -33,11 +50,11 @@ else
 fi
 
 # Sync only api and tasks folders
-echo "📂 Syncing api/ folder..."
-git checkout upstream/main -- api/
+echo "📂 Syncing api/ folder from $TARGET_REF..."
+git checkout $TARGET_REF -- api/
 
-echo "📂 Syncing tasks/ folder..."
-git checkout upstream/main -- tasks/
+echo "📂 Syncing tasks/ folder from $TARGET_REF..."
+git checkout $TARGET_REF -- tasks/
 
 # No additional patching or branding needed
 echo "📝 Changes ready for review (branding applied at build time)"
@@ -54,13 +71,13 @@ if [[ "$USE_CURRENT_BRANCH" == "false" ]]; then
     echo "📋 Next steps:"
     echo "   1. Review changes: git diff HEAD~1"
     echo "   2. Test locally: docker-compose up"
-    echo "   3. Commit changes: git add . && git commit -m 'Sync api/tasks from upstream'"
+    echo "   3. Commit changes: git add . && git commit -m 'Sync api/tasks from upstream $TARGET_REF'"
     echo "   4. Merge to main: git checkout main && git merge $SYNC_BRANCH"
     echo "   5. Deploy: ./scripts/deploy.sh"
 else
     echo "📋 Next steps:"
     echo "   1. Review changes: git status"
     echo "   2. Test locally: docker-compose up"
-    echo "   3. Commit changes: git add . && git commit -m 'Sync api/tasks from upstream'"
+    echo "   3. Commit changes: git add . && git commit -m 'Sync api/tasks from upstream $TARGET_REF'"
     echo "   4. Deploy: ./scripts/deploy.sh"
 fi
