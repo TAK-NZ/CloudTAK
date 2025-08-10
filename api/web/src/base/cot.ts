@@ -507,7 +507,8 @@ export default class COT {
                     properties.icon = properties.icon.replace(/.png$/, '');
                 }
 
-                if (!atlas.db.images.has(properties.icon)) {
+                // Skip validation for custom icons (containing ':')
+                if (!properties.icon.includes(':') && !atlas.db.images.has(properties.icon)) {
                     console.warn(`No Icon for: ${properties.icon} fallback to ${properties.type}`);
                     properties.icon = `${properties.type}`;
                 }
