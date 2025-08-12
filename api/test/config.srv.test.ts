@@ -314,7 +314,7 @@ test('Server Env: schema validation with invalid field', async (t) => {
         });
         
         t.fail('Should have thrown error for invalid field');
-    } catch (err) {
+    } catch {
         t.pass('Correctly rejected invalid field');
     }
     
