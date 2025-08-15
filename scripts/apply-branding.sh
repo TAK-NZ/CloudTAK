@@ -39,4 +39,21 @@ if [ -f "api/web/src/App.vue" ]; then
     echo "✅ Updated App.vue branding"
 fi
 
+# Add security headers to nginx configuration
+if [ -f "api/nginx.conf.js" ]; then
+    # Create temporary file with headers to add
+    cat > /tmp/tak_headers.txt << 'EOF'
+        add_header 'Reporting-Endpoints' 'default="https://tak-nz.uriports.com/reports"' always;
+        add_header 'Report-To' '{"group":"default","max_age":10886400,"endpoints":[{"url":"https://tak-nz.uriports.com/reports"}],"include_subdomains":true}' always;
+        add_header 'NEL' '{"report_to":"default","max_age":2592000,"include_subdomains":true,"failure_fraction":1.0}' always;
+        add_header 'Permissions-Policy-Report-Only' 'microphone=();report-to=default, camera=(self "https://www.example.com");report-to=default, fullscreen=*;report-to=default, payment=self;report-to=default' always;
+        add_header 'Content-Security-Policy-Report-Only' "default-src 'self'; font-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; style-src-attr 'self' 'unsafe-inline'; connect-src 'self' *.test.tak.nz *.map.test.tak.nz; worker-src 'self' blob:; frame-ancestors 'self'; report-uri https://tak-nz.uriports.com/reports/report; report-to default" always;
+EOF
+    
+    # Add headers after the Permissions-Policy line
+    sed -i.bak "/add_header 'Permissions-Policy'/r /tmp/tak_headers.txt" api/nginx.conf.js
+    rm /tmp/tak_headers.txt
+    echo "✅ Added TAK.NZ security headers to nginx configuration"
+fi
+
 echo "🎉 TAK.NZ branding applied successfully"
