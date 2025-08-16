@@ -50,8 +50,8 @@ export const DefaultUnits = Type.Object({
         options: Type.Array(Type.String())
     }),
     'icon_rotation': Type.Object({
-        value: Type.Boolean({
-            default: true
+        value: Type.String({
+            default: 'Enabled'
         }),
         options: Type.Array(Type.String())
     }),
@@ -137,7 +137,7 @@ export default class ProfileControl {
                 options: Object.values(Profile_Text)
             },
             icon_rotation: {
-                value: final.icon_rotation === 'false' ? false : true,
+                value: final.icon_rotation === 'false' ? 'Disabled' : 'Enabled',
                 options: ['Enabled', 'Disabled']
             }
         }
