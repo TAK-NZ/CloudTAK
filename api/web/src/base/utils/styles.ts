@@ -262,7 +262,7 @@ export default function styles(id: string, opts: {
                     8, opts.labels.size,
                     15, opts.labels.size + 7
                 ],
-                'text-offset': [0, 2],
+                'text-offset': [0, (opts.rotateIcons ?? true) ? 2 : 2.5],
                 'text-font': ['Open Sans Bold'],
                 'text-field':  [
                     "coalesce",
