@@ -82,6 +82,16 @@
                         ]'
                     />
                 </div>
+                <div class='col-12'>
+                    <TablerEnum
+                        v-model='profile.display_icon_rotation'
+                        label='Icon Rotation'
+                        :options='[
+                            "Enabled",
+                            "Disabled"
+                        ]'
+                    />
+                </div>
                 <div class='col-12 d-flex py-3'>
                     <div class='ms-auto'>
                         <button
@@ -122,6 +132,16 @@ async function updateProfile() {
     if (!profile.value) return;
 
     await mapStore.worker.profile.update(toRaw(profile.value));
+    
+    // Refresh overlays to apply new icon rotation setting
+    for (const overlay of mapStore.overlays) {
+        if (overlay.type === 'geojson') {
+            // Force regeneration of styles with new rotation setting
+            overlay.styles = [];
+            await overlay.replace({}, {});
+        }
+    }
+    
     router.push("/menu/settings");
 }
 </script>
