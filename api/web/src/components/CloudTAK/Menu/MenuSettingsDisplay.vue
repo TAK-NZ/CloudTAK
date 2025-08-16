@@ -125,6 +125,12 @@ const profile = ref<Profile | undefined>();
 onMounted(async () => {
     loading.value = true;
     profile.value = await mapStore.worker.profile.load();
+    
+    // Ensure display_icon_rotation has a default value if missing
+    if (profile.value && !profile.value.display_icon_rotation) {
+        profile.value.display_icon_rotation = 'Enabled';
+    }
+    
     loading.value = false;
 });
 
@@ -132,16 +138,6 @@ async function updateProfile() {
     if (!profile.value) return;
 
     await mapStore.worker.profile.update(toRaw(profile.value));
-    
-    // Refresh overlays to apply new icon rotation setting
-    for (const overlay of mapStore.overlays) {
-        if (overlay.type === 'geojson') {
-            // Force regeneration of styles with new rotation setting
-            overlay.styles = [];
-            await overlay.replace({}, {});
-        }
-    }
-    
     router.push("/menu/settings");
 }
 </script>
