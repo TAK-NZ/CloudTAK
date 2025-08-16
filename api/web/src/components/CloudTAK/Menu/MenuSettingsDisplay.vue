@@ -85,7 +85,7 @@
                 <div class='col-12'>
                     <TablerEnum
                         v-model='profile.display_icon_rotation'
-                        label='Icon Rotation'
+                        label='Rotate Icons with Course'
                         :options='[
                             "Enabled",
                             "Disabled"
@@ -125,12 +125,6 @@ const profile = ref<Profile | undefined>();
 onMounted(async () => {
     loading.value = true;
     profile.value = await mapStore.worker.profile.load();
-    
-    // Ensure display_icon_rotation has a default value if missing
-    if (profile.value && !profile.value.display_icon_rotation) {
-        profile.value.display_icon_rotation = 'Enabled';
-    }
-    
     loading.value = false;
 });
 
