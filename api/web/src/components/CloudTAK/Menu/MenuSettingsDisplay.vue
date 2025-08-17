@@ -92,6 +92,16 @@
                         ]'
                     />
                 </div>
+                <div class='col-12'>
+                    <TablerEnum
+                        v-model='profile.display_icon_rotation'
+                        label='Rotate Icons with Course'
+                        :options='[
+                            "Enabled",
+                            "Disabled"
+                        ]'
+                    />
+                </div>
                 <div class='col-12 d-flex py-3'>
                     <div class='ms-auto'>
                         <button
@@ -135,6 +145,9 @@ async function updateProfile() {
     
     // Immediately update icon rotation to avoid requiring page reload
     mapStore.updateIconRotation(profile.value.display_icon_rotation === 'Enabled');
+    
+    // Refresh profile data to reflect persisted changes
+    profile.value = await mapStore.worker.profile.load();
     
     router.push("/menu/settings");
 }
