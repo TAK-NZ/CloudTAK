@@ -137,7 +137,7 @@ export default class ProfileControl {
                 options: Object.values(Profile_Text)
             },
             icon_rotation: {
-                value: final.icon_rotation === 'false' ? false : true,
+                value: final.icon_rotation || 'Enabled',
                 options: ['Enabled', 'Disabled']
             }
         }
