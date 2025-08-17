@@ -67,7 +67,7 @@ export default async function router(schema: Schema, config: Config) {
                 minimum: 0,
                 maximum: 360
             })),
-            'map::zoom': Type.Optional(Type.Integer({
+            'map::zoom': Type.Optional(Type.Number({
                 description: 'Default Map Zoom Level',
                 minimum: 0,
                 maximum: 20
@@ -268,7 +268,7 @@ export default async function router(schema: Schema, config: Config) {
         description: 'Return Map Config',
         res: Type.Object({
             center: Type.String({ default: '-100,40' }),
-            zoom: Type.Integer({ default: 4 }),
+            zoom: Type.Number({ default: 4 }),
             pitch: Type.Integer({ default: 0 }),
             bearing: Type.Integer({ default: 0 }),
         })
