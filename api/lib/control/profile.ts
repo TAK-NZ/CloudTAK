@@ -55,12 +55,6 @@ export const DefaultUnits = Type.Object({
         }),
         options: Type.Array(Type.String())
     }),
-    'icon_rotation': Type.Object({
-        value: Type.String({
-            default: 'Enabled'
-        }),
-        options: Type.Array(Type.String())
-    }),
 });
 
 export default class ProfileControl {
@@ -82,7 +76,7 @@ export default class ProfileControl {
         if (!input.display_projection) input.display_projection = defaults.projection.value;
         if (!input.display_zoom) input.display_zoom = defaults.zoom.value;
         if (!input.display_text) input.display_text = defaults.text.value;
-        if (input.display_icon_rotation === undefined) input.display_icon_rotation = 'Enabled';
+        if (input.display_icon_rotation === undefined) input.display_icon_rotation = true;
 
         const profile = await this.config.models.Profile.generate(input);
 
@@ -98,7 +92,6 @@ export default class ProfileControl {
             'display::projection',
             'display::zoom',
             'display::text',
-            'display::icon_rotation',
             'display::icon_rotation',
         ];
 
@@ -144,11 +137,7 @@ export default class ProfileControl {
                 options: Object.values(Profile_Text)
             },
             icon_rotation: {
-                value: final.icon_rotation || 'Enabled',
-                options: ['Enabled', 'Disabled']
-            },
-            icon_rotation: {
-                value: final.icon_rotation || 'Enabled',
+                value: final.icon_rotation === 'false' ? false : true,
                 options: ['Enabled', 'Disabled']
             }
         }

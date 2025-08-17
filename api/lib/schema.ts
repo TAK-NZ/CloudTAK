@@ -66,7 +66,7 @@ export const Profile = pgTable('profile', {
     display_speed: text().$type<Profile_Speed>().notNull().default(Profile_Speed.MPH),
     display_projection: text().$type<Profile_Projection>().notNull().default(Profile_Projection.GLOBE),
     display_zoom: text().$type<Profile_Zoom>().notNull().default(Profile_Zoom.CONDITIONAL),
-    display_icon_rotation: text().notNull().default('Enabled'),
+    display_icon_rotation: boolean().notNull().default(true),
     display_text: text().$type<Profile_Text>().notNull().default(Profile_Text.Medium),
     system_admin: boolean().notNull().default(false),
     agency_admin: json().notNull().$type<Array<number>>().default([])
@@ -117,6 +117,18 @@ export const VideoLease = pgTable('video_lease', {
     // Optional Proxy Mode
     proxy: text().default(sql`null`),
 });
+
+export const ProfileVideo = pgTable('profile_videos', {
+    id: uuid().primaryKey().default(sql`gen_random_uuid()`),
+    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    lease: integer().notNull().references(() => VideoLease.id),
+    username: text().notNull().references(() => Profile.username),
+}, (table) => {
+    return {
+        username_idx: index("profile_videos_username_idx").on(table.username),
+    }
+})
 
 export const ProfileFeature = pgTable('profile_features', {
     id: text().primaryKey().notNull(),

@@ -1,1 +1,1 @@
-ALTER TABLE "profile" ADD COLUMN "display_icon_rotation" text DEFAULT 'Enabled' NOT NULL;
+ALTER TABLE "profile" ADD COLUMN "display_icon_rotation" boolean DEFAULT true NOT NULL;
