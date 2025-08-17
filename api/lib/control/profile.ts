@@ -55,6 +55,12 @@ export const DefaultUnits = Type.Object({
         }),
         options: Type.Array(Type.String())
     }),
+    'icon_rotation': Type.Object({
+        value: Type.String({
+            default: 'Enabled'
+        }),
+        options: Type.Array(Type.String())
+    }),
 });
 
 export default class ProfileControl {
@@ -92,6 +98,7 @@ export default class ProfileControl {
             'display::projection',
             'display::zoom',
             'display::text',
+            'display::icon_rotation',
             'display::icon_rotation',
         ];
 
@@ -135,6 +142,10 @@ export default class ProfileControl {
             text: {
                 value: toEnum.fromString(Type.Enum(Profile_Text), final.text || Profile_Text.Medium),
                 options: Object.values(Profile_Text)
+            },
+            icon_rotation: {
+                value: final.icon_rotation || 'Enabled',
+                options: ['Enabled', 'Disabled']
             },
             icon_rotation: {
                 value: final.icon_rotation || 'Enabled',
