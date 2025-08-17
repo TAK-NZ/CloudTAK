@@ -136,6 +136,9 @@ async function updateProfile() {
     // Immediately update icon rotation to avoid requiring page reload
     mapStore.updateIconRotation(profile.value.display_icon_rotation === 'Enabled');
     
+    // Refresh profile data to reflect persisted changes
+    profile.value = await mapStore.worker.profile.load();
+    
     router.push("/menu/settings");
 }
 </script>
