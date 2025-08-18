@@ -13781,6 +13781,7 @@ export interface paths {
                             display_projection: "mercator" | "globe";
                             display_zoom: "always" | "conditional" | "never";
                             display_icon_rotation: string;
+                            display_scale_bar: boolean;
                             display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
@@ -13814,6 +13815,7 @@ export interface paths {
                         display_speed?: "m/s" | "km/h" | "mi/h";
                         display_zoom?: "always" | "conditional" | "never";
                         display_icon_rotation?: string;
+                        display_scale_bar?: boolean;
                         display_text?: "Small" | "Medium" | "Large";
                         tak_callsign?: string;
                         tak_remarks?: string;
@@ -13859,6 +13861,7 @@ export interface paths {
                             display_projection: "mercator" | "globe";
                             display_zoom: "always" | "conditional" | "never";
                             display_icon_rotation: string;
+                            display_scale_bar: boolean;
                             display_stale: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             display_text: "Small" | "Medium" | "Large";
                             display_distance: "meter" | "kilometer" | "mile";
