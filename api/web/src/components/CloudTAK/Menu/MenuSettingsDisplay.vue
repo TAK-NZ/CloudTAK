@@ -134,6 +134,11 @@ async function updateProfile() {
     // Immediately update icon rotation to avoid requiring page reload
     mapStore.updateIconRotation(profile.value.display_icon_rotation as unknown as boolean);
     
+
+    
+    // Update distance unit
+    mapStore.updateDistanceUnit(profile.value.display_distance);
+    
     // Refresh profile data to reflect persisted changes
     profile.value = await mapStore.worker.profile.load();
     
