@@ -16,8 +16,7 @@ test('GET /api/search/reverse/:longitude/:latitude - success', async (t) => {
 
         t.ok(res.body.sun, 'Sun data present');
         t.equal(res.body.reverse, null, 'No reverse geocoding without token');
-        // Note: Should be null but downstream processing converts null to empty string
-        t.ok(res.body.elevation === null || res.body.elevation === '', 'No elevation without query param');
+        t.equal(res.body.elevation, null, 'No elevation without query param');
     } catch (err) {
         t.error(err, 'no error');
     }

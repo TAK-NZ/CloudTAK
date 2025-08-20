@@ -10,7 +10,7 @@
                 v-tooltip='"Meters"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "meter",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "meter",
                     "cursor-pointer": mode !== "meter",
                 }'
                 role='menuitem'
@@ -22,7 +22,7 @@
                 v-tooltip='"Kilometers"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "kilometer",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "kilometer",
                     "cursor-pointer": mode !== "kilometer",
                 }'
                 role='menuitem'
@@ -34,7 +34,7 @@
                 v-tooltip='"Miles"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "mile",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "mile",
                     "cursor-pointer": mode !== "mile",
                 }'
                 role='menuitem'
@@ -47,7 +47,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { length } from '@turf/length';
 import CopyField from './CopyField.vue';
 import COT from '../../../base/cot.ts';
@@ -63,7 +63,12 @@ const props = defineProps({
     }
 })
 
-const mode = ref(props.unit || 'mile');
+const mode = ref(props.unit === 'kilometer' ? 'kilometer' : props.unit === 'meter' ? 'meter' : 'mile');
+
+// Watch for prop changes and update mode accordingly
+watch(() => props.unit, (newUnit) => {
+    mode.value = newUnit === 'kilometer' ? 'kilometer' : newUnit === 'meter' ? 'meter' : 'mile';
+});
 
 const inMode = computed(() => {
     if (props.cot.geometry.type !== 'LineString') return 'Not a Line!';

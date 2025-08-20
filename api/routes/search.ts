@@ -34,7 +34,8 @@ export default async function router(schema: Schema, config: Config) {
             dawn: Type.String({ description: 'dawn (morning nautical twilight ends, morning civil twilight starts)' }),
         }),
         weather: Type.Union([FetchHourly, Type.Null()]),
-        reverse: Type.Union([FetchReverse, Type.Null()])
+        reverse: Type.Union([FetchReverse, Type.Null()]),
+        elevation: Type.Union([Type.String(), Type.Null()])
     });
 
     const SuggestResponse = Type.Object({
@@ -58,12 +59,14 @@ export default async function router(schema: Schema, config: Config) {
         query: Type.Object({
             altitude: Type.Number({
                 default: 0
-            })
+            }),
+            elevation: Type.Optional(Type.Number())
         }),
         res: ReverseResponse
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            const user = await Auth.as_user(config, req);
+            const elevationUnit = await config.models.Profile.from(user.email).then(p => p.display_elevation).catch(() => 'feet');
 
             const sun = SunCalc.getTimes(new Date(), req.params.latitude, req.params.longitude, req.query.altitude);
 
@@ -86,6 +89,7 @@ export default async function router(schema: Schema, config: Config) {
                 },
                 weather: null,
                 reverse: null,
+                elevation: null,
             };
 
             await Promise.all([
@@ -104,10 +108,23 @@ export default async function router(schema: Schema, config: Config) {
                             console.error('ESRI Fetch Error', err)
                         }
                     }
-                })()
+                })(),
+
             ])
 
-            res.json(response);
+            // Handle elevation from query parameter (from MapLibre terrain)
+            const finalResponse = {
+                sun: response.sun,
+                weather: response.weather,
+                reverse: response.reverse,
+                elevation: req.query.elevation !== undefined 
+                    ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
+                        ? (req.query.elevation * 3.28084).toFixed(2) + ' ft'
+                        : req.query.elevation.toFixed(2) + ' m')
+                    : null
+            };
+
+            res.json(finalResponse);
         } catch (err) {
              Err.respond(err, res);
         }
@@ -129,6 +146,10 @@ export default async function router(schema: Schema, config: Config) {
             end: Type.String({
                 description: 'Lat,Lng of end position'
             }),
+            travelMode: Type.Optional(Type.String({
+                description: 'Travel mode for routing',
+                default: 'Driving Time'
+            })),
         }),
         res: RouteResponse
     }, async (req, res) => {
@@ -141,7 +162,7 @@ export default async function router(schema: Schema, config: Config) {
             ] as [number, number][];
 
             if (search.token) {
-                res.json(await search.route(stops));
+                res.json(await search.route(stops, req.query.travelMode));
             } else {
                 res.json({
                     type: 'FeatureCollection',
@@ -161,6 +182,8 @@ export default async function router(schema: Schema, config: Config) {
             query: Type.String(),
             limit: Type.Optional(Type.Integer()),
             magicKey: Type.String(),
+            longitude: Type.Optional(Type.Number()),
+            latitude: Type.Optional(Type.Number()),
         }),
         res: ForwardResponse
     }, async (req, res) => {
@@ -190,6 +213,8 @@ export default async function router(schema: Schema, config: Config) {
             limit: Type.Integer({
                 default: 10
             }),
+            longitude: Type.Optional(Type.Number()),
+            latitude: Type.Optional(Type.Number()),
         }),
         res: SuggestResponse
     }, async (req, res) => {
@@ -201,7 +226,14 @@ export default async function router(schema: Schema, config: Config) {
             };
 
             if (search.token && req.query.query.trim().length) {
-                response.items = await search.suggest(req.query.query, req.query.limit);
+                try {
+                    const location = (req.query.longitude !== undefined && req.query.latitude !== undefined) 
+                        ? [req.query.longitude, req.query.latitude] as [number, number]
+                        : undefined;
+                    response.items = await search.suggest(req.query.query, req.query.limit, location);
+                } catch (err) {
+                    console.error('ESRI Suggest Error', err);
+                }
             }
             if (req.query.limit) {
                 response.items = response.items.splice(0, req.query.limit);
