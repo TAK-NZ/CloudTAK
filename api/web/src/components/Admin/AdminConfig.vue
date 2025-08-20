@@ -85,7 +85,8 @@
                                 v-model='config["agol::token"]'
                                 type='password'
                                 :disabled='!edit'
-                                label='ArcGIS Online API Token'
+                                label='ArcGIS Location Platform API key'
+                                description='Get your API key at https://location.arcgis.com with the privileges for "Geocoding" and "Routing"'
                             />
                         </div>
                     </div>
