@@ -24,24 +24,17 @@ test('Search - constructor without token', async (t) => {
 });
 
 test('Search - API URLs are correctly set', async (t) => {
-    const search = new Search('test-token');
+    const searchInstance = new Search('test-token');
     
-    t.ok(search.reverseApi.includes('geocode.arcgis.com'), 'Reverse API URL contains correct domain');
-    t.ok(search.suggestApi.includes('geocode.arcgis.com'), 'Suggest API URL contains correct domain');
-    t.ok(search.forwardApi.includes('geocode.arcgis.com'), 'Forward API URL contains correct domain');
+    t.equal(new URL(searchInstance.reverseApi).host, 'geocode.arcgis.com', 'Reverse API URL has correct host');
+    t.equal(new URL(searchInstance.suggestApi).host, 'geocode.arcgis.com', 'Suggest API URL has correct host');
+    t.equal(new URL(searchInstance.forwardApi).host, 'geocode.arcgis.com', 'Forward API URL has correct host');
     
     t.end();
 });
 
 test('Search - route method handles empty features', async (t) => {
-    const search = new Search('test-token');
-    
-    // Test the route processing logic with mock data
-    const mockRouteData = {
-        routes: {
-            features: []
-        }
-    };
+    const searchInstance = new Search('test-token');
     
     try {
         // This should throw an error for no route found
@@ -52,7 +45,8 @@ test('Search - route method handles empty features', async (t) => {
         
         t.equal(processedRoute.type, 'FeatureCollection', 'Correct type');
         t.equal(processedRoute.features.length, 0, 'Empty features array');
-    } catch (err) {
+        t.ok(searchInstance.token, 'Search instance has token');
+    } catch {
         t.pass('Expected error for empty route');
     }
 
@@ -60,7 +54,7 @@ test('Search - route method handles empty features', async (t) => {
 });
 
 test('Search - route method processes valid route data', async (t) => {
-    const search = new Search('test-token');
+    const searchInstance = new Search('test-token');
     
     // Test route processing with mock valid data structure
     const mockValidRoute = {
@@ -81,27 +75,28 @@ test('Search - route method processes valid route data', async (t) => {
     t.ok(mockValidRoute.routes.features.length > 0, 'Has route features');
     t.ok(mockValidRoute.routes.features[0].geometry.paths, 'Has geometry paths');
     t.ok(mockValidRoute.routes.features[0].attributes, 'Has attributes');
+    t.ok(searchInstance.token, 'Search instance has token');
     
     t.end();
 });
 
 test('Search - error handling for different error codes', async (t) => {
-    const search = new Search('test-token');
+    const searchInstance = new Search('test-token');
     
     // Test error code handling logic
     const error498 = { code: 498, message: 'Invalid token' };
-    const error499 = { code: 499, message: 'Token required' };
     const error400 = { code: 400, message: 'Bad request' };
     
     // Test error code classification
     t.ok(error498.code === 498 || error498.code === 499, 'Auth error codes');
     t.equal(error400.code, 400, 'General error code');
+    t.ok(searchInstance.token, 'Search instance has token');
     
     t.end();
 });
 
 test('Search - validates route input parameters', async (t) => {
-    const search = new Search('test-token');
+    const searchInstance = new Search('test-token');
     
     // Test input validation
     const validStops = [[-105, 39.7], [-104.8, 39.9]];
@@ -112,23 +107,24 @@ test('Search - validates route input parameters', async (t) => {
     t.ok(validStops[0].length === 2, 'Start point has lat/lng');
     t.ok(validStops[1].length === 2, 'End point has lat/lng');
     t.ok(typeof travelMode === 'string', 'Travel mode is string');
+    t.ok(searchInstance.token, 'Search instance has token');
     
     t.end();
 });
 
 test('Search - URL construction for different endpoints', async (t) => {
-    const search = new Search('test-token');
+    const searchInstance = new Search('test-token');
     
     // Test URL construction logic
     const baseUrl = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
     
-    t.ok(search.reverseApi.startsWith(baseUrl), 'Reverse API has correct base');
-    t.ok(search.suggestApi.startsWith(baseUrl), 'Suggest API has correct base');
-    t.ok(search.forwardApi.startsWith(baseUrl), 'Forward API has correct base');
+    t.ok(searchInstance.reverseApi.startsWith(baseUrl), 'Reverse API has correct base');
+    t.ok(searchInstance.suggestApi.startsWith(baseUrl), 'Suggest API has correct base');
+    t.ok(searchInstance.forwardApi.startsWith(baseUrl), 'Forward API has correct base');
     
-    t.ok(search.reverseApi.includes('reverseGeocode'), 'Reverse API has correct endpoint');
-    t.ok(search.suggestApi.includes('suggest'), 'Suggest API has correct endpoint');
-    t.ok(search.forwardApi.includes('findAddressCandidates'), 'Forward API has correct endpoint');
+    t.ok(searchInstance.reverseApi.includes('reverseGeocode'), 'Reverse API has correct endpoint');
+    t.ok(searchInstance.suggestApi.includes('suggest'), 'Suggest API has correct endpoint');
+    t.ok(searchInstance.forwardApi.includes('findAddressCandidates'), 'Forward API has correct endpoint');
     
     t.end();
 });

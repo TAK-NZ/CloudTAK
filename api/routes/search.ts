@@ -113,14 +113,18 @@ export default async function router(schema: Schema, config: Config) {
             ])
 
             // Handle elevation from query parameter (from MapLibre terrain)
-            if (req.query.elevation !== undefined) {
-                const elevation = elevationUnit === 'feet' || elevationUnit === 'FEET'
-                    ? (req.query.elevation * 3.28084).toFixed(2) + ' ft'
-                    : req.query.elevation.toFixed(2) + ' m';
-                response.elevation = elevation;
-            }
+            const finalResponse = {
+                sun: response.sun,
+                weather: response.weather,
+                reverse: response.reverse,
+                elevation: req.query.elevation !== undefined 
+                    ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
+                        ? (req.query.elevation * 3.28084).toFixed(2) + ' ft'
+                        : req.query.elevation.toFixed(2) + ' m')
+                    : null
+            };
 
-            res.json(response);
+            res.json(finalResponse);
         } catch (err) {
              Err.respond(err, res);
         }
