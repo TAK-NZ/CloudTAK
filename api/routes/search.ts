@@ -191,10 +191,7 @@ export default async function router(schema: Schema, config: Config) {
             };
 
             if (search.token && req.query.query.trim().length) {
-                const location = (req.query.longitude !== undefined && req.query.latitude !== undefined) 
-                    ? [req.query.longitude, req.query.latitude] as [number, number]
-                    : undefined;
-                response.items = await search.forward(req.query.query, req.query.magicKey, req.query.limit, location);
+                response.items = await search.forward(req.query.query, req.query.magicKey, req.query.limit);
             }
 
             res.json(response);

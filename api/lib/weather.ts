@@ -120,7 +120,18 @@ export default class Weather {
         url.searchParams.append('forecast_days', '7');
 
         const res = await fetch(url);
-        const data = await res.json();
+        const data = await res.json() as {
+            elevation?: number;
+            hourly: {
+                time: string[];
+                temperature_2m: number[];
+                relative_humidity_2m: number[];
+                precipitation_probability: number[];
+                wind_speed_10m: number[];
+                wind_direction_10m: number[];
+                weather_code: number[];
+            };
+        };
 
         // Convert Open-Meteo data to NWS format
         const periods = [];
