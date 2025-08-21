@@ -46,8 +46,17 @@ export default async function router(schema: Schema, config: Config) {
             'agol::enabled': Type.Optional(Type.Boolean({
                 description: 'Enable ArcGIS Online Integration'
             })),
+            'agol::auth_method': Type.Optional(Type.String({
+                description: 'ArcGIS Authentication Method (oauth2 or legacy)'
+            })),
             'agol::token': Type.Optional(Type.String({
-                description: 'ArcGIS Online API Token'
+                description: 'ArcGIS Online API Token (legacy method)'
+            })),
+            'agol::client_id': Type.Optional(Type.String({
+                description: 'ArcGIS OAuth2 Client ID'
+            })),
+            'agol::client_secret': Type.Optional(Type.String({
+                description: 'ArcGIS OAuth2 Client Secret'
             })),
 
             'media::url': Type.Optional(Type.String({
