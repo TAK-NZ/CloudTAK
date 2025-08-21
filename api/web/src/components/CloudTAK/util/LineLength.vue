@@ -76,11 +76,11 @@ const inMode = computed(() => {
     const cotLength = length(props.cot.as_feature());
 
     if (mode.value === 'meter') {
-        return cotLength * 1000;
+        return Number((cotLength * 1000).toFixed(2));
     } else if (mode.value === 'kilometer') {
-        return cotLength;
+        return Number(cotLength.toFixed(2));
     } else if (mode.value === 'mile') {
-        return cotLength * 0.621371;
+        return Number((cotLength * 0.621371).toFixed(2));
     } else {
         return 'UNKNOWN';
     }

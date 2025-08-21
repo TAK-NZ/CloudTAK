@@ -81,12 +81,31 @@
                                 :disabled='!edit'
                                 label='ArcGIS Online Enabled'
                             />
+                            <TablerEnum
+                                v-model='config["agol::auth_method"]'
+                                :disabled='!edit'
+                                label='Authentication Method'
+                                :options='["oauth2", "legacy"]'
+                            />
+                            <TablerInput
+                                v-model='config["agol::client_id"]'
+                                :disabled='!edit'
+                                label='OAuth2 Client ID'
+                                description='Client ID from your ArcGIS Location Platform or ArcGIS Enterprise account'
+                            />
+                            <TablerInput
+                                v-model='config["agol::client_secret"]'
+                                type='password'
+                                :disabled='!edit'
+                                label='OAuth2 Client Secret'
+                                description='Client Secret from your ArcGIS Location Platform or ArcGIS Enterprise account'
+                            />
                             <TablerInput
                                 v-model='config["agol::token"]'
                                 type='password'
                                 :disabled='!edit'
-                                label='ArcGIS Location Platform API key'
-                                description='Get your API key at https://location.arcgis.com with the privileges for "Geocoding" and "Routing"'
+                                label='Legacy Token'
+                                description='ArcGIS Online access token'
                             />
                         </div>
                     </div>
@@ -331,7 +350,10 @@ const groups = ref([
 
 const config = ref({
     'agol::enabled': false,
+    'agol::auth_method': 'oauth2',
     'agol::token': '',
+    'agol::client_id': '',
+    'agol::client_secret': '',
 
     'media::url': '',
 

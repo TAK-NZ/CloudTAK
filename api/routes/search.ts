@@ -5,15 +5,20 @@ import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import Weather, { FetchHourly } from '../lib/weather.js';
 import Search, { FetchReverse, FetchSuggest, FetchForward } from '../lib/search.js';
+import { createGeocodeService } from '../lib/geocode-factory.js';
 import { Feature } from '@tak-ps/node-cot';
 import Config from '../lib/config.js';
 
 export default async function router(schema: Schema, config: Config) {
     const weather = new Weather();
 
-    const search = new Search('');
-    if (await config.models.Setting.typed('agol::enabled', false)) {
-        search.token = (await config.models.Setting.typed('agol::token', '')).value;
+    let search: Search | null = null;
+    if ((await config.models.Setting.typed('agol::enabled', false)).value) {
+        const { ArcGISConfigService } = await import('../lib/geocode-factory.js');
+        const configService = ArcGISConfigService.getInstance(config);
+        if (await configService.isConfigured()) {
+            search = await createGeocodeService(config);
+        }
     }
 
     const ReverseResponse = Type.Object({
@@ -101,7 +106,7 @@ export default async function router(schema: Schema, config: Config) {
                     }
                 })(),
                 (async () => {
-                    if (search.token) {
+                    if (search) {
                         try {
                             response.reverse = await search.reverse(req.params.longitude, req.params.latitude);
                         } catch (err) {
@@ -161,8 +166,16 @@ export default async function router(schema: Schema, config: Config) {
                 req.query.end.split(',').map(Number)
             ] as [number, number][];
 
-            if (search.token) {
-                res.json(await search.route(stops, req.query.travelMode));
+            if (search) {
+                try {
+                    res.json(await search.route(stops, req.query.travelMode));
+                } catch (err) {
+                    console.error('Route Error:', err);
+                    res.json({
+                        type: 'FeatureCollection',
+                        features: []
+                    });
+                }
             } else {
                 res.json({
                     type: 'FeatureCollection',
@@ -194,8 +207,13 @@ export default async function router(schema: Schema, config: Config) {
                 items: [],
             };
 
-            if (search.token && req.query.query.trim().length) {
-                response.items = await search.forward(req.query.query, req.query.magicKey, req.query.limit);
+            if (search && req.query.query.trim().length) {
+                try {
+                    response.items = await search.forward(req.query.query, req.query.magicKey, req.query.limit);
+                } catch (err) {
+                    console.error('Forward Geocoding Error:', err);
+                    response.items = [];
+                }
             }
 
             res.json(response);
@@ -225,7 +243,7 @@ export default async function router(schema: Schema, config: Config) {
                 items: [],
             };
 
-            if (search.token && req.query.query.trim().length) {
+            if (search && req.query.query.trim().length) {
                 try {
                     const location = (req.query.longitude !== undefined && req.query.latitude !== undefined) 
                         ? [req.query.longitude, req.query.latitude] as [number, number]
