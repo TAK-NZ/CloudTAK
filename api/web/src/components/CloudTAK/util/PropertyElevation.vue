@@ -62,7 +62,7 @@ const mode = ref(props.unit);
 
 const inMode = computed(() => {
     if (mode.value === 'feet') {
-        return Math.round(props.elevation * 3.28084 * 1000) / 1000;
+        return Math.round(props.elevation * 3.28084 * 100) / 100;
     } else if (mode.value === 'meter') {
         return Math.round(props.elevation * 100) / 100;
     } else {

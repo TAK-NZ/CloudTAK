@@ -124,8 +124,8 @@ export default async function router(schema: Schema, config: Config) {
                 reverse: response.reverse,
                 elevation: req.query.elevation !== undefined 
                     ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
-                        ? (req.query.elevation * 3.28084).toFixed(2) + ' ft'
-                        : req.query.elevation.toFixed(2) + ' m')
+                        ? ((req.query.elevation / 1.5) * 3.28084).toFixed(2) + ' ft'
+                        : (req.query.elevation / 1.5).toFixed(2) + ' m')
                     : null
             };
 
