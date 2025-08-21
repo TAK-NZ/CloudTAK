@@ -62,8 +62,10 @@ const mode = ref(props.unit);
 
 const inMode = computed(() => {
     if (mode.value === 'feet') {
-        return Math.round(props.elevation * 3.28084 * 1000) / 1000;
+        // Convert meters to feet (multiply by 3.28084)
+        return Math.round(props.elevation * 3.28084 * 100) / 100;
     } else if (mode.value === 'meter') {
+        // Input elevation is in meters from MapLibre queryTerrainElevation
         return Math.round(props.elevation * 100) / 100;
     } else {
         return 'UNKNOWN';
