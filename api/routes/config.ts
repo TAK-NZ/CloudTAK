@@ -22,7 +22,7 @@ export default async function router(schema: Schema, config: Config) {
         res: Type.Record(Type.String(), Type.Any())
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { admin: true });
+            await Auth.as_user(config, req);
 
             const final: Record<string, string> = {};
             (await Promise.allSettled((req.query.keys.split(',').map((key) => {
