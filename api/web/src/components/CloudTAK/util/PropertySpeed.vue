@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed } from 'vue';
+import { ref, computed, watchEffect } from 'vue';
 import CopyField from './CopyField.vue';
 import {
     IconBrandSpeedtest
@@ -71,6 +71,11 @@ const props = defineProps({
 });
 
 const mode = ref(props.unit);
+
+// Keep mode in sync with unit prop changes
+watchEffect(() => {
+    mode.value = props.unit;
+});
 
 const inMode = computed(() => {
     if (mode.value === 'm/s') return Math.round(props.speed * 1000) / 1000;

@@ -25,10 +25,14 @@ export default async function router(schema: Schema, config: Config) {
             await Auth.as_user(config, req);
 
             const final: Record<string, string> = {};
+            const sensitiveKeys = ['agol::client_secret', 'agol::token', 'agol::client_id', 'agol::auth_method', 'oidc::secret', 'provider::secret', 'provider::client'];
+
             (await Promise.allSettled((req.query.keys.split(',').map((key) => {
                 return config.models.Setting.from(key);
             })))).forEach((k) => {
                 if (k.status === 'rejected') return;
+                // Don't expose sensitive credentials in public config
+                if (sensitiveKeys.includes(k.value.key)) return;
                 return final[k.value.key] = String(k.value.value);
             });
 
@@ -45,18 +49,6 @@ export default async function router(schema: Schema, config: Config) {
         body: Type.Object({
             'agol::enabled': Type.Optional(Type.Boolean({
                 description: 'Enable ArcGIS Online Integration'
-            })),
-            'agol::auth_method': Type.Optional(Type.String({
-                description: 'ArcGIS Authentication Method (oauth2 or legacy)'
-            })),
-            'agol::token': Type.Optional(Type.String({
-                description: 'ArcGIS Online API Token (legacy method)'
-            })),
-            'agol::client_id': Type.Optional(Type.String({
-                description: 'ArcGIS OAuth2 Client ID'
-            })),
-            'agol::client_secret': Type.Optional(Type.String({
-                description: 'ArcGIS OAuth2 Client Secret'
             })),
 
             'media::url': Type.Optional(Type.String({
@@ -111,12 +103,10 @@ export default async function router(schema: Schema, config: Config) {
             'oidc::name': Type.Optional(Type.String()),
             'oidc::discovery': Type.Optional(Type.String()),
             'oidc::client': Type.Optional(Type.String()),
-            'oidc::secret': Type.Optional(Type.String()),
 
             // COTAK Specific Properties
             'provider::url': Type.Optional(Type.String()),
-            'provider::secret': Type.Optional(Type.String()),
-            'provider::client': Type.Optional(Type.String()),
+
 
             'login::signup': Type.Optional(Type.String({
                 description: 'URL for Signup Page'

@@ -366,6 +366,8 @@ const config = ref({
     'provider::secret': '',
     'provider::client': '',
 
+    'oidc::secret': '',
+
     'login::logo': '',
     'login::forgot': '',
     'login::signup': '',
@@ -396,8 +398,11 @@ async function fetch() {
             displayUnits.value[key] = value.options;
         }
 
+        // Get public config (exclude sensitive keys)
+        const sensitiveKeys = ['agol::auth_method', 'agol::client_id', 'agol::client_secret', 'agol::token', 'provider::secret', 'provider::client', 'oidc::secret'];
+        const publicKeys = Object.keys(config.value).filter(key => !sensitiveKeys.includes(key));
         const url = stdurl('/api/config')
-        url.searchParams.append('keys', Object.keys(config.value).join(','));
+        url.searchParams.append('keys', publicKeys.join(','));
         const configRes = await std(url);
 
         for (const key of Object.keys(configRes)) {
@@ -409,6 +414,14 @@ async function fetch() {
             } else {
                 config.value[key] = configRes[key];
             }
+        }
+
+        // Get admin-only config
+        try {
+            const adminConfig = await std('/api/admin/config');
+            Object.assign(config.value, adminConfig);
+        } catch (err) {
+            console.error('Failed to load admin config:', err);
         }
 
         for (const key of Object.keys(display)) {
@@ -424,28 +437,34 @@ async function fetch() {
 
 async function postConfig() {
     loading.value = true;
-    try {
-        await std(`/api/config`, {
-            method: 'PUT',
-            body: {
-                ...config.value,
-                'map::center': config.value['map::center'].split(',').reverse().join(','),
-            }
-        });
-        
-        // Force reload display config to clear any caching
-        const display = await std('/api/config/display');
-        for (const [key, value] of Object.entries(display)) {
-            displayUnits.value[key] = value.options;
-            config.value[`display::${key}`] = value.value;
+    
+    // Save public config (exclude sensitive keys)
+    const sensitiveKeys = ['agol::auth_method', 'agol::client_id', 'agol::client_secret', 'agol::token', 'provider::secret', 'provider::client', 'oidc::secret'];
+    const publicConfig = { ...config.value };
+    sensitiveKeys.forEach(key => delete publicConfig[key]);
+    
+    await std(`/api/config`, {
+        method: 'PUT',
+        body: {
+            ...publicConfig,
+            'map::center': config.value['map::center'].split(',').reverse().join(','),
         }
-        
-        edit.value = false;
-    } catch (error) {
-        console.error('Failed to save admin config:', error);
-        // Keep edit mode active so user can try again
-    } finally {
-        loading.value = false;
-    }
+    });
+    
+    // Save admin-only config
+    const adminConfig = {};
+    sensitiveKeys.forEach(key => {
+        if (config.value[key] !== undefined) {
+            adminConfig[key] = config.value[key];
+        }
+    });
+    
+    await std('/api/admin/config', {
+        method: 'PUT',
+        body: adminConfig
+    });
+
+    edit.value = false;
+    loading.value = false;
 }
 </script>
