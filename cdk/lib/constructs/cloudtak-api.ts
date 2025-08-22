@@ -354,7 +354,7 @@ export class CloudTakApi extends Construct {
         'CLOUDTAK_Mode': 'AWS',
         'StackName': `TAK-${envConfig.stackName}-CloudTAK`,
         'ASSET_BUCKET': assetBucketName,
-        'API_URL': serviceUrl,
+        'API_URL': `https://${serviceUrl}`,
         'VpcId': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.VPC_ID)),
         'SubnetPublicA': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_A)),
         'SubnetPublicB': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_B)),
