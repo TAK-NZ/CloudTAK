@@ -258,7 +258,7 @@ export default class Overlay {
                 icons: true,
                 course: true,
                 labels: { size },
-                rotateIcons: (profile.display_icon_rotation as any) === 'Enabled' || (profile.display_icon_rotation as any) === true
+                rotateIcons: (profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true
             });
         } else if (!this.styles.length) {
             this.styles = [];
