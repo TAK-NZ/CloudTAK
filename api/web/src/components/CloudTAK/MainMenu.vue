@@ -604,7 +604,7 @@
                     v-else-if='["home", "home-menu"].includes(String(route.name))'
                 >
                     <div
-                        v-if="false"
+                        v-if='false'
                         class='d-flex justify-content-center mb-2'
                     >
                         <TablerDropdown
