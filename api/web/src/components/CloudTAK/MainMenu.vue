@@ -645,8 +645,8 @@
                             <img
                                 v-tooltip='"Return Home"'
                                 class='cursor-pointer'
-                                height='50'
-                                width='50'
+                                height='55'
+                                width='55'
                                 :src='brandStore.login && brandStore.login.logo ? brandStore.login.logo : "/CloudTAKLogo.svg"'
                                 @click='returnHome'
                                 @keyup.enter='returnHome'

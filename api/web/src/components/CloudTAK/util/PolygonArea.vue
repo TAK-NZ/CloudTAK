@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { area } from '@turf/area';
 import CopyField from './CopyField.vue';
 import COT from '../../../base/cot.ts';
@@ -85,6 +85,11 @@ const props = defineProps({
 })
 
 const mode = ref(props.unit || 'sqfeet');
+
+// Watch for prop changes and update mode accordingly
+watch(() => props.unit, (newUnit) => {
+    mode.value = newUnit || 'sqfeet';
+});
 
 const inMode = computed(() => {
     const cotArea = area(props.cot.geometry);

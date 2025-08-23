@@ -362,6 +362,7 @@
                 >
                     <PolygonArea
                         :cot='cot'
+                        :unit='units.display_distance === "mile" ? "sqfeet" : "sqmeter"'
                     />
                 </div>
 
