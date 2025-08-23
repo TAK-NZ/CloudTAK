@@ -7,10 +7,34 @@
                 :size='24'
             />
             <span
+                v-tooltip='"Feet"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom": mode === "feet",
+                    "cursor-pointer": mode !== "feet",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "feet"'
+                @click='mode = "feet"'
+            >Feet</span>
+            <span
+                v-tooltip='"Yards"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom": mode === "yard",
+                    "cursor-pointer": mode !== "yard",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "yard"'
+                @click='mode = "yard"'
+            >Yards</span>
+            <span
                 v-tooltip='"Meters"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "meter",
+                    "bg-gray-500 rounded-bottom": mode === "meter",
                     "cursor-pointer": mode !== "meter",
                 }'
                 role='menuitem'
@@ -22,7 +46,7 @@
                 v-tooltip='"Kilometers"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "kilometer",
+                    "bg-gray-500 rounded-bottom": mode === "kilometer",
                     "cursor-pointer": mode !== "kilometer",
                 }'
                 role='menuitem'
@@ -34,7 +58,7 @@
                 v-tooltip='"Miles"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "mile",
+                    "bg-gray-500 rounded-bottom": mode === "mile",
                     "cursor-pointer": mode !== "mile",
                 }'
                 role='menuitem'
@@ -47,7 +71,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { length } from '@turf/length';
 import CopyField from './CopyField.vue';
 import COT from '../../../base/cot.ts';
@@ -63,12 +87,7 @@ const props = defineProps({
     }
 })
 
-const mode = ref(props.unit === 'kilometer' ? 'kilometer' : props.unit === 'meter' ? 'meter' : 'mile');
-
-// Watch for prop changes and update mode accordingly
-watch(() => props.unit, (newUnit) => {
-    mode.value = newUnit === 'kilometer' ? 'kilometer' : newUnit === 'meter' ? 'meter' : 'mile';
-});
+const mode = ref(props.unit || 'mile');
 
 const inMode = computed(() => {
     if (props.cot.geometry.type !== 'LineString') return 'Not a Line!';
@@ -76,11 +95,15 @@ const inMode = computed(() => {
     const cotLength = length(props.cot.as_feature());
 
     if (mode.value === 'meter') {
-        return Number((cotLength * 1000).toFixed(2));
+        return cotLength * 1000;
+    } else if (mode.value === 'feet') {
+        return Math.round((cotLength * 3280.84) * 1000) / 1000;
+    } else if (mode.value === 'yard') {
+        return Math.round((cotLength * 1093.61) * 1000) / 1000;
     } else if (mode.value === 'kilometer') {
-        return Number(cotLength.toFixed(2));
+        return cotLength;
     } else if (mode.value === 'mile') {
-        return Number((cotLength * 0.621371).toFixed(2));
+        return cotLength * 0.621371;
     } else {
         return 'UNKNOWN';
     }

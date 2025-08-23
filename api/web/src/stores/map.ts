@@ -7,6 +7,7 @@
 * - Source - MapLibre - Ref: https://maplibre.org/maplibre-style-spec/sources/
 */
 
+import { v4 as randomUUID } from 'uuid';
 import { defineStore } from 'pinia'
 import DrawTool, { DrawToolMode } from './modules/draw.ts';
 import IconManager from './modules/icons.ts';
@@ -151,7 +152,7 @@ export const useMapStore = defineStore('cloudtak', {
     actions: {
         destroy: function() {
             this.channel.close();
-            
+
             // Clean up GPS watch
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
@@ -347,8 +348,6 @@ export const useMapStore = defineStore('cloudtak', {
                     this.callsign = msg.body.callsign;
                 } else if (msg.type === WorkerMessageType.Profile_Display_Zoom) {
                     this.zoom = msg.body.zoom;
-                } else if (msg.type === WorkerMessageType.Profile_Icon_Rotation) {
-                    this.updateIconRotation(msg.body.enabled);
                 } else if (msg.type === WorkerMessageType.Profile_Distance_Unit) {
                     this.updateDistanceUnit(msg.body.unit);
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
@@ -449,7 +448,7 @@ export const useMapStore = defineStore('cloudtak', {
                 unit: 'metric'
             });
             map.addControl(scaleControl, 'bottom-left');
-            
+
             // Store reference for later use
             (map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl })._scaleControl = scaleControl;
 
@@ -465,14 +464,9 @@ export const useMapStore = defineStore('cloudtak', {
             this.callsign = profile.tak_callsign;
             this.zoom = profile.display_zoom;
             this.distanceUnit = profile.display_distance;
-            
+
             // Initialize scale control settings
             this.updateDistanceUnit(profile.display_distance);
-            
-            // Initialize icon rotation setting after overlays are loaded
-            setTimeout(() => {
-                this.updateIconRotation(profile.display_icon_rotation === 'Enabled');
-            }, 100);
 
             this.isOpen = await this.worker.conn.isOpen;
         },
@@ -596,7 +590,7 @@ export const useMapStore = defineStore('cloudtak', {
             map.on('contextmenu', (e) => {
                 if (this.draw.editing) return;
 
-                const id = window.crypto.randomUUID();
+                const id = randomUUID();
                 this.radialClick({
                     id,
                     type: 'Feature',
@@ -692,7 +686,7 @@ export const useMapStore = defineStore('cloudtak', {
             }
 
             this.isLoaded = true;
-            
+
             // Update attribution with basemap data
             await this.updateAttribution();
         },
@@ -712,47 +706,6 @@ export const useMapStore = defineStore('cloudtak', {
             if (!click) return;
             return click.type;
         },
-        updateIconRotation: function(enabled: boolean): void {
-            for (const overlay of this.overlays) {
-                if (overlay.type === 'geojson') {
-                    // Update icon rotation
-                    const iconLayerId = `${overlay.id}-icon`;
-                    if (this.map.getLayer(iconLayerId)) {
-                        this.map.setLayoutProperty(iconLayerId, 'icon-rotate', enabled ? ['get', 'course'] : 0);
-                    }
-
-                    // Update course arrow filter based on rotation setting
-                    const courseLayerId = `${overlay.id}-course`;
-                    if (this.map.getLayer(courseLayerId)) {
-                        if (enabled) {
-                            // When rotation enabled, only show course arrows for grouped features
-                            this.map.setFilter(courseLayerId, [
-                                'all',
-                                ['==', '$type', 'Point'],
-                                ['has', 'course'],
-                                ['has', 'group']
-                            ]);
-                        } else {
-                            // When rotation disabled, show course arrows for all features with course
-                            this.map.setFilter(courseLayerId, [
-                                'all',
-                                ['==', '$type', 'Point'],
-                                ['has', 'course']
-                            ]);
-                        }
-                    }
-
-                    // Update text offset
-                    const textLayerId = `${overlay.id}-text-point`;
-                    if (this.map.getLayer(textLayerId)) {
-                        this.map.setLayoutProperty(textLayerId, 'text-offset', [0, enabled ? 2 : 2.5]);
-                    }
-                }
-            }
-            
-            // Force a map repaint to ensure changes are visible immediately
-            this.map.triggerRepaint();
-        },
 
         updateDistanceUnit: function(unit: string): void {
             this.distanceUnit = unit;
@@ -771,7 +724,7 @@ export const useMapStore = defineStore('cloudtak', {
         },
         updateAttribution: async function(): Promise<void> {
             const attributions: string[] = [];
-            
+
             for (const overlay of this.overlays) {
                 if (overlay.mode === 'basemap' && overlay.mode_id && overlay.visible) {
                     try {
@@ -784,7 +737,7 @@ export const useMapStore = defineStore('cloudtak', {
                     }
                 }
             }
-            
+
             // Update attribution by manipulating the DOM directly
             const attributionContainer = document.querySelector('.maplibregl-ctrl-attrib-inner');
             if (attributionContainer && attributions.length > 0) {

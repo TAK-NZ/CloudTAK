@@ -307,7 +307,6 @@
                         >Chats</span>
                     </div>
                     <div
-                        v-if='isArcGISEnabled'
                         role='menuitem'
                         :tabindex='compact ? undefined : 0'
                         class='cursor-pointer col-12 d-flex align-items-center'
@@ -604,14 +603,34 @@
                     v-else-if='["home", "home-menu"].includes(String(route.name))'
                 >
                     <div class='d-flex justify-content-center mb-2'>
-                        <TablerDropdown>
+                        <TablerDropdown
+                            position='right'
+                        >
                             <template #default>
-                                <IconGridDots />
+                                <TablerIconButton
+                                    title='Application Switcher'
+                                >
+                                    <IconGridDots
+                                        :size='32'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
                             </template>
                             <template #dropdown>
                                 <div class='card'>
                                     <div class='card-body'>
-                                        MAP
+                                        <div
+                                            class='px-2 py-2 d-flex align-items-center hover rounded cursor-pointer'
+                                            @click='external("/video")'
+                                        >
+                                            <IconDeviceTv
+                                                size='32'
+                                                stroke='1'
+                                            />
+                                            <div class='mx-2'>
+                                                Video Wall
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -675,6 +694,7 @@ import {
     IconPackages,
     IconGridDots,
     IconSettings,
+    IconDeviceTv,
     IconAmbulance,
     IconServerCog,
     IconBoxMultiple,
@@ -682,7 +702,8 @@ import {
     IconAffiliate,
 } from '@tabler/icons-vue';
 import {
-    TablerDropdown
+    TablerDropdown,
+    TablerIconButton
 } from '@tak-ps/vue-tabler';
 import { useMapStore } from '../../stores/map.ts';
 import { useBrandStore } from '../../stores/brand.ts';
@@ -704,7 +725,6 @@ const username = ref<string>('Username')
 const menuWidth = ref<number>(400);
 const isSystemAdmin = ref<boolean>(false)
 const isAgencyAdmin = ref<boolean>(false)
-const isArcGISEnabled = ref<boolean>(false)
 
 defineProps({
     compact: Boolean,
@@ -763,22 +783,11 @@ onMounted(async () => {
     username.value = await mapStore.worker.profile.username();
     isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();
     isAgencyAdmin.value = await mapStore.worker.profile.isAgencyAdmin();
-    
-    try {
-        const response = await fetch('/api/config?keys=agol::enabled', {
-            headers: { 'Authorization': `Bearer ${localStorage.token}` }
-        });
-        if (response.ok) {
-            const config = await response.json();
-            isArcGISEnabled.value = config['agol::enabled'] === 'true';
-            console.log('ArcGIS setting loaded:', config['agol::enabled'], 'Routes visible:', isArcGISEnabled.value);
-        } else {
-            console.error('Failed to fetch config:', response.status);
-        }
-    } catch (err) {
-        console.error('Failed to load ArcGIS setting:', err);
-    }
 })
+
+function external(url: string) {
+    window.location.href = String(new URL(url, window.location.origin));
+}
 
 function returnHome() {
     router.push("/");

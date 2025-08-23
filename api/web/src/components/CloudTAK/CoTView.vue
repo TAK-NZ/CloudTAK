@@ -80,7 +80,7 @@
                         </TablerIconButton>
                         <TablerIconButton
                             title='Share'
-                            @click='mode === "share" ? mode = "default" : mode = "share"'
+                            @click='share = true'
                         >
                             <IconShare2
                                 :size='32'
@@ -606,7 +606,7 @@
                                 />
                             </div>
                             <div class='col-12'>
-                                <label class='subheader user-select-none'>Point Colour</label>
+                                <label class='subheader user-select-none'>Point Color</label>
                                 <TablerInput
                                     :model-value='cot.properties["marker-color"]'
                                     label=''
@@ -769,16 +769,6 @@
                 </div>
             </div>
         </div>
-        <template v-else-if='mode === "share"'>
-            <div class='overflow-auto'>
-                <Share
-                    style='height: 70vh'
-                    :feats='[cot.as_feature()]'
-                    @done='mode = "default"'
-                    @cancel='mode = "default"'
-                />
-            </div>
-        </template>
         <template v-else-if='mode === "channels"'>
             <div
                 style='height: calc(100vh - 225px)'
@@ -803,6 +793,13 @@
             </div>
         </template>
     </template>
+
+    <Share
+        v-if='share && cot'
+        :feats='[cot.as_feature()]'
+        @done='share = false'
+        @cancel='share = false'
+    />
 </template>
 
 <script setup lang='ts'>
@@ -883,6 +880,7 @@ const cot = ref<COT | undefined>(undefined);
 
 const subscription = ref<Subscription | undefined>();
 
+const share = ref(false);
 const units = ref({
     display_speed: 'mi/h',
     display_elevation: 'feet',
@@ -1010,19 +1008,30 @@ function updateProperty(key: string, event: any) {
 function updatePropertyIcon(event: string | null) {
     if (!cot.value) return;
 
-    if (!cot.value.properties.icon && event) {
+    if (event) {
+        event = event.replace(/\.png$/g, '').replace(':', '/');
+    }
+
+    if (
+        event
+        && (
+            !cot.value.properties.icon
+            || (
+                cot.value.properties.icon
+                && event !== cot.value.properties.icon
+            )
+        )
+    ) {
         cot.value.properties.icon = event;
+        cot.value.properties["marker-color"] = '#FFFFFF';
         cot.value.update({});
-    } else if (cot.value.properties.icon && !event)
+    } else if (cot.value.properties.icon && !event) {
         if (cot.value.properties.type !== 'u-d-p') {
             cot.value.properties.icon = cot.value.properties.type;
         } else {
             cot.value.properties.icon = undefined;
         }
 
-        cot.value.update({});
-    if (event && cot.value.properties.icon && event.replace(/\.png$/g, '').replace(':', '/') !== cot.value.properties.icon.replace(/\.png$/, '').replace(':', '/')) {
-        cot.value.properties.icon = event;
         cot.value.update({});
     }
 }

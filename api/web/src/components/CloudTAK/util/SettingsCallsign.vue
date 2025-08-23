@@ -4,6 +4,8 @@
         <div class='col-12'>
             <TablerInput
                 v-model='profile.tak_callsign'
+                :error='validateTextNotEmpty(profile.tak_callsign)'
+                :required='true'
                 label='User Callsign'
             />
         </div>
@@ -44,6 +46,7 @@
             <div class='ms-auto'>
                 <button
                     class='btn btn-primary'
+                    :disabled='!!validateTextNotEmpty(profile.tak_callsign)'
                     @click='updateProfile'
                 >
                     Update
@@ -64,13 +67,18 @@ import {
     TablerEnum,
     TablerLoading
 } from '@tak-ps/vue-tabler';
-import { useMapStore } from '../../../../src/stores/map.ts';
+import { validateTextNotEmpty } from '../../../base/validators.ts';
+import { useMapStore } from '../../../stores/map.ts';
 const mapStore = useMapStore();
 
 const props = defineProps({
     mode: {
         type: String,
         default: 'router'
+    },
+    forceCallsign: {
+        type: Boolean,
+        default: false
     }
 })
 
@@ -106,6 +114,10 @@ onMounted(async () => {
 
     if (config.value.groups[p.tak_group]) {
         p.tak_group = `${p.tak_group} - ${config.value.groups[p.tak_group]}`;
+    }
+
+    if (props.forceCallsign) {
+        p.tak_callsign = '';
     }
 
     profile.value = p;

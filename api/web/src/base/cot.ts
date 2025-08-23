@@ -1,3 +1,4 @@
+import { v4 as randomUUID } from 'uuid';
 import { std } from '../std.ts';
 import { bbox } from '@turf/bbox'
 import { length } from '@turf/length'
@@ -74,7 +75,7 @@ export default class COT {
             feat.properties = COT.style(a, feat.geometry.type, feat.properties);
         }
 
-        this.id = feat.id || crypto.randomUUID();
+        this.id = feat.id || randomUUID();
 
         this._path = feat.path || '/';
         this._properties = feat["properties"] || {};
@@ -83,7 +84,7 @@ export default class COT {
         this._remote = (opts && opts.remote === true) ? new BroadcastChannel('sync') : null
         this._atlas = atlas;
 
-        this.instance = this._remote ? `remote:${crypto.randomUUID()}` : `db:${crypto.randomUUID()}`
+        this.instance = this._remote ? `remote:${randomUUID()}` : `db:${randomUUID()}`
 
         this.origin = origin || { mode: OriginMode.CONNECTION };
 
@@ -506,9 +507,8 @@ export default class COT {
                     properties.icon = properties.icon.replace(/.png$/, '');
                 }
 
-                // Skip validation for custom icons (containing ':')
-                if (!properties.icon.includes(':') && !atlas.db.images.has(properties.icon)) {
-                                    console.warn(`No Icon for: ${properties.icon} fallback to ${properties.type}`);
+                if (!atlas.db.images.has(properties.icon)) {
+                    console.warn(`No Icon for: ${properties.icon} fallback to ${properties.type}`);
                     properties.icon = `${properties.type}`;
                 }
             } else if (properties.milsym && !isNaN(Number(properties.milsym.id))) {

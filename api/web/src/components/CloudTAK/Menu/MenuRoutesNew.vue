@@ -25,19 +25,6 @@
                         @select='routePlan.end = $event ? $event.coordinates : null'
                     />
                 </div>
-                <div class='mx-2 my-2'>
-                    <label class='form-label'>Travel Mode</label>
-                    <div class='px-2 py-2 round btn-group w-100' role='group'>
-                        <input id='driving' v-model='routePlan.travelMode' value='1' type='radio' class='btn-check' autocomplete='off'>
-                        <label for='driving' type='button' class='btn btn-sm'>Driving</label>
-                        <input id='trucking' v-model='routePlan.travelMode' value='3' type='radio' class='btn-check' autocomplete='off'>
-                        <label for='trucking' type='button' class='btn btn-sm'>Trucking</label>
-                        <input id='rural' v-model='routePlan.travelMode' value='7' type='radio' class='btn-check' autocomplete='off'>
-                        <label for='rural' type='button' class='btn btn-sm'>Rural</label>
-                        <input id='walking' v-model='routePlan.travelMode' value='5' type='radio' class='btn-check' autocomplete='off'>
-                        <label for='walking' type='button' class='btn btn-sm'>Walking</label>
-                    </div>
-                </div>
                 <div class='mx-2 my-3'>
                     <button
                         :disabled='!routePlan.start || !routePlan.end'
@@ -72,11 +59,9 @@ const loading = ref(false);
 const routePlan = ref<{
     start: null | [number, number];
     end: null | [number, number];
-    travelMode: string;
 }>({
     start: null,
-    end: null,
-    travelMode: '1'
+    end: null
 });
 
 async function generateRoute(): Promise<void> {
@@ -90,7 +75,6 @@ async function generateRoute(): Promise<void> {
         const url = stdurl('/api/search/route');
         url.searchParams.set('start', routePlan.value.start.join(','));
         url.searchParams.set('end', routePlan.value.end.join(','));
-        url.searchParams.set('travelMode', routePlan.value.travelMode);
 
         const route = await std(url) as FeatureCollection;
 
