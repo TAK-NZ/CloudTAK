@@ -7,29 +7,17 @@
                 :size='24'
             />
             <span
-                v-tooltip='"Feet"'
+                v-tooltip='"Kilometers"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "feet",
-                    "cursor-pointer": mode !== "feet",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "kilometer",
+                    "cursor-pointer": mode !== "kilometer",
                 }'
                 role='menuitem'
                 tabindex='0'
-                @keyup.enter='mode = "feet"'
-                @click='mode = "feet"'
-            >Feet</span>
-            <span
-                v-tooltip='"Yards"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "yard",
-                    "cursor-pointer": mode !== "yard",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "yard"'
-                @click='mode = "yard"'
-            >Yards</span>
+                @keyup.enter='mode = "kilometer"'
+                @click='mode = "kilometer"'
+            >Kilometers</span>
             <span
                 v-tooltip='"Meters"'
                 class='my-1 px-2 user-select-none'
@@ -43,18 +31,6 @@
                 @click='mode = "meter"'
             >Meters</span>
             <span
-                v-tooltip='"Kilometers"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "kilometer",
-                    "cursor-pointer": mode !== "kilometer",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "kilometer"'
-                @click='mode = "kilometer"'
-            >Kilometers</span>
-            <span
                 v-tooltip='"Miles"'
                 class='my-1 px-2 user-select-none'
                 :class='{
@@ -66,6 +42,30 @@
                 @keyup.enter='mode = "mile"'
                 @click='mode = "mile"'
             >Miles</span>
+            <span
+                v-tooltip='"Yards"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "yard",
+                    "cursor-pointer": mode !== "yard",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "yard"'
+                @click='mode = "yard"'
+            >Yards</span>
+            <span
+                v-tooltip='"Feet"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "feet",
+                    "cursor-pointer": mode !== "feet",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "feet"'
+                @click='mode = "feet"'
+            >Feet</span>
         </div>
     </div>
 </template>
