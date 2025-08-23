@@ -1,5 +1,5 @@
 import undici from 'undici';
-import geojsonvt from 'geojson-vt';
+import geojsonvt from '@tak-ps/geojson-vt';
 import { tileToBBOX } from '../tilebelt.js';
 // @ts-expect-error No Type Defs
 import vtpbf from 'vt-pbf';

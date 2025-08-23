@@ -1,7 +1,7 @@
 {
     "name": "@tak-ps/CloudTAK.api",
     "type": "module",
-    "version": "10.44-NZ",
+    "version": "10.50-NZ",
     "description": "Facilitate ETL operations to bring non-TAK sources into a TAK Server",
     "main": "index.js",
     "scripts": {
@@ -72,6 +72,7 @@
         "drizzle-orm": "^0.44.0",
         "drizzle-typebox": "^0.3.0",
         "express": "^5.0.0",
+        "geojson-vt": "^4.0.2",
         "handlebars": "^4.7.8",
         "http-cookie-agent": "^7.0.0",
         "jsonata": "^2.0.1",
