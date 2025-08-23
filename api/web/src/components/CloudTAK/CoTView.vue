@@ -1008,22 +1008,8 @@ function updateProperty(key: string, event: any) {
 function updatePropertyIcon(event: string | null) {
     if (!cot.value) return;
 
-    if (event) {
-        event = event.replace(/\.png$/g, '').replace(':', '/');
-    }
-
-    if (
-        event
-        && (
-            !cot.value.properties.icon
-            || (
-                cot.value.properties.icon
-                && event !== cot.value.properties.icon
-            )
-        )
-    ) {
+    if (!cot.value.properties.icon && event) {
         cot.value.properties.icon = event;
-        cot.value.properties["marker-color"] = '#FFFFFF';
         cot.value.update({});
     } else if (cot.value.properties.icon && !event) {
         if (cot.value.properties.type !== 'u-d-p') {
@@ -1032,6 +1018,10 @@ function updatePropertyIcon(event: string | null) {
             cot.value.properties.icon = undefined;
         }
 
+        cot.value.update({});
+    }
+    if (event && cot.value.properties.icon && event.replace(/\.png$/g, '').replace(':', '/') !== cot.value.properties.icon.replace(/\.png$/, '').replace(':', '/')) {
+        cot.value.properties.icon = event;
         cot.value.update({});
     }
 }

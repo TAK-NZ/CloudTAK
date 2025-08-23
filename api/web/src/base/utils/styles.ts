@@ -115,50 +115,6 @@ export default function styles(id: string, opts: {
 
     styles.push(circle);
 
-    if (opts.course) {
-        const course: SymbolLayerSpecification = {
-            id: `${id}-course`,
-            type: 'symbol',
-            source: id,
-            filter: (opts.rotateIcons ?? true) ? [
-                'all',
-                ['==', '$type', 'Point'],
-                ['has', 'course'],
-                ['has', 'group']
-            ] : [
-                'all',
-                ['==', '$type', 'Point'],
-                ['has', 'course']
-            ],
-            paint: {
-                'icon-opacity': ["number", ["get", "marker-opacity"], 1],
-                'icon-halo-color': '#ffffff',
-                'icon-halo-width': 4
-            },
-            layout: {
-                'icon-size': 0.3,
-                'icon-offset': [
-                    'interpolate',
-                    ['linear'],
-                    ['zoom'],
-                    8, ['literal', [0, -28]],
-                    12, ['literal', [0, -42]],
-                    16, ['literal', [0, -58]]
-                ],
-                'icon-rotate': ['get', 'course'],
-                'icon-allow-overlap': true,
-                'icon-image': 'course',
-                'icon-anchor': 'bottom',
-            }
-        }
-
-        if (opts.sourceLayer) {
-            course['source-layer'] = opts.sourceLayer;
-        }
-
-        styles.push(course);
-    }
-
     if (opts.icons) {
         const icon: SymbolLayerSpecification = {
             id: `${id}-icon`,
@@ -200,6 +156,48 @@ export default function styles(id: string, opts: {
         }
 
         styles.push(icon);
+    }
+
+    if (opts.course) {
+        const course: SymbolLayerSpecification = {
+            id: `${id}-course`,
+            type: 'symbol',
+            source: id,
+            filter: (opts.rotateIcons ?? true) ? [
+                'all',
+                ['==', '$type', 'Point'],
+                ['has', 'course'],
+                ['has', 'group']
+            ] : [
+                'all',
+                ['==', '$type', 'Point'],
+                ['has', 'course']
+            ],
+            paint: {
+                'icon-opacity': ["number", ["get", "marker-opacity"], 1]
+            },
+            layout: {
+                'icon-size': 0.33,
+                'icon-offset': [
+                    'interpolate',
+                    ['linear'],
+                    ['zoom'],
+                    8, ['literal', [0, -28]],
+                    12, ['literal', [0, -42]],
+                    16, ['literal', [0, -58]]
+                ],
+                'icon-rotate': ['get', 'course'],
+                'icon-allow-overlap': true,
+                'icon-image': 'course',
+                'icon-anchor': 'bottom',
+            }
+        }
+
+        if (opts.sourceLayer) {
+            course['source-layer'] = opts.sourceLayer;
+        }
+
+        styles.push(course);
     }
 
     if (opts.group) {

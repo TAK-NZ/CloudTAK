@@ -19,7 +19,7 @@ import type { WorkerMessage } from '../base/events.ts';
 import Overlay from '../base/overlay.ts';
 import Subscription from '../base/subscription.ts';
 import { std, stdurl } from '../std.js';
-import cotStyles from '../base/utils/styles.ts';
+
 import mapgl from 'maplibre-gl'
 import type Atlas from '../workers/atlas.ts';
 import { CloudTAKTransferHandler } from '../base/handler.ts';
@@ -351,8 +351,6 @@ export const useMapStore = defineStore('cloudtak', {
                     this.zoom = msg.body.zoom;
                 } else if (msg.type === WorkerMessageType.Profile_Icon_Rotation) {
                     this.updateIconRotation(msg.body.enabled);
-                } else if (msg.type === WorkerMessageType.Profile_Distance_Unit) {
-                    this.updateDistanceUnit(msg.body.unit);
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
                     map.setProjection(msg.body);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
@@ -691,8 +689,9 @@ export const useMapStore = defineStore('cloudtak', {
             this.isLoaded = true;
 
             // Initialize icon rotation setting after overlays are loaded
-            const profile = await this.worker.profile.load();
-            this.updateIconRotation(!!profile.display_icon_rotation);
+            setTimeout(() => {
+                this.updateIconRotation(profile.display_icon_rotation === 'Enabled');
+            }, 100);
 
             // Update attribution with basemap data
             await this.updateAttribution();
@@ -729,27 +728,46 @@ export const useMapStore = defineStore('cloudtak', {
                 mapWithControl._scaleControl = scaleControl;
             }
         },
-        updateIconRotation: async function(enabled: boolean): Promise<void> {
-            const profile = await this.worker.profile.load();
-            
+        updateIconRotation: function(enabled: boolean): void {
             for (const overlay of this.overlays) {
                 if (overlay.type === 'geojson') {
-                    // Regenerate styles with new rotation setting
-                    let size = 8;
-                    if (profile.display_text === 'Small') size = 4;
-                    if (profile.display_text === 'Large') size = 16;
-                    
-                    await overlay.replace({
-                        styles: cotStyles(String(overlay.id), {
-                            group: overlay.mode !== "mission",
-                            icons: true,
-                            course: true,
-                            labels: { size },
-                            rotateIcons: enabled
-                        })
-                    });
+                    // Update icon rotation
+                    const iconLayerId = `${overlay.id}-icon`;
+                    if (this.map.getLayer(iconLayerId)) {
+                        this.map.setLayoutProperty(iconLayerId, 'icon-rotate', enabled ? ['get', 'course'] : 0);
+                    }
+
+                    // Update course arrow filter based on rotation setting
+                    const courseLayerId = `${overlay.id}-course`;
+                    if (this.map.getLayer(courseLayerId)) {
+                        if (enabled) {
+                            // When rotation enabled, only show course arrows for grouped features
+                            this.map.setFilter(courseLayerId, [
+                                'all',
+                                ['==', '$type', 'Point'],
+                                ['has', 'course'],
+                                ['has', 'group']
+                            ]);
+                        } else {
+                            // When rotation disabled, show course arrows for all features with course
+                            this.map.setFilter(courseLayerId, [
+                                'all',
+                                ['==', '$type', 'Point'],
+                                ['has', 'course']
+                            ]);
+                        }
+                    }
+
+                    // Update text offset
+                    const textLayerId = `${overlay.id}-text-point`;
+                    if (this.map.getLayer(textLayerId)) {
+                        this.map.setLayoutProperty(textLayerId, 'text-offset', [0, enabled ? 2 : 2.5]);
+                    }
                 }
             }
+            
+            // Force a map repaint to ensure changes are visible immediately
+            this.map.triggerRepaint();
         },
         updateAttribution: async function(): Promise<void> {
             const attributions: string[] = [];

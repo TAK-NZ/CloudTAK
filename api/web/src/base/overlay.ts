@@ -258,7 +258,7 @@ export default class Overlay {
                 icons: true,
                 course: true,
                 labels: { size },
-                rotateIcons: profile.display_icon_rotation ?? false
+                rotateIcons: profile.display_icon_rotation === 'Enabled'
             });
         } else if (!this.styles.length) {
             this.styles = [];
@@ -411,7 +411,7 @@ export default class Overlay {
             this.styles = overlay.styles as Array<LayerSpecification>;
         }
 
-        this.init({
+        await this.init({
             clickable: this._clickable,
             before: opts.before
         });
