@@ -78,7 +78,9 @@ export type Import = paths["/api/import/{:import}"]["get"]["responses"]["200"]["
 export type ImportBatch = paths["/api/import/{:import}/batch"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ImportList = paths["/api/import"]["get"]["responses"]["200"]["content"]["application/json"]
 
-export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"]
+export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"] & {
+    display_icon_rotation?: boolean;
+}
 export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
 
 export type Package = paths["/api/marti/package/{:uid}"]["get"]["responses"]["200"]["content"]["application/json"]
