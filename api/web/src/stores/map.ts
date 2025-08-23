@@ -472,7 +472,7 @@ export const useMapStore = defineStore('cloudtak', {
             
             // Initialize icon rotation setting after overlays are loaded
             setTimeout(() => {
-                this.updateIconRotation(profile.display_icon_rotation === 'Enabled');
+                this.updateIconRotation(profile.display_icon_rotation ?? false);
             }, 100);
 
             this.isOpen = await this.worker.conn.isOpen;
