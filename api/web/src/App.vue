@@ -298,10 +298,4 @@ html[data-bs-theme='light'] .hover:hover {
 .border-dark {
     background: #0f172a;
 }
-
-.btn-check:checked + .btn:hover {
-    background-color: var(--tblr-primary) !important;
-    border-color: var(--tblr-primary) !important;
-    color: white !important;
-}
 </style>

@@ -37,7 +37,7 @@
                         <input id='walking' v-model='routePlan.travelMode' value='5' type='radio' class='btn-check' autocomplete='off'>
                         <label for='walking' type='button' class='btn btn-sm'>Walking</label>
                     </div>
-                </div>
+                </div>                
                 <div class='mx-2 my-3'>
                     <button
                         :disabled='!routePlan.start || !routePlan.end'

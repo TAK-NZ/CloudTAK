@@ -148,7 +148,9 @@ export default class Overlay {
         this.username = overlay.username;
         this.created = overlay.created;
         this.updated = overlay.updated;
-        this.actions = overlay.actions || [];
+        this.actions = overlay.actions || {
+            feature: []
+        };
         this.pos = overlay.pos;
         this.type = overlay.type;
         this.opacity = overlay.opacity;
@@ -255,8 +257,8 @@ export default class Overlay {
                 group: this.mode !== "mission",
                 icons: true,
                 course: true,
-                rotateIcons: profile.display_icon_rotation === 'Enabled',
-                labels: { size }
+                labels: { size },
+                rotateIcons: (profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true
             });
         } else if (!this.styles.length) {
             this.styles = [];
@@ -389,7 +391,7 @@ export default class Overlay {
 
         if (overlay.name) this.name = overlay.name;
         if (overlay.username) this.username = overlay.username;
-        if (overlay.actions) this.actions = overlay.actions || [];
+        if (overlay.actions) this.actions = overlay.actions || { feature: [] };
         if (overlay.type) this.type = overlay.type;
         if (overlay.opacity) this.opacity = overlay.opacity;
         if (overlay.visible) this.visible = overlay.visible;
@@ -436,7 +438,7 @@ export default class Overlay {
                 method: 'DELETE'
             });
         }
-        
+                
         // Update attribution if this was a basemap
         if (wasBasemap) {
             const mapStore = useMapStore();

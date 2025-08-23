@@ -211,7 +211,20 @@ export default async function server(config: Config): Promise<ServerManager> {
                 let client;
                 if (!config.conns.has(parsedParams.connection)) {
                     const profile = await config.models.Profile.from(parsedParams.connection);
-                    if (!profile.auth.cert || !profile.auth.key) throw new Error('No Cert Found on profile');
+                    
+                    // Debug certificate availability
+                    console.error(`ok - Profile ${parsedParams.connection}: auth=${!!profile.auth}, cert=${!!profile.auth?.cert}, key=${!!profile.auth?.key}`);
+                    
+                    if (!profile.auth?.cert || !profile.auth?.key) {
+                        console.error(`ok - Profile ${parsedParams.connection} missing certificates - using server certificates`);
+                        // Fall back to server certificates if profile doesn't have them
+                        const serverCert = config.serverCert();
+                        profile.auth = {
+                            ...profile.auth,
+                            cert: serverCert.cert,
+                            key: serverCert.key
+                        };
+                    }
 
                     client = await config.conns.add(new ProfileConnConfig(config, parsedParams.connection, profile.auth));
                 } else {

@@ -41,7 +41,6 @@
         <template v-else>
             <QueryReverse
                 :reverse='query.reverse'
-                :elevation='query.elevation'
                 class='py-2'
             />
 
@@ -60,8 +59,7 @@ import type { SearchReverse } from '../../types.ts';
 import {
     IconRefresh
 } from '@tabler/icons-vue';
-import { std, stdurl } from '../../std.ts';
-import { useMapStore } from '../../stores/map.ts';
+import { std } from '../../std.ts';
 import QueryWeather from './Query/Weather.vue';
 import QueryReverse from './Query/Reverse.vue';
 import {
@@ -72,7 +70,6 @@ import {
 import Coordinate from './util/Coordinate.vue';
 
 const route = useRoute();
-const mapStore = useMapStore();
 
 const error = ref<Error | undefined>();
 const query = ref<SearchReverse | undefined>();
@@ -97,22 +94,7 @@ async function fetch() {
     if (coords.value && coords.value.length >= 2) {
         try {
             error.value = undefined;
-            
-            // Query MapLibre terrain elevation if available
-            let elevation: number | undefined;
-            try {
-                const terrainElevation = mapStore.map.queryTerrainElevation([coords.value[0], coords.value[1]]);
-                elevation = terrainElevation !== null ? terrainElevation : undefined;
-            } catch {
-                // No terrain data available
-            }
-            
-            const url = stdurl(`/api/search/reverse/${coords.value[0]}/${coords.value[1]}`);
-            if (elevation !== undefined && elevation !== null) {
-                url.searchParams.append('elevation', String(elevation));
-            }
-            
-            query.value = await std(url) as SearchReverse;
+            query.value = await std(`/api/search/reverse/${coords.value[0]}/${coords.value[1]}`) as SearchReverse;
         } catch (err) {
             error.value = err instanceof Error ? err : new Error(String(err));
         }

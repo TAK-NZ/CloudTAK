@@ -7,6 +7,7 @@
 * - Source - MapLibre - Ref: https://maplibre.org/maplibre-style-spec/sources/
 */
 
+import { v4 as randomUUID } from 'uuid';
 import { defineStore } from 'pinia'
 import DrawTool, { DrawToolMode } from './modules/draw.ts';
 import IconManager from './modules/icons.ts';
@@ -18,6 +19,7 @@ import type { WorkerMessage } from '../base/events.ts';
 import Overlay from '../base/overlay.ts';
 import Subscription from '../base/subscription.ts';
 import { std, stdurl } from '../std.js';
+
 import mapgl from 'maplibre-gl'
 import type Atlas from '../workers/atlas.ts';
 import { CloudTAKTransferHandler } from '../base/handler.ts';
@@ -151,7 +153,7 @@ export const useMapStore = defineStore('cloudtak', {
     actions: {
         destroy: function() {
             this.channel.close();
-            
+
             // Clean up GPS watch
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
@@ -349,8 +351,6 @@ export const useMapStore = defineStore('cloudtak', {
                     this.zoom = msg.body.zoom;
                 } else if (msg.type === WorkerMessageType.Profile_Icon_Rotation) {
                     this.updateIconRotation(msg.body.enabled);
-                } else if (msg.type === WorkerMessageType.Profile_Distance_Unit) {
-                    this.updateDistanceUnit(msg.body.unit);
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
                     map.setProjection(msg.body);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
@@ -449,7 +449,7 @@ export const useMapStore = defineStore('cloudtak', {
                 unit: 'metric'
             });
             map.addControl(scaleControl, 'bottom-left');
-            
+
             // Store reference for later use
             (map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl })._scaleControl = scaleControl;
 
@@ -465,14 +465,9 @@ export const useMapStore = defineStore('cloudtak', {
             this.callsign = profile.tak_callsign;
             this.zoom = profile.display_zoom;
             this.distanceUnit = profile.display_distance;
-            
+
             // Initialize scale control settings
             this.updateDistanceUnit(profile.display_distance);
-            
-            // Initialize icon rotation setting after overlays are loaded
-            setTimeout(() => {
-                this.updateIconRotation(profile.display_icon_rotation === 'Enabled');
-            }, 100);
 
             this.isOpen = await this.worker.conn.isOpen;
         },
@@ -596,7 +591,7 @@ export const useMapStore = defineStore('cloudtak', {
             map.on('contextmenu', (e) => {
                 if (this.draw.editing) return;
 
-                const id = window.crypto.randomUUID();
+                const id = randomUUID();
                 this.radialClick({
                     id,
                     type: 'Feature',
@@ -692,7 +687,13 @@ export const useMapStore = defineStore('cloudtak', {
             }
 
             this.isLoaded = true;
-            
+
+            // Initialize icon rotation setting after overlays are loaded
+            setTimeout(async () => {
+                const profile = await this.worker.profile.load();
+                this.updateIconRotation((profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true);
+            }, 100);
+
             // Update attribution with basemap data
             await this.updateAttribution();
         },
@@ -711,6 +712,22 @@ export const useMapStore = defineStore('cloudtak', {
             const click = clickMap.get(feat.layer.id);
             if (!click) return;
             return click.type;
+        },
+
+        updateDistanceUnit: function(unit: string): void {
+            this.distanceUnit = unit;
+            // Remove existing scale control and add new one with correct unit
+            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
+            const existingControl = mapWithControl._scaleControl;
+            if (existingControl) {
+                this.map.removeControl(existingControl);
+                const scaleControl = new mapgl.ScaleControl({
+                    maxWidth: 100,
+                    unit: unit === 'mile' ? 'imperial' : 'metric'
+                });
+                this.map.addControl(scaleControl, 'bottom-left');
+                mapWithControl._scaleControl = scaleControl;
+            }
         },
         updateIconRotation: function(enabled: boolean): void {
             for (const overlay of this.overlays) {
@@ -753,25 +770,9 @@ export const useMapStore = defineStore('cloudtak', {
             // Force a map repaint to ensure changes are visible immediately
             this.map.triggerRepaint();
         },
-
-        updateDistanceUnit: function(unit: string): void {
-            this.distanceUnit = unit;
-            // Remove existing scale control and add new one with correct unit
-            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
-            const existingControl = mapWithControl._scaleControl;
-            if (existingControl) {
-                this.map.removeControl(existingControl);
-                const scaleControl = new mapgl.ScaleControl({
-                    maxWidth: 100,
-                    unit: unit === 'mile' ? 'imperial' : 'metric'
-                });
-                this.map.addControl(scaleControl, 'bottom-left');
-                mapWithControl._scaleControl = scaleControl;
-            }
-        },
         updateAttribution: async function(): Promise<void> {
             const attributions: string[] = [];
-            
+
             for (const overlay of this.overlays) {
                 if (overlay.mode === 'basemap' && overlay.mode_id && overlay.visible) {
                     try {
@@ -784,7 +785,7 @@ export const useMapStore = defineStore('cloudtak', {
                     }
                 }
             }
-            
+
             // Update attribution by manipulating the DOM directly
             const attributionContainer = document.querySelector('.maplibregl-ctrl-attrib-inner');
             if (attributionContainer && attributions.length > 0) {

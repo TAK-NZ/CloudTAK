@@ -19,6 +19,7 @@
         <div class='modal-body text-white'>
             <SettingsCallsign
                 mode='emit'
+                :force-callsign='true'
                 @update='emit("close")'
             />
         </div>

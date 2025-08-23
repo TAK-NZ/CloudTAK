@@ -7,18 +7,6 @@
                 :size='24'
             />
             <span
-                v-tooltip='"Meters"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "meter",
-                    "cursor-pointer": mode !== "meter",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "meter"'
-                @click='mode = "meter"'
-            >Meters</span>
-            <span
                 v-tooltip='"Kilometers"'
                 class='my-1 px-2 user-select-none'
                 :class='{
@@ -31,6 +19,18 @@
                 @click='mode = "kilometer"'
             >Kilometers</span>
             <span
+                v-tooltip='"Meters"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "meter",
+                    "cursor-pointer": mode !== "meter",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "meter"'
+                @click='mode = "meter"'
+            >Meters</span>
+            <span
                 v-tooltip='"Miles"'
                 class='my-1 px-2 user-select-none'
                 :class='{
@@ -42,6 +42,30 @@
                 @keyup.enter='mode = "mile"'
                 @click='mode = "mile"'
             >Miles</span>
+            <span
+                v-tooltip='"Yards"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "yard",
+                    "cursor-pointer": mode !== "yard",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "yard"'
+                @click='mode = "yard"'
+            >Yards</span>
+            <span
+                v-tooltip='"Feet"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "feet",
+                    "cursor-pointer": mode !== "feet",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "feet"'
+                @click='mode = "feet"'
+            >Feet</span>
         </div>
     </div>
 </template>
@@ -63,11 +87,11 @@ const props = defineProps({
     }
 })
 
-const mode = ref(props.unit === 'kilometer' ? 'kilometer' : props.unit === 'meter' ? 'meter' : 'mile');
+const mode = ref(props.unit === 'kilometer' ? 'kilometer' : props.unit === 'meter' ? 'meter' : props.unit === 'feet' ? 'feet' : props.unit === 'yard' ? 'yard' : 'mile');
 
 // Watch for prop changes and update mode accordingly
 watch(() => props.unit, (newUnit) => {
-    mode.value = newUnit === 'kilometer' ? 'kilometer' : newUnit === 'meter' ? 'meter' : 'mile';
+    mode.value = newUnit === 'kilometer' ? 'kilometer' : newUnit === 'meter' ? 'meter' : newUnit === 'feet' ? 'feet' : newUnit === 'yard' ? 'yard' : 'mile';
 });
 
 const inMode = computed(() => {
@@ -77,6 +101,10 @@ const inMode = computed(() => {
 
     if (mode.value === 'meter') {
         return Number((cotLength * 1000).toFixed(2));
+    } else if (mode.value === 'feet') {
+        return Number((cotLength * 3280.84).toFixed(2));
+    } else if (mode.value === 'yard') {
+        return Number((cotLength * 1093.61).toFixed(2));
     } else if (mode.value === 'kilometer') {
         return Number(cotLength.toFixed(2));
     } else if (mode.value === 'mile') {
