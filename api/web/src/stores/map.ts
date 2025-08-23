@@ -469,11 +469,6 @@ export const useMapStore = defineStore('cloudtak', {
 
             // Initialize scale control settings
             this.updateDistanceUnit(profile.display_distance);
-            
-            // Initialize icon rotation setting after overlays are loaded
-            setTimeout(() => {
-                this.updateIconRotation(profile.display_icon_rotation ?? false);
-            }, 100);
 
             this.isOpen = await this.worker.conn.isOpen;
         },
@@ -694,6 +689,10 @@ export const useMapStore = defineStore('cloudtak', {
 
             this.isLoaded = true;
 
+            // Initialize icon rotation setting after overlays are loaded
+            const profile = await this.worker.profile.load();
+            this.updateIconRotation(!!profile.display_icon_rotation);
+
             // Update attribution with basemap data
             await this.updateAttribution();
         },
@@ -742,13 +741,8 @@ export const useMapStore = defineStore('cloudtak', {
                     const courseLayerId = `${overlay.id}-course`;
                     if (this.map.getLayer(courseLayerId)) {
                         if (enabled) {
-                            // When rotation enabled, only show course arrows for grouped features
-                            this.map.setFilter(courseLayerId, [
-                                'all',
-                                ['==', '$type', 'Point'],
-                                ['has', 'course'],
-                                ['has', 'group']
-                            ]);
+                            // When rotation enabled, hide course arrows (icons rotate instead)
+                            this.map.setFilter(courseLayerId, ['==', 'never', true]);
                         } else {
                             // When rotation disabled, show course arrows for all features with course
                             this.map.setFilter(courseLayerId, [
