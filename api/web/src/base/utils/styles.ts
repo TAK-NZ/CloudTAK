@@ -15,6 +15,7 @@ export default function styles(id: string, opts: {
         size: number
     };
     icons?: boolean;
+    rotateIcons?: boolean;
 } = {}): Array<LayerSpecification> {
     const styles: Array<LayerSpecification> = [];
 
@@ -119,7 +120,12 @@ export default function styles(id: string, opts: {
             id: `${id}-course`,
             type: 'symbol',
             source: id,
-            filter: [
+            filter: (opts.rotateIcons ?? true) ? [
+                'all',
+                ['==', '$type', 'Point'],
+                ['has', 'course'],
+                ['has', 'group']
+            ] : [
                 'all',
                 ['==', '$type', 'Point'],
                 ['has', 'course']
@@ -177,7 +183,7 @@ export default function styles(id: string, opts: {
                     8, 1,
                     18, 1.2,
                 ],
-                'icon-rotate': 0,
+                'icon-rotate': (opts.rotateIcons ?? true) ? ['get', 'course'] : 0,
                 'icon-allow-overlap': true,
                 'icon-image': [
                     'case',
@@ -258,7 +264,7 @@ export default function styles(id: string, opts: {
                     8, opts.labels.size,
                     15, opts.labels.size + 7
                 ],
-                'text-offset': [0, 2],
+                'text-offset': [0, (opts.rotateIcons ?? true) ? 2 : 2.5],
                 'text-font': ['Open Sans Bold'],
                 'text-field':  [
                     "coalesce",

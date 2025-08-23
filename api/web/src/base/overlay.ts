@@ -257,7 +257,8 @@ export default class Overlay {
                 group: this.mode !== "mission",
                 icons: true,
                 course: true,
-                labels: { size }
+                labels: { size },
+                rotateIcons: profile.display_icon_rotation ?? false
             });
         } else if (!this.styles.length) {
             this.styles = [];
