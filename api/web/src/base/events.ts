@@ -21,6 +21,8 @@ export enum WorkerMessageType {
     Connection_Open = 'connection:open',
     Connection_Close = 'connection:close',
 
+    Chat_Message = 'chat:message',
+
     Mission_Change_Feature = 'mission:change:feature',
 }
 

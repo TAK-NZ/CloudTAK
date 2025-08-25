@@ -446,10 +446,14 @@ export default class AtlasDatabase {
                 });
 
                 if (!opts.skipNetwork) {
-                    await std(`/api/profile/feature/${id}`, {
-                        token: this.atlas.token,
-                        method: 'DELETE'
-                    });
+                    try {
+                        await std(`/api/profile/feature/${id}`, {
+                            token: this.atlas.token,
+                            method: 'DELETE'
+                        });
+                    } catch (error) {
+                        console.warn(`Failed to delete feature ${id} from server:`, error);
+                    }
                 }
             }
         } else if (cot.origin.mode === OriginMode.MISSION && cot.origin.mode_id) {

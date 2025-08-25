@@ -41,6 +41,7 @@
         <template v-else>
             <QueryReverse
                 :reverse='query.reverse'
+                :elevation='query.elevation'
                 class='py-2'
             />
 

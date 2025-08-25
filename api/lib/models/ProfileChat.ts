@@ -29,4 +29,9 @@ export default class ProfileChatModel extends Modeler<typeof ProfileChat> {
             items: pgres
         }
     }
+
+    async deleteChatroom(username: string, chatroom: string): Promise<void> {
+        await this.pool.delete(this.generic)
+            .where(sql`username = ${username} AND chatroom = ${chatroom}`);
+    }
 }

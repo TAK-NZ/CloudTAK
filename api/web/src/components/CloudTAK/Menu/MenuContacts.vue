@@ -211,9 +211,9 @@ onMounted(async () => {
 
     await updateContacts();
     
-    // Refresh contacts every 5 seconds
+    // Refresh contacts every 5 seconds (silent refresh)
     refreshInterval = setInterval(() => {
-        updateContacts();
+        silentUpdateContacts();
     }, 5000);
 });
 
@@ -271,6 +271,9 @@ async function updateContacts() {
         
         // Skip current user from contact list
         if (contact.callsign === currentUserCallsign) continue;
+        
+        // Skip ETL entries that don't have UID, role, or takv (not real users)
+        if (!contact.uid || !contact.role || !contact.takv) continue;
 
         // Check if contact is online by looking for matching callsign only
         // This allows cross-platform compatibility between ATAK and CloudTAK
@@ -303,5 +306,15 @@ async function fetchList(loading: Ref<boolean>) {
     }
 
     loading.value = false;
+}
+
+async function silentUpdateContacts() {
+    try {
+        const team = await mapStore.worker.team.load();
+        contacts.value = Array.from(team.values())
+        await updateContacts();
+    } catch (err) {
+        console.warn('Silent contact update failed:', err);
+    }
 }
 </script>
