@@ -185,20 +185,20 @@ export default function styles(id: string, opts: {
                     8, [
                         'case',
                         ['has', 'group'],
-                        ['literal', [0, -28]],
-                        ['literal', [0, -18]]
+                        ['literal', [0, -18]],
+                        ['literal', [0, -28]]
                     ],
                     12, [
                         'case',
                         ['has', 'group'],
-                        ['literal', [0, -42]],
-                        ['literal', [0, -26]]
+                        ['literal', [0, -26]],
+                        ['literal', [0, -42]]
                     ],
                     16, [
                         'case',
                         ['has', 'group'],
-                        ['literal', [0, -58]],
-                        ['literal', [0, -34]]
+                        ['literal', [0, -34]],
+                        ['literal', [0, -58]]
                     ]
                 ],
                 'icon-rotate': ['get', 'course'],
