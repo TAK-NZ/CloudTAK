@@ -106,7 +106,7 @@
                                         :size='20'
                                         stroke='1'
                                     />
-                                    <IconAmbulance
+                                    <IconReplace
                                         v-else-if='overlay.type === "geojson" && overlay.mode === "mission"'
                                         v-tooltip='"Data Sync"'
                                         :size='20'
@@ -253,7 +253,7 @@ import {
     IconAlertTriangle,
     IconChevronRight,
     IconChevronDown,
-    IconAmbulance,
+    IconReplace,
     IconMaximize,
     IconVector,
     IconStack,

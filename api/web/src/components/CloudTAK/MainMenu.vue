@@ -118,6 +118,62 @@
                             "py-2 px-3 hover": !compact,
                             "py-1 px-2 hover-button": compact
                         }'
+                        @click='router.push("/menu/basemaps")'
+                        @keyup.enter='router.push("/menu/basemaps")'
+                    >
+                        <IconMap
+                            v-tooltip='{
+                                content: "Basemaps",
+                                placement: "left",
+                            }'
+                            :tabindex='compact ? 0 : undefined'
+                            title='Open Basemaps Panel'
+                            :class='{ "mx-2": compact }'
+                            :size='32'
+                            stroke='1'
+                        />
+                        <span
+                            v-if='!compact'
+                            class='mx-2 user-select-none'
+                            style='font-size: 18px;'
+                        >Basemaps</span>
+                    </div>
+                    <div
+                        role='menuitem'
+                        :tabindex='compact ? undefined : 0'
+                        class='cursor-pointer col-12 d-flex align-items-center'
+                        :class='{
+                            "py-2 px-3 hover": !compact,
+                            "py-1 px-2 hover-button": compact
+                        }'
+                        @click='router.push("/menu/channels")'
+                        @keyup.enter='router.push("/menu/channels")'
+                    >
+                        <IconAffiliate
+                            v-tooltip='{
+                                content: "Channels",
+                                placement: "left",
+                            }'
+                            :tabindex='compact ? 0 : undefined'
+                            title='Open Channels Panel'
+                            :class='{ "mx-2": compact }'
+                            :size='32'
+                            stroke='1'
+                        />
+                        <span
+                            v-if='!compact'
+                            class='mx-2 user-select-none'
+                            style='font-size: 18px;'
+                        >Channels</span>
+                    </div>
+                    <div
+                        role='menuitem'
+                        :tabindex='compact ? undefined : 0'
+                        class='cursor-pointer col-12 d-flex align-items-center'
+                        :class='{
+                            "py-2 px-3 hover": !compact,
+                            "py-1 px-2 hover-button": compact
+                        }'
                         @click='router.push("/menu/contacts")'
                         @keyup.enter='router.push("/menu/contacts")'
                     >
@@ -146,16 +202,16 @@
                             "py-2 px-3 hover": !compact,
                             "py-1 px-2 hover-button": compact
                         }'
-                        @click='router.push("/menu/basemaps")'
-                        @keyup.enter='router.push("/menu/basemaps")'
+                        @click='router.push("/menu/chats")'
+                        @keyup.enter='router.push("/menu/chats")'
                     >
-                        <IconMap
+                        <IconMessage
                             v-tooltip='{
-                                content: "Basemaps",
+                                content: "Chats",
                                 placement: "left",
                             }'
                             :tabindex='compact ? 0 : undefined'
-                            title='Open Basemaps Panel'
+                            title='Open Chats Panel'
                             :class='{ "mx-2": compact }'
                             :size='32'
                             stroke='1'
@@ -164,7 +220,7 @@
                             v-if='!compact'
                             class='mx-2 user-select-none'
                             style='font-size: 18px;'
-                        >BaseMaps</span>
+                        >Chats</span>
                     </div>
                     <div
                         role='menuitem'
@@ -177,7 +233,7 @@
                         @click='router.push("/menu/missions")'
                         @keyup.enter='router.push("/menu/missions")'
                     >
-                        <IconAmbulance
+                        <IconReplace
                             v-tooltip='{
                                 content: "Data Sync",
                                 placement: "left",
@@ -223,6 +279,7 @@
                         >Data Package</span>
                     </div>
                     <div
+                        v-if='isArcGISEnabled'
                         role='menuitem'
                         :tabindex='compact ? undefined : 0'
                         class='cursor-pointer col-12 d-flex align-items-center'
@@ -230,16 +287,16 @@
                             "py-2 px-3 hover": !compact,
                             "py-1 px-2 hover-button": compact
                         }'
-                        @click='router.push("/menu/channels")'
-                        @keyup.enter='router.push("/menu/channels")'
+                        @click='router.push("/menu/routes")'
+                        @keyup.enter='router.push("/menu/routes")'
                     >
-                        <IconAffiliate
+                        <IconRoute
                             v-tooltip='{
-                                content: "Channels",
+                                content: "Routes",
                                 placement: "left",
                             }'
                             :tabindex='compact ? 0 : undefined'
-                            title='Open Channels Panel'
+                            title='Open Routes Panel'
                             :class='{ "mx-2": compact }'
                             :size='32'
                             stroke='1'
@@ -248,7 +305,7 @@
                             v-if='!compact'
                             class='mx-2 user-select-none'
                             style='font-size: 18px;'
-                        >Channels</span>
+                        >Routes</span>
                     </div>
                     <div
                         role='menuitem'
@@ -277,63 +334,6 @@
                             class='mx-2 user-select-none'
                             style='font-size: 18px;'
                         >Videos</span>
-                    </div>
-                    <div
-                        role='menuitem'
-                        :tabindex='compact ? undefined : 0'
-                        class='cursor-pointer col-12 d-flex align-items-center'
-                        :class='{
-                            "py-2 px-3 hover": !compact,
-                            "py-1 px-2 hover-button": compact
-                        }'
-                        @click='router.push("/menu/chats")'
-                        @keyup.enter='router.push("/menu/chats")'
-                    >
-                        <IconMessage
-                            v-tooltip='{
-                                content: "Chats",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='Open Chats Panel'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
-                        <span
-                            v-if='!compact'
-                            class='mx-2 user-select-none'
-                            style='font-size: 18px;'
-                        >Chats</span>
-                    </div>
-                    <div
-                        v-if='isArcGISEnabled'
-                        role='menuitem'
-                        :tabindex='compact ? undefined : 0'
-                        class='cursor-pointer col-12 d-flex align-items-center'
-                        :class='{
-                            "py-2 px-3 hover": !compact,
-                            "py-1 px-2 hover-button": compact
-                        }'
-                        @click='router.push("/menu/routes")'
-                        @keyup.enter='router.push("/menu/routes")'
-                    >
-                        <IconRoute
-                            v-tooltip='{
-                                content: "Routes",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='Open Routes Panel'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
-                        <span
-                            v-if='!compact'
-                            class='mx-2 user-select-none'
-                            style='font-size: 18px;'
-                        >Routes</span>
                     </div>
                     <div
                         role='menuitem'
@@ -432,17 +432,25 @@
                         @click='router.push("/menu/connections")'
                         @keyup.enter='router.push("/menu/connections")'
                     >
-                        <IconNetwork
-                            v-tooltip='{
-                                content: "Connections",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='Open Connections Panel'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
+                        <div class='position-relative' :class='{ "mx-2": compact }'>
+                            <IconNetwork
+                                v-tooltip='{
+                                    content: "Connections (Admin)",
+                                    placement: "left",
+                                }'
+                                :tabindex='compact ? 0 : undefined'
+                                title='Open Connections Panel'
+                                :size='32'
+                                stroke='1'
+                            />
+                            <span
+                                v-if='compact'
+                                class='position-absolute badge bg-red text-white'
+                                style='top: -2px; right: -2px; font-size: 10px; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%;'
+                            >
+                                A
+                            </span>
+                        </div>
                         <span
                             v-if='!compact'
                             class='mx-2 user-select-none'
@@ -467,17 +475,25 @@
                         @click='router.push("/menu/debugger")'
                         @keyup.enter='router.push("/menu/debugger")'
                     >
-                        <IconBug
-                            v-tooltip='{
-                                content: "Debugger",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='COT Debugger'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
+                        <div class='position-relative' :class='{ "mx-2": compact }'>
+                            <IconBug
+                                v-tooltip='{
+                                    content: "COT Debugger (Admin)",
+                                    placement: "left",
+                                }'
+                                :tabindex='compact ? 0 : undefined'
+                                title='COT Debugger'
+                                :size='32'
+                                stroke='1'
+                            />
+                            <span
+                                v-if='compact'
+                                class='position-absolute badge bg-red text-white'
+                                style='top: -2px; right: -2px; font-size: 10px; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%;'
+                            >
+                                A
+                            </span>
+                        </div>
                         <span
                             v-if='!compact'
                             class='mx-2 user-select-none'
@@ -502,17 +518,25 @@
                         @click='router.push("/admin")'
                         @keyup.enter='router.push("/admin")'
                     >
-                        <IconServerCog
-                            v-tooltip='{
-                                content: "Server Settings",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='Open Server Admin Panel'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
+                        <div class='position-relative' :class='{ "mx-2": compact }'>
+                            <IconServerCog
+                                v-tooltip='{
+                                    content: "Server Settings (Admin)",
+                                    placement: "left",
+                                }'
+                                :tabindex='compact ? 0 : undefined'
+                                title='Open Server Admin Panel'
+                                :size='32'
+                                stroke='1'
+                            />
+                            <span
+                                v-if='compact'
+                                class='position-absolute badge bg-red text-white'
+                                style='top: -2px; right: -2px; font-size: 10px; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 50%;'
+                            >
+                                A
+                            </span>
+                        </div>
                         <span
                             v-if='!compact'
                             class='mx-2 user-select-none'
@@ -699,7 +723,7 @@ import {
     IconGridDots,
     IconSettings,
     IconDeviceTv,
-    IconAmbulance,
+    IconReplace,
     IconServerCog,
     IconStack,
     IconFileImport,

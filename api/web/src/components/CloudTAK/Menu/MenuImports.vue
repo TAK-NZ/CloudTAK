@@ -66,7 +66,7 @@
                             v-tooltip='`${imported.mode} Import`'
                             class='col-auto mx-2'
                         >
-                            <IconAmbulance
+                            <IconReplace
                                 v-if='imported.mode === "Mission"'
                                 :size='32'
                                 stroke='0.5'
@@ -131,7 +131,7 @@ import {
 import {
     IconUpload,
     IconFile,
-    IconAmbulance,
+    IconReplace,
     IconPackages,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';

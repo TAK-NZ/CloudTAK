@@ -37,7 +37,7 @@ export default async function(md: Event) {
 
         const result = {};
         if (imported.mode === 'Mission') {
-            if (!imported.config.id) throw new Error('No mission name defined');
+            if (!imported.config.id) throw new Error('No data sync name defined');
 
             const res = await API.uploadMission(md, {
                 name: imported.config.id,

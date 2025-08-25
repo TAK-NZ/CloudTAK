@@ -285,7 +285,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List BaseMaps */
+        /** List Basemaps */
         get: {
             parameters: {
                 query: {

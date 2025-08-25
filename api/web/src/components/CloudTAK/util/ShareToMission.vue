@@ -47,7 +47,7 @@
                                     stroke='1'
                                     :style='compact ? "margin-left: 8px" : "margin-left: 16px;"'
                                 />
-                                <IconAmbulance
+                                <IconReplace
                                     v-else
                                     :size='compact ? 20 : 32'
                                     stroke='1'
@@ -106,7 +106,7 @@ import {
 import {
     IconX,
     IconCheck,
-    IconAmbulance,
+    IconReplace,
     IconShare2
 } from '@tabler/icons-vue';
 import type { Feature, Mission } from '../../../types.ts';

@@ -181,13 +181,13 @@
                                 style='margin: 3px 3px'
                             />
                             <div class='me-3'>
-                                No Mission
+                                No Data Sync
                             </div>
                         </div>
                     </template>
                     <template v-else>
                         <div class='d-flex align-items-center user-select-none'>
-                            <IconAmbulance
+                            <IconReplace
                                 :size='32'
                                 stroke='1'
                                 style='margin: 3px 3px'
@@ -476,7 +476,7 @@ import {
     IconPlus,
     IconMinus,
     IconLockAccess,
-    IconAmbulance,
+    IconReplace,
     IconMap,
     IconX,
     IconBell,
