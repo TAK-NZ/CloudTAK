@@ -95,7 +95,15 @@ async function fetch() {
     if (coords.value && coords.value.length >= 2) {
         try {
             error.value = undefined;
-            query.value = await std(`/api/search/reverse/${coords.value[0]}/${coords.value[1]}`) as SearchReverse;
+            
+            let url = `/api/search/reverse/${coords.value[0]}/${coords.value[1]}`;
+            
+            // Add elevation from 3D terrain if available
+            if (coords.value.length >= 3) {
+                url += `?elevation=${coords.value[2]}`;
+            }
+            
+            query.value = await std(url) as SearchReverse;
         } catch (err) {
             error.value = err instanceof Error ? err : new Error(String(err));
         }

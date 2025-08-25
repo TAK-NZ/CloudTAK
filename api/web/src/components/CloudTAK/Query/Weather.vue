@@ -1,7 +1,7 @@
 <template>
     <div class='col-12 row g-0 hover'>
         <div class='col-12'>
-            <label class='subheader mx-2'>National Weather Service</label>
+            <label class='subheader mx-2'>{{ weatherSource }}</label>
         </div>
         <div
             v-if='props.weather'
@@ -81,6 +81,7 @@
 </template>
 
 <script setup lang='ts'>
+import { computed } from 'vue';
 import type { SearchReverse } from '../../../types.ts';
 import {
     IconSun,
@@ -96,4 +97,9 @@ import {
 const props = defineProps<{
     weather: SearchReverse["weather"]
 }>();
+
+const weatherSource = computed(() => {
+    if (!props.weather) return 'Weather Service';
+    return props.weather.properties.forecastGenerator || 'National Weather Service';
+});
 </script>

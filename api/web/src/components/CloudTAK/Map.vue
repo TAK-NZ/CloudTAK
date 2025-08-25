@@ -848,7 +848,22 @@ async function handleRadial(event: string): Promise<void> {
         closeRadial()
     } else if (event === 'context:info') {
         // @ts-expect-error Figure out geometry.coordinates type
-        router.push(`/query/${encodeURIComponent(mapStore.radial.cot.geometry.coordinates.join(','))}`);
+        const coords = mapStore.radial.cot.geometry.coordinates;
+        let coordsStr = coords.join(',');
+        
+        // Add elevation from terrain if 3D is enabled
+        if (mapStore.isTerrainEnabled && mapStore.map.queryTerrainElevation) {
+            try {
+                const elevation = mapStore.map.queryTerrainElevation(coords);
+                if (elevation !== null) {
+                    coordsStr += `,${elevation}`;
+                }
+            } catch {
+                // Terrain elevation query failed, continue without elevation
+            }
+        }
+        
+        router.push(`/query/${encodeURIComponent(coordsStr)}`);
         closeRadial()
     } else {
         closeRadial()
