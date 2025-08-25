@@ -293,6 +293,8 @@ async function updateContacts() {
             visibleOfflineContacts.value.push(contact);
         }
     }
+
+
 }
 
 async function fetchList(loading: Ref<boolean>) {
