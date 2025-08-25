@@ -782,7 +782,7 @@ async function exitManualMode() {
     mapStore.location = LocationState.Loading;
 
     // Remove current location dot from map by removing user's CoT
-    const userUid = `ANDROID-CloudTAK-${(await mapStore.worker.profile.load()).username}`;
+    const userUid = await mapStore.worker.profile.uid();
     await mapStore.worker.db.remove(userUid);
 
     // Clear manual location and wait for it to complete
@@ -884,9 +884,12 @@ async function mountMap(): Promise<void> {
 </script>
 
 <style>
+/* Map scale control positioning */
 .maplibregl-ctrl-bottom-left {
-    bottom: 0;
-    left: 260px;
+    bottom: 15px;
+    right: 65px;
+    left: auto !important;
+    z-index: 1 !important;
 }
 
 .maplibregl-ctrl-bottom-right {

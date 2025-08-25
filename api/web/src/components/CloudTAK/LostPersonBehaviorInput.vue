@@ -37,6 +37,7 @@
             <PropertyDistance
                 v-model='config.rings["25%"]'
                 label='25% Containment Radius'
+                :unit='mapStore.distanceUnit'
                 :edit='true'
                 :hover='true'
             />
@@ -44,6 +45,7 @@
             <PropertyDistance
                 v-model='config.rings["50%"]'
                 label='50% Containment Radius'
+                :unit='mapStore.distanceUnit'
                 :edit='true'
                 :hover='true'
             />
@@ -51,6 +53,7 @@
             <PropertyDistance
                 v-model='config.rings["75%"]'
                 label='75% Containment Radius'
+                :unit='mapStore.distanceUnit'
                 :edit='true'
                 :hover='true'
             />

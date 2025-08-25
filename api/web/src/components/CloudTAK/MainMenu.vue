@@ -93,7 +93,7 @@
                         @click='router.push("/menu/overlays")'
                         @keyup.enter='router.push("/menu/overlays")'
                     >
-                        <IconBoxMultiple
+                        <IconStack
                             v-tooltip='{
                                 content: "Overlays",
                                 placement: "left",
@@ -701,7 +701,7 @@ import {
     IconDeviceTv,
     IconAmbulance,
     IconServerCog,
-    IconBoxMultiple,
+    IconStack,
     IconFileImport,
     IconAffiliate,
 } from '@tabler/icons-vue';

@@ -61,4 +61,24 @@ export default async function router(schema: Schema, config: Config) {
              Err.respond(err, res);
         }
     });
+
+    await schema.delete('/profile/chat/:chatroom', {
+        name: 'Delete Chatroom',
+        group: 'ProfileChats',
+        description: 'Delete all messages from a chatroom for the user',
+        params: Type.Object({
+            chatroom: Type.String()
+        }),
+        res: Type.Object({
+            status: Type.String()
+        })
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+            await config.models.ProfileChat.deleteChatroom(user.email, req.params.chatroom);
+            res.json({ status: 'deleted' });
+        } catch (err) {
+             Err.respond(err, res);
+        }
+    });
 }

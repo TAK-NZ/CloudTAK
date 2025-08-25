@@ -137,15 +137,32 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                     const feat = await CoTParser.to_geojson(cot);
 
                     try {
-                        if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
-                            await this.config.models.ProfileChat.generate({
-                                username: String(conn.id),
-                                chatroom: feat.properties.chat.senderCallsign,
-                                sender_callsign: feat.properties.chat.senderCallsign,
-                                sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
-                                message_id: feat.properties.chat.messageId || randomUUID(),
-                                message: feat.properties.remarks || ''
-                            });
+                        if (feat.properties && feat.properties.chat) {
+                            // Save chat message for all users, regardless of connection type
+                            // For ProfileConnConfig, save for the user; for MachineConnConfig, save for all users
+                            if (conn instanceof ProfileConnConfig) {
+                                await this.config.models.ProfileChat.generate({
+                                    username: String(conn.id),
+                                    chatroom: feat.properties.chat.senderCallsign,
+                                    sender_callsign: feat.properties.chat.senderCallsign,
+                                    sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
+                                    message_id: feat.properties.chat.messageId || randomUUID(),
+                                    message: feat.properties.remarks || ''
+                                });
+                            } else {
+                                // For MachineConnConfig (ATAK messages), save for all users
+                                const profiles = await this.config.models.Profile.list({});
+                                for (const profile of profiles.items) {
+                                    await this.config.models.ProfileChat.generate({
+                                        username: profile.username,
+                                        chatroom: feat.properties.chat.senderCallsign,
+                                        sender_callsign: feat.properties.chat.senderCallsign,
+                                        sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
+                                        message_id: feat.properties.chat.messageId || randomUUID(),
+                                        message: feat.properties.remarks || ''
+                                    });
+                                }
+                            }
                         } else if (conn instanceof ProfileConnConfig && feat.properties.fileshare) {
                             const file = new URL(feat.properties.fileshare.senderUrl);
 

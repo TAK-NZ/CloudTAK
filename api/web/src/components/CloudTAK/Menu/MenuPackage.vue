@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import type { Profile, Server, Package, Import, Feature } from '../../../../src/types.ts';
 import { std, stdurl } from '../../../../src/std.ts';
@@ -125,27 +125,45 @@ const error = ref<Error | undefined>()
 const mode = ref('default');
 const server = ref<Server | undefined>();
 const pkg = ref<Package | undefined>();
+const profile = ref<Profile | undefined>(undefined);
 
 watch(route, async () => {
     await fetch();
 });
 
-const profile = ref<Profile | undefined>(undefined);
+watch([profile, pkg, server], () => {
+    updateShareFeat();
+});
 
-const shareFeat = computed<Feature | undefined>(() => {
-    if (!profile.value || !pkg.value || !server.value) return;
+const shareFeat = ref<Feature | undefined>(undefined);
 
-    return {
+const updateShareFeat = async () => {
+    if (!profile.value || !pkg.value || !server.value) {
+        shareFeat.value = undefined;
+        return;
+    }
+
+    const senderUid = await mapStore.worker.profile.uid();
+    
+    shareFeat.value = {
+        id: `package-${pkg.value.Hash}`,
+        path: '/',
         type: 'Feature',
         properties: {
+            id: `package-${pkg.value.Hash}`,
             type: 'b-f-t-r',
             how: 'h-e',
+            callsign: profile.value.tak_callsign,
+            time: new Date().toISOString(),
+            start: new Date().toISOString(),
+            stale: new Date(Date.now() + 3600000).toISOString(),
+            center: [0, 0],
             fileshare: {
                 filename: pkg.value.Name + '.zip',
                 senderUrl: `${server.value.api}/Marti/sync/content?hash=${pkg.value.Hash}`,
                 sizeInBytes: parseInt(pkg.value.Size),
                 sha256: pkg.value.Hash,
-                senderUid: `ANDROID-CloudTAK-${profile.value.username}`,
+                senderUid: senderUid,
                 senderCallsign: profile.value.tak_callsign,
                 name: pkg.value.Name
             },
@@ -156,13 +174,14 @@ const shareFeat = computed<Feature | undefined>(() => {
             coordinates: [0, 0, 0]
         }
     } as Feature;
-});
+};
 
 
 onMounted(async () => {
     profile.value = await mapStore.worker.profile.load();
     server.value = await mapStore.worker.profile.loadServer();
     await fetch();
+    await updateShareFeat();
 });
 
 function downloadFile(): string {
