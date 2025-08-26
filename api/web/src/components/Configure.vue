@@ -16,8 +16,8 @@
                                 style='
                                     height: 150px;
                                 '
-                                src='/CloudTAKLogoText.svg'
-                                alt='CloudTAK System Logo'
+                                src='/tak-logo.svg'
+                                alt='TAK Logo'
                             >
                         </div>
                         <div class='card card-md'>
