@@ -14,9 +14,9 @@
             />
             <span
                 v-tooltip='"Square Meters"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "sqmeter",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqmeter",
                     "cursor-pointer": mode !== "sqmeter",
                 }'
                 role='menuitem'
@@ -26,9 +26,9 @@
             >m<sup>2</sup></span>
             <span
                 v-tooltip='"Square Kilometers"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "sqkm",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqkm",
                     "cursor-pointer": mode !== "sqkm",
                 }'
                 role='menuitem'
@@ -38,9 +38,9 @@
             >km<sup>2</sup></span>
             <span
                 v-tooltip='"Hectares"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "ha",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "ha",
                     "cursor-pointer": mode !== "ha",
                 }'
                 role='menuitem'
@@ -50,9 +50,9 @@
             >ha</span>
             <span
                 v-tooltip='"Square Feet"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "sqfeet",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqfeet",
                     "cursor-pointer": mode !== "sqfeet",
                 }'
                 role='menuitem'
@@ -62,9 +62,9 @@
             >ft<sup>2</sup></span>
             <span
                 v-tooltip='"Square Miles"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "sqmiles",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqmiles",
                     "cursor-pointer": mode !== "sqmiles",
                 }'
                 role='menuitem'
@@ -74,9 +74,9 @@
             >mi<sup>2</sup></span>
             <span
                 v-tooltip='"Acres"'
-                class='my-1 px-2 user-select-none text-blue'
+                class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "acre",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "acre",
                     "cursor-pointer": mode !== "acre",
                 }'
                 role='menuitem'
@@ -104,15 +104,27 @@ const props = defineProps({
     },
     unit: {
         type: String,
-        default: 'sqmeter'
+        default: 'mile'
     }
 })
 
-const mode = ref(props.unit || 'sqmeter');
+// Map distance units to area units
+const getAreaUnit = (distanceUnit: string) => {
+    switch (distanceUnit) {
+        case 'meter': return 'sqmeter';
+        case 'kilometer': return 'sqkm';
+        case 'feet': return 'sqfeet';
+        case 'mile': return 'sqmiles';
+        case 'yard': return 'sqfeet'; // Yards map to square feet
+        default: return 'sqmeter';
+    }
+};
+
+const mode = ref(getAreaUnit(props.unit));
 
 // Watch for prop changes and update mode accordingly
 watch(() => props.unit, (newUnit) => {
-    mode.value = newUnit || 'sqmeter';
+    mode.value = getAreaUnit(newUnit);
 });
 
 const inMode = computed(() => {
