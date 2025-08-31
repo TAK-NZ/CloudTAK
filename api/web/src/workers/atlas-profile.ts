@@ -71,7 +71,7 @@ export default class AtlasProfile {
 
     async creator(): Promise<FeaturePropertyCreator> {
         return {
-            uid: this.uid(),
+            uid: await this.uid(),
             type: 'a-f-G-E-V-C',
             callsign: await this.callsign(),
             time: new Date().toISOString(),
@@ -332,13 +332,8 @@ export default class AtlasProfile {
     uid(): string {
         if (!this.profile) throw new Error('Profile must be loaded before CoT is called');
 
-        // Generate ATAK-compatible UID with short hex identifier
-        const hash = this.profile.username.split('').reduce((a, b) => {
-            a = ((a << 5) - a) + b.charCodeAt(0);
-            return a & a;
-        }, 0);
-        const hexId = Math.abs(hash).toString(16).padStart(8, '0');
-        return `ANDROID-${hexId}`;
+        // Need to differentiate between servers eventually
+        return `ANDROID-CloudTAK-${this.profile.username}`;
     }
 
     async CoT(): Promise<void> {
@@ -396,7 +391,7 @@ export default class AtlasProfile {
                 },
                 takv: {
                     device: navigator.userAgent,
-                    platform: 'CloudTAK-CIV',
+                    platform: 'CloudTAK',
                     os: navigator.platform,
                     version: this.server.version
                 },
