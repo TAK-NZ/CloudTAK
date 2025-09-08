@@ -39,4 +39,12 @@ if [ -f "api/web/src/App.vue" ]; then
     echo "✅ Updated App.vue branding"
 fi
 
+# Replace AWS branding with CloudTAK logo in Login.vue
+if [ -f "api/web/src/components/Login.vue" ]; then
+    sed -i.bak "s|height: 72px;|height: 48px;|g" api/web/src/components/Login.vue
+    sed -i.bak "s|src='/powered-by-aws-white.png'|src='/CloudTAKLogoText.svg'|g" api/web/src/components/Login.vue
+    sed -i.bak "s|alt='Powered by AWS'|alt='CloudTAK Logo'|g" api/web/src/components/Login.vue
+    echo "✅ Updated Login.vue AWS branding"
+fi
+
 echo "🎉 TAK.NZ branding applied successfully"

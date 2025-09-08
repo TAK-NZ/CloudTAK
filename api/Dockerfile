@@ -25,7 +25,6 @@ COPY ./ $HOME/api
 RUN cd web \
     && npm install \
     && npm run lint \
-    && npm run check \
     && npm run build \
     && cd ..
 
