@@ -1,44 +1,94 @@
 import test from 'tape';
-import Search from '../lib/search.js';
-import ArcGISTokenManager from '../lib/arcgis-token-manager.js';
+import AGOL from '../lib/search/agol.js';
+import ArcGISTokenManager from '../lib/search/arcgis-token-manager.js';
+import Config from '../lib/config.js';
 
-test('Search - constructor with token manager', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const search = new Search(tokenManager);
+test('AGOL - constructor with tokenManager', async (t) => {
+    const mockConfig = {
+        authMethod: 'oauth2' as const,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret'
+    };
+    const tokenManager = new ArcGISTokenManager(mockConfig);
+
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const geocode = new AGOL(config, tokenManager);
     
-    t.ok(search.tokenManager, 'Token manager set correctly');
-    t.ok(search.reverseApi, 'Reverse API URL set');
-    t.ok(search.suggestApi, 'Suggest API URL set');
-    t.ok(search.forwardApi, 'Forward API URL set');
+    t.ok(geocode.tokenManager, 'TokenManager set correctly');
+    t.ok(geocode.reverseApi, 'Reverse API URL set');
+    t.ok(geocode.suggestApi, 'Suggest API URL set');
+    t.ok(geocode.forwardApi, 'Forward API URL set');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - constructor without token manager', async (t) => {
-    const search = new Search();
+test('AGOL - constructor without tokenManager', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const geocode = new AGOL(config);
     
-    t.equal(search.tokenManager, undefined, 'No token manager set');
-    t.ok(search.reverseApi, 'Reverse API URL set');
-    t.ok(search.suggestApi, 'Suggest API URL set');
-    t.ok(search.forwardApi, 'Forward API URL set');
+    t.equal(geocode.tokenManager, undefined, 'No tokenManager set');
+    t.ok(geocode.reverseApi, 'Reverse API URL set');
+    t.ok(geocode.suggestApi, 'Suggest API URL set');
+    t.ok(geocode.forwardApi, 'Forward API URL set');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - API URLs are correctly set', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - API URLs are correctly set', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const geocodeInstance = new AGOL(config);
     
-    t.equal(new URL(searchInstance.reverseApi).host, 'geocode.arcgis.com', 'Reverse API URL has correct host');
-    t.equal(new URL(searchInstance.suggestApi).host, 'geocode.arcgis.com', 'Suggest API URL has correct host');
-    t.equal(new URL(searchInstance.forwardApi).host, 'geocode.arcgis.com', 'Forward API URL has correct host');
+    t.equal(new URL(geocodeInstance.reverseApi).host, 'geocode.arcgis.com', 'Reverse API URL has correct host');
+    t.equal(new URL(geocodeInstance.suggestApi).host, 'geocode.arcgis.com', 'Suggest API URL has correct host');
+    t.equal(new URL(geocodeInstance.forwardApi).host, 'geocode.arcgis.com', 'Forward API URL has correct host');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - route method handles empty features', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - route method handles empty features', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const mockConfig = {
+        authMethod: 'oauth2' as const,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret'
+    };
+
+    const tokenManager = new ArcGISTokenManager(mockConfig);
+    const geocodeInstance = new AGOL(config, tokenManager);
     
     try {
         // This should throw an error for no route found
@@ -49,17 +99,32 @@ test('Search - route method handles empty features', async (t) => {
         
         t.equal(processedRoute.type, 'FeatureCollection', 'Correct type');
         t.equal(processedRoute.features.length, 0, 'Empty features array');
-        t.ok(searchInstance.tokenManager, 'Search instance has token manager');
+        t.ok(geocodeInstance.tokenManager, 'AGOL instance has tokenManager');
     } catch {
         t.pass('Expected error for empty route');
     }
 
+    config.pg.end();
+
     t.end();
 });
 
-test('Search - route method processes valid route data', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - route method processes valid route data', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const mockConfig = {
+        authMethod: 'oauth2' as const,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret'
+    };
+    const tokenManager = new ArcGISTokenManager(mockConfig);
+    const geocodeInstance = new AGOL(config, tokenManager);
     
     // Test route processing with mock valid data structure
     const mockValidRoute = {
@@ -80,14 +145,29 @@ test('Search - route method processes valid route data', async (t) => {
     t.ok(mockValidRoute.routes.features.length > 0, 'Has route features');
     t.ok(mockValidRoute.routes.features[0].geometry.paths, 'Has geometry paths');
     t.ok(mockValidRoute.routes.features[0].attributes, 'Has attributes');
-    t.ok(searchInstance.tokenManager, 'Search instance has token manager');
+    t.ok(geocodeInstance.tokenManager, 'AGOL instance has tokenManager');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - error handling for different error codes', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - error handling for different error codes', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const mockConfig = {
+        authMethod: 'oauth2' as const,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret'
+    };
+    const tokenManager = new ArcGISTokenManager(mockConfig);
+    const geocodeInstance = new AGOL(config, tokenManager);
     
     // Test error code handling logic
     const error498 = { code: 498, message: 'Invalid token' };
@@ -96,14 +176,29 @@ test('Search - error handling for different error codes', async (t) => {
     // Test error code classification
     t.ok(error498.code === 498 || error498.code === 499, 'Auth error codes');
     t.equal(error400.code, 400, 'General error code');
-    t.ok(searchInstance.tokenManager, 'Search instance has token manager');
+    t.ok(geocodeInstance.tokenManager, 'AGOL instance has tokenManager');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - validates route input parameters', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - validates route input parameters', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const mockConfig = {
+        authMethod: 'oauth2' as const,
+        clientId: 'test-client-id',
+        clientSecret: 'test-client-secret'
+    };
+    const tokenManager = new ArcGISTokenManager(mockConfig);
+    const geocodeInstance = new AGOL(config, tokenManager);
     
     // Test input validation
     const validStops = [[-105, 39.7], [-104.8, 39.9]];
@@ -114,25 +209,36 @@ test('Search - validates route input parameters', async (t) => {
     t.ok(validStops[0].length === 2, 'Start point has lat/lng');
     t.ok(validStops[1].length === 2, 'End point has lat/lng');
     t.ok(typeof travelMode === 'string', 'Travel mode is string');
-    t.ok(searchInstance.tokenManager, 'Search instance has token manager');
+    t.ok(geocodeInstance.tokenManager, 'AGOL instance has tokenManager');
+
+    config.pg.end();
     
     t.end();
 });
 
-test('Search - URL construction for different endpoints', async (t) => {
-    const tokenManager = new ArcGISTokenManager('test-token', 'test-secret');
-    const searchInstance = new Search(tokenManager);
+test('AGOL - URL construction for different endpoints', async (t) => {
+    const config = await Config.env({
+        postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+        silent: true,
+        noevents: true,
+        nosinks: true,
+        nocache: true
+    });
+
+    const geocodeInstance = new AGOL(config);
     
     // Test URL construction logic
     const baseUrl = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
     
-    t.ok(searchInstance.reverseApi.startsWith(baseUrl), 'Reverse API has correct base');
-    t.ok(searchInstance.suggestApi.startsWith(baseUrl), 'Suggest API has correct base');
-    t.ok(searchInstance.forwardApi.startsWith(baseUrl), 'Forward API has correct base');
+    t.ok(geocodeInstance.reverseApi.startsWith(baseUrl), 'Reverse API has correct base');
+    t.ok(geocodeInstance.suggestApi.startsWith(baseUrl), 'Suggest API has correct base');
+    t.ok(geocodeInstance.forwardApi.startsWith(baseUrl), 'Forward API has correct base');
     
-    t.ok(searchInstance.reverseApi.includes('reverseGeocode'), 'Reverse API has correct endpoint');
-    t.ok(searchInstance.suggestApi.includes('suggest'), 'Suggest API has correct endpoint');
-    t.ok(searchInstance.forwardApi.includes('findAddressCandidates'), 'Forward API has correct endpoint');
+    t.ok(geocodeInstance.reverseApi.includes('reverseGeocode'), 'Reverse API has correct endpoint');
+    t.ok(geocodeInstance.suggestApi.includes('suggest'), 'Suggest API has correct endpoint');
+    t.ok(geocodeInstance.forwardApi.includes('findAddressCandidates'), 'Forward API has correct endpoint');
+
+    config.pg.end();
     
     t.end();
 });

@@ -19,7 +19,6 @@ import type { WorkerMessage } from '../base/events.ts';
 import Overlay from '../base/overlay.ts';
 import Subscription from '../base/subscription.ts';
 import { std, stdurl } from '../std.js';
-
 import mapgl from 'maplibre-gl'
 import type Atlas from '../workers/atlas.ts';
 import { CloudTAKTransferHandler } from '../base/handler.ts';
@@ -35,6 +34,8 @@ export const useMapStore = defineStore('cloudtak', {
         _draw?: DrawTool;
         _icons?: IconManager;
         channel: BroadcastChannel;
+
+        toImport: Feature[]
 
         // Lock the map view to a given CoT - The last element is the currently locked value
         // this is an array so that things like the radial menu can temporarily lock state but remember the previous lock value when they are closed
@@ -78,8 +79,6 @@ export const useMapStore = defineStore('cloudtak', {
             y: number;
         },
         overlays: Array<Overlay>
-        onlineContactsCount: number;
-        contactsInterval?: ReturnType<typeof setInterval>;
     } => {
         const worker = Comlink.wrap<Atlas>(new Worker(AtlasWorker, {
             type: 'module'
@@ -94,6 +93,7 @@ export const useMapStore = defineStore('cloudtak', {
         return {
             worker,
             callsign: 'Unknown',
+            toImport: [],
             location: LocationState.Loading,
             channel: new BroadcastChannel("cloudtak"),
             zoom: 'conditional',
@@ -131,8 +131,6 @@ export const useMapStore = defineStore('cloudtak', {
                 x: 0, y: 0,
             },
             overlays: [],
-            onlineContactsCount: 0,
-            contactsInterval: undefined,
 
             selected: new Map()
         }
@@ -162,12 +160,6 @@ export const useMapStore = defineStore('cloudtak', {
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
                 this.gpsWatchId = null;
-            }
-            
-            // Clean up contacts interval
-            if (this.contactsInterval) {
-                clearInterval(this.contactsInterval);
-                this.contactsInterval = undefined;
             }
 
             if (this._map) {
@@ -200,6 +192,13 @@ export const useMapStore = defineStore('cloudtak', {
         getOverlayById(id: number): Overlay | null {
             for (const overlay of this.overlays) {
                 if (overlay.id === id) return overlay as Overlay
+            }
+
+            return null;
+        },
+        getOverlayByName(name: string): Overlay | null {
+            for (const overlay of this.overlays) {
+                if (overlay.name === name) return overlay as Overlay
             }
 
             return null;
@@ -361,6 +360,8 @@ export const useMapStore = defineStore('cloudtak', {
                     this.zoom = msg.body.zoom;
                 } else if (msg.type === WorkerMessageType.Profile_Icon_Rotation) {
                     this.updateIconRotation(msg.body.enabled);
+                } else if (msg.type === WorkerMessageType.Profile_Distance_Unit) {
+                    this.updateDistanceUnit(msg.body.unit);
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
                     map.setProjection(msg.body);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
@@ -378,8 +379,6 @@ export const useMapStore = defineStore('cloudtak', {
                     } as TAKNotification);
                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
                     this.loadMission(msg.body.guid);
-                } else if (msg.type === WorkerMessageType.Contact_Change) {
-                    this.updateOnlineContactsCount();
                 }
             }
 
@@ -439,7 +438,6 @@ export const useMapStore = defineStore('cloudtak', {
                         '-1': {
                             type: 'geojson',
                             cluster: false,
-                            promoteId: 'id',
                             data: { type: 'FeatureCollection', features: [] }
                         }
                     },
@@ -461,7 +459,6 @@ export const useMapStore = defineStore('cloudtak', {
                 unit: 'metric'
             });
             map.addControl(scaleControl, 'bottom-left');
-
             // Store reference for later use
             (map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl })._scaleControl = scaleControl;
 
@@ -476,6 +473,11 @@ export const useMapStore = defineStore('cloudtak', {
             const profile = await this.worker.profile.load()
             this.callsign = profile.tak_callsign;
             this.zoom = profile.display_zoom;
+            // Initialize icon rotation setting after overlays are loaded
+            setTimeout(() => {
+                this.updateIconRotation(profile.display_icon_rotation);
+            }, 100);
+
             this.distanceUnit = profile.display_distance;
 
             // Initialize scale control settings
@@ -485,12 +487,12 @@ export const useMapStore = defineStore('cloudtak', {
         },
         startGPSWatch: function(): void {
             if (!("geolocation" in navigator)) return;
-            
+
             // Clear existing watch if any
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
             }
-            
+
             this.gpsWatchId = navigator.geolocation.watchPosition((position) => {
                 if (!this.manualLocationMode) {
                     this.channel.postMessage({
@@ -508,7 +510,7 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }, {
                 maximumAge: 0,
-                timeout: 10000,
+                timeout: 1500,
                 enableHighAccuracy: true
             });
         },
@@ -560,7 +562,7 @@ export const useMapStore = defineStore('cloudtak', {
                         return clickMap.has(feat.layer.id);
                     })
                     .forEach((feat) => {
-                        dedupe.set(String(feat.id), feat);
+                        dedupe.set(String(feat.properties.id || feat.id), feat);
                     })
 
                 const features = Array.from(dedupe.values());
@@ -701,25 +703,7 @@ export const useMapStore = defineStore('cloudtak', {
 
             this.isLoaded = true;
 
-            // Initialize icon rotation setting after overlays are loaded
-            setTimeout(async () => {
-                const profile = await this.worker.profile.load();
-                this.updateIconRotation((profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true);
-            }, 100);
-
-            // Update attribution with basemap data
             await this.updateAttribution();
-            
-            // Start periodic contact count updates after map is fully loaded
-            if (this.contactsInterval) {
-                clearInterval(this.contactsInterval);
-            }
-            this.contactsInterval = setInterval(() => {
-                this.updateOnlineContactsCount();
-            }, 5000);
-            
-            // Initial contact count
-            this.updateOnlineContactsCount();
         },
         /**
          * Determine if the feature is from the CoT store or a clicked VT feature
@@ -736,22 +720,6 @@ export const useMapStore = defineStore('cloudtak', {
             const click = clickMap.get(feat.layer.id);
             if (!click) return;
             return click.type;
-        },
-
-        updateDistanceUnit: function(unit: string): void {
-            this.distanceUnit = unit;
-            // Remove existing scale control and add new one with correct unit
-            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
-            const existingControl = mapWithControl._scaleControl;
-            if (existingControl) {
-                this.map.removeControl(existingControl);
-                const scaleControl = new mapgl.ScaleControl({
-                    maxWidth: 100,
-                    unit: unit === 'mile' ? 'imperial' : 'metric'
-                });
-                this.map.addControl(scaleControl, 'bottom-left');
-                mapWithControl._scaleControl = scaleControl;
-            }
         },
         updateIconRotation: function(enabled: boolean): void {
             for (const overlay of this.overlays) {
@@ -790,9 +758,24 @@ export const useMapStore = defineStore('cloudtak', {
                     }
                 }
             }
-            
+
             // Force a map repaint to ensure changes are visible immediately
             this.map.triggerRepaint();
+        },
+        updateDistanceUnit: function(unit: string): void {
+            this.distanceUnit = unit;
+            // Remove existing scale control and add new one with correct unit
+            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
+            const existingControl = mapWithControl._scaleControl;
+            if (existingControl) {
+                this.map.removeControl(existingControl);
+                const scaleControl = new mapgl.ScaleControl({
+                    maxWidth: 100,
+                    unit: unit === 'mile' ? 'imperial' : 'metric'
+                });
+                this.map.addControl(scaleControl, 'bottom-left');
+                mapWithControl._scaleControl = scaleControl;
+            }
         },
         updateAttribution: async function(): Promise<void> {
             const attributions: string[] = [];
@@ -844,63 +827,6 @@ export const useMapStore = defineStore('cloudtak', {
 
             this.radial.cot = feat;
             this.radial.mode = opts.mode;
-        },
-        setOnlineContactsCount: function(count: number): void {
-            this.onlineContactsCount = count;
-        },
-        updateOnlineContactsCount: async function(): Promise<void> {
-            try {
-                const team = await this.worker.team.load();
-                const contacts = Array.from(team.values());
-                
-                // Get CoT list for online status
-                let localCots: Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }> = [];
-                try {
-                    localCots = await this.worker.db.list();
-                } catch (err) {
-                    console.warn('Error loading CoT list for contact count:', err);
-                    return;
-                }
-                
-                // Get current user to filter out self
-                let currentUserCallsign = '';
-                try {
-                    const profile = await this.worker.profile.load();
-                    currentUserCallsign = profile.tak_callsign;
-                } catch (err) {
-                    console.warn('Error loading profile for contact count:', err);
-                }
-                
-                // Deduplicate and count online contacts
-                const uniqueContacts = new Map<string, typeof contacts[0]>();
-                for (const contact of contacts) {
-                    const key = `${contact.callsign}:${contact.notes}`;
-                    if (!uniqueContacts.has(key)) {
-                        uniqueContacts.set(key, contact);
-                    }
-                }
-                
-                let onlineCount = 0;
-                for (const contact of uniqueContacts.values()) {
-                    // Skip current user
-                    if (contact.callsign === currentUserCallsign) continue;
-                    
-                    // Skip ETL entries
-                    if (!contact.uid || !contact.role || !contact.takv) continue;
-                    
-                    // Check if online
-                    const isOnline = localCots.some(cot => 
-                        cot.is_skittle && 
-                        cot.properties.callsign === contact.callsign
-                    );
-                    
-                    if (isOnline) onlineCount++;
-                }
-                
-                this.onlineContactsCount = onlineCount;
-            } catch (err) {
-                console.warn('Failed to update online contacts count:', err);
-            }
         }
     }
 })

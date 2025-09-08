@@ -9,25 +9,6 @@
         '
     >
         <div class='mx-2 my-2 row g-2'>
-            <div class='col-12 d-flex justify-content-between align-items-center'>
-                <div class='d-flex align-items-center'>
-                    <IconCompass
-                        :size='25'
-                        stroke='1'
-                        class='me-2'
-                    />
-                    <span class='fw-bold'>Range &amp; Bearing</span>
-                </div>
-                <TablerIconButton
-                    title='Close'
-                    @click='emit("close")'
-                >
-                    <IconX
-                        :size='20'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-            </div>
             <div class='col-12'>
                 <TablerInput
                     v-model='config.name'
@@ -54,7 +35,6 @@
             <div class='col-12'>
                 <PropertyDistance
                     v-model='config.range'
-                    :unit='mapStore.distanceUnit'
                     :edit='true'
                     :hover='true'
                 />
@@ -80,12 +60,7 @@ import PropertyBearing from './util/PropertyBearing.vue';
 import PropertyDistance from './util/PropertyDistance.vue';
 import {
     TablerInput,
-    TablerIconButton,
 } from '@tak-ps/vue-tabler';
-import {
-    IconX,
-    IconCompass
-} from '@tabler/icons-vue';
 import type { LngLatLike } from 'maplibre-gl'
 import { useMapStore } from '../../stores/map.ts';
 const mapStore = useMapStore();

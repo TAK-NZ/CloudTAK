@@ -10,30 +10,25 @@
             />
         </template>
         <template #default>
-            <!-- Messages Section -->
-            <div class='messages-container' style='padding-bottom: 120px;'>
+            <div
+                v-for='chat in chats.items'
+                class='col-12 d-flex my-2 px-2'
+            >
                 <div
-                    v-for='chat in chats.items'
-                    :key='chat.message_id || chat.message'
-                    class='col-12 d-flex my-2 px-2'
+                    v-if='chat.sender_uid !== id'
+                    class='bg-blue px-2 py-2 rounded'
                 >
-                    <div
-                        v-if='chat.sender_uid !== id'
-                        class='bg-blue px-2 py-2 rounded'
-                    >
-                        <span v-text='chat.message' />
-                    </div>
-                    <div
-                        v-else
-                        class='ms-auto bg-gray-400 px-2 py-2 rounded'
-                    >
-                        <span v-text='chat.message' />
-                    </div>
+                    <span v-text='chat.message' />
+                </div>
+                <div
+                    v-else
+                    class='ms-auto bg-gray-400 px-2 py-2 rounded'
+                >
+                    <span v-text='chat.message' />
                 </div>
             </div>
 
-            <!-- Compose Section -->
-            <div class='compose-container border-top border-blue position-absolute start-0 bottom-0 end-0'>
+            <div class='border-top border-blue position-absolute start-0 bottom-0 end-0'>
                 <div class='row mx-2 mt-2'>
                     <div class='col-12'>
                         <TablerInput
@@ -56,7 +51,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { std } from '../../../std.ts';
 import {
@@ -79,23 +74,13 @@ const chats = ref({
 });
 
 const message = ref('');
-let refreshInterval;
 
 onMounted(async () => {
     const profile = await mapStore.worker.profile.load();
-    id.value = await mapStore.worker.profile.uid()
+    id.value = `ANDROID-CloudTAK-${profile.username}`
     callsign.value = profile.tak_callsign;
 
     await fetchChats();
-    
-    // Start automatic refresh every 3 seconds
-    refreshInterval = setInterval(silentRefresh, 3000);
-});
-
-onBeforeUnmount(() => {
-    if (refreshInterval) {
-        clearInterval(refreshInterval);
-    }
 });
 
 async function sendMessage() {
@@ -122,7 +107,7 @@ async function sendMessage() {
     if (!single) throw new Error('Error sending Chat - Contact is not defined');
 
     await mapStore.worker.conn.sendCOT({
-        chatroom: callsign.value,
+        chatroom: single.sender_callsign,
         to: {
             uid: single.sender_uid,
             callsign: single.sender_callsign
@@ -137,19 +122,13 @@ async function sendMessage() {
 
 async function fetchChats() {
     loading.value = true;
-    await loadChatData();
-    loading.value = false;
-}
 
-async function silentRefresh() {
-    await loadChatData();
-}
-
-async function loadChatData() {
     if (route.params.chatroom === 'new') {
-        chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.query.callsign)}`);
+        await std(`/api/profile/chat/${encodeURIComponent(route.query.uid)}`);
     } else {
         chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.params.chatroom)}`);
     }
+
+    loading.value = false;
 }
 </script>

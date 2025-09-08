@@ -135,11 +135,9 @@ export default class AtlasConnection {
                             type: 'Chat',
                             name: `${chat.chat.senderCallsign} to ${chat.chat.chatroom} says:`,
                             body: chat.remarks || '',
-                            url: `/menu/chats/${encodeURIComponent(chat.chat.senderCallsign)}`
+                            url: `/menu/chats`
                         }
                     });
-                    
-
                 } else {
                     console.log('UNKNOWN Chat', body.data);
                 }

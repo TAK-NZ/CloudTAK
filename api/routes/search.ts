@@ -4,22 +4,15 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import Weather, { FetchHourly } from '../lib/weather.js';
-import Search, { FetchReverse, FetchSuggest, FetchForward } from '../lib/search.js';
-import { createGeocodeService } from '../lib/geocode-factory.js';
+import { SearchManager } from '../lib/search.js';
+import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '../lib/search/types.js';
 import { Feature } from '@tak-ps/node-cot';
 import Config from '../lib/config.js';
 
 export default async function router(schema: Schema, config: Config) {
     const weather = new Weather();
 
-    let search: Search | null = null;
-    if ((await config.models.Setting.typed('agol::enabled', false)).value) {
-        const { ArcGISConfigService } = await import('../lib/geocode-factory.js');
-        const configService = ArcGISConfigService.getInstance(config);
-        if (await configService.isConfigured()) {
-            search = await createGeocodeService(config);
-        }
-    }
+    const searchManager = await SearchManager.init(config);
 
     const ReverseResponse = Type.Object({
         sun: Type.Object({
@@ -53,6 +46,23 @@ export default async function router(schema: Schema, config: Config) {
 
     const RouteResponse = Feature.FeatureCollection;
 
+    await schema.get('/search', {
+        name: 'Search Config',
+        group: 'Search',
+        description: 'Get information about the configured search provider(s)',
+        res: SearchManagerConfig
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+
+            const searchConfig = await searchManager.config();
+
+            return res.json(searchConfig);
+        } catch (err) {
+             Err.respond(err, res);
+        }
+    });
+
     await schema.get('/search/reverse/:longitude/:latitude', {
         name: 'Reverse Geocode',
         group: 'Search',
@@ -62,6 +72,7 @@ export default async function router(schema: Schema, config: Config) {
             longitude: Type.Number()
         }),
         query: Type.Object({
+            provider: Type.Optional(Type.String()),
             altitude: Type.Number({
                 default: 0
             }),
@@ -106,9 +117,13 @@ export default async function router(schema: Schema, config: Config) {
                     }
                 })(),
                 (async () => {
-                    if (search) {
+                    if (searchManager.defaultProvider) {
                         try {
-                            response.reverse = await search.reverse(req.params.longitude, req.params.latitude);
+                            response.reverse = await searchManager.reverse(
+                                req.query.provider || searchManager.defaultProvider,
+                                req.params.longitude,
+                                req.params.latitude
+                            );
                         } catch (err) {
                             console.error('ESRI Fetch Error', err)
                         }
@@ -122,7 +137,7 @@ export default async function router(schema: Schema, config: Config) {
                 sun: response.sun,
                 weather: response.weather,
                 reverse: response.reverse,
-                elevation: req.query.elevation !== undefined 
+                elevation: req.query.elevation !== undefined
                     ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
                         ? ((req.query.elevation / 1.5) * 3.28084).toFixed(2) + ' ft'
                         : (req.query.elevation / 1.5).toFixed(2) + ' m')
@@ -140,6 +155,11 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Search',
         description: 'Generate a route given stop information',
         query: Type.Object({
+            provider: Type.Optional(Type.String()),
+            callsign: Type.String({
+                description: 'Human readable name of the route',
+                default: 'New Route'
+            }),
             start: Type.String({
                 description: 'Lat,Lng of starting position'
             }),
@@ -166,16 +186,22 @@ export default async function router(schema: Schema, config: Config) {
                 req.query.end.split(',').map(Number)
             ] as [number, number][];
 
-            if (search) {
-                try {
-                    res.json(await search.route(stops, req.query.travelMode));
-                } catch (err) {
-                    console.error('Route Error:', err);
-                    res.json({
-                        type: 'FeatureCollection',
-                        features: []
-                    });
-                }
+            if (searchManager.defaultProvider) {
+                    const route = await searchManager.route(
+                        req.query.provider || searchManager.defaultProvider,
+                        stops,
+                        req.query.travelMode
+                    );
+
+                    if (route.features.length === 1) {
+                        route.features[0].properties.callsign = req.query.callsign;
+                    } else {
+                        for (let i = 0; i < route.features.length; i++) {
+                            route.features[i].properties.callsign = `${req.query.callsign} #${i + 1}`;
+                        }
+                    }
+
+                    res.json(route);
             } else {
                 res.json({
                     type: 'FeatureCollection',
@@ -192,6 +218,7 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Search',
         description: 'Get information about a given string',
         query: Type.Object({
+            provider: Type.Optional(Type.String()),
             query: Type.String(),
             limit: Type.Optional(Type.Integer()),
             magicKey: Type.String(),
@@ -207,9 +234,14 @@ export default async function router(schema: Schema, config: Config) {
                 items: [],
             };
 
-            if (search && req.query.query.trim().length) {
+            if (searchManager.defaultProvider) {
                 try {
-                    response.items = await search.forward(req.query.query, req.query.magicKey, req.query.limit);
+                    response.items = await searchManager.forward(
+                        req.query.provider || searchManager.defaultProvider,
+                        req.query.query,
+                        req.query.magicKey,
+                        req.query.limit
+                    );
                 } catch (err) {
                     console.error('Forward Geocoding Error:', err);
                     response.items = [];
@@ -227,6 +259,7 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Search',
         description: 'Get information about a given string',
         query: Type.Object({
+            provider: Type.Optional(Type.String()),
             query: Type.String(),
             limit: Type.Integer({
                 default: 10
@@ -243,16 +276,23 @@ export default async function router(schema: Schema, config: Config) {
                 items: [],
             };
 
-            if (search && req.query.query.trim().length) {
+            if (searchManager.defaultProvider) {
                 try {
-                    const location = (req.query.longitude !== undefined && req.query.latitude !== undefined) 
+                    const location = (req.query.longitude !== undefined && req.query.latitude !== undefined)
                         ? [req.query.longitude, req.query.latitude] as [number, number]
                         : undefined;
-                    response.items = await search.suggest(req.query.query, req.query.limit, location);
+
+                    response.items = await searchManager.suggest(
+                        req.query.provider || searchManager.defaultProvider,
+                        req.query.query,
+                        req.query.limit,
+                        location
+                    );
                 } catch (err) {
                     console.error('ESRI Suggest Error', err);
                 }
             }
+
             if (req.query.limit) {
                 response.items = response.items.splice(0, req.query.limit);
             }

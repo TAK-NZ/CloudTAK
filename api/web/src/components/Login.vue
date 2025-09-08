@@ -7,12 +7,12 @@
             class='position-absolute d-none d-md-inline user-select-none'
             draggable='false'
             style='
-                height: 72px;
+                height: 48px;
                 bottom: 24px;
                 left: 24px;
             '
-            src='/powered-by-aws-white.png'
-            alt='Powered by AWS'
+            src='/CloudTAKLogoText.svg'
+            alt='CloudTAK Logo'
         >
 
         <div class='container container-normal py-4'>

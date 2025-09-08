@@ -69,6 +69,11 @@
         "query": true,
         "res": false
     },
+    "POST /basemap/:basemapid/feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /basemap/:basemapid/feature/:featureid": {
         "body": false,
         "query": false,
@@ -144,17 +149,7 @@
         "query": false,
         "res": true
     },
-    "POST /connection/:connectionid/data/:dataid/upload": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
     "POST /connection/:connectionid/data/:dataid/asset": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /connection/:connectionid/data/:dataid/asset/:asset.:ext": {
         "body": false,
         "query": false,
         "res": true
@@ -173,21 +168,6 @@
         "body": false,
         "query": false,
         "res": false
-    },
-    "GET /connection/:connectionid/data/:dataid/job": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /connection/:connectionid/data/:dataid/job/:jobid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /connection/:connectionid/data/:dataid/job/:jobid/logs": {
-        "body": false,
-        "query": false,
-        "res": true
     },
     "GET /data": {
         "body": false,
@@ -499,6 +479,61 @@
         "query": true,
         "res": true
     },
+    "GET /import": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import/raw": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "PATCH /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /data/:dataid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer/:layerid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /iconset": {
         "body": false,
         "query": true,
@@ -563,66 +598,6 @@
         "body": false,
         "query": true,
         "res": false
-    },
-    "POST /import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PUT /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PATCH /import/:import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /import/:import/batch": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import/batch": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /layer": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /data/:dataid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /layer/:layerid": {
-        "body": false,
-        "query": true,
-        "res": true
     },
     "GET /template": {
         "body": false,
@@ -941,11 +916,21 @@
     },
     "GET /profile/asset": {
         "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/asset/:asset": {
+        "body": false,
         "query": false,
         "res": true
     },
-    "DELETE /profile/asset/:asset.:ext": {
-        "body": false,
+    "POST /profile/asset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/asset/:asset": {
+        "body": true,
         "query": false,
         "res": true
     },
@@ -1039,6 +1024,46 @@
         "query": true,
         "res": true
     },
+    "GET /profile/token": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/token": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/token/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/token/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/video": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/video": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/video/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/video/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /profile": {
         "body": false,
         "query": false,
@@ -1047,26 +1072,6 @@
     "PATCH /profile": {
         "body": true,
         "query": false,
-        "res": true
-    },
-    "GET /search/reverse/:longitude/:latitude": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/route": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/forward": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /search/suggest": {
-        "body": false,
-        "query": true,
         "res": true
     },
     "GET /server/injector": {
@@ -1092,6 +1097,31 @@
     "DELETE /server/repeater/:uid": {
         "body": false,
         "query": false,
+        "res": true
+    },
+    "GET /search": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/route": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/forward": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/suggest": {
+        "body": false,
+        "query": true,
         "res": true
     },
     "GET /server": {
@@ -1145,26 +1175,6 @@
         "res": true
     },
     "GET /task/:task/readme": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /token": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /token": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PATCH /token/:id": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /token/:id": {
         "body": false,
         "query": false,
         "res": true

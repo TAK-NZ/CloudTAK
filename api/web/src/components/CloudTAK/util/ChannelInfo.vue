@@ -19,7 +19,7 @@ import {
 const props = defineProps({
     label: {
         type: String,
-        default: 'Data Syncs'
+        default: 'Missions'
     }
 });
 </script>

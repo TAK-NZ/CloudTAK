@@ -383,7 +383,7 @@ export default class COT {
      */
     as_rendered(): GeoJSONFeature<GeoJSONGeometry, Record<string, unknown>> {
         const feat: GeoJSONFeature<GeoJSONGeometry, Record<string, unknown>> = {
-            id: this.id,
+            id: this.vectorId(),
             type: 'Feature',
             properties: {
                 id: this.id,        //Vector Tiles only support integer IDs so store in props
@@ -401,6 +401,20 @@ export default class COT {
         }
 
         return feat;
+    }
+
+    /**
+     * string hash function to convert the COT ID into a number for use as a vector tile feature ID
+     */
+    vectorId(): number {
+        let h = 0;
+        if (this.id.length === 0) return h;
+        for (let i = 0; i < this.id.length; i++) {
+            h = (h << 5) - h + this.id.charCodeAt(i);
+            h |= 0; // Ensure 32-bit integer
+        }
+
+        return h >>> 0; // Convert to unsigned
     }
 
     length(): number {
@@ -425,7 +439,7 @@ export default class COT {
             body: {
                 bounds: this.bounds(),
                 options: {
-                    maxZoom: 14,
+                    maxZoom: 18,
                     padding: {
                         top: 20,
                         bottom: 20,

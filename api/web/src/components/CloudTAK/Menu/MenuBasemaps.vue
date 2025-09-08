@@ -58,7 +58,7 @@
             />
             <template v-else>
                 <MenuItem
-                    v-for='collection in filteredList.collections'
+                    v-for='collection in list.collections'
                     :key='collection.name'
                     @click='setCollection(collection.name)'
                     @keyup.enter='setCollection(collection.name)'
@@ -76,9 +76,8 @@
                     </div>
                 </MenuItem>
                 <MenuItem
-                    v-for='basemap in filteredList.items'
+                    v-for='basemap in list.items'
                     :key='basemap.id'
-                    :class='{ "bg-blue text-white": isCurrentBasemap(basemap.id) }'
                     @click='setBasemap(basemap)'
                     @keyup.enter='setBasemap(basemap)'
                 >
@@ -92,66 +91,65 @@
                             style='font-size: 18px; width: 220px;'
                             v-text='basemap.name'
                         />
-                    </div>
 
-                    <div class='ms-auto d-flex align-items-center justify-content-end'>
-                        <span
-                            v-if='!basemap.username'
-                            class='mx-3 ms-auto badge border'
-                            :class='isCurrentBasemap(basemap.id) ? "bg-white text-blue" : "bg-blue text-white"'
-                        >Public</span>
-                        <span
-                            v-else
-                            class='mx-3 ms-auto badge border bg-red text-white'
-                        >Private</span>
+                        <div class='ms-auto d-flex align-items-center'>
+                            <span
+                                v-if='!basemap.username'
+                                class='mx-3 ms-auto badge border bg-blue text-white'
+                            >Public</span>
+                            <span
+                                v-else
+                                class='mx-3 ms-auto badge border bg-red text-white'
+                            >Private</span>
 
-                        <TablerDropdown>
-                            <TablerIconButton
-                                title='More Options'
-                            >
-                                <IconDotsVertical
-                                    :size='20'
-                                    stroke='1'
-                                />
-                            </TablerIconButton>
+                            <TablerDropdown>
+                                <TablerIconButton
+                                    title='More Options'
+                                >
+                                    <IconDotsVertical
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
 
-                            <template #dropdown>
-                                <div clas='col-12'>
-                                    <div
-                                        v-if='(!basemap.username && isSystemAdmin) || basemap.username'
-                                        class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
-                                        @click.stop.prevent='editModal = basemap'
-                                    >
-                                        <IconSettings
-                                            v-tooltip='"Edit Basemap"'
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                        <span class='mx-2'>Edit Basemap</span>
+                                <template #dropdown>
+                                    <div clas='col-12'>
+                                        <div
+                                            v-if='(!basemap.username && isSystemAdmin) || basemap.username'
+                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            @click.stop.prevent='editModal = basemap'
+                                        >
+                                            <IconSettings
+                                                v-tooltip='"Edit Basemap"'
+                                                :size='32'
+                                                stroke='1'
+                                            />
+                                            <span class='mx-2'>Edit Basemap</span>
+                                        </div>
+                                        <div
+                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            @click.stop.prevent='download(basemap)'
+                                        >
+                                            <IconDownload
+                                                :size='32'
+                                                stroke='1'
+                                            />
+                                            <span class='mx-2'>Download XML</span>
+                                        </div>
+                                        <div
+                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            @click.stop.prevent='share = [basemap.id]'
+                                        >
+                                            <IconShare2
+                                                :size='32'
+                                                stroke='1'
+                                            />
+                                            <span class='mx-2'>Share</span>
+                                        </div>
                                     </div>
-                                    <div
-                                        class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
-                                        @click.stop.prevent='download(basemap)'
-                                    >
-                                        <IconDownload
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                        <span class='mx-2'>Download XML</span>
-                                    </div>
-                                    <div
-                                        class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
-                                        @click.stop.prevent='share = [basemap.id]'
-                                    >
-                                        <IconShare2
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                        <span class='mx-2'>Share</span>
-                                    </div>
-                                </div>
-                            </template>
-                        </TablerDropdown>
+                                </template>
+                            </TablerDropdown>
+                        </div>
                     </div>
                 </MenuItem>
 
@@ -179,7 +177,7 @@
 </template>
 
 <script setup lang='ts'>
-import { onMounted, ref, watch, computed } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import MenuItem from '../util/MenuItem.vue';
 import type { BasemapList, Basemap } from '../../../types.ts';
 import { std, stdurl } from '../../../std.ts';
@@ -228,22 +226,6 @@ const list = ref<BasemapList>({
     total: 0,
     collections: [],
     items: []
-});
-
-const filteredList = computed(() => {
-    // Filter out raster-dem basemaps and sort
-    const filteredItems = list.value.items
-        .filter(basemap => basemap.type !== 'raster-dem')
-        .sort((a, b) => a.name.localeCompare(b.name));
-    
-    const sortedCollections = [...list.value.collections]
-        .sort((a, b) => a.name.localeCompare(b.name));
-    
-    return {
-        ...list.value,
-        collections: sortedCollections,
-        items: filteredItems
-    };
 });
 
 onMounted(async () => {
@@ -315,13 +297,6 @@ function download(basemap: Basemap) {
 function setCollection(name: string) {
     paging.value.collection = name;
     paging.value.filter = '';
-}
-
-function isCurrentBasemap(basemapId: number): boolean {
-    const currentBasemap = mapStore.overlays.find(overlay => 
-        overlay.mode === 'basemap' && overlay.mode_id === String(basemapId)
-    );
-    return !!currentBasemap;
 }
 
 async function fetchList() {

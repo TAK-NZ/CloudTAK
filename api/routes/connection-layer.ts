@@ -84,7 +84,10 @@ export default async function router(schema: Schema, config: Config) {
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({default: 'created', enum: Object.keys(Layer)})),
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Layer)
+            }),
             filter: Default.Filter,
             data: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
@@ -173,7 +176,7 @@ export default async function router(schema: Schema, config: Config) {
                 description: 'Enable Logging for this Layer'
             }),
             memory: Type.Integer({
-                default: 128,
+                default: 256,
                 description: 'Memory in MB for this Layer',
                 minimum: 128,
                 maximum: 10240
@@ -184,6 +187,10 @@ export default async function router(schema: Schema, config: Config) {
                 minimum: 1,
                 maximum: 900
             }),
+
+            alarm_period: Type.Optional(Type.Integer()),
+            alarm_evals: Type.Optional(Type.Integer()),
+            alarm_points: Type.Optional(Type.Integer()),
         }),
         res: LayerResponse
     }, async (req, res) => {
@@ -224,10 +231,6 @@ export default async function router(schema: Schema, config: Config) {
             enabled_styles: Type.Optional(Type.Boolean()),
             styles: Type.Optional(StyleContainer),
             config: Type.Optional(Layer_Config),
-            alarm_period: Type.Optional(Type.Integer()),
-            alarm_evals: Type.Optional(Type.Integer()),
-            alarm_points: Type.Optional(Type.Integer()),
-            alarm_threshold: Type.Optional(Type.Integer()),
         }),
         res: LayerIncomingResponse
     }, async (req, res) => {
@@ -329,10 +332,6 @@ export default async function router(schema: Schema, config: Config) {
             data: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
             environment: Type.Optional(Type.Any()),
             config: Type.Optional(Layer_Config),
-            alarm_period: Type.Optional(Type.Integer()),
-            alarm_evals: Type.Optional(Type.Integer()),
-            alarm_points: Type.Optional(Type.Integer()),
-            alarm_threshold: Type.Optional(Type.Integer()),
         }),
         res: LayerIncomingResponse
     }, async (req, res) => {
@@ -388,7 +387,7 @@ export default async function router(schema: Schema, config: Config) {
 
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of [ 'cron', 'webhooks', 'alarm_period', 'alarm_evals', 'alarm_points', 'alarm_threshold' ]) {
+            for (const prop of [ 'cron', 'webhooks' ]) {
                 // @ts-expect-error Doesn't like indexed values
                 if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
             }
@@ -719,6 +718,10 @@ export default async function router(schema: Schema, config: Config) {
             enabled: Type.Optional(Type.Boolean()),
             task: Type.Optional(Type.String()),
             logging: Type.Optional(Type.Boolean()),
+
+            alarm_period: Type.Optional(Type.Integer()),
+            alarm_evals: Type.Optional(Type.Integer()),
+            alarm_points: Type.Optional(Type.Integer()),
         }),
         res: LayerResponse
     }, async (req, res) => {
@@ -740,7 +743,7 @@ export default async function router(schema: Schema, config: Config) {
 
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of [ 'task', 'memory', 'timeout', 'enabled', 'priority' ]) {
+            for (const prop of [ 'task', 'memory', 'timeout', 'enabled', 'priority', 'alarm_period', 'alarm_evals', 'alarm_points']) {
                 // @ts-expect-error Doesn't like indexed values
                 if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
             }
