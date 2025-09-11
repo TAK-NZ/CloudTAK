@@ -310,13 +310,13 @@
                         v-tooltip='"Map is locked to marker - Click to Unlock"'
                         title='Map is locked to marker - Click to Unlock'
                         class='cursor-pointer hover-button'
-                        @click='mapStore.locked.splice(0, mapStore.locked.length)'
                         role='button'
                         tabindex='0'
                         color='red'
                         :size='32'
                         stroke='2'
                         style='margin: 3px 3px'
+                        @click='mapStore.locked.splice(0, mapStore.locked.length)'
                     />
                 </div>
             </div>
@@ -904,37 +904,21 @@ async function mountMap(): Promise<void> {
 </script>
 
 <style>
-.maplibregl-ctrl-scale {
-    background-color: transparent !important;
-    color: #ffffff;
-    text-shadow: 1px 0 0 black, -1px 0 0 black, 0 1px 0 black, 0 -1px 0 black;
-    border-bottom: 1px solid #fff;
-    border-left: 1px solid #fff;
-    border-right: 1px solid #fff;
-}
-.maplibregl-ctrl-scale::before {
-    background-color: transparent !important;
-    border-bottom: 1px solid #000;
-    border-left: 1px solid #000;
-    border-right: 1px solid #000;
-    content: "";
-    display: block;
-    position: absolute;
-    top: 0px;
-    left: 1px;
-    right: 1px;
-    bottom: 1px;
-}
+/* Map scale control positioning */
 .maplibregl-ctrl-bottom-left {
-    bottom: 0;
-    left: 260px;
+    bottom: 15px;
+    right: 65px;
+    left: auto !important;
+    z-index: 1 !important;
 }
+
 .maplibregl-ctrl-bottom-right {
     bottom: 0;
     right: 60px;
     z-index: 1 !important;
     color: black !important;
 }
+
 .maplibregl-ctrl-attrib a {
     color: black !important;
 }

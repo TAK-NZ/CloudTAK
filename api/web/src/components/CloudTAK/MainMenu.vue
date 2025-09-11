@@ -121,17 +121,25 @@
                         @click='router.push("/menu/contacts")'
                         @keyup.enter='router.push("/menu/contacts")'
                     >
-                        <IconUsers
-                            v-tooltip='{
-                                content: "Contacts",
-                                placement: "left",
-                            }'
-                            :tabindex='compact ? 0 : undefined'
-                            title='Open Contacts Panel'
-                            :class='{ "mx-2": compact }'
-                            :size='32'
-                            stroke='1'
-                        />
+                        <div class='position-relative' :class='{ "mx-2": compact }'>
+                            <IconUsers
+                                v-tooltip='{
+                                    content: "Contacts",
+                                    placement: "left",
+                                }'
+                                :tabindex='compact ? 0 : undefined'
+                                title='Open Contacts Panel'
+                                :size='32'
+                                stroke='1'
+                            />
+                            <span
+                                v-if='mapStore.onlineContactsCount > 0'
+                                class='position-absolute badge bg-green text-white'
+                                style='top: -2px; right: -2px; font-size: 10px; width: auto; min-width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 7px; padding: 0 4px;'
+                            >
+                                {{ mapStore.onlineContactsCount > 9999 ? '> 10K' : mapStore.onlineContactsCount }}
+                            </span>
+                        </div>
                         <span
                             v-if='!compact'
                             class='mx-2 user-select-none'
@@ -177,7 +185,7 @@
                         @click='router.push("/menu/missions")'
                         @keyup.enter='router.push("/menu/missions")'
                     >
-                        <IconAmbulance
+                        <IconReplace
                             v-tooltip='{
                                 content: "Data Sync",
                                 placement: "left",
@@ -618,40 +626,6 @@
                     v-else-if='["home", "home-menu"].includes(String(route.name))'
                 >
                     <div class='d-flex justify-content-center mb-2'>
-                        <TablerDropdown
-                            position='right'
-                        >
-                            <template #default>
-                                <TablerIconButton
-                                    title='Application Switcher'
-                                >
-                                    <IconGridDots
-                                        :size='32'
-                                        stroke='1'
-                                    />
-                                </TablerIconButton>
-                            </template>
-                            <template #dropdown>
-                                <div class='card'>
-                                    <div class='card-body'>
-                                        <div
-                                            class='px-2 py-2 d-flex align-items-center hover rounded cursor-pointer'
-                                            @click='external("/video")'
-                                        >
-                                            <IconDeviceTv
-                                                size='32'
-                                                stroke='1'
-                                            />
-                                            <div class='mx-2'>
-                                                Video Wall
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </template>
-                        </TablerDropdown>
-                    </div>
-                    <div class='d-flex justify-content-center mb-2'>
                         <div class='position-relative'>
                             <img
                                 v-tooltip='"Return Home"'
@@ -707,19 +681,14 @@ import {
     IconMessage,
     IconNetwork,
     IconPackages,
-    IconGridDots,
     IconSettings,
-    IconDeviceTv,
-    IconAmbulance,
+    IconReplace,
     IconServerCog,
     IconBoxMultiple,
     IconFileImport,
     IconAffiliate,
 } from '@tabler/icons-vue';
-import {
-    TablerDropdown,
-    TablerIconButton
-} from '@tak-ps/vue-tabler';
+
 import { useMapStore } from '../../stores/map.ts';
 import { useBrandStore } from '../../stores/brand.ts';
 import { useRouter, useRoute } from 'vue-router';
@@ -799,10 +768,6 @@ onMounted(async () => {
     isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();
     isAgencyAdmin.value = await mapStore.worker.profile.isAgencyAdmin();
 })
-
-function external(url: string) {
-    window.open(String(new URL(url, window.location.origin)));
-}
 
 function returnHome() {
     router.push("/");

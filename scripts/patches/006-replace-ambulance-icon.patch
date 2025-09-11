@@ -1,0 +1,87 @@
+diff --git a/api/web/src/components/CloudTAK/MainMenu.vue b/api/web/src/components/CloudTAK/MainMenu.vue
+index c7839af05..ba39ea8f6 100644
+--- a/api/web/src/components/CloudTAK/MainMenu.vue
++++ b/api/web/src/components/CloudTAK/MainMenu.vue
+@@ -177,7 +177,7 @@
+                         @click='router.push("/menu/missions")'
+                         @keyup.enter='router.push("/menu/missions")'
+                     >
+-                        <IconAmbulance
++                        <IconReplace
+                             v-tooltip='{
+                                 content: "Data Sync",
+                                 placement: "left",
+@@ -617,40 +617,6 @@
+                 <div
+                     v-else-if='["home", "home-menu"].includes(String(route.name))'
+                 >
+-                    <div class='d-flex justify-content-center mb-2'>
+-                        <TablerDropdown
+-                            position='right'
+-                        >
+-                            <template #default>
+-                                <TablerIconButton
+-                                    title='Application Switcher'
+-                                >
+-                                    <IconGridDots
+-                                        :size='32'
+-                                        stroke='1'
+-                                    />
+-                                </TablerIconButton>
+-                            </template>
+-                            <template #dropdown>
+-                                <div class='card'>
+-                                    <div class='card-body'>
+-                                        <div
+-                                            class='px-2 py-2 d-flex align-items-center hover rounded cursor-pointer'
+-                                            @click='external("/video")'
+-                                        >
+-                                            <IconDeviceTv
+-                                                size='32'
+-                                                stroke='1'
+-                                            />
+-                                            <div class='mx-2'>
+-                                                Video Wall
+-                                            </div>
+-                                        </div>
+-                                    </div>
+-                                </div>
+-                            </template>
+-                        </TablerDropdown>
+-                    </div>
+                     <div class='d-flex justify-content-center mb-2'>
+                         <div class='position-relative'>
+                             <img
+@@ -707,19 +673,14 @@ import {
+     IconMessage,
+     IconNetwork,
+     IconPackages,
+-    IconGridDots,
+     IconSettings,
+-    IconDeviceTv,
+-    IconAmbulance,
++    IconReplace,
+     IconServerCog,
+     IconBoxMultiple,
+     IconFileImport,
+     IconAffiliate,
+ } from '@tabler/icons-vue';
+-import {
+-    TablerDropdown,
+-    TablerIconButton
+-} from '@tak-ps/vue-tabler';
++
+ import { useMapStore } from '../../stores/map.ts';
+ import { useBrandStore } from '../../stores/brand.ts';
+ import { useRouter, useRoute } from 'vue-router';
+@@ -800,10 +761,6 @@ onMounted(async () => {
+     isAgencyAdmin.value = await mapStore.worker.profile.isAgencyAdmin();
+ })
+ 
+-function external(url: string) {
+-    window.open(String(new URL(url, window.location.origin)));
+-}
+-
+ function returnHome() {
+     router.push("/");
+     mapStore.returnHome();

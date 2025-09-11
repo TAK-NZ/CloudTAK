@@ -1,0 +1,174 @@
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuChat.vue b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
+index 179d85010..0b03025fd 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuChat.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
+@@ -10,25 +10,30 @@
+             />
+         </template>
+         <template #default>
+-            <div
+-                v-for='chat in chats.items'
+-                class='col-12 d-flex my-2 px-2'
+-            >
++            <!-- Messages Section -->
++            <div class='messages-container' style='padding-bottom: 120px;'>
+                 <div
+-                    v-if='chat.sender_uid !== id'
+-                    class='bg-blue px-2 py-2 rounded'
++                    v-for='chat in chats.items'
++                    :key='chat.message_id || chat.message'
++                    class='col-12 d-flex my-2 px-2'
+                 >
+-                    <span v-text='chat.message' />
+-                </div>
+-                <div
+-                    v-else
+-                    class='ms-auto bg-gray-400 px-2 py-2 rounded'
+-                >
+-                    <span v-text='chat.message' />
++                    <div
++                        v-if='chat.sender_uid !== id'
++                        class='bg-blue px-2 py-2 rounded'
++                    >
++                        <span v-text='chat.message' />
++                    </div>
++                    <div
++                        v-else
++                        class='ms-auto bg-gray-400 px-2 py-2 rounded'
++                    >
++                        <span v-text='chat.message' />
++                    </div>
+                 </div>
+             </div>
+ 
+-            <div class='border-top border-blue position-absolute start-0 bottom-0 end-0'>
++            <!-- Compose Section -->
++            <div class='compose-container border-top border-blue position-absolute start-0 bottom-0 end-0'>
+                 <div class='row mx-2 mt-2'>
+                     <div class='col-12'>
+                         <TablerInput
+@@ -51,7 +56,7 @@
+ </template>
+ 
+ <script setup>
+-import { ref, onMounted } from 'vue';
++import { ref, onMounted, onBeforeUnmount } from 'vue';
+ import { useRoute } from 'vue-router';
+ import { std } from '../../../std.ts';
+ import {
+@@ -74,13 +79,23 @@ const chats = ref({
+ });
+ 
+ const message = ref('');
++let refreshInterval;
+ 
+ onMounted(async () => {
+     const profile = await mapStore.worker.profile.load();
+-    id.value = `ANDROID-CloudTAK-${profile.username}`
++    id.value = await mapStore.worker.profile.uid()
+     callsign.value = profile.tak_callsign;
+ 
+     await fetchChats();
++    
++    // Start automatic refresh every 3 seconds
++    refreshInterval = setInterval(silentRefresh, 3000);
++});
++
++onBeforeUnmount(() => {
++    if (refreshInterval) {
++        clearInterval(refreshInterval);
++    }
+ });
+ 
+ async function sendMessage() {
+@@ -107,7 +122,7 @@ async function sendMessage() {
+     if (!single) throw new Error('Error sending Chat - Contact is not defined');
+ 
+     await mapStore.worker.conn.sendCOT({
+-        chatroom: single.sender_callsign,
++        chatroom: callsign.value,
+         to: {
+             uid: single.sender_uid,
+             callsign: single.sender_callsign
+@@ -122,13 +137,19 @@ async function sendMessage() {
+ 
+ async function fetchChats() {
+     loading.value = true;
++    await loadChatData();
++    loading.value = false;
++}
+ 
++async function silentRefresh() {
++    await loadChatData();
++}
++
++async function loadChatData() {
+     if (route.params.chatroom === 'new') {
+-        await std(`/api/profile/chat/${encodeURIComponent(route.query.uid)}`);
++        chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.query.callsign)}`);
+     } else {
+         chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.params.chatroom)}`);
+     }
+-
+-    loading.value = false;
+ }
+ </script>
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuChats.vue b/api/web/src/components/CloudTAK/Menu/MenuChats.vue
+index 8dd14b7ca..e7ad6f523 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuChats.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuChats.vue
+@@ -34,7 +34,7 @@
+                         v-for='chat in chats.items'
+                         role='menuitem'
+                         tabindex='0'
+-                        class='cursor-pointer col-12 py-2 px-3 d-flex align-items-center hover'
++                        class='cursor-pointer col-12 py-2 px-3 d-flex align-items-center justify-content-between hover'
+                         @click='$router.push(`/menu/chats/${chat.chatroom}`)'
+                     >
+                         <IconUser
+@@ -42,10 +42,19 @@
+                             stroke='1'
+                         />
+                         <span
+-                            class='mx-2'
++                            class='mx-2 flex-grow-1'
+                             style='font-size: 18px;'
+                             v-text='chat.chatroom'
+                         />
++                        <TablerIconButton
++                            title='Delete Chat'
++                            @click.stop='deleteChat(chat.chatroom)'
++                        >
++                            <IconTrash
++                                :size='20'
++                                stroke='1'
++                            />
++                        </TablerIconButton>
+                     </div>
+                 </div>
+             </template>
+@@ -67,6 +76,7 @@ import MenuTemplate from '../util/MenuTemplate.vue';
+ import {
+     IconUser,
+     IconPlus,
++    IconTrash,
+ } from '@tabler/icons-vue';
+ 
+ const error = ref<Error | undefined>(undefined);
+@@ -93,4 +103,16 @@ async function fetchList() {
+ 
+     loading.value = false;
+ }
++
++async function deleteChat(chatroom) {
++    if (!confirm(`Delete all messages from ${chatroom}?`)) return;
++    
++    try {
++        const url = stdurl(`/api/profile/chat/${encodeURIComponent(chatroom)}`);
++        await std(url, { method: 'DELETE' });
++        await fetchList();
++    } catch (err) {
++        error.value = err instanceof Error ? err : new Error(err);
++    }
++}
+ </script>

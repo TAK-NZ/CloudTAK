@@ -163,11 +163,11 @@ export default class AtlasDatabase {
                 const min = coord.slice(0, 2) as [number, number];
 
                 // Don't Send Invalid Coords
-                if (coord[0] < -90 || coord[0] > 90 || coord[1] < -180 || coord[1] > 180) {
+                if (min[0] < -180 || min[0] > 180 || min[1] < -90 || min[1] > 90) {
                     return;
                 }
 
-                if (bounds.contains(min as LngLatLike)) {
+                if (bounds.contains({ lng: min[0], lat: min[1] })) {
                     coords.add(min);
                 }
             });
@@ -783,5 +783,17 @@ export default class AtlasDatabase {
         }
 
         return new Set(list);
+    }
+
+    /**
+     * Return a list of all CoTs in the store
+     */
+    async list(): Promise<Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }>> {
+        return Array.from(this.cots.values()).map(cot => ({
+            id: cot.id,
+            properties: { callsign: cot.properties.callsign },
+            geometry: cot.geometry,
+            is_skittle: cot.is_skittle
+        }));
     }
 }

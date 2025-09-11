@@ -13,18 +13,6 @@
                 :size='24'
             />
             <span
-                v-tooltip='"Square Feet"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "sqfeet",
-                    "cursor-pointer": mode !== "sqfeet",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "sqfeet"'
-                @click='mode = "sqfeet"'
-            >Feet<sup>2</sup></span>
-            <span
                 v-tooltip='"Square Meters"'
                 class='my-1 px-2 user-select-none'
                 :class='{
@@ -35,40 +23,77 @@
                 tabindex='0'
                 @keyup.enter='mode = "sqmeter"'
                 @click='mode = "sqmeter"'
-            >Meters<sup>2</sup></span>
+            >m<sup>2</sup></span>
             <span
-                v-tooltip='"Acres"'
+                v-tooltip='"Square Kilometers"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "acre",
-                    "cursor-pointer": mode !== "acre",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqkm",
+                    "cursor-pointer": mode !== "sqkm",
                 }'
                 role='menuitem'
                 tabindex='0'
-                @keyup.enter='mode = "acre"'
-                @click='mode = "acre"'
-            >Acres</span>
+                @keyup.enter='mode = "sqkm"'
+                @click='mode = "sqkm"'
+            >km<sup>2</sup></span>
             <span
-                v-tooltip='"Hectare"'
+                v-tooltip='"Hectares"'
                 class='my-1 px-2 user-select-none'
                 :class='{
-                    "bg-gray-500 rounded-bottom": mode === "ha",
+                    "bg-gray-500 rounded-bottom text-blue": mode === "ha",
                     "cursor-pointer": mode !== "ha",
                 }'
                 role='menuitem'
                 tabindex='0'
                 @keyup.enter='mode = "ha"'
                 @click='mode = "ha"'
-            >Ha</span>
+            >ha</span>
+            <span
+                v-tooltip='"Square Feet"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqfeet",
+                    "cursor-pointer": mode !== "sqfeet",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "sqfeet"'
+                @click='mode = "sqfeet"'
+            >ft<sup>2</sup></span>
+            <span
+                v-tooltip='"Square Miles"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "sqmiles",
+                    "cursor-pointer": mode !== "sqmiles",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "sqmiles"'
+                @click='mode = "sqmiles"'
+            >mi<sup>2</sup></span>
+            <span
+                v-tooltip='"Acres"'
+                class='my-1 px-2 user-select-none'
+                :class='{
+                    "bg-gray-500 rounded-bottom text-blue": mode === "acre",
+                    "cursor-pointer": mode !== "acre",
+                }'
+                role='menuitem'
+                tabindex='0'
+                @keyup.enter='mode = "acre"'
+                @click='mode = "acre"'
+            >ac</span>
         </div>
     </div>
 </template>
 
 <script setup lang='ts'>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { area } from '@turf/area';
 import CopyField from './CopyField.vue';
 import COT from '../../../base/cot.ts';
+import { useMapStore } from '../../../stores/map.ts';
 import {
     IconPolygon
 } from '@tabler/icons-vue';
@@ -80,23 +105,47 @@ const props = defineProps({
     },
     unit: {
         type: String,
-        default: 'sqfeet'
+        default: 'mile'
     }
 })
 
-const mode = ref(props.unit || 'sqfeet');
+// Map distance units to area units
+const getAreaUnit = (distanceUnit: string) => {
+    switch (distanceUnit) {
+        case 'meter': return 'sqmeter';
+        case 'kilometer': return 'sqkm';
+        case 'feet': return 'sqfeet';
+        case 'mile': return 'sqmiles';
+        case 'yard': return 'sqyard';
+        default: return 'sqmeter';
+    }
+};
+
+const mapStore = useMapStore();
+const mode = ref(getAreaUnit(mapStore.distanceUnit || props.unit));
+
+// Watch for changes in distance unit preference
+watch(() => mapStore.distanceUnit, (newUnit) => {
+    if (newUnit) {
+        mode.value = getAreaUnit(newUnit);
+    }
+});
 
 const inMode = computed(() => {
     const cotArea = area(props.cot.geometry);
 
-    if (mode.value === 'sqfeet') {
-        return cotArea * 10.7639;
-    } else if (mode.value === 'sqmeter') {
+    if (mode.value === 'sqmeter') {
         return cotArea;
-    } else if (mode.value === 'acre') {
-        return cotArea * 0.000247105;
+    } else if (mode.value === 'sqkm') {
+        return cotArea * 0.000001;
     } else if (mode.value === 'ha') {
         return cotArea * 0.0001;
+    } else if (mode.value === 'sqfeet') {
+        return cotArea * 10.7639;
+    } else if (mode.value === 'sqmiles') {
+        return cotArea * 3.861e-7;
+    } else if (mode.value === 'acre') {
+        return cotArea * 0.000247105;
     } else {
         return 'UNKNOWN';
     }
