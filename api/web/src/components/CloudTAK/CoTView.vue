@@ -9,7 +9,7 @@
             class='col-12 border-light border-bottom d-flex'
             style='border-radius: 0px;'
         >
-            <div class='col-12 card-header row my-2 d-flex' >
+            <div class='col-12 card-header row my-2 d-flex'>
                 <div class='card-title d-flex'>
                     <div class='col-auto ms-2 my-1'>
                         <PropertyBattery
@@ -291,7 +291,7 @@
                     v-if='subscription'
                     class='col-12'
                 >
-                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-gray-500'>
+                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-accent'>
                         <IconAmbulance
                             :size='32'
                             stroke='1'
@@ -313,10 +313,8 @@
                     }'
                 >
                     <PropertyType
-                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type === "u-d-p"'
-                        :key='cot.properties.type'
+                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type.startsWith("u-")'
                         :edit='is_editable'
-                        :hover='is_editable'
                         :model-value='cot.properties.type'
                         @update:model-value='updatePropertyType($event)'
                     />
@@ -374,7 +372,7 @@
                         :key='cot.properties.id'
                         label='Radius'
                         :unit='units.display_distance'
-                        :modelValue='cot.properties.shape.ellipse.major * 0.001'
+                        :model-value='cot.properties.shape.ellipse.major * 0.001'
                     />
                 </div>
 
@@ -475,7 +473,7 @@
                     <label class='subheader user-select-none'>Geofence</label>
                 </div>
 
-                <div class='mx-2 bg-gray-500 row user-select-none'>
+                <div class='mx-2 bg-accent row user-select-none'>
                     <TablerToggle
                         label='Elevation Monitored'
                         :model-value='cot.properties.geofence.elevationMonitored'
@@ -520,7 +518,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='(link, link_it) of cot.properties.links'
                                 :key='link_it'
@@ -565,7 +563,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr>
                                 <td>Time</td><td v-text='timeProp' />
                             </tr>
@@ -607,7 +605,7 @@
                     <label class='subheader user-select-none'>Style</label>
                 </div>
                 <div class='px-2 py-3'>
-                    <div class='row g-2 rounded px-2 bg-gray-500 pb-2'>
+                    <div class='row g-2 rounded px-2 bg-accent pb-2'>
                         <template v-if='cot.geometry.type === "Point"'>
                             <div class='col-12'>
                                 <IconSelect
@@ -768,7 +766,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='prop of Object.keys(cot.properties.takv)'
                                 :key='prop'
@@ -793,13 +791,13 @@
         <template v-else-if='mode === "raw"'>
             <div
                 style='height: calc(100vh - 225px)'
-                class='overflow-auto'
+                class='overflow-auto col-12'
             >
                 <CopyField
                     mode='pre'
                     style='
+                        width: calc(100% - 100px);
                         height: calc(100vh - 225px);
-                        width: 100%;
                     '
                     :model-value='JSON.stringify(cot.as_feature(), null, 4)'
                 />
@@ -1052,6 +1050,10 @@ function updatePropertyIcon(event: string | null) {
 
 function updatePropertyType(type: string): void {
     if (!cot.value) return;
+
+    if (type.startsWith('a-') && cot.value.properties.type.startsWith('u-')) {
+        cot.value.properties["marker-color"] = '#FFFFFF';
+    }
 
     cot.value.properties.type = type;
 

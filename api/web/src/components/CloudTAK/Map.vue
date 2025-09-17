@@ -510,6 +510,7 @@ import {
     TablerModal,
 } from '@tak-ps/vue-tabler';
 import { LocationState } from '../../base/events.ts';
+import COT from '../../base/cot.ts';
 import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
@@ -712,11 +713,10 @@ onBeforeUnmount(() => {
     mapStore.destroy();
 });
 
-function selectFeat(selectedFeat: MapGeoJSONFeature) {
+function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
     mapStore.select.feats = [];
-    const source = mapStore.featureSource(selectedFeat);
 
-    if (source === 'cot') {
+    if (selectedFeat instanceof COT) {
         router.push(`/cot/${selectedFeat.properties.id}`);
     } else {
         router.push(`/`);
@@ -904,21 +904,37 @@ async function mountMap(): Promise<void> {
 </script>
 
 <style>
-/* Map scale control positioning */
-.maplibregl-ctrl-bottom-left {
-    bottom: 15px;
-    right: 65px;
-    left: auto !important;
-    z-index: 1 !important;
+.maplibregl-ctrl-scale {
+    background-color: transparent !important;
+    color: #ffffff;
+    text-shadow: 1px 0 0 black, -1px 0 0 black, 0 1px 0 black, 0 -1px 0 black;
+    border-bottom: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #fff;
 }
-
+.maplibregl-ctrl-scale::before {
+    background-color: transparent !important;
+    border-bottom: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0px;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+}
+.maplibregl-ctrl-bottom-left {
+    bottom: 0;
+    left: 260px;
+}
 .maplibregl-ctrl-bottom-right {
     bottom: 0;
     right: 60px;
     z-index: 1 !important;
     color: black !important;
 }
-
 .maplibregl-ctrl-attrib a {
     color: black !important;
 }

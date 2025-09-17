@@ -1,7 +1,7 @@
 {
     "name": "@tak-ps/CloudTAK.web",
     "type": "module",
-    "version": "11.15.0",
+    "version": "11.22.0",
     "private": true,
     "engines": {
         "node": ">= 22"
@@ -19,7 +19,7 @@
     },
     "dependencies": {
         "@react-hookz/deep-equal": "^3.0.3",
-        "@tabler/core": "1.0.0",
+        "@tabler/core": "^1.4.0",
         "@tabler/icons-vue": "^3.0.0",
         "@tak-ps/node-cot": "^14.0.0",
         "@tak-ps/vue-tabler": "^3.78.0",
