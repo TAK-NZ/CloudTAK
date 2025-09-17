@@ -2,7 +2,44 @@ diff --git a/api/web/src/components/CloudTAK/MainMenu.vue b/api/web/src/componen
 index c7839af05..ba39ea8f6 100644
 --- a/api/web/src/components/CloudTAK/MainMenu.vue
 +++ b/api/web/src/components/CloudTAK/MainMenu.vue
-@@ -177,7 +177,7 @@
+@@ -121,17 +121,25 @@
+                         @click='router.push("/menu/contacts")'
+                         @keyup.enter='router.push("/menu/contacts")'
+                     >
+-                        <IconUsers
+-                            v-tooltip='{
+-                                content: "Contacts",
+-                                placement: "left",
+-                            }'
+-                            :tabindex='compact ? 0 : undefined'
+-                            title='Open Contacts Panel'
+-                            :class='{ "mx-2": compact }'
+-                            :size='32'
+-                            stroke='1'
+-                        />
++                        <div class='position-relative' :class='{ "mx-2": compact }'>
++                            <IconUsers
++                                v-tooltip='{
++                                    content: "Contacts",
++                                    placement: "left",
++                                }'
++                                :tabindex='compact ? 0 : undefined'
++                                title='Open Contacts Panel'
++                                :size='32'
++                                stroke='1'
++                            />
++                            <span
++                                v-if='mapStore.onlineContactsCount > 0'
++                                class='position-absolute badge bg-green text-white'
++                                style='top: -2px; right: -2px; font-size: 10px; width: auto; min-width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; border-radius: 7px; padding: 0 4px;'
++                            >
++                                {{ mapStore.onlineContactsCount > 9999 ? '> 10K' : mapStore.onlineContactsCount }}
++                            </span>
++                        </div>
+                         <span
+                             v-if='!compact'
+                             class='mx-2 user-select-none'
+@@ -177,7 +185,7 @@
                          @click='router.push("/menu/missions")'
                          @keyup.enter='router.push("/menu/missions")'
                      >
@@ -11,7 +48,7 @@ index c7839af05..ba39ea8f6 100644
                              v-tooltip='{
                                  content: "Data Sync",
                                  placement: "left",
-@@ -617,40 +617,6 @@
+@@ -617,40 +625,6 @@
                  <div
                      v-else-if='["home", "home-menu"].includes(String(route.name))'
                  >
@@ -52,7 +89,7 @@ index c7839af05..ba39ea8f6 100644
                      <div class='d-flex justify-content-center mb-2'>
                          <div class='position-relative'>
                              <img
-@@ -707,19 +673,14 @@ import {
+@@ -707,19 +681,14 @@ import {
      IconMessage,
      IconNetwork,
      IconPackages,
@@ -74,7 +111,7 @@ index c7839af05..ba39ea8f6 100644
  import { useMapStore } from '../../stores/map.ts';
  import { useBrandStore } from '../../stores/brand.ts';
  import { useRouter, useRoute } from 'vue-router';
-@@ -800,10 +761,6 @@ onMounted(async () => {
+@@ -800,10 +769,6 @@ onMounted(async () => {
      isAgencyAdmin.value = await mapStore.worker.profile.isAgencyAdmin();
  })
  
@@ -85,3 +122,4 @@ index c7839af05..ba39ea8f6 100644
  function returnHome() {
      router.push("/");
      mapStore.returnHome();
+ }

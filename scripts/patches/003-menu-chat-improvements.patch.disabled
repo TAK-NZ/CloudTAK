@@ -1,9 +1,8 @@
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuChat.vue b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
-index 179d85010..0b03025fd 100644
+index abc123def..def456abc 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuChat.vue
 +++ b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
 @@ -10,25 +10,30 @@
-             />
          </template>
          <template #default>
 -            <div
@@ -23,7 +22,7 @@ index 179d85010..0b03025fd 100644
 -                </div>
 -                <div
 -                    v-else
--                    class='ms-auto bg-gray-400 px-2 py-2 rounded'
+-                    class='ms-auto bg-accent px-2 py-2 rounded'
 -                >
 -                    <span v-text='chat.message' />
 +                    <div
@@ -34,7 +33,7 @@ index 179d85010..0b03025fd 100644
 +                    </div>
 +                    <div
 +                        v-else
-+                        class='ms-auto bg-gray-400 px-2 py-2 rounded'
++                        class='ms-auto bg-accent px-2 py-2 rounded'
 +                    >
 +                        <span v-text='chat.message' />
 +                    </div>
@@ -114,7 +113,7 @@ index 179d85010..0b03025fd 100644
  }
  </script>
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuChats.vue b/api/web/src/components/CloudTAK/Menu/MenuChats.vue
-index 8dd14b7ca..e7ad6f523 100644
+index abc123def..def456abc 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuChats.vue
 +++ b/api/web/src/components/CloudTAK/Menu/MenuChats.vue
 @@ -34,7 +34,7 @@
@@ -168,7 +167,7 @@ index 8dd14b7ca..e7ad6f523 100644
 +        await std(url, { method: 'DELETE' });
 +        await fetchList();
 +    } catch (err) {
-+        error.value = err instanceof Error ? err : new Error(err);
++        error.value = err instanceof Error ? err : new Error(String(err));
 +    }
 +}
  </script>

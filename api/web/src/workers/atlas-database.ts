@@ -792,4 +792,16 @@ export default class AtlasDatabase {
 
         return new Set(list);
     }
+
+    /**
+     * Return a list of all CoTs in the store
+     */
+    async list(): Promise<Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }>> {
+        return Array.from(this.cots.values()).map(cot => ({
+            id: cot.id,
+            properties: { callsign: cot.properties.callsign },
+            geometry: cot.geometry,
+            is_skittle: cot.is_skittle
+        }));
+    }
 }
