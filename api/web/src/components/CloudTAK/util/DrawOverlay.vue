@@ -188,6 +188,7 @@
                 class='card-body'
             >
                 <TablerEnum
+                    v-model='mapStore.draw.lasso.overlay'
                     label='Layer Selection'
                     description='Features will be selected from the chosen layer.'
                     default='CoT Icons'

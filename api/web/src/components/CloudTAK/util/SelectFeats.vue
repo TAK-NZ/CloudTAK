@@ -81,7 +81,7 @@
                                 class='cursor-pointer col-12 hover d-flex align-items-center px-2'
                                 @click='share = ShareType.MISSION'
                             >
-                                <IconReplace
+                                <IconAmbulance
                                     :size='32'
                                     stroke='1'
                                 />
@@ -140,7 +140,7 @@ import { useMapStore } from '../../../stores/map.ts';
 import {
     IconPackageExport,
     IconDotsVertical,
-    IconReplace,
+    IconAmbulance,
     IconPackages,
     IconTrash,
     IconX,

@@ -167,6 +167,44 @@
                                                 stroke='1'
                                             /><span class='mx-3'>Deployment</span></span>
 
+                                            <span
+                                                tabindex='0'
+                                                role='menuitem'
+                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
+                                                :class='{
+                                                    "active": route.name === "layer-alarm",
+                                                    "cursor-pointer": route.name !== "layer-alarm"
+                                                }'
+                                                @keyup.enter='router.push(`/connection/${route.params.connectionid}/layer/${route.params.layerid}/alarm`)'
+                                                @click='router.push(`/connection/${route.params.connectionid}/layer/${route.params.layerid}/alarm`)'
+                                            ><IconAlarm
+                                                 :size='32'
+                                                 stroke='1'
+                                             />
+                                                <span class='mx-3'>Alarms</span>
+
+                                                <div class='ms-auto'>
+                                                    <span
+                                                        v-if='layer.priority === "high"'
+                                                        class='badge border-danger bg-danger text-white'
+                                                        style='height: 20px'
+                                                        v-text='`High Urgency`'
+                                                    />
+                                                    <span
+                                                        v-else-if='layer.priority === "low"'
+                                                        class='badge border-warning bg-warning text-white'
+                                                        style='height: 20px'
+                                                        v-text='`Low Urgency`'
+                                                    />
+                                                    <span
+                                                        v-else
+                                                        class='badge border-secondary bg-secondary text-white'
+                                                        style='height: 20px'
+                                                        v-text='`Disabled`'
+                                                    />
+                                                </div>
+                                            </span>
+
                                             <div
                                                 class='px-2 py-2 round btn-group w-100'
                                                 role='group'
@@ -390,6 +428,7 @@ import {
     IconDownload,
     IconAlertTriangle,
     IconPlaneDeparture,
+    IconAlarm,
     IconAdjustments,
     IconBeach,
     IconSchema,
@@ -511,8 +550,10 @@ async function fetchStatus(load = false) {
     loading.value.stack = false;
 }
 
-function downloadConfig() {
-    window.location.href = String(stdurl(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}?download=true&token=${localStorage.token}`));
+async function downloadConfig() {
+    await std(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}?download=true&token=${localStorage.token}`, {
+        download: true
+    });
 }
 
 async function fetchCapabilities() {

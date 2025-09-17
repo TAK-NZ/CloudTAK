@@ -24,10 +24,8 @@
                 <div
                     v-if='props.elevation'
                     class='mx-1 my-1 text-muted'
-                    style='font-size: 14px;'
-                >
-                    Elevation: {{ props.elevation }}
-                </div>
+                    v-text='`Elevation: ${props.elevation}`'
+                />            
             </div>
         </div>
         <div
@@ -51,7 +49,7 @@ import {
 } from '@tabler/icons-vue';
 
 const props = defineProps<{
-    reverse: SearchReverse["reverse"];
-    elevation: SearchReverse["elevation"];
+    reverse: SearchReverse["reverse"],
+    elevation?: SearchReverse["elevation"]
 }>()
 </script>

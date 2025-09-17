@@ -23,6 +23,10 @@ const LayerFragment = (prefix: string) => {
             name: `${prefix}-deployment`,
             component: () => import('./components/ETL/Layer/LayerDeployment.vue')
         },{
+            path: 'alarm',
+            name: `${prefix}-alarm`,
+            component: () => import('./components/ETL/Layer/LayerAlarm.vue')
+        },{
             path: 'incoming/config',
             name: `${prefix}-incoming-config`,
             component: () => import('./components/ETL/Layer/LayerIncomingConfig.vue')
@@ -379,6 +383,10 @@ const router = VueRouter.createRouter({
                 path: 'palette/:palette',
                 name: 'admin-palette',
                 component: () => import('./components/Admin/AdminPalette.vue')
+            },{
+                path: 'import',
+                name: 'admin-imports',
+                component: () => import('./components/Admin/AdminImports.vue')
             },{
                 path: 'palette/:palette/feature/:feature',
                 name: 'admin-palette-feature',

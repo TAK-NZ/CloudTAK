@@ -19,7 +19,6 @@ import type { WorkerMessage } from '../base/events.ts';
 import Overlay from '../base/overlay.ts';
 import Subscription from '../base/subscription.ts';
 import { std, stdurl } from '../std.js';
-
 import mapgl from 'maplibre-gl'
 import type Atlas from '../workers/atlas.ts';
 import { CloudTAKTransferHandler } from '../base/handler.ts';
@@ -35,6 +34,8 @@ export const useMapStore = defineStore('cloudtak', {
         _draw?: DrawTool;
         _icons?: IconManager;
         channel: BroadcastChannel;
+
+        toImport: Feature[]
 
         // Lock the map view to a given CoT - The last element is the currently locked value
         // this is an array so that things like the radial menu can temporarily lock state but remember the previous lock value when they are closed
@@ -67,7 +68,7 @@ export const useMapStore = defineStore('cloudtak', {
         selected: Map<string, COT>;
         select: {
             mode?: string;
-            feats: MapGeoJSONFeature[];
+            feats: Array<COT | MapGeoJSONFeature>;
             x: number;
             y: number;
         },
@@ -94,6 +95,7 @@ export const useMapStore = defineStore('cloudtak', {
         return {
             worker,
             callsign: 'Unknown',
+            toImport: [],
             location: LocationState.Loading,
             channel: new BroadcastChannel("cloudtak"),
             zoom: 'conditional',
@@ -200,6 +202,13 @@ export const useMapStore = defineStore('cloudtak', {
         getOverlayById(id: number): Overlay | null {
             for (const overlay of this.overlays) {
                 if (overlay.id === id) return overlay as Overlay
+            }
+
+            return null;
+        },
+        getOverlayByName(name: string): Overlay | null {
+            for (const overlay of this.overlays) {
+                if (overlay.name === name) return overlay as Overlay
             }
 
             return null;
@@ -361,6 +370,8 @@ export const useMapStore = defineStore('cloudtak', {
                     this.zoom = msg.body.zoom;
                 } else if (msg.type === WorkerMessageType.Profile_Icon_Rotation) {
                     this.updateIconRotation(msg.body.enabled);
+                } else if (msg.type === WorkerMessageType.Profile_Distance_Unit) {
+                    this.updateDistanceUnit(msg.body.unit);
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
                     map.setProjection(msg.body);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
@@ -461,7 +472,6 @@ export const useMapStore = defineStore('cloudtak', {
                 unit: 'metric'
             });
             map.addControl(scaleControl, 'bottom-left');
-
             // Store reference for later use
             (map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl })._scaleControl = scaleControl;
 
@@ -476,6 +486,11 @@ export const useMapStore = defineStore('cloudtak', {
             const profile = await this.worker.profile.load()
             this.callsign = profile.tak_callsign;
             this.zoom = profile.display_zoom;
+            // Initialize icon rotation setting after overlays are loaded
+            setTimeout(() => {
+                this.updateIconRotation(profile.display_icon_rotation);
+            }, 100);
+
             this.distanceUnit = profile.display_distance;
 
             // Initialize scale control settings
@@ -485,12 +500,12 @@ export const useMapStore = defineStore('cloudtak', {
         },
         startGPSWatch: function(): void {
             if (!("geolocation" in navigator)) return;
-            
+
             // Clear existing watch if any
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
             }
-            
+
             this.gpsWatchId = navigator.geolocation.watchPosition((position) => {
                 if (!this.manualLocationMode) {
                     this.channel.postMessage({
@@ -508,7 +523,7 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }, {
                 maximumAge: 0,
-                timeout: 10000,
+                timeout: 1500,
                 enableHighAccuracy: true
             });
         },
@@ -560,7 +575,7 @@ export const useMapStore = defineStore('cloudtak', {
                         return clickMap.has(feat.layer.id);
                     })
                     .forEach((feat) => {
-                        dedupe.set(String(feat.id), feat);
+                        dedupe.set(String(feat.properties.id || feat.id), feat);
                     })
 
                 const features = Array.from(dedupe.values());
@@ -597,7 +612,21 @@ export const useMapStore = defineStore('cloudtak', {
                         this.select.y = e.point.y;
                     }
 
-                    this.select.feats = features;
+                    const feats = [];
+
+                    for (const feat of features) {
+                        const cot = await this.worker.db.get(feat.properties.id, {
+                            mission: true
+                        });
+
+                        if (cot) {
+                            feats.push(cot);
+                        } else {
+                            feats.push(feat);
+                        }
+                    }
+
+                    this.select.feats = feats;
                 }
             });
 
@@ -701,13 +730,6 @@ export const useMapStore = defineStore('cloudtak', {
 
             this.isLoaded = true;
 
-            // Initialize icon rotation setting after overlays are loaded
-            setTimeout(async () => {
-                const profile = await this.worker.profile.load();
-                this.updateIconRotation((profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true);
-            }, 100);
-
-            // Update attribution with basemap data
             await this.updateAttribution();
             
             // Start periodic contact count updates after map is fully loaded
@@ -720,38 +742,6 @@ export const useMapStore = defineStore('cloudtak', {
             
             // Initial contact count
             this.updateOnlineContactsCount();
-        },
-        /**
-         * Determine if the feature is from the CoT store or a clicked VT feature
-         */
-        featureSource: function(feat: MapGeoJSONFeature | Feature): string | void {
-            const clickMap: Map<string, { type: string, id: string }> = new Map();
-            for (const overlay of this.overlays) {
-                for (const c of overlay._clickable) {
-                    clickMap.set(c.id, c);
-                }
-            }
-
-            if (!('layer' in feat)) return;
-            const click = clickMap.get(feat.layer.id);
-            if (!click) return;
-            return click.type;
-        },
-
-        updateDistanceUnit: function(unit: string): void {
-            this.distanceUnit = unit;
-            // Remove existing scale control and add new one with correct unit
-            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
-            const existingControl = mapWithControl._scaleControl;
-            if (existingControl) {
-                this.map.removeControl(existingControl);
-                const scaleControl = new mapgl.ScaleControl({
-                    maxWidth: 100,
-                    unit: unit === 'mile' ? 'imperial' : 'metric'
-                });
-                this.map.addControl(scaleControl, 'bottom-left');
-                mapWithControl._scaleControl = scaleControl;
-            }
         },
         updateIconRotation: function(enabled: boolean): void {
             for (const overlay of this.overlays) {
@@ -790,9 +780,24 @@ export const useMapStore = defineStore('cloudtak', {
                     }
                 }
             }
-            
+
             // Force a map repaint to ensure changes are visible immediately
             this.map.triggerRepaint();
+        },
+        updateDistanceUnit: function(unit: string): void {
+            this.distanceUnit = unit;
+            // Remove existing scale control and add new one with correct unit
+            const mapWithControl = this.map as mapgl.Map & { _scaleControl?: mapgl.ScaleControl };
+            const existingControl = mapWithControl._scaleControl;
+            if (existingControl) {
+                this.map.removeControl(existingControl);
+                const scaleControl = new mapgl.ScaleControl({
+                    maxWidth: 100,
+                    unit: unit === 'mile' ? 'imperial' : 'metric'
+                });
+                this.map.addControl(scaleControl, 'bottom-left');
+                mapWithControl._scaleControl = scaleControl;
+            }
         },
         updateAttribution: async function(): Promise<void> {
             const attributions: string[] = [];
@@ -816,6 +821,24 @@ export const useMapStore = defineStore('cloudtak', {
                 attributionContainer.innerHTML = attributions.join(' | ');
             }
         },
+
+        /**
+         * Determine if the feature is from the CoT store or a clicked VT feature
+         */
+        featureSource: function(feat: MapGeoJSONFeature | Feature): string | void {
+            const clickMap: Map<string, { type: string, id: string }> = new Map();
+            for (const overlay of this.overlays) {
+                for (const c of overlay._clickable) {
+                    clickMap.set(c.id, c);
+                }
+            }
+
+            if (!('layer' in feat)) return;
+            const click = clickMap.get(feat.layer.id);
+            if (!click) return;
+            return click.type;
+        },
+
         radialClick: async function(feat: MapGeoJSONFeature | Feature, opts: {
             lngLat: LngLat;
             point: Point;

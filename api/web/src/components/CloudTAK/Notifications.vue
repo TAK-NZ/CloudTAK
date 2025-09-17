@@ -77,7 +77,7 @@
                             :size='32'
                             stroke='1'
                         />
-                        <IconReplace
+                        <IconAmbulance
                             v-else-if='n.type === "Mission"'
                             :size='32'
                             stroke='1'
@@ -127,7 +127,7 @@ import {
     IconMessage,
     IconAlertTriangle,
     IconHeartbeat,
-    IconReplace,
+    IconAmbulance,
     IconCircleDot,
 } from '@tabler/icons-vue';
 
@@ -146,11 +146,6 @@ const list = computed(() => {
 });
 
 function follow(n: TAKNotification) {
-    // Remove the notification from the list
-    const index = mapStore.notifications.indexOf(n);
-    if (index > -1) {
-        mapStore.notifications.splice(index, 1);
-    }
     router.push(n.url)
 }
 

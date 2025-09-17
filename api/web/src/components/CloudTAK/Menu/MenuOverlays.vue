@@ -254,9 +254,9 @@ import {
     IconChevronRight,
     IconChevronDown,
     IconReplace,
+    IconStack,
     IconMaximize,
     IconVector,
-    IconStack,
     IconEyeOff,
     IconPencil,
     IconPencilCheck,
@@ -280,8 +280,6 @@ const opened = ref<Set<number>>(new Set());
 const isLoaded = mapStore.isLoaded;
 const overlays = mapStore.overlays;
 
-const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
-
 // Sort overlays with CoT Icons always at top, then reverse order (highest pos first)
 const sortedOverlays = computed(() => {
     const sorted = [...overlays].sort((a, b) => {
@@ -295,6 +293,8 @@ const sortedOverlays = computed(() => {
     
     return sorted;
 });
+
+const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
 
 watch(isDraggable, () => {
     if (isDraggable.value && sortableRef.value) {

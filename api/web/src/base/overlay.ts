@@ -257,8 +257,8 @@ export default class Overlay {
                 group: this.mode !== "mission",
                 icons: true,
                 course: true,
-                labels: { size },
-                rotateIcons: (profile.display_icon_rotation as string | boolean) === 'Enabled' || (profile.display_icon_rotation as string | boolean) === true
+                rotateIcons: profile.display_icon_rotation,
+                labels: { size }
             });
         } else if (!this.styles.length) {
             this.styles = [];
@@ -417,6 +417,7 @@ export default class Overlay {
         });
 
         await this.save();
+
         
         // Update attribution if this is a basemap
         if (this.mode === 'basemap') {
@@ -427,6 +428,7 @@ export default class Overlay {
 
     async delete(): Promise<void> {
         this._destroyed = true;
+
         const wasBasemap = this.mode === 'basemap';
 
         this.remove();
@@ -438,7 +440,7 @@ export default class Overlay {
                 method: 'DELETE'
             });
         }
-                
+
         // Update attribution if this was a basemap
         if (wasBasemap) {
             const mapStore = useMapStore();
@@ -467,11 +469,11 @@ export default class Overlay {
             for (const l of this.styles) {
                 mapStore.map.setLayoutProperty(l.id, 'visibility', this.visible ? 'visible' : 'none');
             }
-            
-            // Update attribution if this is a basemap
-            if (this.mode === 'basemap') {
-                await mapStore.updateAttribution();
-            }
+        }
+
+        // Update attribution if this is a basemap
+        if (this.mode === 'basemap') {
+            await mapStore.updateAttribution();
         }
 
         if (body.pos !== undefined) {

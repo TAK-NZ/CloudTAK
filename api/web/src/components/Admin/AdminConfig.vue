@@ -81,32 +81,67 @@
                                 :disabled='!edit'
                                 label='ArcGIS Online Enabled'
                             />
-                            <TablerEnum
-                                v-model='config["agol::auth_method"]'
-                                :disabled='!edit'
-                                label='Authentication Method'
-                                :options='["oauth2", "legacy"]'
-                            />
-                            <TablerInput
-                                v-model='config["agol::client_id"]'
-                                :disabled='!edit'
-                                label='OAuth2 Client ID'
-                                description='Client ID from your ArcGIS Location Platform or ArcGIS Enterprise account'
-                            />
-                            <TablerInput
-                                v-model='config["agol::client_secret"]'
-                                type='password'
-                                :disabled='!edit'
-                                label='OAuth2 Client Secret'
-                                description='Client Secret from your ArcGIS Location Platform or ArcGIS Enterprise account'
-                            />
-                            <TablerInput
-                                v-model='config["agol::token"]'
-                                type='password'
-                                :disabled='!edit'
-                                label='Legacy Token'
-                                description='ArcGIS Online access token'
-                            />
+
+                            <template v-if='config["agol::enabled"]'>
+                                <div
+                                    class='px-2 py-2 round btn-group w-100'
+                                    role='group'
+                                >
+                                    <input
+                                        id='agol-oauth2'
+                                        type='radio'
+                                        class='btn-check'
+                                        autocomplete='off'
+                                        :checked='config["agol::auth_method"] === "oauth2"'
+                                        :disabled='config["agol::enabled"] === false || !edit'
+                                        @click='config["agol::auth_method"] = "oauth2"'
+                                    >
+                                    <label
+                                        for='agol-oauth2'
+                                        type='button'
+                                        class='btn'
+                                    >OAuth2</label>
+
+                                    <input
+                                        id='agol-legacy'
+                                        type='radio'
+                                        class='btn-check'
+                                        autocomplete='off'
+                                        :checked='config["agol::auth_method"] === "legacy"'
+                                        @click='config["agol::auth_method"] = "legacy"'
+                                    >
+                                    <label
+                                        for='agol-legacy'
+                                        type='button'
+                                        class='btn'
+                                    >Legacy</label>
+                                </div>
+
+                                <template v-if='config["agol::auth_method"] === "oauth2"'>
+                                    <TablerInput
+                                        v-model='config["agol::client_id"]'
+                                        :disabled='!edit'
+                                        label='OAuth2 Client ID'
+                                        description='Client ID from your ArcGIS Location Platform or ArcGIS Enterprise account'
+                                    />
+                                    <TablerInput
+                                        v-model='config["agol::client_secret"]'
+                                        type='password'
+                                        :disabled='!edit'
+                                        label='OAuth2 Client Secret'
+                                        description='Client Secret from your ArcGIS Location Platform or ArcGIS Enterprise account'
+                                    />
+                                </template>
+                                <template v-else>
+                                    <TablerInput
+                                        v-model='config["agol::token"]'
+                                        type='password'
+                                        :disabled='!edit'
+                                        label='Legacy Token'
+                                        description='ArcGIS Online access token'
+                                    />
+                                </template>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -164,7 +199,7 @@
                         >
                             <TablerEnum
                                 v-model='config[display]'
-                                :label='display.replace("display::", "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())'
+                                :label='display.replace("display::", "") === "icon_rotation" ? "Rotate Icons with Course" : display.replace("display::", "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())'
                                 :options='displayUnits[display.replace("display::", "")] || []'
                                 :disabled='!edit'
                             />
@@ -350,6 +385,7 @@ const groups = ref([
 
 const config = ref({
     'agol::enabled': false,
+
     'agol::auth_method': 'oauth2',
     'agol::token': '',
     'agol::client_id': '',
@@ -396,11 +432,8 @@ async function fetch() {
             displayUnits.value[key] = value.options;
         }
 
-        // Get public config (exclude sensitive keys)
-        const sensitiveKeys = ['agol::auth_method', 'agol::client_id', 'agol::client_secret', 'agol::token', 'provider::secret', 'provider::client', 'oidc::secret'];
-        const publicKeys = Object.keys(config.value).filter(key => !sensitiveKeys.includes(key));
         const url = stdurl('/api/config')
-        url.searchParams.append('keys', publicKeys.join(','));
+        url.searchParams.append('keys', Object.keys(config.value).join(','));
         const configRes = await std(url);
 
         for (const key of Object.keys(configRes)) {
@@ -412,14 +445,6 @@ async function fetch() {
             } else {
                 config.value[key] = configRes[key];
             }
-        }
-
-        // Get admin-only config
-        try {
-            const adminConfig = await std('/api/admin/config');
-            Object.assign(config.value, adminConfig);
-        } catch (err) {
-            console.error('Failed to load admin config:', err);
         }
 
         for (const key of Object.keys(display)) {
@@ -435,34 +460,28 @@ async function fetch() {
 
 async function postConfig() {
     loading.value = true;
-    
-    // Save public config (exclude sensitive keys)
-    const sensitiveKeys = ['agol::auth_method', 'agol::client_id', 'agol::client_secret', 'agol::token', 'provider::secret', 'provider::client', 'oidc::secret'];
-    const publicConfig = { ...config.value };
-    sensitiveKeys.forEach(key => delete publicConfig[key]);
-    
-    await std(`/api/config`, {
-        method: 'PUT',
-        body: {
-            ...publicConfig,
-            'map::center': config.value['map::center'].split(',').reverse().join(','),
-        }
-    });
-    
-    // Save admin-only config
-    const adminConfig = {};
-    sensitiveKeys.forEach(key => {
-        if (config.value[key] !== undefined) {
-            adminConfig[key] = config.value[key];
-        }
-    });
-    
-    await std('/api/admin/config', {
-        method: 'PUT',
-        body: adminConfig
-    });
+    try {
+        await std(`/api/config`, {
+            method: 'PUT',
+            body: {
+                ...config.value,
+                'map::center': config.value['map::center'].split(',').reverse().join(','),
+            }
+        });
 
-    edit.value = false;
-    loading.value = false;
+        // Force reload display config to clear any caching
+        const display = await std('/api/config/display');
+        for (const [key, value] of Object.entries(display)) {
+            displayUnits.value[key] = value.options;
+            config.value[`display::${key}`] = value.value;
+        }
+
+        edit.value = false;
+    } catch (error) {
+        console.error('Failed to save admin config:', error);
+        // Keep edit mode active so user can try again
+    } finally {
+        loading.value = false;
+    }
 }
 </script>

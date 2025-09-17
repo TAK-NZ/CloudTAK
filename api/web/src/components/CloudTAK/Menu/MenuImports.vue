@@ -63,21 +63,21 @@
                             />
                         </div>
                         <div
-                            v-tooltip='`${imported.mode} Import`'
+                            v-tooltip='`${imported.source} Import`'
                             class='col-auto mx-2'
                         >
-                            <IconReplace
-                                v-if='imported.mode === "Mission"'
+                            <IconAmbulance
+                                v-if='imported.source === "Mission"'
                                 :size='32'
                                 stroke='0.5'
                             />
                             <IconFile
-                                v-else-if='imported.mode === "Unknown"'
+                                v-else-if='imported.source === "Upload"'
                                 :size='32'
                                 stroke='0.5'
                             />
                             <IconPackages
-                                v-else-if='imported.mode === "Package"'
+                                v-else-if='imported.source === "Package"'
                                 :size='32'
                                 stroke='0.5'
                             />
@@ -131,7 +131,7 @@ import {
 import {
     IconUpload,
     IconFile,
-    IconReplace,
+    IconAmbulance,
     IconPackages,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
@@ -169,9 +169,9 @@ function uploadHeaders() {
     };
 }
 
-function uploadComplete(event: string) {
+function uploadComplete(event: unknown) {
     upload.value = false;
-    const imp = JSON.parse(event) as { imports: Array<{ uid: string }> };
+    const imp = event as { imports: Array<{ uid: string }> };
     router.push(`/menu/imports/${imp.imports[0].uid}`)
 }
 

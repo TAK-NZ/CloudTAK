@@ -291,7 +291,7 @@
                     v-if='subscription'
                     class='col-12'
                 >
-                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-gray-500'>
+                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-accent'>
                         <IconAmbulance
                             :size='32'
                             stroke='1'
@@ -313,10 +313,8 @@
                     }'
                 >
                     <PropertyType
-                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type === "u-d-p"'
-                        :key='cot.properties.type'
+                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type.startsWith("u-")'
                         :edit='is_editable'
-                        :hover='is_editable'
                         :model-value='cot.properties.type'
                         @update:model-value='updatePropertyType($event)'
                     />
@@ -330,10 +328,11 @@
                     }'
                 >
                     <Coordinate
+                        :label='cot.geometry.type === "Point" ? "Location" : "Center"'
                         :edit='is_editable'
                         :hover='is_editable'
                         :model-value='center'
-                        @update:model-value='updatePropertyCenter($event)'
+                        @update:model-value='updateCoordinates($event)'
                     />
                 </div>
                 <div
@@ -362,7 +361,18 @@
                 >
                     <PolygonArea
                         :cot='cot'
-                        :unit='units.display_distance === "mile" ? "sqfeet" : "sqmeter"'
+                    />
+                </div>
+
+                <div
+                    v-if='cot && cot.properties.shape && cot.properties.shape.ellipse && cot.properties.shape.ellipse.major === cot.properties.shape.ellipse.minor'
+                    class='col-12 pt-2'
+                >
+                    <PropertyDistance
+                        :key='cot.properties.id'
+                        label='Radius'
+                        :unit='units.display_distance'
+                        :model-value='cot.properties.shape.ellipse.major * 0.001'
                     />
                 </div>
 
@@ -463,7 +473,7 @@
                     <label class='subheader user-select-none'>Geofence</label>
                 </div>
 
-                <div class='mx-2 bg-gray-500 row user-select-none'>
+                <div class='mx-2 bg-accent row user-select-none'>
                     <TablerToggle
                         label='Elevation Monitored'
                         :model-value='cot.properties.geofence.elevationMonitored'
@@ -508,7 +518,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='(link, link_it) of cot.properties.links'
                                 :key='link_it'
@@ -553,7 +563,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr>
                                 <td>Time</td><td v-text='timeProp' />
                             </tr>
@@ -595,7 +605,7 @@
                     <label class='subheader user-select-none'>Style</label>
                 </div>
                 <div class='px-2 py-3'>
-                    <div class='row g-2 rounded px-2 bg-gray-500 pb-2'>
+                    <div class='row g-2 rounded px-2 bg-accent pb-2'>
                         <template v-if='cot.geometry.type === "Point"'>
                             <div class='col-12'>
                                 <IconSelect
@@ -756,7 +766,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='prop of Object.keys(cot.properties.takv)'
                                 :key='prop'
@@ -781,13 +791,13 @@
         <template v-else-if='mode === "raw"'>
             <div
                 style='height: calc(100vh - 225px)'
-                class='overflow-auto'
+                class='overflow-auto col-12'
             >
                 <CopyField
                     mode='pre'
                     style='
+                        width: calc(100% - 100px);
                         height: calc(100vh - 225px);
-                        width: 100%;
                     '
                     :model-value='JSON.stringify(cot.as_feature(), null, 4)'
                 />
@@ -830,6 +840,7 @@ import PolygonArea from './util/PolygonArea.vue';
 import Coordinate from './util/Coordinate.vue';
 import PropertyType from './util/PropertyType.vue';
 import PropertyBattery from './util/PropertyBattery.vue';
+import PropertyDistance from './util/PropertyDistance.vue';
 import PropertyBearing from './util/PropertyBearing.vue';
 import PropertyMilSym from './util/PropertyMilSym.vue';
 import PropertySensor from './util/PropertySensor.vue';
@@ -1009,8 +1020,22 @@ function updateProperty(key: string, event: any) {
 function updatePropertyIcon(event: string | null) {
     if (!cot.value) return;
 
-    if (!cot.value.properties.icon && event) {
+    if (event) {
+        event = event.replace(/\.png$/g, '').replace(':', '/');
+    }
+
+    if (
+        event
+        && (
+            !cot.value.properties.icon
+            || (
+                cot.value.properties.icon
+                && event !== cot.value.properties.icon
+            )
+        )
+    ) {
         cot.value.properties.icon = event;
+        cot.value.properties["marker-color"] = '#FFFFFF';
         cot.value.update({});
     } else if (cot.value.properties.icon && !event) {
         if (cot.value.properties.type !== 'u-d-p') {
@@ -1021,14 +1046,14 @@ function updatePropertyIcon(event: string | null) {
 
         cot.value.update({});
     }
-    if (event && cot.value.properties.icon && event.replace(/\.png$/g, '').replace(':', '/') !== cot.value.properties.icon.replace(/\.png$/, '').replace(':', '/')) {
-        cot.value.properties.icon = event;
-        cot.value.update({});
-    }
 }
 
 function updatePropertyType(type: string): void {
     if (!cot.value) return;
+
+    if (type.startsWith('a-') && cot.value.properties.type.startsWith('u-')) {
+        cot.value.properties["marker-color"] = '#FFFFFF';
+    }
 
     cot.value.properties.type = type;
 
@@ -1039,7 +1064,7 @@ function updatePropertyType(type: string): void {
     cot.value.update({});
 }
 
-function updatePropertyCenter(center: number[]): void {
+function updateCoordinates(center: number[]): void {
     if (!cot.value) return;
 
     cot.value.properties.center = center;

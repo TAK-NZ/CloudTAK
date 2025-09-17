@@ -12,48 +12,53 @@
                 v-model='inMode'
                 :size='24'
             />
-            <span
-                v-tooltip='"Kilometers Per Hour"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "km/h",
-                    "cursor-pointer": mode !== "km/h",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "km/h"'
-                @click='mode = "km/h"'
-            >KM/H</span>
-            <span
-                v-tooltip='"Miles Per Hour"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "mi/h",
-                    "cursor-pointer": mode !== "mi/h",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "mi/h"'
-                @click='mode = "mi/h"'
-            >MPH</span>
-            <span
-                v-tooltip='"Meters Per Second"'
-                class='my-1 px-2 user-select-none'
-                :class='{
-                    "bg-gray-500 rounded-bottom text-blue": mode === "m/s",
-                    "cursor-pointer": mode !== "m/s",
-                }'
-                role='menuitem'
-                tabindex='0'
-                @keyup.enter='mode = "m/s"'
-                @click='mode = "m/s"'
-            >M/S</span>
+            <div
+                class='mx-2'
+                role='menu'
+            >
+                <span
+                    v-tooltip='"Meters Per Second"'
+                    class='my-1 px-2 user-select-none'
+                    :class='{
+                        "bg-accent rounded-bottom text-blue": mode === "m/s",
+                        "cursor-pointer": mode !== "m/s",
+                    }'
+                    role='menuitem'
+                    tabindex='0'
+                    @keyup.enter='mode = "m/s"'
+                    @click='mode = "m/s"'
+                >M/S</span>
+                <span
+                    v-tooltip='"Miles Per Hour"'
+                    class='my-1 px-2 user-select-none'
+                    :class='{
+                        "bg-accent rounded-bottom text-blue": mode === "mi/h",
+                        "cursor-pointer": mode !== "mi/h",
+                    }'
+                    role='menuitem'
+                    tabindex='0'
+                    @keyup.enter='mode = "mi/h"'
+                    @click='mode = "mi/h"'
+                >MPH</span>
+                <span
+                    v-tooltip='"Kilometers Per Hour"'
+                    class='my-1 px-2 user-select-none'
+                    :class='{
+                        "bg-accent rounded-bottom text-blue": mode === "km/h",
+                        "cursor-pointer": mode !== "km/h",
+                    }'
+                    role='menuitem'
+                    tabindex='0'
+                    @keyup.enter='mode = "km/h"'
+                    @click='mode = "km/h"'
+                >KM/H</span>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watchEffect } from 'vue';
 import CopyField from './CopyField.vue';
 import {
     IconBrandSpeedtest
@@ -72,9 +77,9 @@ const props = defineProps({
 
 const mode = ref(props.unit);
 
-// Watch for prop changes and update mode accordingly
-watch(() => props.unit, (newUnit) => {
-    mode.value = newUnit;
+// Keep mode in sync with unit prop changes
+watchEffect(() => {
+    mode.value = props.unit;
 });
 
 const inMode = computed(() => {

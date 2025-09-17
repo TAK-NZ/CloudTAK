@@ -7,7 +7,7 @@
 
     <div
         v-if='editing'
-        class='position-relative rounded-top'
+        class='position-relative rounded'
     >
         <TablerInput
             v-model='text'
@@ -15,9 +15,9 @@
             :autofocus='true'
             label=''
             :error='error'
-            @update:model-value='testValidate(text)'
-            @blur='blurChange'
-            @submit='rows > 1 ? undefined : editing = false'
+            @update:model-value='validUpdate(text)'
+            @blur='validUpdate(text, { editing: true })'
+            @submit='validUpdate(text, { editing: rows > 1 ? true : false })'
         />
 
         <TablerIconButton
@@ -36,9 +36,10 @@
     <div
         v-else
         ref='infobox'
-        class='position-relative bg-gray-500 rounded-top py-2 px-2 text-truncate'
+        class='position-relative rounded text-truncate'
         :style='rows === 1 ? `min-height: ${minheight}px;` : ``'
         :class='{
+            "px-2 py-2 bg-accent": props.mode !== "pre",
             "hover-button hover-border cursor-pointer": hover,
         }'
     >
@@ -194,27 +195,22 @@ watch(infoboxRef, () => {
 })
 
 watch(props, () => {
-    if (text.value !== props.modelValue) {
+    if (text.value !== props.modelValue && !editing.value) {
         text.value = props.modelValue;
     }
 })
 
-function blurChange() {
-    editing.value = false;
+function validUpdate(text: string | number, opts = {
+    editing: true
+}) {
+    editing.value = opts.editing;
 
-    if (typeof props.validate === 'function' && props.validate(text.value) !== true) {
-        text.value = props.modelValue
-        emit("update:modelValue", text.value);
-    }
-}
-
-function testValidate(text: string | number) {
     if (typeof props.validate !== 'function') {
         emit("update:modelValue", text);
     } else {
         const res = props.validate(text);
 
-        if (typeof res === 'string') {
+        if (res.length) {
             error.value = res;
         } else {
             error.value = undefined;

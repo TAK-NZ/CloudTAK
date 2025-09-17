@@ -20,7 +20,10 @@ export default async function router(schema: Schema, config: Config) {
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({default: 'created', enum: Object.keys(Layer)})),
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Layer)
+            }),
             filter: Default.Filter,
             data: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
@@ -85,16 +88,15 @@ export default async function router(schema: Schema, config: Config) {
                 task: baseLayer.task,
                 memory: baseLayer.memory,
                 timeout: baseLayer.timeout,
-                priority: baseLayer.priority
+                priority: baseLayer.priority,
+                alarm_period: baseLayer.alarm_period,
+                alarm_evals: baseLayer.alarm_evals,
+                alarm_points: baseLayer.alarm_points,
             }, {
                 incoming: baseLayer.incoming ? {
                     config: baseLayer.incoming.config,
                     cron: baseLayer.incoming.cron,
                     webhooks: baseLayer.incoming.webhooks,
-                    alarm_period: baseLayer.incoming.alarm_period,
-                    alarm_evals: baseLayer.incoming.alarm_evals,
-                    alarm_points: baseLayer.incoming.alarm_points,
-                    alarm_threshold: baseLayer.incoming.alarm_threshold,
                     enabled_styles: baseLayer.incoming.enabled_styles,
                     styles: baseLayer.incoming.styles,
                     stale: baseLayer.incoming.stale,

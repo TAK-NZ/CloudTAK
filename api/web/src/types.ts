@@ -21,6 +21,7 @@ export type APIList<T> = {
 export type COTTypeList = paths["/api/type/cot"]["get"]["responses"]["200"]["content"]["application/json"];
 export type COTType = paths["/api/type/cot/{:type}"]["get"]["responses"]["200"]["content"]["application/json"];
 
+export type Search = paths["/api/search"]["get"]["responses"]["200"]["content"]["application/json"];
 export type SearchSuggest = paths["/api/search/suggest"]["get"]["responses"]["200"]["content"]["application/json"];
 export type SearchForward = paths["/api/search/forward"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -75,13 +76,7 @@ export type Login_Create = paths["/api/login"]["post"]["requestBody"]["content"]
 export type Login_CreateRes = paths["/api/login"]["post"]["responses"]["200"]["content"]["application/json"]
 
 export type Import = paths["/api/import/{:import}"]["get"]["responses"]["200"]["content"]["application/json"]
-export type ImportBatch = paths["/api/import/{:import}/batch"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ImportList = paths["/api/import"]["get"]["responses"]["200"]["content"]["application/json"]
-
-export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"] & {
-    display_icon_rotation?: boolean;
-}
-export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
 
 export type Package = paths["/api/marti/package/{:uid}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type PackageList = paths["/api/marti/package"]["get"]["responses"]["200"]["content"]["application/json"]
@@ -102,9 +97,14 @@ export type Palette = paths["/api/palette/{:palette}"]["get"]["responses"]["200"
 export type PaletteList = paths["/api/palette"]["get"]["responses"]["200"]["content"]["application/json"]
 export type PaletteFeature = paths["/api/palette/{:palette}/feature/{:feature}"]["get"]["responses"]["200"]["content"]["application/json"]
 
-export type ProfileAssetList = paths["/api/profile/asset"]["get"]["responses"]["200"]["content"]["application/json"]
+export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"]
+export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
 
-export type ProfileAsset = ProfileAssetList["assets"][0];
+export type ProfileVideoList = paths["/api/profile/video"]["get"]["responses"]["200"]["content"]["application/json"]
+export type ProfileVideo = paths["/api/profile/video/{:id}"]["get"]["responses"]["200"]["content"]["application/json"]
+
+export type ProfileFileList = paths["/api/profile/asset"]["get"]["responses"]["200"]["content"]["application/json"]
+export type ProfileFile = ProfileFileList["items"][0];
 
 export type Feature = paths["/api/profile/feature/{:id}"]["get"]["responses"]["200"]["content"]["application/json"] & {
     origin?: Origin
@@ -140,9 +140,7 @@ export type ProfileOverlayList = paths["/api/profile/overlay"]["get"]["responses
 export type ProfileOverlay_Create = paths["/api/profile/overlay"]["post"]["requestBody"]["content"]["application/json"]
 export type ProfileOverlay_Update = paths["/api/profile/overlay/{:overlay}"]["patch"]["requestBody"]["content"]["application/json"]
 
-export type SearchReverse = paths["/api/search/reverse/{:longitude}/{:latitude}"]["get"]["responses"]["200"]["content"]["application/json"] & {
-    elevation?: string | null;
-}
+export type SearchReverse = paths["/api/search/reverse/{:longitude}/{:latitude}"]["get"]["responses"]["200"]["content"]["application/json"]
 
 // Below are CloudTAK ETL Specific Data Types
 
@@ -173,8 +171,6 @@ export type ETLLayerOutgoing = paths["/api/connection/{:connectionid}/layer/{:la
 export type ETLData = paths["/api/connection/{:connectionid}/data/{:dataid}"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type VideoService = paths["/api/video/service"]["get"]["responses"]["200"]["content"]["application/json"];
-export type VideoServer = paths["/api/video/server"]["post"]["responses"]["200"]["content"]["application/json"];
-export type VideoServerList = paths["/api/video/server"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type InjectorList = paths["/api/server/injector"]["get"]["responses"]["200"]["content"]["application/json"];
 export type Injector = paths["/api/server/injector"]["get"]["responses"]["200"]["content"]["application/json"]["items"][0];

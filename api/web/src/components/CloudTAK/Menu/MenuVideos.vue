@@ -4,33 +4,33 @@
         :loading='loading.main'
     >
         <template #buttons>
-            <template v-if='mode === "lease"'>
-                <TablerIconButton
-                    title='Get Lease'
-                    @click='lease={}'
-                >
-                    <IconPlus
-                        :size='32'
-                        stroke='1'
-                    />
-                </TablerIconButton>
+            <TablerIconButton
+                title='Publish Video Stream'
+                @click='router.push(`/menu/videos/remote/new`)'
+            >
+                <IconVideoPlus
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
 
+            <TablerIconButton
+                title='Get Lease'
+                @click='lease={}'
+            >
+                <IconPlus
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
+
+            <template v-if='mode === "lease"'>
                 <TablerRefreshButton
                     :loading='loading.main'
                     @click='fetchLeases'
                 />
             </template>
             <template v-else>
-                <TablerIconButton
-                    title='Publish Video Stream'
-                    @click='router.push(`/menu/videos/remote/new`)'
-                >
-                    <IconPlus
-                        :size='32'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-
                 <TablerRefreshButton
                     :loading='loading.main'
                     @click='fetchConnections'
@@ -58,7 +58,7 @@
                     v-tooltip='"Video Connections"'
                     :size='32'
                     stroke='1'
-                /></label>
+                /><span class='ms-2'>Streams</span></label>
 
                 <input
                     id='lease'
@@ -77,7 +77,7 @@
                     v-tooltip='"Video Leases"'
                     :size='32'
                     stroke='1'
-                /></label>
+                /><span class='ms-2'>Leases</span></label>
             </div>
 
             <template v-if='mode === "connections"'>
@@ -169,7 +169,7 @@
                     <div class='row g-0 w-100'>
                         <div class='d-flex align-items-center w-100'>
                             <VideoLeaseSourceType :source-type='l.source_type' />
-                        
+
                             <span
                                 class='mx-2'
                                 v-text='l.name'
@@ -229,7 +229,7 @@ import MenuTemplate from '../util/MenuTemplate.vue';
 import VideoLeaseModal from './Videos/VideoLeaseModal.vue';
 import EmptyInfo from '../util/EmptyInfo.vue';
 import Feature from '../util/FeatureRow.vue';
-import { std, stdurl } from '../../../std.ts';
+import { std, server } from '../../../std.ts';
 import COT from '../../../base/cot.ts';
 import VideoLeaseSourceType from '../util/VideoLeaseSourceType.vue';
 import type { VideoLease, VideoLeaseList, VideoConnectionList } from '../../../types.ts';
@@ -250,6 +250,7 @@ import {
     IconVideo,
     IconPencil,
     IconServer2,
+    IconVideoPlus,
 } from '@tabler/icons-vue';
 
 import { ref, watch, onMounted } from 'vue'
@@ -307,12 +308,24 @@ async function fetchLeases(): Promise<void> {
         lease.value = undefined;
         loading.value.leases = true;
         error.value = undefined;
-        const url = stdurl('/api/video/lease');
-        url.searchParams.append('filter', leasePaging.value.filter);
-        url.searchParams.append('expired', 'all');
-        url.searchParams.append('limit', String(leasePaging.value.limit));
-        url.searchParams.append('page', String(leasePaging.value.page));
-        leases.value = await std(url) as VideoLeaseList
+
+        const res = await server.GET('/api/video/lease', {
+            params: {
+                query: {
+                    filter: leasePaging.value.filter,
+                    expired: 'all',
+                    order: 'desc',
+                    sort: 'created',
+                    ephemeral: 'false',
+                    limit: leasePaging.value.limit,
+                    page: leasePaging.value.page
+                }
+            }
+        })
+
+        if (res.error) throw new Error(res.error.message);
+
+        leases.value = res.data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     }

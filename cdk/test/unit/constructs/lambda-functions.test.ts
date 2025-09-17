@@ -31,7 +31,6 @@ describe('LambdaFunctions Construct', () => {
       signingSecret
     });
 
-    expect(lambdaFunctions.eventLambda).toBeDefined();
     expect(lambdaFunctions.tilesLambda).toBeDefined();
     expect(lambdaFunctions.tilesApi).toBeDefined();
 

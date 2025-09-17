@@ -99,8 +99,15 @@ export default class Subscription {
      * mark the subscription as dirty for a re-render
      *
      * @param cot - The COT object to upsert
+     * @param opts - Options for updating the feature
+     * @param opts.skipNetwork - If true, the feature will not be updated on the server - IE in response to a Mission Change event
      */
-    async updateFeature(cot: COT): Promise<void> {
+    async updateFeature(
+        cot: COT,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
         this.cots.set(String(cot.id), cot);
 
         this._dirty = true;
@@ -113,10 +120,24 @@ export default class Subscription {
             mission: this.meta.name
         }];
 
-        await this._atlas.conn.sendCOT(feat);
+        if (!opts.skipNetwork) {
+            await this._atlas.conn.sendCOT(feat);
+        }
     }
 
-    async deleteFeature(uid: string): Promise<void> {
+    /**
+     * Delete a feature from the mission.
+     *
+     * @param uid - The unique ID of the feature to delete
+     * @param opts - Options for deleting the feature
+     * @param opts.skipNetwork - If true, the feature will not be deleted from the server - IE in response to a Mission Change event
+     */
+    async deleteFeature(
+        uid: string,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
         if (this._remote) return;
 
         this.cots.delete(uid);
@@ -125,12 +146,14 @@ export default class Subscription {
 
         const atlas = this._atlas as Atlas;
 
-        const url = stdurl(`/api/marti/missions/${this.meta.guid}/cot/${uid}`);
-        await std(url, {
-            method: 'DELETE',
-            headers: Subscription.headers(this.token),
-            token:  atlas.token
-        })
+        if (!opts.skipNetwork) {
+            const url = stdurl(`/api/marti/missions/${this.meta.guid}/cot/${uid}`);
+            await std(url, {
+                method: 'DELETE',
+                headers: Subscription.headers(this.token),
+                token:  atlas.token
+            })
+        }
     }
 
     async updateLogs(): Promise<void> {

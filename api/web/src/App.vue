@@ -265,6 +265,10 @@ $cloudtak-blue: #07556D;
     background-color: $cloudtak-blue !important;
 }
 
+.bg-accent {
+    background-color: #283547 !important;
+}
+
 .bg-child {
     background-color: $cloudtak-child !important;
 }
@@ -297,5 +301,10 @@ html[data-bs-theme='light'] .hover:hover {
 
 .border-dark {
     background: #0f172a;
+}
+.btn-check:checked + .btn:hover {
+    background-color: var(--tblr-primary) !important;
+    border-color: var(--tblr-primary) !important;
+    color: white !important;
 }
 </style>

@@ -34,7 +34,15 @@
                     >
                 </div>
                 <div class='mb-2'>
-                    <label class='form-label'>Password</label>
+                    <label class='form-label'>
+                        Password
+                        <span class='form-label-description'>
+                            <a
+                                class='cursor-pointer'
+                                @click='external("https://cotak.gov/forgot-password")'
+                            >Forgot Password</a>
+                        </span>
+                    </label>
                     <div class='input-group input-group-flat'>
                         <input
                             v-model='password'

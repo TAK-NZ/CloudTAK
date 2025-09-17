@@ -27,6 +27,13 @@
                 v-if='mapStore.draw.mode !== DrawToolMode.STATIC'
             />
 
+            <GeoJSONInput
+                v-if='mapStore.toImport.length'
+                :features='mapStore.toImport'
+                @close='mapStore.toImport = []'
+                @done='mapStore.toImport = []'
+            />
+
             <div
                 v-if='mode === "SetLocation"'
                 class='position-absolute bottom-0 text-white bg-dark rounded-top'
@@ -41,7 +48,10 @@
                 >
                     <div class='card-header'>
                         <div class='col-8'>
-                            <IconLocationPin class='me-2' :size='20' />
+                            <IconLocationPin
+                                class='me-2'
+                                :size='20'
+                            />
                             <span>Click on the map to {{ mapStore.location === LocationState.Preset ? 'update' : 'set' }} your location</span>
                         </div>
                         <div class='col-4 d-flex align-items-center'>
@@ -50,7 +60,10 @@
                                     class='btn btn-sm btn-outline-light'
                                     @click='exitManualMode'
                                 >
-                                    <IconLocation :size='16' class='me-1' />
+                                    <IconLocation
+                                        :size='16'
+                                        class='me-1'
+                                    />
                                     Use GPS
                                 </button>
                                 <TablerIconButton
@@ -86,22 +99,7 @@
                         style='width: 40px;'
                     >
                         <TablerIconButton
-                            v-if='
-                                (mapStore.radial.cot && mapStore.locked.length >= 2)
-                                    || (!mapStore.radial.cot && mapStore.locked.length >= 1)
-                            '
-                            title='Map is locked to marker - Click to Unlock'
-                            @click='mapStore.locked.splice(0, mapStore.locked.length)'
-                        >
-                            <IconLockAccess
-                                color='#83b7e8'
-                                :size='20'
-                                stroke='1'
-                                style='margin: 5px 8px'
-                            />
-                        </TablerIconButton>
-                        <TablerIconButton
-                            v-else-if='mapStore.location === LocationState.Live'
+                            v-if='mapStore.location === LocationState.Live'
                             :title='locationTooltip'
                             @click='setLocation'
                         >
@@ -181,13 +179,13 @@
                                 style='margin: 3px 3px'
                             />
                             <div class='me-3'>
-                                No Data Sync
+                                No Mission
                             </div>
                         </div>
                     </template>
                     <template v-else>
                         <div class='d-flex align-items-center user-select-none'>
-                            <IconReplace
+                            <IconAmbulance
                                 :size='32'
                                 stroke='1'
                                 style='margin: 3px 3px'
@@ -291,6 +289,7 @@
                     </div>
 
                     <IconMountain
+                        v-if='mapStore.hasTerrain'
                         v-tooltip='mapStore.isTerrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
                         role='button'
                         tabindex='0'
@@ -301,6 +300,23 @@
                         :color='mapStore.isTerrainEnabled ? "#1E90FF" : "#FFFFFF"'
                         style='margin: 3px 3px'
                         @click='mapStore.isTerrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
+                    />
+
+                    <IconLockAccess
+                        v-if='
+                            (mapStore.radial.cot && mapStore.locked.length >= 2)
+                                || (!mapStore.radial.cot && mapStore.locked.length >= 1)
+                        '
+                        v-tooltip='"Map is locked to marker - Click to Unlock"'
+                        title='Map is locked to marker - Click to Unlock'
+                        class='cursor-pointer hover-button'
+                        role='button'
+                        tabindex='0'
+                        color='red'
+                        :size='32'
+                        stroke='2'
+                        style='margin: 3px 3px'
+                        @click='mapStore.locked.splice(0, mapStore.locked.length)'
                     />
                 </div>
             </div>
@@ -454,6 +470,7 @@
 </template>
 
 <script setup lang='ts'>
+import GeoJSONInput from './GeoJSONInput.vue';
 import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, useTemplateRef } from 'vue';
 import {useRoute, useRouter } from 'vue-router';
 import FloatingVideo from './util/FloatingVideo.vue';
@@ -476,7 +493,7 @@ import {
     IconPlus,
     IconMinus,
     IconLockAccess,
-    IconReplace,
+    IconAmbulance,
     IconMap,
     IconX,
     IconBell,
@@ -493,6 +510,7 @@ import {
     TablerModal,
 } from '@tak-ps/vue-tabler';
 import { LocationState } from '../../base/events.ts';
+import COT from '../../base/cot.ts';
 import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
@@ -695,11 +713,10 @@ onBeforeUnmount(() => {
     mapStore.destroy();
 });
 
-function selectFeat(selectedFeat: MapGeoJSONFeature) {
+function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
     mapStore.select.feats = [];
-    const source = mapStore.featureSource(selectedFeat);
 
-    if (source === 'cot') {
+    if (selectedFeat instanceof COT) {
         router.push(`/cot/${selectedFeat.properties.id}`);
     } else {
         router.push(`/`);
@@ -782,7 +799,7 @@ async function exitManualMode() {
     mapStore.location = LocationState.Loading;
 
     // Remove current location dot from map by removing user's CoT
-    const userUid = await mapStore.worker.profile.uid();
+    const userUid = `ANDROID-CloudTAK-${(await mapStore.worker.profile.load()).username}`;
     await mapStore.worker.db.remove(userUid);
 
     // Clear manual location and wait for it to complete
@@ -816,11 +833,11 @@ async function handleRadial(event: string): Promise<void> {
         const cot = mapStore.radial.cot;
         closeRadial()
 
-        if (route.name === 'home-menu-cot' && route.params.uid === cot.id) {
+        if (route.name === 'home-menu-cot' && route.params.uid === (cot.properties.id || cot.id)) {
             router.push('/');
         }
 
-        await mapStore.worker.db.remove(String(cot.id || cot.properties.id), {
+        await mapStore.worker.db.remove(String(cot.properties.id || cot.id), {
             mission: true
         })
 
@@ -829,7 +846,10 @@ async function handleRadial(event: string): Promise<void> {
         mapStore.locked.push(mapStore.radial.cot.properties ? mapStore.radial.cot.properties.id : mapStore.radial.cot.id);
         closeRadial()
     } else if (event === 'cot:edit') {
-        const cot = await mapStore.worker.db.get(String(mapStore.radial.cot.id ? mapStore.radial.cot.id : mapStore.radial.cot.properties.id))
+        const cot = await mapStore.worker.db.get(mapStore.radial.cot.properties.id || mapStore.radial.cot.id, {
+            mission: true
+        })
+
         if (!cot) throw new Error('Cannot Find COT Marker');
         await mapStore.draw.edit(cot);
 
@@ -848,22 +868,7 @@ async function handleRadial(event: string): Promise<void> {
         closeRadial()
     } else if (event === 'context:info') {
         // @ts-expect-error Figure out geometry.coordinates type
-        const coords = mapStore.radial.cot.geometry.coordinates;
-        let coordsStr = coords.join(',');
-        
-        // Add elevation from terrain if 3D is enabled
-        if (mapStore.isTerrainEnabled && mapStore.map.queryTerrainElevation) {
-            try {
-                const elevation = mapStore.map.queryTerrainElevation(coords);
-                if (elevation !== null) {
-                    coordsStr += `,${elevation}`;
-                }
-            } catch {
-                // Terrain elevation query failed, continue without elevation
-            }
-        }
-        
-        router.push(`/query/${encodeURIComponent(coordsStr)}`);
+        router.push(`/query/${encodeURIComponent(mapStore.radial.cot.geometry.coordinates.join(','))}`);
         closeRadial()
     } else {
         closeRadial()

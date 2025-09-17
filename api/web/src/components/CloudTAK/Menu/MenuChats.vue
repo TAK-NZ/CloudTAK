@@ -34,7 +34,7 @@
                         v-for='chat in chats.items'
                         role='menuitem'
                         tabindex='0'
-                        class='cursor-pointer col-12 py-2 px-3 d-flex align-items-center justify-content-between hover'
+                        class='cursor-pointer col-12 py-2 px-3 d-flex align-items-center hover'
                         @click='$router.push(`/menu/chats/${chat.chatroom}`)'
                     >
                         <IconUser
@@ -42,19 +42,10 @@
                             stroke='1'
                         />
                         <span
-                            class='mx-2 flex-grow-1'
+                            class='mx-2'
                             style='font-size: 18px;'
                             v-text='chat.chatroom'
                         />
-                        <TablerIconButton
-                            title='Delete Chat'
-                            @click.stop='deleteChat(chat.chatroom)'
-                        >
-                            <IconTrash
-                                :size='20'
-                                stroke='1'
-                            />
-                        </TablerIconButton>
                     </div>
                 </div>
             </template>
@@ -76,7 +67,6 @@ import MenuTemplate from '../util/MenuTemplate.vue';
 import {
     IconUser,
     IconPlus,
-    IconTrash,
 } from '@tabler/icons-vue';
 
 const error = ref<Error | undefined>(undefined);
@@ -102,17 +92,5 @@ async function fetchList() {
     }
 
     loading.value = false;
-}
-
-async function deleteChat(chatroom) {
-    if (!confirm(`Delete all messages from ${chatroom}?`)) return;
-    
-    try {
-        const url = stdurl(`/api/profile/chat/${encodeURIComponent(chatroom)}`);
-        await std(url, { method: 'DELETE' });
-        await fetchList();
-    } catch (err) {
-        error.value = err instanceof Error ? err : new Error(err);
-    }
 }
 </script>

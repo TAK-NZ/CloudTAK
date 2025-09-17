@@ -6,7 +6,11 @@ export enum WorkerMessageType {
 
     Profile_Callsign = 'cloudtak:profile:callsign',
     Profile_Display_Zoom = 'cloudtak:profile:display:zoom',
+
     Profile_Icon_Rotation = 'cloudtak:profile:icon:rotation',
+
+    Profile_Distance_Unit = 'cloudtak:profile:distance:unit',
+
     Profile_Location_Coordinates = 'cloudtak:profile:location:coordinates',
     Profile_Location_Source = 'cloudtak:profile:location:source',
 
@@ -20,8 +24,6 @@ export enum WorkerMessageType {
 
     Connection_Open = 'connection:open',
     Connection_Close = 'connection:close',
-
-    Chat_Message = 'chat:message',
 
     Mission_Change_Feature = 'mission:change:feature',
 }
