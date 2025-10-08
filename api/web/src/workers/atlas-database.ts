@@ -136,8 +136,21 @@ export default class AtlasDatabase {
         return sub;
     }
 
-    async subscriptionGet(id: string): Promise<Subscription | undefined> {
-        return this.subscriptions.get(id);
+    async subscriptionGet(
+        id: string,
+        opts: {
+            refresh?: boolean
+        } = {}
+     ): Promise<Subscription | undefined> {
+        const sub = this.subscriptions.get(id);
+
+        if (!sub) return;
+
+        if (opts.refresh) {
+            await sub.refresh();
+        }
+
+        return sub;
     }
 
     async subscriptionDelete(id: string): Promise<void> {
@@ -161,7 +174,13 @@ export default class AtlasDatabase {
         for (const cot of this.cots.values()) {
             coordEach(cot.geometry, (coord) => {
                 const min = coord.slice(0, 2) as [number, number];
-                if (bounds.contains(min as LngLatLike)) {
+
+                // Don't Send Invalid Coords
+                if (min[0] < -180 || min[0] > 180 || min[1] < -90 || min[1] > 90) {
+                    return;
+                }
+
+                if (bounds.contains({ lng: min[0], lat: min[1] })) {
                     coords.add(min);
                 }
             });
@@ -189,7 +208,7 @@ export default class AtlasDatabase {
 
             if (this.pendingHidden.has(String(cot.id))) {
                 this.hidden.add(cot.id);
-                diff.remove.push(String(cot.id))
+                diff.remove.push(cot.vectorId())
                 this.pendingHidden.delete(cot.id);
             } else if (
                 !['Never'].includes(display_stale)
@@ -201,7 +220,7 @@ export default class AtlasDatabase {
                     || display_stale === '1 Hour'       && now > stale + 600000 * 6
                 )
             ) {
-                diff.remove.push(String(cot.id))
+                diff.remove.push(cot.vectorId())
             } else if (!cot.properties.archived) {
                 if (now < stale && (cot.properties['icon-opacity'] !== 1 || cot.properties['marker-opacity'] !== 1)) {
                     cot.properties['icon-opacity'] = 1;
@@ -210,7 +229,7 @@ export default class AtlasDatabase {
                     if (!['Point', 'Polygon', 'LineString'].includes(cot.geometry.type)) continue;
 
                     diff.update.push({
-                        id: String(render.id),
+                        id: Number(render.id),
                         addOrUpdateProperties: Object.keys(render.properties).map((key) => {
                             return { key, value: render.properties ? render.properties[key] : '' }
                         }),
@@ -223,7 +242,7 @@ export default class AtlasDatabase {
                     if (!['Point', 'Polygon', 'LineString'].includes(render.geometry.type)) continue;
 
                     diff.update.push({
-                        id: String(render.id),
+                        id: Number(render.id),
                         addOrUpdateProperties: Object.keys(render.properties).map((key) => {
                             return { key, value: cot.properties ? render.properties[key] : '' }
                         }),
@@ -254,7 +273,7 @@ export default class AtlasDatabase {
             const render = cot.as_rendered();
 
             diff.update.push({
-                id: String(render.id),
+                id: Number(render.id),
                 addOrUpdateProperties: Object.keys(render.properties).map((key) => {
                     return { key, value: render.properties[key] }
                 }),
@@ -265,7 +284,11 @@ export default class AtlasDatabase {
         this.pendingCreate.clear();
 
         for (const id of this.pendingDelete) {
-            diff.remove.push(id);
+            const cot = this.get(id);
+            if (!cot) continue;
+
+            diff.remove.push(cot.vectorId());
+
             this.cots.delete(id);
         }
 
@@ -380,6 +403,8 @@ export default class AtlasDatabase {
 
     /**
      * Return CoTs touching a given polygon
+     *
+     * @param poly - GeoJSON Polygon to test CoTs against
      */
     async touching(poly: Polygon): Promise<Set<COT>> {
         const within: Set<COT> = new Set();
@@ -415,6 +440,11 @@ export default class AtlasDatabase {
 
     /**
      * Remove a given CoT from the store
+     *
+     * @param id - UID of the CoT to remove
+     * @param opts - Options
+     * @param opts.mission      - If true, search Mission Stores for the CoT
+     * @param opts.skipNetwork  - If an archived CoT, don't delete from the server
      */
     async remove(
         id: string,
@@ -438,7 +468,6 @@ export default class AtlasDatabase {
 
         if (cot.origin.mode === OriginMode.CONNECTION) {
             this.pendingDelete.add(id);
-            this.cots.delete(id);
 
             if (cot.properties.archived) {
                 this.atlas.postMessage({
@@ -446,33 +475,37 @@ export default class AtlasDatabase {
                 });
 
                 if (!opts.skipNetwork) {
-                    try {
-                        await std(`/api/profile/feature/${id}`, {
-                            token: this.atlas.token,
-                            method: 'DELETE'
-                        });
-                    } catch (error) {
-                        console.warn(`Failed to delete feature ${id} from server:`, error);
-                    }
+                    await std(`/api/profile/feature/${id}`, {
+                        token: this.atlas.token,
+                        method: 'DELETE'
+                    });
                 }
             }
         } else if (cot.origin.mode === OriginMode.MISSION && cot.origin.mode_id) {
             const subscription = await this.subscriptionGet(cot.origin.mode_id);
             if (!subscription) throw new Error('Could not delete as Mission Subscription does not exist');
 
-            await subscription.deleteFeature(cot.id);
+            await subscription.deleteFeature(cot.id, {
+                skipNetwork: opts.skipNetwork
+            });
         }
     }
 
     /**
      * Empty the store
+     *
+     * @param opts - Options
+     * @param opts.ignoreArchived   - Don't delete archived features
+     * @param opts.skipNetwork      - Don't delete archived features from the server
      */
     async clear(opts = {
         ignoreArchived: false,
         skipNetwork: false
     }): Promise<void> {
         for (const feat of this.cots.values()) {
-            if (opts.ignoreArchived && feat.properties.archived) continue;
+            if (opts.ignoreArchived && feat.properties.archived) {
+                continue;
+            }
 
             this.remove(feat.id, {
                 skipNetwork: opts.skipNetwork
@@ -480,6 +513,11 @@ export default class AtlasDatabase {
         }
     }
 
+    /**
+     * Called everytime a Mission Task message is received
+     *
+     * @param task - GeoJSON Feature representing the Mission Task
+     */
     async subChange(task: Feature): Promise<void> {
         if (task.properties.type === 't-x-m-c' && task.properties.mission && task.properties.mission.missionChanges) {
             let updateGuid;
@@ -499,7 +537,11 @@ export default class AtlasDatabase {
                         continue;
                     }
 
-                    await sub.deleteFeature(change.contentUid);
+                    await sub.deleteFeature(change.contentUid, {
+                        // This is critical to ensure a recursive loop of doesn't occur
+                        skipNetwork: true
+                    });
+
                     updateGuid = task.properties.mission.guid;
                 }
             }
@@ -533,17 +575,14 @@ export default class AtlasDatabase {
      * @param opts - Optional Options
      * @param opts.skipSave - Don't save the COT to the Profile Feature Database
      * @param opts.skipBroadcast - Don't broadcast the COT on the internal message bus to the UI
-     * @param opts.authored - If the COT is new, append creator information & potentially add it to a mission
-     * @param opts.mission_guid - Explicitly use Mission Store
+     * @param opts.authored - If the COT is authored, append creator information if the CoT is new & potentially add it to a mission
      */
     async add(
         feature: InputFeature,
         opts?: {
             skipSave?: boolean;
             skipBroadcast?: boolean;
-
             authored?: boolean,
-            mission_guid?: string,
         }
     ): Promise<COT> {
         if (!opts) opts = {};
@@ -552,28 +591,64 @@ export default class AtlasDatabase {
 
         const feat = feature as Feature;
 
-        if (opts.authored) {
+        // Check if CoT exists
+        let exists = this.get(feat.properties.id, {
+            mission: true
+        });
+
+        if (opts.authored && !exists) {
             feat.properties.creator = await this.atlas.profile.creator();
         }
 
-        const mission_guid =
-            // The feature was explicitly assigned to a given GUID
-            opts.mission_guid
-            // The feature was notified by the server that it is for a given GUID
-            || this.subscriptionPending.get(feat.id);
+        // New CoT destined for a Mission
+        if (
+            !exists && (
+                (this.mission && opts.authored) // Authored CoT and we have an active Mission
+                || (
+                    feat.origin && feat.origin.mode === "Mission"
+                    && feat.origin.mode_id
+                )
+                || this.subscriptionPending.get(feat.id)
+            )
+            || exists && (
+                exists.origin.mode === OriginMode.MISSION
+                && exists.origin.mode_id
+            )
+        ) {
+            const pendingGuid = this.subscriptionPending.get(feat.id);
+            this.subscriptionPending.delete(feat.id);
 
-        if (mission_guid)  {
+            const mission_guid =
+                this.mission?.meta.guid // An Active Mission
+                || pendingGuid
+                || feat.origin?.mode_id; // The feature has a Mission Origin
+
+            if (!mission_guid) {
+                throw new Error(`Cannot add ${feat.id} to a mission as no mission GUID was found - Please report this error`);
+            }
+
             const sub = this.subscriptions.get(mission_guid);
+
             if (!sub) {
                 throw new Error(`Cannot add ${feat.id} to mission ${mission_guid} as it is not loaded`)
             }
 
-            const cot = new COT(this.atlas, feat, {
-                mode: OriginMode.MISSION,
-                mode_id: mission_guid
-            }, opts);
+            if (!exists) {
+                exists = new COT(this.atlas, feat, {
+                    mode: OriginMode.MISSION,
+                    mode_id: mission_guid
+                }, opts);
+            } else {
+                exists.update({
+                    path: feat.path,
+                    properties: feat.properties,
+                    geometry: feat.geometry
+                }, { skipSave: opts.skipSave })
+            }
 
-            sub.updateFeature(cot);
+            await sub.updateFeature(exists, {
+                skipNetwork: !opts.authored
+            });
 
             this.atlas.postMessage({
                 type: WorkerMessageType.Mission_Change_Feature,
@@ -582,43 +657,15 @@ export default class AtlasDatabase {
                 }
             });
 
-            return cot;
+            return exists;
         } else {
-            let is_mission_cot: COT | undefined;
-            for (const value of this.subscriptions.values()) {
-                const mission_cot = value.cots.get(feat.id);
-                if (mission_cot) {
-                    await mission_cot.update(feat);
-                    is_mission_cot = mission_cot;
-                }
-            }
-
-            if (is_mission_cot) return is_mission_cot;
-
-            let exists = this.cots.get(feat.id);
-
-            if (this.mission && !exists && opts.authored) {
-                const sub = this.subscriptions.get(this.mission.meta.guid);
-
-                if (!sub) {
-                    throw new Error(`Cannot add ${feat.id} to mission ${mission_guid} as it is not loaded`)
-                }
-
-                exists = new COT(this.atlas, feat, {
-                    mode: OriginMode.MISSION,
-                    mode_id: this.mission.meta.guid
-                }, opts);
-
-                sub.updateFeature(exists);
-            } else if (exists) {
+            if (exists) {
                 exists.update({
                     path: feat.path,
                     properties: feat.properties,
                     geometry: feat.geometry
                 }, { skipSave: opts.skipSave })
             } else {
-                const wasNewCoT = !this.cots.has(feat.id);
-                
                 exists = new COT(this.atlas, feat, {
                     mode: OriginMode.CONNECTION
                 }, opts);
@@ -628,24 +675,10 @@ export default class AtlasDatabase {
                         type: WorkerMessageType.Feature_Archived_Added,
                     });
                 }
-                
-                if (exists.is_skittle) {
-                    const isNewContact = !this.atlas.team.contacts.has(exists.id);
-                    await this.atlas.team.set(exists);
-                    
-                    // Only notify for truly new contacts coming online via WebSocket (new CoT + new contact)
-                    if (isNewContact && wasNewCoT && this.atlas.profile.uid() !== exists.id && !opts.skipBroadcast) {
-                        this.atlas.postMessage({
-                            type: WorkerMessageType.Notification,
-                            body: {
-                                type: 'Contact',
-                                name: `${exists.properties.callsign} Online`,
-                                body: '',
-                                url: `/cot/${exists.id}`
-                            }
-                        });
-                    }
-                }
+            }
+
+            if (exists.is_skittle) {
+                await this.atlas.team.set(exists);
             }
 
             return exists;
@@ -654,6 +687,10 @@ export default class AtlasDatabase {
 
     /**
      * Return a CoT by ID if it exists
+     *
+     * @param id - ID of the CoT to return
+     * @param opts - Options
+     * @param opts.mission - If true, search Mission Stores for the CoT
      */
     get(
         id: string,
@@ -689,28 +726,6 @@ export default class AtlasDatabase {
      */
     has(id: string): boolean {
         return this.cots.has(id);
-    }
-
-    /**
-     * Return all CoTs as an array (serializable across worker boundary)
-     */
-    async list(): Promise<Array<{ id: string, properties: Feature['properties'], geometry: Feature['geometry'], is_skittle: boolean }>> {
-        return Array.from(this.cots.values()).map(cot => ({
-            id: cot.id,
-            properties: cot.properties,
-            geometry: cot.geometry,
-            is_skittle: cot.is_skittle
-        }));
-    }
-
-    /**
-     * Fly to a CoT by ID
-     */
-    async flyTo(id: string): Promise<void> {
-        const cot = this.get(id);
-        if (cot) {
-            await cot.flyTo();
-        }
     }
 
     groups(store?: Map<string, COT>): Array<string> {
@@ -788,5 +803,17 @@ export default class AtlasDatabase {
         }
 
         return new Set(list);
+    }
+
+    /**
+     * Return a list of all CoTs in the store
+     */
+    async list(): Promise<Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }>> {
+        return Array.from(this.cots.values()).map(cot => ({
+            id: cot.id,
+            properties: { callsign: cot.properties.callsign },
+            geometry: cot.geometry,
+            is_skittle: cot.is_skittle
+        }));
     }
 }

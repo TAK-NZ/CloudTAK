@@ -74,6 +74,12 @@ export default function styles(id: string, opts: {
         },
         'paint': {
             'line-color': ["string", ["get", "stroke"], "#00FF00"],
+            'line-dasharray': [
+                "case",
+                    ['==', ['get', "stroke-style"], 'dashed'], ['literal', [2,3]],
+                    ['==', ['get', "stroke-style"], 'dotted'], ['literal', [0.1, 3]],
+                    ['literal', [1,0]]
+            ],
             'line-width': ["number", ["get", "stroke-width"], 3],
             'line-opacity': ["number", ["get", "stroke-opacity"], 1],
         }
@@ -184,21 +190,21 @@ export default function styles(id: string, opts: {
                     ['zoom'],
                     8, [
                         'case',
-                        ['has', 'group'],
-                        ['literal', [0, -18]],
-                        ['literal', [0, -28]]
+                        ['has', 'icon'],
+                        ['literal', [0, -28]],
+                        ['literal', [0, -18]]
                     ],
                     12, [
                         'case',
-                        ['has', 'group'],
-                        ['literal', [0, -26]],
-                        ['literal', [0, -42]]
+                        ['has', 'icon'],
+                        ['literal', [0, -42]],
+                        ['literal', [0, -32]]
                     ],
                     16, [
                         'case',
-                        ['has', 'group'],
-                        ['literal', [0, -34]],
-                        ['literal', [0, -58]]
+                        ['has', 'icon'],
+                        ['literal', [0, -58]],
+                        ['literal', [0, -42]]
                     ]
                 ],
                 'icon-rotate': ['get', 'course'],

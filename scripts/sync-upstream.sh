@@ -6,7 +6,7 @@ echo "🔄 Syncing CloudTAK api/tasks from upstream..."
 
 # Parse command line arguments
 USE_CURRENT_BRANCH=false
-TARGET_REF="main"
+TARGET_REF="upstream/main"
 
 while [[ $# -gt 0 ]]; do
     case $1 in

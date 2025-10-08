@@ -6,6 +6,7 @@
     />
     <template v-else>
         <div
+            :key='String(route.params.uid)'
             class='col-12 border-light border-bottom d-flex'
             style='border-radius: 0px;'
         >
@@ -34,7 +35,7 @@
                             :edit='is_editable'
                             :minheight='44'
                             :hover='is_editable'
-                            @update:model-value='updateProperty("callsign", $event)'
+                            @submit='updateProperty("callsign", $event)'
                         />
                     </div>
                 </div>
@@ -148,57 +149,59 @@
                             </TablerIconButton>
 
                             <template #dropdown>
-                                <div class='px-1 py-1'>
-                                    <div
-                                        v-if='
-                                            cot.properties.attachments !== undefined
-                                                && cot.properties.video !== undefined
-                                                && cot.properties.sensor !== undefined
-                                        '
-                                    >
-                                        No Properties to add
+                                <div class='card'>
+                                    <div class='card-body'>
+                                        <div
+                                            v-if='
+                                                cot.properties.attachments !== undefined
+                                                    && cot.properties.video !== undefined
+                                                    && cot.properties.sensor !== undefined
+                                            '
+                                        >
+                                            No Properties to add
+                                        </div>
+                                        <template v-else>
+                                            <div
+                                                v-if='cot.properties.attachments === undefined'
+                                                role='button'
+                                                class='hover px-2 py-2 d-flex align-items-center rounded'
+                                                @click='updatePropertyAttachment([])'
+                                            >
+                                                <IconPaperclip
+                                                    stroke='1'
+                                                    :size='32'
+                                                /><div class='mx-2'>
+                                                    Add Attachment
+                                                </div>
+                                            </div>
+                                            <div
+                                                v-if='cot.properties.video === undefined'
+                                                role='button'
+                                                class='hover px-2 py-2 d-flex align-items-center rounded'
+                                                @click='updateProperty("video", { url: "" })'
+                                            >
+                                                <IconMovie
+                                                    stroke='1'
+                                                    :size='32'
+                                                /><div class='mx-2'>
+                                                    Add Video
+                                                </div>
+                                            </div>
+                                            <div
+                                                v-if='cot.properties.sensor === undefined'
+                                                role='button'
+                                                class='hover px-2 py-2 d-flex align-items-center rounded'
+                                                @click='updateProperty("sensor", {})'
+                                            >
+                                                <IconCone
+                                                    stroke='1'
+                                                    :size='32'
+                                                /><div class='mx-2'>
+                                                    Add Sensor
+                                                </div>
+                                            </div>
+                                        </template>
                                     </div>
-                                    <template v-else>
-                                        <div
-                                            v-if='cot.properties.attachments === undefined'
-                                            role='button'
-                                            class='hover px-2 py-2 d-flex align-items-center'
-                                            @click='updatePropertyAttachment([])'
-                                        >
-                                            <IconPaperclip
-                                                stroke='1'
-                                                :size='32'
-                                            /><div class='mx-2'>
-                                                Add Attachment
-                                            </div>
-                                        </div>
-                                        <div
-                                            v-if='cot.properties.video === undefined'
-                                            role='button'
-                                            class='hover px-2 py-2 d-flex align-items-center'
-                                            @click='updateProperty("video", { url: "" })'
-                                        >
-                                            <IconMovie
-                                                stroke='1'
-                                                :size='32'
-                                            /><div class='mx-2'>
-                                                Add Video
-                                            </div>
-                                        </div>
-                                        <div
-                                            v-if='cot.properties.sensor === undefined'
-                                            role='button'
-                                            class='hover px-2 py-2 d-flex align-items-center'
-                                            @click='updateProperty("sensor", {})'
-                                        >
-                                            <IconCone
-                                                stroke='1'
-                                                :size='32'
-                                            /><div class='mx-2'>
-                                                Add Sensor
-                                            </div>
-                                        </div>
-                                    </template>
                                 </div>
                             </template>
                         </TablerDropdown>
@@ -291,7 +294,7 @@
                     v-if='subscription'
                     class='col-12'
                 >
-                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-gray-500'>
+                    <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-accent'>
                         <IconAmbulance
                             :size='32'
                             stroke='1'
@@ -309,14 +312,13 @@
                     class='pt-2'
                     :class='{
                         "col-md-8": center.length > 2,
-                        "col-12": center.length <= 2,
+                        "col-12 px-2": center.length <= 2,
                     }'
                 >
                     <PropertyType
-                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type === "u-d-p"'
+                        v-if='cot.properties.type.startsWith("a-") || cot.properties.type.startsWith("u-")'
                         :key='cot.properties.type'
                         :edit='is_editable'
-                        :hover='is_editable'
                         :model-value='cot.properties.type'
                         @update:model-value='updatePropertyType($event)'
                     />
@@ -330,10 +332,12 @@
                     }'
                 >
                     <Coordinate
+                        :key='String(route.params.uid)'
+                        :label='cot.geometry.type === "Point" ? "Location" : "Center"'
                         :edit='is_editable'
                         :hover='is_editable'
                         :model-value='center'
-                        @update:model-value='updatePropertyCenter($event)'
+                        @update:model-value='updateCoordinates($event)'
                     />
                 </div>
                 <div
@@ -341,6 +345,7 @@
                     class='col-md-4 pt-2'
                 >
                     <PropertyElevation
+                        :key='String(route.params.uid)'
                         :unit='units.display_elevation'
                         :elevation='cot.properties.center[2]'
                     />
@@ -351,6 +356,7 @@
                     class='col-12 pt-2'
                 >
                     <LineLength
+                        :key='String(route.params.uid)'
                         :cot='cot'
                         :unit='units.display_distance'
                     />
@@ -361,8 +367,20 @@
                     class='col-12 pt-2'
                 >
                     <PolygonArea
+                        :key='String(route.params.uid)'
                         :cot='cot'
-                        :unit='units.display_distance === "mile" ? "sqfeet" : "sqmeter"'
+                    />
+                </div>
+
+                <div
+                    v-if='cot && cot.properties.shape && cot.properties.shape.ellipse && cot.properties.shape.ellipse.major === cot.properties.shape.ellipse.minor'
+                    class='col-12 pt-2'
+                >
+                    <PropertyDistance
+                        :key='cot.properties.id'
+                        label='Radius'
+                        :unit='units.display_distance'
+                        :model-value='cot.properties.shape.ellipse.major * 0.001'
                     />
                 </div>
 
@@ -375,6 +393,7 @@
                     }'
                 >
                     <PropertySpeed
+                        :key='cot.properties.id'
                         :unit='units.display_speed'
                         :speed='cot.properties.speed'
                         class='py-2'
@@ -390,6 +409,7 @@
                     }'
                 >
                     <PropertyBearing
+                        :key='cot.properties.id'
                         label='Course'
                         :model-value='cot.properties.course'
                         class='py-2'
@@ -401,6 +421,7 @@
                     class='pt-2'
                 >
                     <PropertyPhone
+                        :key='cot.properties.id'
                         :phone='cot.properties.contact.phone'
                     />
                 </div>
@@ -411,6 +432,7 @@
                 class='col-12 pt-2'
             >
                 <PropertyEmail
+                    :key='cot.properties.id'
                     :email='username'
                 />
             </div>
@@ -420,6 +442,7 @@
                 class='col-12 py-2'
             >
                 <PropertyAttachments
+                    :key='cot.properties.id'
                     :model-value='cot.properties.attachments'
                     @update:model-value='updatePropertyAttachment($event)'
                 />
@@ -444,7 +467,7 @@
                         :rows='10'
                         :edit='is_editable'
                         :hover='is_editable'
-                        @update:model-value='updateProperty("remarks", $event)'
+                        @submit='updateProperty("remarks", $event)'
                     />
                 </div>
             </div>
@@ -463,7 +486,7 @@
                     <label class='subheader user-select-none'>Geofence</label>
                 </div>
 
-                <div class='mx-2 bg-gray-500 row user-select-none'>
+                <div class='mx-2 bg-accent row user-select-none'>
                     <TablerToggle
                         label='Elevation Monitored'
                         :model-value='cot.properties.geofence.elevationMonitored'
@@ -508,7 +531,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='(link, link_it) of cot.properties.links'
                                 :key='link_it'
@@ -553,7 +576,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr>
                                 <td>Time</td><td v-text='timeProp' />
                             </tr>
@@ -570,6 +593,7 @@
 
             <PropertySensor
                 v-if='cot.properties.sensor !== undefined'
+                :key='cot.properties.id'
                 :model-value='cot.properties.sensor'
                 class='my-2 mx-2'
                 @update:model-value='updateProperty("sensor", $event)'
@@ -577,6 +601,7 @@
 
             <PropertyMilSym
                 v-if='cot.properties.milsym'
+                :key='cot.properties.id'
                 label='Unit Information'
                 :model-value='cot.properties.milsym.id'
             />
@@ -595,7 +620,7 @@
                     <label class='subheader user-select-none'>Style</label>
                 </div>
                 <div class='px-2 py-3'>
-                    <div class='row g-2 rounded px-2 bg-gray-500 pb-2'>
+                    <div class='row g-2 rounded px-2 bg-accent pb-2'>
                         <template v-if='cot.geometry.type === "Point"'>
                             <div class='col-12'>
                                 <IconSelect
@@ -708,6 +733,7 @@
                 class='pt-2'
             >
                 <PropertyCreator
+                    :key='cot.properties.id'
                     :creator='cot.properties.creator'
                 />
             </div>
@@ -756,7 +782,7 @@
                                 <th>Value</th>
                             </tr>
                         </thead>
-                        <tbody class='bg-gray-500'>
+                        <tbody class='bg-accent'>
                             <tr
                                 v-for='prop of Object.keys(cot.properties.takv)'
                                 :key='prop'
@@ -781,13 +807,13 @@
         <template v-else-if='mode === "raw"'>
             <div
                 style='height: calc(100vh - 225px)'
-                class='overflow-auto'
+                class='overflow-auto col-12'
             >
                 <CopyField
                     mode='pre'
                     style='
+                        width: calc(100% - 100px);
                         height: calc(100vh - 225px);
-                        width: 100%;
                     '
                     :model-value='JSON.stringify(cot.as_feature(), null, 4)'
                 />
@@ -799,7 +825,7 @@
         v-if='share && cot'
         :feats='[cot.as_feature()]'
         @done='share = false'
-        @cancel='share = false'
+        @close='share = false'
     />
 </template>
 
@@ -830,6 +856,7 @@ import PolygonArea from './util/PolygonArea.vue';
 import Coordinate from './util/Coordinate.vue';
 import PropertyType from './util/PropertyType.vue';
 import PropertyBattery from './util/PropertyBattery.vue';
+import PropertyDistance from './util/PropertyDistance.vue';
 import PropertyBearing from './util/PropertyBearing.vue';
 import PropertyMilSym from './util/PropertyMilSym.vue';
 import PropertySensor from './util/PropertySensor.vue';
@@ -1009,8 +1036,22 @@ function updateProperty(key: string, event: any) {
 function updatePropertyIcon(event: string | null) {
     if (!cot.value) return;
 
-    if (!cot.value.properties.icon && event) {
+    if (event) {
+        event = event.replace(/\.png$/g, '').replace(':', '/');
+    }
+
+    if (
+        event
+        && (
+            !cot.value.properties.icon
+            || (
+                cot.value.properties.icon
+                && event !== cot.value.properties.icon
+            )
+        )
+    ) {
         cot.value.properties.icon = event;
+        cot.value.properties["marker-color"] = '#FFFFFF';
         cot.value.update({});
     } else if (cot.value.properties.icon && !event) {
         if (cot.value.properties.type !== 'u-d-p') {
@@ -1021,14 +1062,14 @@ function updatePropertyIcon(event: string | null) {
 
         cot.value.update({});
     }
-    if (event && cot.value.properties.icon && event.replace(/\.png$/g, '').replace(':', '/') !== cot.value.properties.icon.replace(/\.png$/, '').replace(':', '/')) {
-        cot.value.properties.icon = event;
-        cot.value.update({});
-    }
 }
 
 function updatePropertyType(type: string): void {
     if (!cot.value) return;
+
+    if (type.startsWith('a-') && cot.value.properties.type.startsWith('u-')) {
+        cot.value.properties["marker-color"] = '#FFFFFF';
+    }
 
     cot.value.properties.type = type;
 
@@ -1039,7 +1080,7 @@ function updatePropertyType(type: string): void {
     cot.value.update({});
 }
 
-function updatePropertyCenter(center: number[]): void {
+function updateCoordinates(center: number[]): void {
     if (!cot.value) return;
 
     cot.value.properties.center = center;

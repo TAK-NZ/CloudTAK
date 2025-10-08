@@ -72,7 +72,7 @@
                             </div>
                             <ContactPuck
                                 class='mx-2'
-                                :compact='true'
+                                :size='20'
                                 :team='team'
                             /> <span v-text='config.groups[team] ? config.groups[team] : team' />
                         </div>
@@ -148,7 +148,7 @@ import { ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import type { Ref } from 'vue';
 import { std } from '../../../std.ts';
-import type { ContactList, ConfigGroups, Feature } from '../../../types.ts';
+import type { ContactList, ConfigGroups } from '../../../types.ts';
 import { useMapStore } from '../../../stores/map.ts';
 const mapStore = useMapStore();
 import MenuTemplate from '../util/MenuTemplate.vue';
@@ -187,42 +187,37 @@ const config = ref<ConfigGroups>({
 
 const opened = ref<Set<string>>(new Set());
 const teams = ref<Set<string>>(new Set());
+
+const self = ref<string>('');
 const visibleActiveContacts = ref<ContactList>([]);
 const visibleOfflineContacts = ref<ContactList>([]);
 
 const channel = new BroadcastChannel("cloudtak");
-let refreshInterval: ReturnType<typeof setInterval> | undefined;
 
 channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
     if (!msg || !msg.type) return;
 
     if (msg.type === WorkerMessageType.Contact_Change) {
-        // Only update the contact status, don't reload from server
+        await fetchList(refresh);
         await updateContacts();
     }
 }
 
 onMounted(async () => {
+    self.value = await mapStore.worker.profile.uid();
+
     await Promise.all([
         fetchList(loading),
         fetchConfig()
     ]);
 
     await updateContacts();
-    
-    // Refresh contacts every 5 seconds (silent refresh)
-    refreshInterval = setInterval(() => {
-        silentUpdateContacts();
-    }, 5000);
 });
 
 onBeforeUnmount(() => {
     if (channel) {
         channel.close();
-    }
-    if (refreshInterval) {
-        clearInterval(refreshInterval);
     }
 })
 
@@ -240,49 +235,11 @@ async function updateContacts() {
     visibleActiveContacts.value = [];
     visibleOfflineContacts.value = [];
 
-    // Deduplicate contacts by callsign + notes (username) combination
-    const uniqueContacts = new Map<string, typeof contacts.value[0]>();
     for (const contact of contacts.value) {
-        const key = `${contact.callsign}:${contact.notes}`;
-        if (!uniqueContacts.has(key)) {
-            uniqueContacts.set(key, contact);
-        }
-    }
-
-    // Get CoT list once for performance
-    let localCots: Array<{ id: string, properties: Feature['properties'], geometry: Feature['geometry'], is_skittle: boolean }> = [];
-    try {
-        localCots = await mapStore.worker.db.list();
-    } catch (err) {
-        console.warn('Error loading CoT list:', err);
-    }
-
-    // Get current user info to filter out self
-    let currentUserCallsign = '';
-    try {
-        const profile = await mapStore.worker.profile.load();
-        currentUserCallsign = profile.tak_callsign;
-    } catch (err) {
-        console.warn('Error loading profile for self-filtering:', err);
-    }
-
-    for (const contact of uniqueContacts.values()) {
         if (!contact.callsign.toLowerCase().includes(paging.value.filter.toLowerCase())) continue;
-        
-        // Skip current user from contact list
-        if (contact.callsign === currentUserCallsign) continue;
-        
-        // Skip ETL entries that don't have UID, role, or takv (not real users)
-        if (!contact.uid || !contact.role || !contact.takv) continue;
+        if (contact.uid === self.value) continue;
 
-        // Check if contact is online by looking for matching callsign only
-        // This allows cross-platform compatibility between ATAK and CloudTAK
-        const isOnline = localCots.some(cot => 
-            cot.is_skittle && 
-            cot.properties.callsign === contact.callsign
-        );
-
-        if (isOnline) {
+        if (await mapStore.worker.db.has(contact.uid)) {
             if (contact.team) {
                 teams.value.add(contact.team);
                 opened.value.add(contact.team);
@@ -293,8 +250,6 @@ async function updateContacts() {
             visibleOfflineContacts.value.push(contact);
         }
     }
-
-
 }
 
 async function fetchList(loading: Ref<boolean>) {
@@ -308,15 +263,5 @@ async function fetchList(loading: Ref<boolean>) {
     }
 
     loading.value = false;
-}
-
-async function silentUpdateContacts() {
-    try {
-        const team = await mapStore.worker.team.load();
-        contacts.value = Array.from(team.values())
-        await updateContacts();
-    } catch (err) {
-        console.warn('Silent contact update failed:', err);
-    }
 }
 </script>

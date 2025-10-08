@@ -34,6 +34,7 @@ export const RENDERED_PROPERTIES = [
     'course',
     'icon-opacity',
     'stroke-opacity',
+    'stroke-style',
     'stroke-width',
     'marker-color',
     'marker-radius',
@@ -90,6 +91,10 @@ export default class COT {
 
         if (!this._properties.archived) {
             this._properties.archived = false
+        }
+
+        if (!this._properties.id) {
+            this._properties.id = this.id;
         }
 
         if (!this._properties.center || (this._properties.center[0] === 0 && this._properties.center[1] === 0)) {
@@ -180,7 +185,11 @@ export default class COT {
 
             // We do the parse/stringify to ensure that deep Proxies created with Vue3 ref/reactive are removed
             // As they cannot be Cloned accross the ComLink Bridge
-            await atlas.db.add(JSON.parse(JSON.stringify(this.as_feature())));
+            await atlas.db.add(JSON.parse(JSON.stringify(this.as_feature())), {
+                // Changes that are remote (from the frontend are always user-authored),
+                // this is important to trigger submission for Mission Syncs
+                authored: true
+            });
 
             return false;
         } else {
@@ -383,7 +392,7 @@ export default class COT {
      */
     as_rendered(): GeoJSONFeature<GeoJSONGeometry, Record<string, unknown>> {
         const feat: GeoJSONFeature<GeoJSONGeometry, Record<string, unknown>> = {
-            id: this.id,
+            id: this.vectorId(),
             type: 'Feature',
             properties: {
                 id: this.id,        //Vector Tiles only support integer IDs so store in props
@@ -401,6 +410,20 @@ export default class COT {
         }
 
         return feat;
+    }
+
+    /**
+     * string hash function to convert the COT ID into a number for use as a vector tile feature ID
+     */
+    vectorId(): number {
+        let h = 0;
+        if (this.id.length === 0) return h;
+        for (let i = 0; i < this.id.length; i++) {
+            h = (h << 5) - h + this.id.charCodeAt(i);
+            h |= 0; // Ensure 32-bit integer
+        }
+
+        return h >>> 0; // Convert to unsigned
     }
 
     length(): number {
@@ -425,7 +448,7 @@ export default class COT {
             body: {
                 bounds: this.bounds(),
                 options: {
-                    maxZoom: 14,
+                    maxZoom: 18,
                     padding: {
                         top: 20,
                         bottom: 20,

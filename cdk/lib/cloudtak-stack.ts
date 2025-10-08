@@ -30,6 +30,7 @@ import { S3Resources } from './constructs/s3-resources';
 import { Batch } from './constructs/batch';
 import { Secrets } from './constructs/secrets';
 import { LambdaFunctions } from './constructs/lambda-functions';
+import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 
@@ -270,11 +271,24 @@ export class CloudTakStack extends cdk.Stack {
       loadBalancer: loadBalancer.alb
     });
 
-    // Create Lambda functions for event processing
+    // Create Events ECS service for event processing
+    const eventsService = new EventsService(this, 'EventsService', {
+      environment,
+      envConfig,
+      vpc,
+      ecsCluster,
+      ecrRepository,
+      eventsImageAsset,
+      assetBucketName: s3Resources.assetBucket.bucketName,
+      serviceUrl: route53Records.serviceUrl,
+      signingSecret: secrets.signingSecret,
+      kmsKey
+    });
+
+    // Create Lambda functions for PMTiles processing only
     const lambdaFunctions = new LambdaFunctions(this, 'LambdaFunctions', {
       envConfig,
       ecrRepository,
-      eventsImageAsset,
       tilesImageAsset,
       assetBucketName: s3Resources.assetBucket.bucketName,
       serviceUrl: route53Records.serviceUrl,
@@ -283,12 +297,6 @@ export class CloudTakStack extends cdk.Stack {
       hostedZone,
       certificate
     });
-
-    // Add S3 notification after Lambda is created
-    s3Resources.assetBucket.addEventNotification(
-      cdk.aws_s3.EventType.OBJECT_CREATED,
-      new cdk.aws_s3_notifications.LambdaDestination(lambdaFunctions.eventLambda)
-    );
 
     // Create ECS Fargate service for the CloudTAK API
     const cloudtakApi = new CloudTakApi(this, 'CloudTakApi', {
@@ -323,7 +331,7 @@ export class CloudTakStack extends cdk.Stack {
     // Create monitoring and alarms
     const alarms = new Alarms(this, 'Alarms', {
       envConfig,
-      eventLambda: lambdaFunctions.eventLambda
+      eventsService: eventsService.service
     });
 
     // Create Authentik user for CloudTAK admin
@@ -336,11 +344,14 @@ export class CloudTakStack extends cdk.Stack {
       takAdminEmail: envConfig.cloudtak.takAdminEmail
     });
 
-    // Ensure ECS service waits for database and Route53 records
+    // Ensure ECS services wait for database and Route53 records
     cloudtakApi.service.node.addDependency(database.cluster);
     cloudtakApi.service.node.addDependency(database.connectionStringSecret);
     cloudtakApi.service.node.addDependency(route53Records.aRecord);
     cloudtakApi.service.node.addDependency(route53Records.aaaaRecord);
+    
+    eventsService.service.node.addDependency(database.cluster);
+    eventsService.service.node.addDependency(database.connectionStringSecret);
 
     // Register CloudFormation outputs
     registerOutputs({

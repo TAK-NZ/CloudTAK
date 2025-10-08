@@ -4,36 +4,53 @@
         :loading='loading'
     >
         <template #buttons>
+            <TablerIconButton
+                title='Select Chats'
+                @click='multiselect = !multiselect'
+            >
+                <IconListCheck
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
             <TablerRefreshButton
                 :loading='loading'
                 @click='fetchChats'
             />
         </template>
         <template #default>
-            <!-- Messages Section -->
-            <div class='messages-container' style='padding-bottom: 120px;'>
-                <div
-                    v-for='chat in chats.items'
-                    :key='chat.message_id || chat.message'
-                    class='col-12 d-flex my-2 px-2'
-                >
-                    <div
-                        v-if='chat.sender_uid !== id'
-                        class='bg-blue px-2 py-2 rounded'
-                    >
-                        <span v-text='chat.message' />
+            <GenericSelect
+                ref='select'
+                role='menu'
+                :disabled='!multiselect'
+                :items='chats.items'
+            >
+                <template #buttons='{disabled}'>
+                    <TablerDelete
+                        :disabled='disabled'
+                        displaytype='icon'
+                        @delete='deleteChats'
+                    />
+                </template>
+                <template #item='{item}'>
+                    <div class='w-100 d-flex my-2 px-2'>
+                        <div
+                            v-if='item.sender_uid !== id'
+                            class='bg-blue px-2 py-2 rounded'
+                        >
+                            <span v-text='item.message' />
+                        </div>
+                        <div
+                            v-else
+                            class='ms-auto bg-accent px-2 py-2 rounded'
+                        >
+                            <span v-text='item.message' />
+                        </div>
                     </div>
-                    <div
-                        v-else
-                        class='ms-auto bg-gray-400 px-2 py-2 rounded'
-                    >
-                        <span v-text='chat.message' />
-                    </div>
-                </div>
-            </div>
+                </template>
+            </GenericSelect>
 
-            <!-- Compose Section -->
-            <div class='compose-container border-top border-blue position-absolute start-0 bottom-0 end-0'>
+            <div class='border-top border-blue position-absolute start-0 bottom-0 end-0'>
                 <div class='row mx-2 mt-2'>
                     <div class='col-12'>
                         <TablerInput
@@ -56,11 +73,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { std } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import GenericSelect from '../util/GenericSelect.vue';
+import {
+    IconListCheck,
+} from '@tabler/icons-vue';
 import {
     TablerRefreshButton,
+    TablerDelete,
+    TablerIconButton,
     TablerInput,
 } from '@tak-ps/vue-tabler';
 import MenuTemplate from '../util/MenuTemplate.vue';
@@ -72,6 +95,8 @@ const route = useRoute();
 const id = ref('')
 const callsign = ref('');
 const loading = ref(true);
+const select = ref(null);
+const multiselect = ref(false);
 const name = ref(route.params.chatroom === 'new' ? route.query.callsign : route.params.chatroom);
 const chats = ref({
     total: 0,
@@ -79,23 +104,13 @@ const chats = ref({
 });
 
 const message = ref('');
-let refreshInterval;
 
 onMounted(async () => {
     const profile = await mapStore.worker.profile.load();
-    id.value = await mapStore.worker.profile.uid()
+    id.value = `ANDROID-CloudTAK-${profile.username}`
     callsign.value = profile.tak_callsign;
 
     await fetchChats();
-    
-    // Start automatic refresh every 3 seconds
-    refreshInterval = setInterval(silentRefresh, 3000);
-});
-
-onBeforeUnmount(() => {
-    if (refreshInterval) {
-        clearInterval(refreshInterval);
-    }
 });
 
 async function sendMessage() {
@@ -122,7 +137,7 @@ async function sendMessage() {
     if (!single) throw new Error('Error sending Chat - Contact is not defined');
 
     await mapStore.worker.conn.sendCOT({
-        chatroom: callsign.value,
+        chatroom: single.sender_callsign,
         to: {
             uid: single.sender_uid,
             callsign: single.sender_callsign
@@ -135,21 +150,43 @@ async function sendMessage() {
     }, 'chat');
 }
 
+async function deleteChats() {
+    if (!select.value) return;
+    const selected = select.value.selected;
+
+    loading.value = true;
+
+    const res = await server.DELETE('/api/profile/chatroom/{:chatroom}/chat', {
+        params: {
+            query: {
+                chat: Array.from(selected.values())
+            }
+        }
+    });
+
+    if (res.error) {
+        loading.value = false;
+        throw new Error(res.error.message);
+    }
+
+    await fetchChats();
+}
+
 async function fetchChats() {
     loading.value = true;
-    await loadChatData();
-    loading.value = false;
-}
 
-async function silentRefresh() {
-    await loadChatData();
-}
+    if (route.params.chatroom !== 'new') {
+        const res = await server.GET(`/api/profile/chatroom/{:chatroom}/chat`, {
+            params: {
+                path: {
+                    ':chatroom': route.params.chatroom
+                }
+            }
+        });
 
-async function loadChatData() {
-    if (route.params.chatroom === 'new') {
-        chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.query.callsign)}`);
-    } else {
-        chats.value = await std(`/api/profile/chat/${encodeURIComponent(route.params.chatroom)}`);
+        chats.value = res.data;
     }
+
+    loading.value = false;
 }
 </script>

@@ -3,6 +3,7 @@ import sleep from '../lib/sleep.js';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Cacher from '../lib/cacher.js';
+import { TAKAPI, APIAuthCertificate, } from '@tak-ps/node-tak';
 import Auth, { AuthResourceAccess, AuthUser } from '../lib/auth.js';
 import Lambda from '../lib/aws/lambda.js';
 import CloudFormation from '../lib/aws/cloudformation.js';
@@ -84,7 +85,10 @@ export default async function router(schema: Schema, config: Config) {
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({default: 'created', enum: Object.keys(Layer)})),
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Layer)
+            }),
             filter: Default.Filter,
             data: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
@@ -173,7 +177,7 @@ export default async function router(schema: Schema, config: Config) {
                 description: 'Enable Logging for this Layer'
             }),
             memory: Type.Integer({
-                default: 128,
+                default: 256,
                 description: 'Memory in MB for this Layer',
                 minimum: 128,
                 maximum: 10240
@@ -184,6 +188,10 @@ export default async function router(schema: Schema, config: Config) {
                 minimum: 1,
                 maximum: 900
             }),
+
+            alarm_period: Type.Optional(Type.Integer()),
+            alarm_evals: Type.Optional(Type.Integer()),
+            alarm_points: Type.Optional(Type.Integer()),
         }),
         res: LayerResponse
     }, async (req, res) => {
@@ -221,13 +229,10 @@ export default async function router(schema: Schema, config: Config) {
             cron: Type.Optional(Type.String()),
             stale: Type.Optional(Type.Integer()),
             data: Type.Optional(Type.Integer()),
+            groups: Type.Optional(Type.Array(Type.String())),
             enabled_styles: Type.Optional(Type.Boolean()),
             styles: Type.Optional(StyleContainer),
             config: Type.Optional(Layer_Config),
-            alarm_period: Type.Optional(Type.Integer()),
-            alarm_evals: Type.Optional(Type.Integer()),
-            alarm_points: Type.Optional(Type.Integer()),
-            alarm_threshold: Type.Optional(Type.Integer()),
         }),
         res: LayerIncomingResponse
     }, async (req, res) => {
@@ -245,6 +250,21 @@ export default async function router(schema: Schema, config: Config) {
 
             if (layer.connection !== connection.id) {
                 throw new Err(400, null, 'Layer does not belong to this connection');
+            }
+
+            if (req.body.data && req.body.groups && req.body.groups.length) {
+                throw new Err(400, null, 'Layer cannot have both Data and Groups set');
+            } else if (req.body.groups) {
+                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+                const list = await api.Group.list({ useCache: true });
+
+                for (const group of req.body.groups) {
+                    if (!list.data.find((g) => {
+                        return g.name === group && g.direction === 'IN';
+                    })) {
+                        throw new Err(400, null, `Group "${group}" does not exist on TAK Server`);
+                    }
+                }
             }
 
             if (req.body.styles) {
@@ -327,12 +347,9 @@ export default async function router(schema: Schema, config: Config) {
             styles: Type.Optional(StyleContainer),
             stale: Type.Optional(Type.Integer()),
             data: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
+            groups: Type.Optional(Type.Array(Type.String())),
             environment: Type.Optional(Type.Any()),
             config: Type.Optional(Layer_Config),
-            alarm_period: Type.Optional(Type.Integer()),
-            alarm_evals: Type.Optional(Type.Integer()),
-            alarm_points: Type.Optional(Type.Integer()),
-            alarm_threshold: Type.Optional(Type.Integer()),
         }),
         res: LayerIncomingResponse
     }, async (req, res) => {
@@ -352,6 +369,21 @@ export default async function router(schema: Schema, config: Config) {
                 throw new Err(400, null, 'Layer does not belong to this connection');
             } else if (!layer.incoming) {
                 throw new Err(400, null, 'Layer does not have incoming config');
+            }
+
+            if (req.body.data && req.body.groups && req.body.groups.length) {
+                throw new Err(400, null, 'Layer cannot have both Data and Groups set');
+            } else if (req.body.groups) {
+                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+                const list = await api.Group.list({ useCache: true });
+
+                for (const group of req.body.groups) {
+                    if (!list.data.find((g) => {
+                        return g.name === group && g.direction === 'IN';
+                    })) {
+                        throw new Err(400, null, `Group "${group}" does not exist on TAK Server`);
+                    }
+                }
             }
 
             if (req.body.data) {
@@ -388,7 +420,7 @@ export default async function router(schema: Schema, config: Config) {
 
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of [ 'cron', 'webhooks', 'alarm_period', 'alarm_evals', 'alarm_points', 'alarm_threshold' ]) {
+            for (const prop of [ 'cron', 'webhooks' ]) {
                 // @ts-expect-error Doesn't like indexed values
                 if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
             }
@@ -719,6 +751,10 @@ export default async function router(schema: Schema, config: Config) {
             enabled: Type.Optional(Type.Boolean()),
             task: Type.Optional(Type.String()),
             logging: Type.Optional(Type.Boolean()),
+
+            alarm_period: Type.Optional(Type.Integer()),
+            alarm_evals: Type.Optional(Type.Integer()),
+            alarm_points: Type.Optional(Type.Integer()),
         }),
         res: LayerResponse
     }, async (req, res) => {
@@ -740,7 +776,7 @@ export default async function router(schema: Schema, config: Config) {
 
             let changed = false;
             // Avoid Updating CF unless necessary as it blocks further updates until deployed
-            for (const prop of [ 'task', 'memory', 'timeout', 'enabled', 'priority' ]) {
+            for (const prop of [ 'task', 'memory', 'timeout', 'enabled', 'priority', 'alarm_period', 'alarm_evals', 'alarm_points']) {
                 // @ts-expect-error Doesn't like indexed values
                 if (req.body[prop] !== undefined && req.body[prop] !== layer[prop]) changed = true;
             }

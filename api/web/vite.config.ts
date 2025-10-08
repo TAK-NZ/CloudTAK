@@ -20,7 +20,9 @@ export default defineConfig(({ mode }) => {
                     short_name: 'CloudTAK',
                     description: 'Cloud powered in-browser TAK Client',
                     theme_color: '#000000',
-                    icons
+                    icons,
+                    orientation: 'landscape',
+                    categories: ['utilities', 'productivity', 'navigation', 'government']
                 },
                 devOptions: {
                     enabled: true
@@ -40,6 +42,7 @@ export default defineConfig(({ mode }) => {
                 input: {
                     main: path.resolve(__dirname, 'index.html'),
                     docs: path.resolve(__dirname, 'docs.html'),
+                    video: path.resolve(__dirname, 'video.html'),
                 },
                 output: {
                     entryFileNames: `assets/[name].js`,

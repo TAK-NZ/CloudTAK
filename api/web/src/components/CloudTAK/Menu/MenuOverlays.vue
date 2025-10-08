@@ -76,24 +76,26 @@
                                     />
                                 </template>
                                 <template v-else-if='overlay.id !== 0 && overlay.mode !== "basemap"'>
-                                    <IconChevronRight
+                                    <TablerIconButton
                                         v-if='!isDraggable && !opened.has(overlay.id)'
-                                        :size='20'
-                                        stroke='1'
-                                        role='button'
-                                        tabindex='0'
-                                        class='cursor-pointer'
+                                        title='Expand Options'
                                         @click='opened.add(overlay.id)'
-                                    />
-                                    <IconChevronDown
+                                    >
+                                        <IconChevronRight
+                                            :size='20'
+                                            stroke='1'
+                                        />
+                                    </TablerIconButton>
+                                    <TablerIconButton
                                         v-else-if='!isDraggable'
-                                        :size='20'
-                                        stroke='1'
-                                        role='button'
-                                        tabindex='0'
-                                        class='cursor-pointer'
+                                        title='Collapse Options'
                                         @click='opened.delete(overlay.id)'
-                                    />
+                                    >
+                                        <IconChevronDown
+                                            :size='20'
+                                            stroke='1'
+                                        />
+                                    </TablerIconButton>
                                 </template>
                                 <template v-else-if='overlay.mode === "basemap" && !isDraggable'>
                                     <div style='width: 20px;'></div>
@@ -254,9 +256,9 @@ import {
     IconChevronRight,
     IconChevronDown,
     IconReplace,
+    IconStack,
     IconMaximize,
     IconVector,
-    IconStack,
     IconEyeOff,
     IconPencil,
     IconPencilCheck,
@@ -280,8 +282,6 @@ const opened = ref<Set<number>>(new Set());
 const isLoaded = mapStore.isLoaded;
 const overlays = mapStore.overlays;
 
-const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
-
 // Sort overlays with CoT Icons always at top, then reverse order (highest pos first)
 const sortedOverlays = computed(() => {
     const sorted = [...overlays].sort((a, b) => {
@@ -295,6 +295,8 @@ const sortedOverlays = computed(() => {
     
     return sorted;
 });
+
+const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
 
 watch(isDraggable, () => {
     if (isDraggable.value && sortableRef.value) {

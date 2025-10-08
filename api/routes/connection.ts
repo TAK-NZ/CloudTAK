@@ -7,10 +7,10 @@ import { X509Certificate } from 'crypto';
 import { Type } from '@sinclair/typebox'
 import { StandardResponse, ConnectionResponse } from '../lib/types.js';
 import { Connection } from '../lib/schema.js';
-import { MachineConnConfig } from '../lib/connection-config.js';
+import { MachineConnConfig, ConnectionAuth } from '../lib/connection-config.js';
 import Schema from '@openaddresses/batch-schema';
 import * as Default from '../lib/limits.js';
-import { generateP12 } from '../lib/certificate.js';
+import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/connection', {
@@ -21,7 +21,10 @@ export default async function router(schema: Schema, config: Config) {
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({ default: 'created', enum: Object.keys(Connection) })),
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Connection)
+            }),
             filter: Default.Filter
         }),
         res: Type.Object({
@@ -93,10 +96,7 @@ export default async function router(schema: Schema, config: Config) {
             enabled: Type.Boolean({ default: true }),
             agency: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 1 })])),
             integrationId: Type.Optional(Type.Integer()),
-            auth: Type.Object({
-                key: Type.String({ minLength: 1, maxLength: 4096 }),
-                cert: Type.String({ minLength: 1, maxLength: 4096 })
-            })
+            auth: ConnectionAuth,
         }),
         res: ConnectionResponse
     }, async (req, res) => {
@@ -160,10 +160,7 @@ export default async function router(schema: Schema, config: Config) {
             description: Type.Optional(Default.DescriptionField),
             enabled: Type.Optional(Type.Boolean()),
             agency: Type.Union([Type.Null(), Type.Optional(Type.Integer({ minimum: 1 }))]),
-            auth: Type.Optional(Type.Object({
-                key: Type.String({ minLength: 1, maxLength: 4096 }),
-                cert: Type.String({ minLength: 1, maxLength: 4096 })
-            }))
+            auth: Type.Optional(ConnectionAuth)
         }),
         res: ConnectionResponse
     }, async (req, res) => {
@@ -242,9 +239,17 @@ export default async function router(schema: Schema, config: Config) {
         }),
         query: Type.Object({
             token: Type.Optional(Type.String()),
+            password: Type.String({
+                description: 'Password to encrypt the P12 file',
+            }),
             download: Type.Boolean({
                 default: false,
                 description: 'Download auth as P12 file'
+            }),
+            type: Type.String({
+                default: 'client',
+                description: 'Client or Truststore Data',
+                enum: ['client', 'truststore']
             })
         }),
     }, async (req, res) => {
@@ -258,18 +263,37 @@ export default async function router(schema: Schema, config: Config) {
                 throw new Err(400, null, 'Connection is not ReadOnly and cannot return auth');
             }
 
-            const buff = await generateP12(
-                connection.auth.key,
-                connection.auth.cert
-            );
+            if (req.query.type === 'client') {
+                const buff = await generateClientP12(
+                    connection.auth,
+                    config.server.name + ' - ' + connection.name,
+                    req.query.password
+                );
 
-            if (req.query.download) {
-                res.setHeader('Content-Disposition', `attachment; filename="connection-auth-${connection.id}.p12"`);
+                if (req.query.download) {
+                    res.setHeader('Content-Disposition', `attachment; filename="connection-auth-${connection.id}.p12"`);
+                }
+
+                res.setHeader('Content-Type', 'application/x-pkcs12');
+                res.write(buff);
+                res.end();
+            } else if (req.query.type === 'truststore') {
+                const buff = await generateTrustP12(
+                    connection.auth,
+                    config.server.name + ' Truststore',
+                    req.query.password
+                );
+
+                if (req.query.download) {
+                    res.setHeader('Content-Disposition', `attachment; filename="truststore-${connection.id}.p12"`);
+                }
+
+                res.setHeader('Content-Type', 'application/x-pkcs12');
+                res.write(buff);
+                res.end();
+            } else {
+                throw new Err(400, null, 'Invalid type parameter');
             }
-
-            res.setHeader('Content-Type', 'application/x-pkcs12');
-            res.write(buff);
-            res.end();
         } catch (err) {
             Err.respond(err, res);
         }
@@ -340,6 +364,10 @@ export default async function router(schema: Schema, config: Config) {
                 connection = ${req.params.connectionid}
             `);
 
+            await config.models.ConnectionFeature.delete(sql`
+                connection = ${req.params.connectionid}
+            `);
+
             await config.models.Connection.delete(req.params.connectionid);
 
             config.conns.delete(req.params.connectionid);
@@ -356,7 +384,6 @@ export default async function router(schema: Schema, config: Config) {
                     })
                 }
             }
-
 
             res.json({
                 status: 200,

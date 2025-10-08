@@ -34,7 +34,15 @@
                     >
                 </div>
                 <div class='mb-2'>
-                    <label class='form-label'>Password</label>
+                    <label class='form-label'>
+                        Password
+                        <span class='form-label-description'>
+                            <a
+                                class='cursor-pointer'
+                                @click='external("https://cotak.gov/forgot-password")'
+                            >Forgot Password</a>
+                        </span>
+                    </label>
                     <div class='input-group input-group-flat'>
                         <input
                             v-model='password'
@@ -60,52 +68,43 @@
     </TablerModal>
 </template>
 
-<script>
+<script setup>
+import { ref } from 'vue';
 import { std } from '/src/std.ts';
 import {
     TablerLoading,
     TablerModal
 } from '@tak-ps/vue-tabler'
 
-export default {
-    name: 'LoginModal',
-    components: {
-        TablerLoading,
-        TablerModal
-    },
-    emits: [
-        'login'
-    ],
-    data: function() {
-        return {
-            loading: false,
-            username: '',
-            password: ''
-        }
-    },
-    methods: {
-        external: function(url) {
-            window.location = new URL(url);
-        },
-        createLogin: async function() {
-            this.loading = true;
-            try {
-                const login = await std('/api/login', {
-                    method: 'POST',
-                    body: {
-                        username: this.username,
-                        password: this.password
-                    }
-                });
+const emit = defineEmits([
+    'login'
+]);
 
-                localStorage.token = login.token;
+const loading = ref(false);
+const username = ref('');
+const password = ref('');
 
-                this.$emit('login');
-            } catch (err) {
-                this.loading = false;
-                throw err;
+function external(url) {
+    window.location = new URL(url);
+}
+
+async function createLogin() {
+    loading.value = true;
+    try {
+        const login = await std('/api/login', {
+            method: 'POST',
+            body: {
+                username: username.value,
+                password: password.value
             }
-        }
+        });
+
+        localStorage.token = login.token;
+
+        emit('login');
+    } catch (err) {
+        loading.value = false;
+        throw err;
     }
 }
 </script>

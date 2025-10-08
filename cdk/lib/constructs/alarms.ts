@@ -2,12 +2,12 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
-import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as ecs from 'aws-cdk-lib/aws-ecs';
 import { ContextEnvironmentConfig } from '../stack-config';
 
 export interface AlarmsProps {
   envConfig: ContextEnvironmentConfig;
-  eventLambda: lambda.Function;
+  eventsService: ecs.FargateService;
 }
 
 export class Alarms extends Construct {
@@ -17,7 +17,7 @@ export class Alarms extends Construct {
   constructor(scope: Construct, id: string, props: AlarmsProps) {
     super(scope, id);
 
-    const { envConfig, eventLambda } = props;
+    const { envConfig, eventsService } = props;
 
     this.highUrgencyTopic = new sns.Topic(this, 'HighUrgencyAlarmTopic', {
       displayName: `TAK-${envConfig.stackName}-CloudTAK-high-urgency`,
@@ -29,15 +29,23 @@ export class Alarms extends Construct {
       topicName: `TAK-${envConfig.stackName}-CloudTAK-low-urgency`
     });
 
-    new cloudwatch.Alarm(this, 'EventAlarm', {
-      alarmName: `TAK-${envConfig.stackName}-CloudTAK-EventLambda`,
-      metric: eventLambda.metricErrors({
-        period: cdk.Duration.minutes(1),
-        statistic: 'Maximum'
+    // Create alarm for Events ECS service running count
+    new cloudwatch.Alarm(this, 'EventsServiceAlarm', {
+      alarmName: `TAK-${envConfig.stackName}-CloudTAK-EventsService`,
+      metric: new cloudwatch.Metric({
+        namespace: 'AWS/ECS',
+        metricName: 'RunningTaskCount',
+        dimensionsMap: {
+          ServiceName: eventsService.serviceName,
+          ClusterName: eventsService.cluster.clusterName
+        },
+        period: cdk.Duration.minutes(5),
+        statistic: 'Average'
       }),
-      threshold: 0,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-      evaluationPeriods: 1
+      threshold: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+      evaluationPeriods: 2,
+      treatMissingData: cloudwatch.TreatMissingData.BREACHING
     }).addAlarmAction(new cdk.aws_cloudwatch_actions.SnsAction(this.highUrgencyTopic));
   }
 }

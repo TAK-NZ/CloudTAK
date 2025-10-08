@@ -18,7 +18,7 @@
                     <div class='col-lg-12'>
                         <template v-if='loading'>
                             <TablerLoading
-                                class='text-white' 
+                                class='text-white'
                             />
                         </template>
                         <template v-else>
@@ -58,14 +58,11 @@
                                                 v-model='connection.name'
                                                 label='Name'
                                                 :error='errors.name'
-                                                description='
-                                                    The human readable name of the Connection
-                                                '
+                                                description='The human readable name of the Connection'
                                             />
                                         </div>
 
                                         <div class='col-md-12'>
-                                            '
                                             <div
                                                 class='px-2 py-2 round btn-group w-100'
                                                 role='group'
@@ -122,8 +119,10 @@
                                         </div>
                                         <div class='col-md-12'>
                                             <AgencySelect
+                                                v-if='!agencyDisabled'
                                                 v-model='connection.agency'
                                                 label='Agency Owner'
+                                                @disabled='disableAgency'
                                             />
                                         </div>
                                     </div>
@@ -148,7 +147,7 @@
                                                     <div class='ms-auto'>
                                                         <TablerIconButton
                                                             title='Remove Certificate'
-                                                            @click='marti({ key: "", cert: ""})'
+                                                            @click='certificateAttachment({ ca: [], key: "", cert: ""})'
                                                         >
                                                             <IconTrash
                                                                 :size='32'
@@ -164,20 +163,22 @@
                                                         class='btn-group w-100'
                                                         role='group'
                                                     >
-                                                        <input
-                                                            id='creation'
-                                                            type='radio'
-                                                            class='btn-check'
-                                                            name='cert-type'
-                                                            autocomplete='off'
-                                                            :checked='type === "creation"'
-                                                            @click='type = "creation"'
-                                                        >
-                                                        <label
-                                                            for='creation'
-                                                            type='button'
-                                                            class='btn'
-                                                        >Machine User Creation</label>
+                                                        <template v-if='!agencyDisabled'>
+                                                            <input
+                                                                id='creation'
+                                                                type='radio'
+                                                                class='btn-check'
+                                                                name='cert-type'
+                                                                autocomplete='off'
+                                                                :checked='type === "creation"'
+                                                                @click='type = "creation"'
+                                                            >
+                                                            <label
+                                                                for='creation'
+                                                                type='button'
+                                                                class='btn'
+                                                            >Machine User Creation</label>
+                                                        </template>
 
                                                         <input
                                                             id='login'
@@ -227,28 +228,28 @@
                                                 </div>
                                                 <template v-if='type === "raw"'>
                                                     <CertificateRaw
-                                                        @certs='marti($event)'
+                                                        @certs='certificateAttachment($event)'
                                                         @err='err = $event'
                                                     />
                                                 </template>
                                                 <template v-else-if='type === "p12"'>
                                                     <CertificateP12
                                                         class='mx-2'
-                                                        @certs='p12upload($event)'
+                                                        @certs='certificateAttachment($event)'
                                                         @err='err = $event'
                                                     />
                                                 </template>
                                                 <template v-else-if='type === "login"'>
                                                     <CertificateLogin
-                                                        @certs='marti($event)'
+                                                        @certs='certificateAttachment($event)'
                                                         @err='err = $event'
                                                     />
                                                 </template>
-                                                <template v-else-if='type === "creation"'>
+                                                <template v-else-if='!agencyDisabled && type === "creation"'>
                                                     <CertificateMachineUser
                                                         :connection='connection'
-                                                        @certs='p12upload($event)'
-                                                        @integration='creation($event)'
+                                                        @certs='certificateAttachment($event)'
+                                                        @integration='integrationAttachment($event)'
                                                         @err='err = $event'
                                                     />
                                                 </template>
@@ -348,6 +349,8 @@ const errors = ref({
     description: '',
 });
 
+const agencyDisabled = ref(false);
+
 const connection = ref({
     name: '',
     agency: undefined,
@@ -355,7 +358,11 @@ const connection = ref({
     description: '',
     enabled: true,
     integrationId: undefined,
-    auth: { cert: '', key: '' }
+    auth: {
+        ca: [],
+        cert: '',
+        key: ''
+    }
 });
 
 const isNextReady = computed(() => {
@@ -376,28 +383,30 @@ onMounted(async () => {
     }
 });
 
+function disableAgency() {
+    agencyDisabled.value = true;
+    type.value = 'login'
+    connection.value.agency = null;
+}
+
 async function fetch() {
     loading.value = true;
     connection.value = await std(`/api/connection/${route.params.connectionid}`);
-    connection.value.auth = { cert: '', key: '' }
+    connection.value.auth = {
+        ca: [],
+        cert: '',
+        key: ''
+    }
     loading.value = false;
 }
 
-function creation(integration) {
-    connection.value.integrationId = integration.integrationId;
-    connection.value.auth.cert = integration.certs.cert;
-    connection.value.auth.key = integration.certs.key;
+function integrationAttachment(integration) {
+    connection.value.integrationId = integration;
 }
 
-function marti(certs) {
-    connection.value.integrationId = null;
-    connection.value.auth.cert = certs.cert;
-    connection.value.auth.key = certs.key;
-}
-
-async function p12upload(certs) {
+function certificateAttachment(certs) {
     modal.value.upload = false;
-    connection.value.integrationId = null;
+    connection.value.auth.ca = certs.ca;
     connection.value.auth.cert = certs.cert;
     connection.value.auth.key = certs.key;
 }

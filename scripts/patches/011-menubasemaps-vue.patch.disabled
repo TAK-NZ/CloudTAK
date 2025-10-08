@@ -1,0 +1,52 @@
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuBasemaps.vue b/api/web/src/components/CloudTAK/Menu/MenuBasemaps.vue
+index abc123def..def456abc 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuBasemaps.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuBasemaps.vue
+@@ -58,7 +58,7 @@
+             <template v-else>
+                 <MenuItem
+-                    v-for='collection in list.collections'
++                    v-for='collection in filteredList.collections'
+                     :key='collection.name'
+                     @click='setCollection(collection.name)'
+                     @keyup.enter='setCollection(collection.name)'
+@@ -76,7 +76,7 @@
+                 </MenuItem>
+                 <MenuItem
+-                    v-for='basemap in list.items'
++                    v-for='basemap in filteredList.items'
+                     :key='basemap.id'
+                     :class='{ "bg-blue text-white": isCurrentBasemap(basemap.id) }'
+                     @click='setBasemap(basemap)'
+@@ -179,7 +179,7 @@
+ </template>
+ 
+ <script setup lang='ts'>
+-import { onMounted, ref, watch } from 'vue';
++import { onMounted, ref, watch, computed } from 'vue';
+ import MenuItem from '../util/MenuItem.vue';
+ import type { BasemapList, Basemap } from '../../../types.ts';
+ import { server, stdurl } from '../../../std.ts';
+@@ -230,6 +230,22 @@ const list = ref<BasemapList>({
+     items: []
+ });
+ 
++const filteredList = computed(() => {
++    // Filter out raster-dem basemaps and sort
++    const filteredItems = list.value.items
++        .filter(basemap => basemap.type !== 'raster-dem')
++        .sort((a, b) => a.name.localeCompare(b.name));
++    
++    const sortedCollections = [...list.value.collections]
++        .sort((a, b) => a.name.localeCompare(b.name));
++    
++    return {
++        ...list.value,
++        collections: sortedCollections,
++        items: filteredItems
++    };
++});
++
+ onMounted(async () => {
+     await fetchList();
+     isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();

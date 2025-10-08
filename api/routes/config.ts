@@ -5,7 +5,7 @@ import ProfileControl, { DefaultUnits } from '../lib/control/profile.js';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import {
-    Profile_Stale, Profile_Speed, Profile_Elevation, Profile_Distance, Profile_Text, Profile_Projection, Profile_Zoom,
+    Profile_Stale, Profile_Speed, Profile_Elevation, Profile_Distance, Profile_Text, Profile_Projection, Profile_Zoom
 } from '../lib/enums.js'
 import Config from '../lib/config.js';
 
@@ -22,17 +22,13 @@ export default async function router(schema: Schema, config: Config) {
         res: Type.Record(Type.String(), Type.Any())
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            await Auth.as_user(config, req, { admin: true });
 
             const final: Record<string, string> = {};
-            const sensitiveKeys = ['agol::client_secret', 'agol::token', 'agol::client_id', 'agol::auth_method', 'oidc::secret', 'provider::secret', 'provider::client'];
-
             (await Promise.allSettled((req.query.keys.split(',').map((key) => {
                 return config.models.Setting.from(key);
             })))).forEach((k) => {
                 if (k.status === 'rejected') return;
-                // Don't expose sensitive credentials in public config
-                if (sensitiveKeys.includes(k.value.key)) return;
                 return final[k.value.key] = String(k.value.value);
             });
 
@@ -49,6 +45,23 @@ export default async function router(schema: Schema, config: Config) {
         body: Type.Object({
             'agol::enabled': Type.Optional(Type.Boolean({
                 description: 'Enable ArcGIS Online Integration'
+            })),
+
+            'agol::auth_method': Type.Optional(Type.String({
+                description: 'AGOL Auth Type',
+                enum: ['oauth2', 'legacy']
+            })),
+
+            'agol::token': Type.Optional(Type.String({
+                description: 'AGOL Legacy Token'
+            })),
+
+            'agol::client_id': Type.Optional(Type.String({
+                description: 'AGOL OAuth2 Client ID'
+            })),
+
+            'agol::client_secret': Type.Optional(Type.String({
+                description: 'AGOL OAuth2 Client Secret'
             })),
 
             'media::url': Type.Optional(Type.String({
@@ -106,7 +119,8 @@ export default async function router(schema: Schema, config: Config) {
 
             // COTAK Specific Properties
             'provider::url': Type.Optional(Type.String()),
-
+            'provider::secret': Type.Optional(Type.String()),
+            'provider::client': Type.Optional(Type.String()),
 
             'login::signup': Type.Optional(Type.String({
                 description: 'URL for Signup Page'
@@ -163,6 +177,7 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Config',
         description: 'Return Login Config',
         res: Type.Object({
+            name: Type.Optional(Type.String()),
             logo: Type.Optional(Type.String()),
             signup: Type.Optional(Type.String()),
             forgot: Type.Optional(Type.String()),
@@ -182,6 +197,10 @@ export default async function router(schema: Schema, config: Config) {
                 if (k.status === 'rejected') return;
                 return final[k.value.key.replace('login::', '')] = String(k.value.value);
             });
+
+            if (config.server.name) {
+                final.name = config.server.name;
+            }
 
             for (let login of keys) {
                 login = login.replace('login::', '')

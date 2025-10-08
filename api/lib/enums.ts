@@ -18,6 +18,14 @@ export class toEnum {
     }
 }
 
+export enum Import_Status {
+    EMPTY = 'Empty',
+    PENDING = 'Pending',
+    RUNNING = 'Running',
+    SUCCESS = 'Success',
+    FAIL = 'Fail',
+}
+
 export enum AllBoolean {
     TRUE = 'true',
     FALSE = 'false',
@@ -30,7 +38,7 @@ export function AllBooleanCast(allBoolean: AllBoolean): boolean | null {
         : allBoolean === AllBoolean.FALSE ? false : null;
 }
 
-export enum ProfileFeatureFormat {
+export enum ExportFeatureFormat {
     GEOJSON = 'geojson',
     KML = 'kml'
 }

@@ -19,8 +19,9 @@
                 />
                 <ContactPuck
                     v-else
+                    style='margin-left: 8px;'
                     :team='contact.team'
-                    :compact='compact'
+                    :size='compact ? 20 : 32'
                 />
             </div>
             <div
@@ -96,46 +97,21 @@ const emit = defineEmits([
 ]);
 
 async function isZoomable(contact) {
-    try {
-        const localCots = await mapStore.worker.db.list();
-        for (const cot of localCots) {
-            if (cot.is_skittle && cot.properties.callsign === contact.callsign) {
-                return true;
-            }
-        }
-    } catch (err) {
-        console.warn('Error checking if contact is zoomable:', err);
-    }
-    return false;
+    return mapStore.worker.db.has(contact.uid);
 }
 
 async function isChatable(contact) {
-    try {
-        const localCots = await mapStore.worker.db.list();
-        for (const cot of localCots) {
-            if (cot.is_skittle && cot.properties.callsign === contact.callsign) {
-                return cot.properties.contact && cot.properties.contact.endpoint;
-            }
-        }
-    } catch (err) {
-        console.warn('Error checking if contact is chatable:', err);
-    }
-    return false;
+    if (!await mapStore.worker.db.has(contact.uid)) return false;
+    const cot = await mapStore.worker.db.get(contact.uid);
+    return cot.properties.contact && cot.properties.contact.endpoint;
 }
 
 async function flyTo(contact) {
     if (!props.buttonZoom || !await isZoomable(contact)) return;
 
-    try {
-        const localCots = await mapStore.worker.db.list();
-        for (const cot of localCots) {
-            if (cot.is_skittle && cot.properties.callsign === contact.callsign) {
-                await mapStore.worker.db.flyTo(cot.id);
-                return;
-            }
-        }
-    } catch (err) {
-        console.warn('Error flying to contact:', err);
-    }
+    const cot = await mapStore.worker.db.get(contact.uid);
+    if (!cot) return;
+
+    cot.flyTo();
 }
 </script>

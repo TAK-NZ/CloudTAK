@@ -13,7 +13,6 @@ import { ContextEnvironmentConfig } from '../stack-config';
 export interface LambdaFunctionsProps {
   envConfig: ContextEnvironmentConfig;
   ecrRepository: ecr.IRepository;
-  eventsImageAsset?: ecrAssets.DockerImageAsset;
   tilesImageAsset?: ecrAssets.DockerImageAsset;
   assetBucketName: string;
   serviceUrl: string;
@@ -24,7 +23,6 @@ export interface LambdaFunctionsProps {
 }
 
 export class LambdaFunctions extends Construct {
-  public readonly eventLambda: lambda.Function;
   public readonly tilesLambda: lambda.Function;
   public readonly tilesApi: apigateway.RestApi;
   public readonly etlFunctionRole: iam.Role;
@@ -32,71 +30,10 @@ export class LambdaFunctions extends Construct {
   constructor(scope: Construct, id: string, props: LambdaFunctionsProps) {
     super(scope, id);
 
-    const { envConfig, ecrRepository, eventsImageAsset, tilesImageAsset, assetBucketName, serviceUrl, signingSecret, kmsKey, hostedZone, certificate } = props;
-
-    const eventLambdaRole = new iam.Role(this, 'EventLambdaRole', {
-      roleName: `TAK-${envConfig.stackName}-CloudTAK-events`,
-      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-      inlinePolicies: {
-        'hook-queue': new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket', 's3:GetBucketLocation'],
-              resources: [`arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`, `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`]
-            }),
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
-              resources: [`arn:${cdk.Stack.of(this).partition}:sqs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:tak-cloudtak-*`]
-            }),
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
-              resources: ['*'],
-              conditions: {
-                StringEquals: {
-                  'kms:ViaService': [`s3.${cdk.Stack.of(this).region}.amazonaws.com`, `secretsmanager.${cdk.Stack.of(this).region}.amazonaws.com`]
-                }
-              }
-            })
-          ]
-        })
-      },
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-      ]
-    });
+    const { envConfig, ecrRepository, tilesImageAsset, assetBucketName, serviceUrl, signingSecret, kmsKey, hostedZone, certificate } = props;
 
     // Get image tag from context for CI/CD deployments
     const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
-    const eventsTag = cloudtakImageTag ? `events-${cloudtakImageTag.replace('cloudtak-', '')}` : 'events-latest';
-    
-    this.eventLambda = new lambda.Function(this, 'EventLambda', {
-      functionName: `TAK-${envConfig.stackName}-CloudTAK-events`,
-      runtime: lambda.Runtime.FROM_IMAGE,
-      code: eventsImageAsset 
-        ? lambda.Code.fromEcrImage(eventsImageAsset.repository, {
-            tagOrDigest: eventsImageAsset.assetHash
-          })
-        : lambda.Code.fromEcrImage(ecrRepository, {
-            tagOrDigest: eventsTag
-          }),
-      handler: lambda.Handler.FROM_IMAGE,
-      role: eventLambdaRole,
-      memorySize: 512,
-      timeout: cdk.Duration.minutes(15),
-      description: 'Respond to events on the S3 Asset Bucket & Stack SQS Queue',
-      reservedConcurrentExecutions: 20,
-      environment: {
-        'TAK_ETL_API': serviceUrl.startsWith('http') ? serviceUrl : `https://${serviceUrl}`,
-        'StackName': cdk.Stack.of(this).stackName,
-        'SigningSecret': `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`
-      },
-      environmentEncryption: props.kmsKey
-    });
-    
-    // Note: No need to grant read access when using CloudFormation dynamic references
     
     // Create ETL Function Role for dynamic Lambda functions (matches CloudFormation export)
     const etlFunctionRole = new iam.Role(this, 'ETLFunctionRole', {
@@ -190,7 +127,8 @@ export class LambdaFunctions extends Construct {
       environment: {
         'StackName': cdk.Stack.of(this).stackName,
         'ASSET_BUCKET': assetBucketName,
-        'APIROOT': `https://${tilesHostname}`,
+        'PMTILES_URL': `https://${tilesHostname}`,
+        'APIROOT': `https://${tilesHostname}`,  // Legacy value for PMTILES_URL
         'SigningSecret': `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`
       },
       environmentEncryption: kmsKey

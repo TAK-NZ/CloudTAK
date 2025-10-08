@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import busboy from 'busboy';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { Type } from '@sinclair/typebox'
 import S3 from '../lib/aws/s3.js';
 import { CoTParser, FileShare, DataPackage } from '@tak-ps/node-cot';
@@ -23,6 +24,17 @@ export default async function router(schema: Schema, config: Config) {
         name: 'Create File Package',
         group: 'MartiPackages',
         description: 'Helper API to create package',
+        query: Type.Object({
+            name: Type.Optional(Type.String({})),
+            groups: Type.Optional(Type.Union([
+                Type.Array(Type.String()),
+                Type.String()
+            ])),
+            keywords: Type.Optional(Type.Union([
+                Type.Array(Type.String()),
+                Type.String()
+            ])),
+        }),
         res: Package
     }, async (req, res) => {
         try {
@@ -32,6 +44,20 @@ export default async function router(schema: Schema, config: Config) {
             const creatorUid = profile.username;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
             const id = crypto.randomUUID();
+
+            let keywords: string[] | undefined = undefined;
+            let groups: string[] | undefined = undefined;
+            if (req.query.groups && typeof req.query.groups === 'string') {
+                groups = [ req.query.groups ];
+            } else if (req.query.groups && Array.isArray(req.query.groups)) {
+                groups = req.query.groups;
+            }
+
+            if (req.query.keywords && typeof req.query.keywords === 'string') {
+                keywords = [ req.query.keywords ];
+            } else if (req.query.groups && Array.isArray(req.query.keywords)) {
+                keywords = req.query.keywords;
+            }
 
             if (req.headers['content-type'] && req.headers['content-type'].startsWith('multipart/form-data')) {
                 const bb = busboy({
@@ -46,16 +72,20 @@ export default async function router(schema: Schema, config: Config) {
                     singleFile = (async () => {
                         const { ext } = path.parse(meta.filename);
                         const filePath = path.resolve(os.tmpdir(), `${crypto.randomUUID()}${ext}`);
-                        await fsp.writeFile(filePath, file);
+
+                        await pipeline(
+                            file,
+                            await fs.createWriteStream(filePath)
+                        )
 
                         try {
                             return await DataPackage.parse(filePath)
                         } catch (err) {
-                            console.error('ok - treaing as unique file (not a DataPackage)', err);
+                            console.error('ok - treating as unique file (not a DataPackage)', err);
 
                             const pkg = new DataPackage(id, id);
 
-                            pkg.settings.name = meta.filename;
+                            pkg.settings.name = req.query.name || meta.filename;
                             await pkg.addFile(filePath, {
                                 name: meta.filename,
                             });
@@ -64,26 +94,32 @@ export default async function router(schema: Schema, config: Config) {
                         }
                     })();
                 }).on('finish', async () => {
-                    if (!singleFile) throw new Err(400, null, 'No File Provided');
+                    try {
+                        if (!singleFile) throw new Err(400, null, 'No File Provided');
 
-                    const pkg = await singleFile;
-                    const out = await pkg.finalize();
+                        const pkg = await singleFile;
+                        const out = await pkg.finalize();
 
-                    const hash = await DataPackage.hash(out);
+                        const hash = await DataPackage.hash(out);
 
-                    await api.Files.uploadPackage({
-                        name: pkg.settings.name, creatorUid, hash
-                    }, fs.createReadStream(out));
+                        await api.Files.uploadPackage({
+                            name: pkg.settings.name,
+                            creatorUid, hash,
+                            keywords, groups,
+                        }, fs.createReadStream(out));
 
-                    await pkg.destroy();
+                        await pkg.destroy();
 
-                    const pkgres = await api.Package.list({
-                        uid: hash
-                    });
+                        const pkgres = await api.Package.list({
+                            uid: hash
+                        });
 
-                    if (!pkgres.results.length) throw new Err(404, null, 'Package not found');
+                        if (!pkgres.results.length) throw new Err(404, null, 'Package not found');
 
-                    res.json(pkgres.results[0]);
+                        res.json(pkgres.results[0]);
+                    } catch (err) {
+                        Err.respond(err, res);
+                    }
                 });
 
                 req.pipe(bb);
@@ -108,6 +144,13 @@ export default async function router(schema: Schema, config: Config) {
                 default: false,
                 description: 'Should the Data Package be a public package, if so it will be published to the Data Package list'
             }),
+            groups: Type.Optional(Type.Array(Type.String(), {
+                description: 'Channels that the Data Package should be shared with, use in conjunction with public=true'
+            })),
+            keywords: Type.Array(Type.String(), {
+                default: [],
+                description: 'Hash Tags to assign to the package'
+            }),
             destinations: Type.Array(Type.Object({
                 uid: Type.Optional(Type.String({
                     description: 'A User UID to share the package with'
@@ -121,7 +164,7 @@ export default async function router(schema: Schema, config: Config) {
             }),
             assets: Type.Array(Type.Object({
                 type: Type.Literal('profile'),
-                name: Type.String()
+                id: Type.String()
             }), {
                 default: []
             }),
@@ -206,8 +249,14 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             for (const asset of req.body.assets) {
-                await pkg.addFile(await S3.get(`profile/${user.email}/${asset.name}`), {
-                    name: path.parse(asset.name).base
+                const file = await config.models.ProfileFile.from(asset.id);
+
+                if (file.username !== user.email) {
+                    throw new Err(400, null, 'You can only attach your own files');
+                }
+
+                await pkg.addFile(await S3.get(`profile/${user.email}/${file.id}${path.parse(file.name).ext}`), {
+                    name: file.name
                 });
             }
 
@@ -220,7 +269,9 @@ export default async function router(schema: Schema, config: Config) {
                 const hash = await DataPackage.hash(out);
 
                 await api.Files.uploadPackage({
-                    name: pkg.settings.name, creatorUid, hash
+                    name: pkg.settings.name, creatorUid, hash,
+                    keywords: req.body.keywords,
+                    groups: req.body.groups
                 }, fs.createReadStream(out));
 
                 // TODO Ask ARA for a Content endpoint to lookup by hash to mirror upload API
@@ -239,7 +290,7 @@ export default async function router(schema: Schema, config: Config) {
                 content = await api.Files.upload({
                     name: id,
                     contentLength: size,
-                    keywords: [],
+                    keywords: req.body.keywords,
                     creatorUid,
                 }, fs.createReadStream(out));
             }
@@ -275,7 +326,7 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json(content)
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -309,9 +360,19 @@ export default async function router(schema: Schema, config: Config) {
     await schema.get('/marti/package/:uid', {
         name: 'Get Package',
         group: 'MartiPackages',
-        description: 'Helper API to get a single package',
+        description: `
+            Helper API to get metadata for a single package
+
+            DataPackages uploaded once will have a single entry by UID, however DataPackages uploaded multiple times
+            will have the same UID but multiple hash values with the latest having the most recent submission date
+
+            By default this api will return the latest package, however if you provide a hash query parameter it will return that specific package
+        `,
         params: Type.Object({
             uid: Type.String()
+        }),
+        query: Type.Object({
+            hash: Type.Optional(Type.String())
         }),
         res: Package
     }, async (req, res) => {
@@ -326,7 +387,17 @@ export default async function router(schema: Schema, config: Config) {
 
             if (!pkg.results.length) throw new Err(404, null, 'Package not found');
 
-            res.json(pkg.results[0]);
+            pkg.results.sort((a, b) => {
+                return new Date(a.SubmissionDateTime).getTime() - new Date(b.SubmissionDateTime).getTime();
+            });
+
+            if (req.query.hash) {
+                const match = pkg.results.find((p) => p.Hash === req.query.hash);
+                if (!match) throw new Err(404, null, 'Package found but no matching hash');
+                return res.json(match);
+            } else {
+                res.json(pkg.results[pkg.results.length - 1]);
+            }
         } catch (err) {
              Err.respond(err, res);
         }
@@ -335,9 +406,12 @@ export default async function router(schema: Schema, config: Config) {
     await schema.delete('/marti/package/:uid', {
         name: 'Delete Package',
         group: 'MartiPackages',
-        description: 'Helper API to delete a single package',
+        description: 'Helper API to delete a package',
         params: Type.Object({
             uid: Type.String()
+        }),
+        query: Type.Object({
+            hash: Type.Optional(Type.String())
         }),
         res: StandardResponse
     }, async (req, res) => {
@@ -359,7 +433,11 @@ export default async function router(schema: Schema, config: Config) {
                 throw new Err(404, null, 'Package not found');
             }
 
-            const pkg = pkgs.results[0];
+            pkgs.results.sort((a, b) => {
+                return new Date(a.SubmissionDateTime).getTime() - new Date(b.SubmissionDateTime).getTime();
+            });
+
+            const pkg = pkgs.results[pkgs.results.length - 1];
 
             if (
                 user.access !== AuthUserAccess.ADMIN

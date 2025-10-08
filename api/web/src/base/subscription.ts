@@ -99,8 +99,15 @@ export default class Subscription {
      * mark the subscription as dirty for a re-render
      *
      * @param cot - The COT object to upsert
+     * @param opts - Options for updating the feature
+     * @param opts.skipNetwork - If true, the feature will not be updated on the server - IE in response to a Mission Change event
      */
-    async updateFeature(cot: COT): Promise<void> {
+    async updateFeature(
+        cot: COT,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
         this.cots.set(String(cot.id), cot);
 
         this._dirty = true;
@@ -113,10 +120,24 @@ export default class Subscription {
             mission: this.meta.name
         }];
 
-        await this._atlas.conn.sendCOT(feat);
+        if (!opts.skipNetwork) {
+            await this._atlas.conn.sendCOT(feat);
+        }
     }
 
-    async deleteFeature(uid: string): Promise<void> {
+    /**
+     * Delete a feature from the mission.
+     *
+     * @param uid - The unique ID of the feature to delete
+     * @param opts - Options for deleting the feature
+     * @param opts.skipNetwork - If true, the feature will not be deleted from the server - IE in response to a Mission Change event
+     */
+    async deleteFeature(
+        uid: string,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
         if (this._remote) return;
 
         this.cots.delete(uid);
@@ -125,12 +146,14 @@ export default class Subscription {
 
         const atlas = this._atlas as Atlas;
 
-        const url = stdurl(`/api/marti/missions/${this.meta.guid}/cot/${uid}`);
-        await std(url, {
-            method: 'DELETE',
-            headers: Subscription.headers(this.token),
-            token:  atlas.token
-        })
+        if (!opts.skipNetwork) {
+            const url = stdurl(`/api/marti/missions/${this.meta.guid}/cot/${uid}`);
+            await std(url, {
+                method: 'DELETE',
+                headers: Subscription.headers(this.token),
+                token:  atlas.token
+            })
+        }
     }
 
     async updateLogs(): Promise<void> {
@@ -148,6 +171,20 @@ export default class Subscription {
     headers(): Record<string, string> {
         return Subscription.headers(this.token);
     }
+
+    async refresh(): Promise<void> {
+        const url = stdurl('/api/marti/missions/' + encodeURIComponent(this.meta.guid));
+        url.searchParams.append('logs', 'true');
+
+        const mission = await std(url, {
+            headers: this.headers(),
+            token: String(this._atlas.token)
+        }) as Mission;
+
+        this.logs = mission.logs || [] as Array<MissionLog>;
+        delete mission.logs;
+        this.meta = mission;
+    };
 
     static async load(
         atlas: Atlas,
@@ -280,6 +317,29 @@ export default class Subscription {
         }) as MissionChanges;
     }
 
+    static async logUpdate(
+        guid: string,
+        logid: string,
+        body: object,
+        opts: {
+            token?: string;
+            missionToken?: string
+        } = {}
+    ): Promise<MissionLog> {
+        const url = stdurl('/api/marti/missions/' + encodeURIComponent(guid) + '/log/' + encodeURIComponent(logid));
+
+        const log = await std(url, {
+            method: 'PATCH',
+            body: body,
+            token: opts.token,
+            headers: Subscription.headers(opts.missionToken)
+        }) as {
+            data: MissionLog
+        };
+
+        return log.data;
+    }
+
     static async logCreate(
         guid: string,
         body: object,
@@ -353,11 +413,18 @@ export default class Subscription {
     ): Promise<MissionLayerList> {
         const url = stdurl(`/api/marti/missions/${encodeURIComponent(guid)}/layer`);
 
-        return await std(url, {
+        const list = await std(url, {
             method: 'GET',
             token: opts.token,
             headers: Subscription.headers(opts.missionToken)
         }) as MissionLayerList;
+
+        list.data.sort((a, b) => {
+            // Consistent sort by name
+            return a.name.localeCompare(b.name);
+        });
+
+        return list;
     }
 
     static async layerUpdate(

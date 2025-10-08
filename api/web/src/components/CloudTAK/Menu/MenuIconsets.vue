@@ -93,6 +93,7 @@
                         <div class='col-12 px-2 pb-2'>
                             <TablerInput
                                 v-model='paging.filter'
+                                icon='search'
                                 placeholder='Filter'
                             />
                         </div>
@@ -227,7 +228,6 @@ function throws(err) {
 }
 
 function processUpload(body) {
-    body = JSON.parse(body);
     router.push(`/menu/imports/${body.imports[0].uid}`);
 }
 
@@ -237,8 +237,10 @@ function uploadHeaders() {
     };
 }
 
-function download(iconset) {
-    window.location.href = stdurl(`/api/iconset/${iconset.uid}?format=zip&download=true&token=${localStorage.token}`);
+async function download(iconset) {
+    await std(`/api/iconset/${iconset.uid}?format=zip&download=true&token=${localStorage.token}`, {
+        download: true
+    });
 }
 
 async function fetchList() {

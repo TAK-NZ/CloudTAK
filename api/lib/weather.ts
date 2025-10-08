@@ -227,6 +227,7 @@ export default class Weather {
         }
 
         const body = await res.typed(FetchType);
+
         return body;
     }
 

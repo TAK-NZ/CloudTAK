@@ -1,0 +1,13 @@
+diff --git a/api/web/src/components/CloudTAK/util/EmptyInfo.vue b/api/web/src/components/CloudTAK/util/EmptyInfo.vue
+index 8777f6b23..50af66f13 100644
+--- a/api/web/src/components/CloudTAK/util/EmptyInfo.vue
++++ b/api/web/src/components/CloudTAK/util/EmptyInfo.vue
+@@ -32,7 +32,7 @@
+                 </TablerIconButton>
+             </div>
+         </template>
+-        <template v-else-if='props.type === "Missions"'>
++        <template v-else-if='props.type === "Data Syncs"'>
+             <IconAlertCircle
+                 :size='32'
+                 stroke='2'

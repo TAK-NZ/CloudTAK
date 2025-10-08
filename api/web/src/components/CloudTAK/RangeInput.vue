@@ -1,6 +1,6 @@
 <template>
     <div
-        class='position-absolute end-0 text-white bg-dark'
+        class='position-absolute end-0 text-white bg-dark card rounded'
         style='
             top: 56px;
             z-index: 1;
@@ -8,16 +8,16 @@
             border-radius: 0px 6px 0px 0px;
         '
     >
-        <div class='mx-2 my-2 row g-2'>
-            <div class='col-12 d-flex justify-content-between align-items-center'>
-                <div class='d-flex align-items-center'>
-                    <IconCompass
-                        :size='25'
-                        stroke='1'
-                        class='me-2'
-                    />
-                    <span class='fw-bold'>Range &amp; Bearing</span>
-                </div>
+        <div class='card-header d-flex align-items-center'>
+            <div class='card-title'>
+                <IconCompass
+                    :size='25'
+                    stroke='1'
+                />
+
+                <span class='ms-2'>Range &amp; Bearing</span>
+            </div>
+            <div class='ms-auto'>
                 <TablerIconButton
                     title='Close'
                     @click='emit("close")'
@@ -28,6 +28,8 @@
                     />
                 </TablerIconButton>
             </div>
+        </div>
+        <div class='mx-2 my-2 row g-2'>
             <div class='col-12'>
                 <TablerInput
                     v-model='config.name'
@@ -80,12 +82,14 @@ import PropertyBearing from './util/PropertyBearing.vue';
 import PropertyDistance from './util/PropertyDistance.vue';
 import {
     TablerInput,
-    TablerIconButton,
+    TablerIconButton
 } from '@tak-ps/vue-tabler';
+
 import {
     IconX,
     IconCompass
 } from '@tabler/icons-vue';
+
 import type { LngLatLike } from 'maplibre-gl'
 import { useMapStore } from '../../stores/map.ts';
 const mapStore = useMapStore();

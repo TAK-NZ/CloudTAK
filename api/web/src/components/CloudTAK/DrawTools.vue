@@ -3,7 +3,8 @@
         <template #default>
             <TablerIconButton
                 title='Geometry Editing'
-                class='mx-2 cursor-pointer hover-button'
+                class='mx-2 hover-button'
+                :hover='false'
             >
                 <IconPencil
                     :size='40'
@@ -41,6 +42,16 @@
                             stroke='1'
                         />
                         <span class='ps-2'>Range &amp; Bearing</span>
+                    </div>
+                    <div
+                        class='col-12 py-1 px-2 hover-button cursor-pointer user-select-none'
+                        @click='modal = ModalInputType.RANGE_RINGS'
+                    >
+                        <IconTarget
+                            :size='25'
+                            stroke='1'
+                        />
+                        <span class='ps-2'>Range Rings</span>
                     </div>
                     <div
                         class='col-12 py-1 px-2 hover-button cursor-pointer user-select-none'
@@ -104,16 +115,6 @@
                     </div>
                     <div
                         class='col-12 py-1 px-2 hover-button cursor-pointer user-select-none'
-                        @click='modal = ModalInputType.LOST_PERSON_BEHAVIOR'
-                    >
-                        <IconWalk
-                            :size='25'
-                            stroke='1'
-                        />
-                        <span class='ps-2'>Lost Person Behavior</span>
-                    </div>
-                    <div
-                        class='col-12 py-1 px-2 hover-button cursor-pointer user-select-none'
                         @click='mapStore.draw.start(DrawToolMode.FREEHAND)'
                     >
                         <IconLasso
@@ -142,8 +143,8 @@
         @close='modal = ModalInputType.NONE'
     />
 
-    <LostPersonBehaviorInput
-        v-if='modal === ModalInputType.LOST_PERSON_BEHAVIOR'
+    <RangeRingsInput
+        v-if='modal === ModalInputType.RANGE_RINGS'
         @close='modal = ModalInputType.NONE'
     />
 
@@ -162,11 +163,11 @@
 import { ref } from 'vue';
 import { DrawToolMode } from '../../stores/modules/draw.ts';
 import CoordInput from './CoordInput.vue';
-import LostPersonBehaviorInput from './LostPersonBehaviorInput.vue';
+import RangeRingsInput from './RangeRingsInput.vue';
 import RangeInput from './RangeInput.vue';
 import GeoJSONInput from './GeoJSONInput.vue';
 import {
-    IconWalk,
+    IconTarget,
     IconLasso,
     IconFileImport,
     IconCone,
@@ -190,7 +191,7 @@ enum ModalInputType {
     RANGE = 'range',
     POINT = 'point',
     IMPORT = 'import',
-    LOST_PERSON_BEHAVIOR = 'lost_person_behavior',
+    RANGE_RINGS = 'range_rings',
 }
 
 const modal = ref<ModalInputType>(ModalInputType.NONE);

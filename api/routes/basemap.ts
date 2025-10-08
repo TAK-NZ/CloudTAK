@@ -14,9 +14,9 @@ import { sql } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
 import { Geometry, BBox } from 'geojson';
 import { Static, Type } from '@sinclair/typebox'
-import { StandardResponse, BasemapResponse, OptionalTileJSON, GeoJSONFeature } from '../lib/types.js';
+import { StandardResponse, BasemapResponse, OptionalTileJSON, GeoJSONFeature, GeoJSONFeatureCollection } from '../lib/types.js';
 import { BasemapCollection } from '../lib/models/Basemap.js';
-import { Basemap as BasemapParser } from '@tak-ps/node-cot';
+import { Basemap as BasemapParser, Feature } from '@tak-ps/node-cot';
 import { Basemap } from '../lib/schema.js';
 import { toEnum, Basemap_Format, Basemap_Scheme, Basemap_Type } from '../lib/enums.js';
 import { EsriBase, EsriProxyLayer } from '../lib/esri.js';
@@ -167,8 +167,14 @@ export default async function router(schema: Schema, config: Config) {
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            type: Type.Optional(Type.Enum(Basemap_Type)),
-            sort: Type.String({ default: 'created', enum: Object.keys(Basemap) }),
+            type: Type.Optional(Type.Union([
+                Type.Enum(Basemap_Type),
+                Type.Array(Type.Enum(Basemap_Type))
+            ])),
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Basemap)
+            }),
             filter: Default.Filter,
             collection: Type.Optional(Type.String({
                 description: 'Only show Basemaps belonging to a given collection'
@@ -192,6 +198,10 @@ export default async function router(schema: Schema, config: Config) {
                 scope = sql`username IS NOT NULL`;
             }
 
+            const types: Array<Basemap_Type> = Array.isArray(req.query.type) ? req.query.type : (req.query.type ? [req.query.type] : [
+                Basemap_Type.RASTER, Basemap_Type.VECTOR, Basemap_Type.TERRAIN
+            ]);
+
             if (req.query.impersonate) {
                 await Auth.as_user(config, req, { admin: true });
 
@@ -205,7 +215,7 @@ export default async function router(schema: Schema, config: Config) {
                     where: sql`
                         name ~* ${Param(req.query.filter)}
                         AND (${Param(req.query.overlay)}::BOOLEAN = overlay)
-                        AND (${Param(req.query.type)}::TEXT IS NULL or ${Param(req.query.type)}::TEXT = type)
+                        AND type = ANY(${sql.raw(`ARRAY[${types.map(c => `'${c}'`).join(', ')}]`)}::TEXT[])
                         AND (
                                 (${Param(req.query.collection)}::TEXT IS NULL AND collection IS NULL)
                                 OR ${Param(req.query.collection)}::TEXT = collection
@@ -222,7 +232,7 @@ export default async function router(schema: Schema, config: Config) {
                         where: sql`
                             collection ~* ${Param(req.query.filter)}
                             AND (${Param(req.query.overlay)}::BOOLEAN = overlay)
-                            AND (${Param(req.query.type)}::TEXT IS NULL or ${Param(req.query.type)}::TEXT = type)
+                            AND type = ANY(${sql.raw(`ARRAY[${types.map(c => `'${c}'`).join(', ')}]`)}::TEXT[])
                             AND ${scope}
                             AND (${impersonate}::TEXT IS NULL OR username = ${impersonate}::TEXT)
                         `
@@ -240,7 +250,7 @@ export default async function router(schema: Schema, config: Config) {
                         name ~* ${Param(req.query.filter)}
                         AND (${Param(req.query.overlay)}::BOOLEAN = overlay)
                         AND (username IS NULL OR username = ${user.email})
-                        AND (${Param(req.query.type)}::TEXT IS NULL or ${Param(req.query.type)}::TEXT = type)
+                        AND type = ANY(${sql.raw(`ARRAY[${types.map(c => `'${c}'`).join(', ')}]`)}::TEXT[])
                         AND (
                                 (${Param(req.query.collection)}::TEXT IS NULL AND collection IS NULL)
                                 OR ${Param(req.query.collection)}::TEXT = collection
@@ -257,7 +267,7 @@ export default async function router(schema: Schema, config: Config) {
                             collection ~* ${Param(req.query.filter)}
                             AND (${Param(req.query.overlay)}::BOOLEAN = overlay)
                             AND (username IS NULL OR username = ${user.email})
-                            AND (${Param(req.query.type)}::TEXT IS NULL or ${Param(req.query.type)}::TEXT = type)
+                            AND type = ANY(${sql.raw(`ARRAY[${types.map(c => `'${c}'`).join(', ')}]`)}::TEXT[])
                             AND ${scope}
                         `
                     });
@@ -580,6 +590,40 @@ export default async function router(schema: Schema, config: Config) {
                     }
                 }
             );
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/basemap/:basemapid/feature', {
+        name: 'Lasso Basemap Features',
+        group: 'BaseMap',
+        description: 'Lasso Basemap Features',
+        params: Type.Object({
+            basemapid: Type.Integer({ minimum: 1 }),
+        }),
+        body: Type.Object({
+            polygon: Feature.Polygon
+        }),
+        res: GeoJSONFeatureCollection
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req, { token: true });
+
+            const basemap = await config.cacher.get(Cacher.Miss(req.query, `basemap-${req.params.basemapid}`), async () => {
+                return await config.models.Basemap.from(Number(req.params.basemapid))
+            });
+
+            if (basemap.username && basemap.username !== user.email && user.access === AuthUserAccess.USER) {
+                throw new Err(400, null, 'You don\'t have permission to access this resource');
+            }
+
+            const fc = await TileJSON.featureQuery(
+                basemap.url,
+                req.body.polygon
+            );
+
+            res.json(fc);
         } catch (err) {
             Err.respond(err, res);
         }
