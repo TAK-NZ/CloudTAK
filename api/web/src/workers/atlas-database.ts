@@ -136,8 +136,21 @@ export default class AtlasDatabase {
         return sub;
     }
 
-    async subscriptionGet(id: string): Promise<Subscription | undefined> {
-        return this.subscriptions.get(id);
+    async subscriptionGet(
+        id: string,
+        opts: {
+            refresh?: boolean
+        } = {}
+     ): Promise<Subscription | undefined> {
+        const sub = this.subscriptions.get(id);
+
+        if (!sub) return;
+
+        if (opts.refresh) {
+            await sub.refresh();
+        }
+
+        return sub;
     }
 
     async subscriptionDelete(id: string): Promise<void> {
@@ -587,7 +600,6 @@ export default class AtlasDatabase {
             feat.properties.creator = await this.atlas.profile.creator();
         }
 
-
         // New CoT destined for a Mission
         if (
             !exists && (
@@ -791,17 +803,5 @@ export default class AtlasDatabase {
         }
 
         return new Set(list);
-    }
-
-    /**
-     * Return a list of all CoTs in the store
-     */
-    async list(): Promise<Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }>> {
-        return Array.from(this.cots.values()).map(cot => ({
-            id: cot.id,
-            properties: { callsign: cot.properties.callsign },
-            geometry: cot.geometry,
-            is_skittle: cot.is_skittle
-        }));
     }
 }

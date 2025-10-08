@@ -93,6 +93,7 @@
                         <div class='col-12 px-2 pb-2'>
                             <TablerInput
                                 v-model='paging.filter'
+                                icon='search'
                                 placeholder='Filter'
                             />
                         </div>
@@ -227,7 +228,6 @@ function throws(err) {
 }
 
 function processUpload(body) {
-    body = JSON.parse(body);
     router.push(`/menu/imports/${body.imports[0].uid}`);
 }
 

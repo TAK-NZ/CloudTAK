@@ -48,7 +48,7 @@ export type VideoConnection_Create = paths["/api/marti/video"]["post"]["requestB
 export type VideoConnectionList = paths["/api/marti/video"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type Mission = paths["/api/marti/missions/{:name}"]["get"]["responses"]["200"]["content"]["application/json"];
-export type Mission_Create = paths["/api/marti/missions/{:name}"]["post"]["requestBody"]["content"]["application/json"]
+export type Mission_Create = paths["/api/marti/missions"]["post"]["requestBody"]["content"]["application/json"]
 export type MissionList = paths["/api/marti/mission"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type MissionRole = paths["/api/marti/missions/{:name}/role"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -99,6 +99,8 @@ export type PaletteFeature = paths["/api/palette/{:palette}/feature/{:feature}"]
 
 export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"]
 export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
+
+export type ProfileChatroomList = paths["/api/profile/chatroom"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type ProfileVideoList = paths["/api/profile/video"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ProfileVideo = paths["/api/profile/video/{:id}"]["get"]["responses"]["200"]["content"]["application/json"]

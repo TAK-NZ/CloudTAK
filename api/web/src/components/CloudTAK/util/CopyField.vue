@@ -16,8 +16,14 @@
             label=''
             :error='error'
             @update:model-value='validUpdate(text)'
-            @blur='validUpdate(text, { editing: true })'
-            @submit='validUpdate(text, { editing: rows > 1 ? true : false })'
+            @blur='validUpdate(text, {
+                submit: false,
+                editing: true
+            })'
+            @submit='validUpdate(text, {
+                submit: rows > 1 ? false : true,
+                editing: rows > 1 ? true : false
+            })'
         />
 
         <TablerIconButton
@@ -25,7 +31,10 @@
             title='Done Editing'
             class='position-absolute'
             style='right: 8px; top: 8px;'
-            @click.stop.prevent='editing = false'
+            @click.stop.prevent='validUpdate(text, {
+                submit: true,
+                editing: false
+            })'
         >
             <IconCheck
                 :size='24'
@@ -56,10 +65,25 @@
                 v-text='text'
             />
 
+            <TablerDelete
+                v-if='props.deletable'
+                displaytype='icon'
+                style='top: 8px;'
+                :size='24'
+                :class='{
+                    "hover-button-hidden": hover,
+                }'
+                :style='{
+                    "right": props.edit ? "64px" : "32px",
+                }'
+                class='position-absolute bg-accent'
+                @delete='$emit("delete")'
+            />
+
             <TablerIconButton
                 v-if='edit'
                 title='Edit Field'
-                class='position-absolute'
+                class='position-absolute bg-accent'
                 :class='{
                     "hover-button-hidden": hover,
                 }'
@@ -74,7 +98,7 @@
 
             <CopyButton
                 :text='text'
-                class='position-absolute'
+                class='position-absolute bg-accent'
                 :size='24'
                 style='right: 8px; top: 8px;'
             />
@@ -82,14 +106,29 @@
         <template v-else>
             <span v-text='text' />
 
-            <TablerIconButton
-                v-if='edit'
-                title='Edit'
-                class='position-absolute'
+            <TablerDelete
+                v-if='props.deletable'
+                displaytype='icon'
+                style='top: 6px;'
+                :size='24'
                 :class='{
                     "hover-button-hidden": hover,
                 }'
-                style='right: 36px; top: 6px;'
+                :style='{
+                    "right": props.edit ? "64px" : "32px",
+                }'
+                class='position-absolute bg-accent'
+                @delete='$emit("delete")'
+            />
+
+            <TablerIconButton
+                v-if='edit'
+                title='Edit'
+                class='position-absolute bg-accent'
+                :class='{
+                    "hover-button-hidden": hover,
+                }'
+                style='right: 32px; top: 6px;'
                 @click='editing = true'
             >
                 <IconPencil
@@ -113,6 +152,7 @@ import { ref, watch, computed, useTemplateRef } from 'vue';
 import CopyButton from './CopyButton.vue';
 import {
     TablerInput,
+    TablerDelete,
     TablerMarkdown,
     TablerIconButton
 } from '@tak-ps/vue-tabler'
@@ -122,6 +162,8 @@ import {
 } from '@tabler/icons-vue';
 
 const emit = defineEmits([
+    'submit',
+    'delete',
     'update:modelValue'
 ]);
 
@@ -155,6 +197,10 @@ const props = defineProps({
         default: false
     },
     edit: {
+        type: Boolean,
+        default: false
+    },
+    deletable: {
         type: Boolean,
         default: false
     },
@@ -200,12 +246,17 @@ watch(props, () => {
     }
 })
 
-function validUpdate(text: string | number, opts = {
-    editing: true
-}) {
-    editing.value = opts.editing;
-
+function validUpdate(
+    text: string | number,
+    opts = {
+        submit: false,
+        editing: true
+    }
+) {
     if (typeof props.validate !== 'function') {
+        editing.value = opts.editing;
+
+        if (opts.submit) emit("submit", text);
         emit("update:modelValue", text);
     } else {
         const res = props.validate(text);
@@ -213,7 +264,9 @@ function validUpdate(text: string | number, opts = {
         if (res.length) {
             error.value = res;
         } else {
+            editing.value = opts.editing;
             error.value = undefined;
+            if (opts.submit) emit("submit", text);
             emit("update:modelValue", text);
         }
     }

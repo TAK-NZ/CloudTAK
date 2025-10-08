@@ -34,6 +34,7 @@ export const RENDERED_PROPERTIES = [
     'course',
     'icon-opacity',
     'stroke-opacity',
+    'stroke-style',
     'stroke-width',
     'marker-color',
     'marker-radius',
@@ -90,6 +91,10 @@ export default class COT {
 
         if (!this._properties.archived) {
             this._properties.archived = false
+        }
+
+        if (!this._properties.id) {
+            this._properties.id = this.id;
         }
 
         if (!this._properties.center || (this._properties.center[0] === 0 && this._properties.center[1] === 0)) {
