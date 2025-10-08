@@ -127,7 +127,8 @@ export class LambdaFunctions extends Construct {
       environment: {
         'StackName': cdk.Stack.of(this).stackName,
         'ASSET_BUCKET': assetBucketName,
-        'APIROOT': `https://${tilesHostname}`,
+        'PMTILES_URL': `https://${tilesHostname}`,
+        'APIROOT': `https://${tilesHostname}`,  // Legacy value for PMTILES_URL
         'SigningSecret': `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`
       },
       environmentEncryption: kmsKey

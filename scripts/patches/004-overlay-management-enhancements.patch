@@ -1,5 +1,5 @@
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue b/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
-index fff966f8a..2c06fc54e 100644
+index ed11d85dc..8d5fc1daa 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
 +++ b/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
 @@ -39,7 +39,7 @@
@@ -44,12 +44,12 @@ index fff966f8a..2c06fc54e 100644
                                  </template>
 -                                <template v-else-if='overlay.id !== 0'>
 +                                <template v-else-if='overlay.id !== 0 && overlay.mode !== "basemap"'>
-                                     <IconChevronRight
+                                     <TablerIconButton
                                          v-if='!isDraggable && !opened.has(overlay.id)'
-                                         :size='20'
-@@ -84,26 +95,35 @@
-                                         @click='opened.delete(overlay.id)'
-                                     />
+                                         title='Expand Options'
+@@ -86,26 +97,35 @@
+                                         />
+                                     </TablerIconButton>
                                  </template>
 +                                <template v-else-if='overlay.mode === "basemap" && !isDraggable'>
 +                                    <div style='width: 20px;'></div>
@@ -87,7 +87,7 @@ index fff966f8a..2c06fc54e 100644
                                  </span>
  
                                  <span
-@@ -116,6 +136,12 @@
+@@ -118,6 +138,12 @@
                                          @click='router.push(`/menu/missions/${overlay.mode_id}`)'
                                          v-text='overlay.name'
                                      />
@@ -100,7 +100,7 @@ index fff966f8a..2c06fc54e 100644
                                      <span
                                          v-else
                                          v-text='overlay.name'
-@@ -124,7 +150,7 @@
+@@ -126,7 +152,7 @@
  
                                  <div class='ms-auto btn-list'>
                                      <TablerIconButton
@@ -109,7 +109,7 @@ index fff966f8a..2c06fc54e 100644
                                          title='Zoom To Overlay'
                                          @click.stop.prevent='overlay.zoomTo()'
                                      >
-@@ -149,7 +175,7 @@
+@@ -151,7 +177,7 @@
                                      />
  
                                      <TablerIconButton
@@ -118,7 +118,7 @@ index fff966f8a..2c06fc54e 100644
                                          title='Hide Layer'
                                          @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
                                      >
-@@ -159,7 +185,7 @@
+@@ -161,7 +187,7 @@
                                          />
                                      </TablerIconButton>
                                      <TablerIconButton
@@ -127,7 +127,7 @@ index fff966f8a..2c06fc54e 100644
                                          title='Show Layer'
                                          @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
                                      >
-@@ -174,7 +200,7 @@
+@@ -176,7 +202,7 @@
  
                          <template v-if='!isDraggable && opened.has(overlay.id)'>
                              <div
@@ -136,7 +136,7 @@ index fff966f8a..2c06fc54e 100644
                                  class='col-12'
                                  style='margin-left: 30px; padding-right: 40px;'
                              >
-@@ -210,7 +236,7 @@
+@@ -212,7 +238,7 @@
  </template>
  
  <script setup lang='ts'>
@@ -145,7 +145,7 @@ index fff966f8a..2c06fc54e 100644
  import { useRouter } from 'vue-router';
  import MenuTemplate from '../util/MenuTemplate.vue';
  import {
-@@ -227,7 +253,8 @@ import {
+@@ -229,7 +255,8 @@ import {
      IconAlertTriangle,
      IconChevronRight,
      IconChevronDown,
@@ -155,7 +155,7 @@ index fff966f8a..2c06fc54e 100644
      IconMaximize,
      IconVector,
      IconEyeOff,
-@@ -253,6 +280,20 @@ const opened = ref<Set<number>>(new Set());
+@@ -255,6 +282,20 @@ const opened = ref<Set<number>>(new Set());
  const isLoaded = mapStore.isLoaded;
  const overlays = mapStore.overlays;
  
@@ -176,7 +176,7 @@ index fff966f8a..2c06fc54e 100644
  const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
  
  watch(isDraggable, () => {
-@@ -274,6 +315,14 @@ async function saveOrder(sortableEv: SortableEvent) {
+@@ -276,6 +317,14 @@ async function saveOrder(sortableEv: SortableEvent) {
      const id = sortableEv.item.getAttribute('id');
      if (!id) return;
  
@@ -191,7 +191,7 @@ index fff966f8a..2c06fc54e 100644
      // TODO: Eventually it would be awesome to just move the Overlay in the overlays array
      // And the MapStore would just dynamically re-order the layers so any part of the app could reorder
  
-@@ -294,10 +343,17 @@ async function saveOrder(sortableEv: SortableEvent) {
+@@ -296,10 +345,17 @@ async function saveOrder(sortableEv: SortableEvent) {
          }
      }
  

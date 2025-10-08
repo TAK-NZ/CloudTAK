@@ -1,5 +1,5 @@
 diff --git a/api/web/src/components/CloudTAK/MainMenu.vue b/api/web/src/components/CloudTAK/MainMenu.vue
-index c7839af05..ba39ea8f6 100644
+index 82088b427..98bb44816 100644
 --- a/api/web/src/components/CloudTAK/MainMenu.vue
 +++ b/api/web/src/components/CloudTAK/MainMenu.vue
 @@ -121,17 +121,25 @@
@@ -48,7 +48,7 @@ index c7839af05..ba39ea8f6 100644
                              v-tooltip='{
                                  content: "Data Sync",
                                  placement: "left",
-@@ -617,40 +625,6 @@
+@@ -617,42 +625,7 @@
                  <div
                      v-else-if='["home", "home-menu"].includes(String(route.name))'
                  >
@@ -59,6 +59,8 @@ index c7839af05..ba39ea8f6 100644
 -                            <template #default>
 -                                <TablerIconButton
 -                                    title='Application Switcher'
+-                                    class='hover-button'
+-                                    :hover='false'
 -                                >
 -                                    <IconGridDots
 -                                        :size='32'
@@ -86,10 +88,11 @@ index c7839af05..ba39ea8f6 100644
 -                            </template>
 -                        </TablerDropdown>
 -                    </div>
++
                      <div class='d-flex justify-content-center mb-2'>
                          <div class='position-relative'>
                              <img
-@@ -707,19 +681,14 @@ import {
+@@ -709,19 +682,13 @@ import {
      IconMessage,
      IconNetwork,
      IconPackages,
@@ -107,11 +110,10 @@ index c7839af05..ba39ea8f6 100644
 -    TablerDropdown,
 -    TablerIconButton
 -} from '@tak-ps/vue-tabler';
-+
  import { useMapStore } from '../../stores/map.ts';
  import { useBrandStore } from '../../stores/brand.ts';
  import { useRouter, useRoute } from 'vue-router';
-@@ -800,10 +769,6 @@ onMounted(async () => {
+@@ -802,10 +769,6 @@ onMounted(async () => {
      isAgencyAdmin.value = await mapStore.worker.profile.isAgencyAdmin();
  })
  
@@ -122,4 +124,3 @@ index c7839af05..ba39ea8f6 100644
  function returnHome() {
      router.push("/");
      mapStore.returnHome();
- }
