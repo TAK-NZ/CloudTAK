@@ -6,9 +6,11 @@ import busboy from 'busboy';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
-import { Type } from '@sinclair/typebox'
+import { Type, Static } from '@sinclair/typebox'
+import { sql } from 'drizzle-orm';
 import S3 from '../lib/aws/s3.js';
 import { CoTParser, FileShare, DataPackage } from '@tak-ps/node-cot';
+import TileJSON from '../lib/control/tilejson.js';
 import { StandardResponse } from '../lib/types.js';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
@@ -18,6 +20,9 @@ import { Basemap as BasemapParser } from '@tak-ps/node-cot';
 import { Content } from '@tak-ps/node-tak/lib/api/files';
 import { Package } from '@tak-ps/node-tak/lib/api/package';
 import { TAKAPI, APIAuthCertificate, } from '@tak-ps/node-tak';
+import {
+    MissionOptions,
+} from '@tak-ps/node-tak/lib/api/mission';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.post('/marti/package', {
@@ -157,6 +162,9 @@ export default async function router(schema: Schema, config: Config) {
                 })),
                 group: Type.Optional(Type.String({
                     description: 'A Channel/Group to share the package with'
+                })),
+                mission: Type.Optional(Type.String({
+                    description: 'A Mission GUID to share the package with, note the user must be actively subscribed to the Mission'
                 }))
             }), {
                 default: [],
@@ -215,9 +223,11 @@ export default async function router(schema: Schema, config: Config) {
 
             for (const basemapid of req.body.basemaps) {
                 const basemap = await config.models.Basemap.from(basemapid);
+
                 if (basemap.username && basemap.username !== user.email && user.access === AuthUserAccess.USER) {
                     throw new Err(400, null, 'You don\'t have permission to access this resource');
                 }
+
                 const xml: string = (new BasemapParser({
                     customMapSource: {
                         name: { _text: basemap.name },
@@ -225,7 +235,7 @@ export default async function router(schema: Schema, config: Config) {
                         maxZoom: { _text: basemap.maxzoom },
                         tileType: { _text: basemap.format },
                         tileUpdate: { _text: 'None' },
-                        url: { _text: basemap.url },
+                        url: { _text: TileJSON.proxyShare(config, basemap) },
                         backgroundColor: { _text: '#000000' },
                     }
                 })).to_xml();
@@ -295,13 +305,14 @@ export default async function router(schema: Schema, config: Config) {
                 }, fs.createReadStream(out));
             }
 
-            await pkg.destroy();
-
             const client = config.conns.get(profile.username);
 
-            if (client && req.body.destinations.length) {
+            if (
+                client
+                    && req.body.destinations.length
+                    && req.body.destinations.filter((d) => !d.mission).length
+            ) {
                 const url = new URL(config.server.api);
-
 
                 const cot = new FileShare({
                     filename: id,
@@ -316,15 +327,50 @@ export default async function router(schema: Schema, config: Config) {
 
                 if (!cot.raw.event.detail) cot.raw.event.detail = {};
                 cot.raw.event.detail.marti = {
-                    dest: req.body.destinations.map((dest) => {
-                        return { _attributes: dest };
-                    })
+                    dest: req.body.destinations
+                        .filter((d) => !d.mission)
+                        .map((dest) => {
+                            return { _attributes: dest };
+                        })
                 }
 
                 client.tak.write([cot]);
             }
 
+            if (req.body.destinations.length && req.body.destinations.filter((d) => d.mission).length) {
+                const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
+
+                const guids = req.body.destinations.filter((d) => d.mission).map((d) => d.mission) as string[];
+
+                const ovs = new Map();
+                (await config.models.ProfileOverlay.list({
+                    where: sql`
+                        username = ${user.email}
+                        AND mode = 'mission'
+                    `
+                })).items.map(o => ovs.set(o.mode_id, o));
+
+                for (const guid of guids) {
+                    if (!ovs.get(guid)) {
+                        throw new Err(400, null, `You are not subscribed to mission ${guid}`);
+                    }
+
+                    const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
+                        ? { token: String(req.headers['missionauthorization']) }
+                        : await config.conns.subscription(user.email, guid)
+
+                    await api.Mission.upload(
+                        guid,
+                        user.email,
+                        fs.createReadStream(out),
+                        opts
+                    );
+                }
+            }
+
             res.json(content)
+
+            await pkg.destroy();
         } catch (err) {
             Err.respond(err, res);
         }

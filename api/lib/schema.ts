@@ -5,6 +5,7 @@ import type { StyleContainer } from './style.js';
 import type { FilterContainer } from './filter.js';
 import type { PaletteFeatureStyle } from './palette.js';
 import { Polygon, Point } from 'geojson';
+import { ImportResult } from './control/import.js'
 import { geometry, GeometryType } from '@openaddresses/batch-generic';
 import { ConnectionAuth } from './connection-config.js';
 import { TAKGroup, TAKRole } from  '@tak-ps/node-tak/lib/api/types';
@@ -90,6 +91,7 @@ export const ProfileFile = pgTable('profile_files', {
 
 export const ProfileChat = pgTable('profile_chats', {
     id: serial().primaryKey(),
+    read: boolean().notNull().default(false),
     username: text().notNull().references(() => Profile.username),
     chatroom: text().notNull(),
     sender_callsign: text().notNull(),
@@ -166,6 +168,8 @@ export const Basemap = pgTable('basemaps', {
     id: serial().primaryKey(),
     created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
     updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
+    sharing_enabled: boolean().notNull().default(false),
+    sharing_token: text(),
     name: text().notNull(),
     title: text().notNull().default('callsign'), // Title of features within the layer
     url: text().notNull(),
@@ -204,7 +208,7 @@ export const Import = pgTable('imports', {
     name: text().notNull(),
     status: text().notNull().default(Import_Status.PENDING),
     error: text(),
-    result: json().notNull().default({}),
+    result: json().$type<Static<typeof ImportResult>>().notNull().default({}),
     username: text().notNull().references(() => Profile.username),
     source: text().notNull().default('Upload'),
     source_id: text(),
@@ -349,7 +353,6 @@ export const LayerIncoming = pgTable('layers_incoming', {
 
     enabled_styles: boolean().notNull().default(false),
     styles: json().$type<Static<typeof StyleContainer>>().notNull().default({}),
-    stale: integer().notNull().default(20),
     environment: json().notNull().default({}),
     ephemeral: json().$type<Record<string, any>>().notNull().default({}),
     config: json().$type<Static<typeof Layer_Config>>().notNull().default({}),
@@ -432,18 +435,10 @@ export const ProfileInterest = pgTable('profile_interests', {
     updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
 });
 
-export const ProfileMission = pgTable('profile_missions', {
-    id: serial().primaryKey(),
-    name: text().notNull(),
-    guid: text().notNull(),
-    token: text().notNull(),
-    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-});
-
 export const ProfileOverlay = pgTable('profile_overlays', {
     id: serial().primaryKey(),
     name: text().notNull(),
+    active: boolean().notNull().default(false),
     username: text().notNull().references(() => Profile.username),
     created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
     updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),

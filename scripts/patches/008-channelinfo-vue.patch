@@ -6,8 +6,8 @@ index 84dbbe088..a264d33ea 100644
  const props = defineProps({
      label: {
          type: String,
--        default: 'Missions'
-+        default: 'Data Syncs'
+-        default: 'Data Syncs'
++        default: 'Missions'
      }
  });
  </script>

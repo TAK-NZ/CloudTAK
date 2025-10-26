@@ -15,7 +15,9 @@
                     v-if='selected'
                     :size='compact ? 20 : 32'
                     stroke='1'
-                    :style='compact ? "margin-left: 8px" : "margin-left: 16px;"'
+                    style='
+                        margin-left: 8px
+                    '
                 />
                 <ContactPuck
                     v-else
@@ -26,8 +28,8 @@
             </div>
             <div
                 :class='{
-                    "col-7": props.buttonChat || buttonZoom,
-                    "col-9": !props.buttonChat && !buttonZoom
+                    "col-7": props.buttonChat,
+                    "col-9": !props.buttonChat
                 }'
             >
                 <div
@@ -40,7 +42,7 @@
                 />
             </div>
             <div
-                v-if='props.buttonChat || buttonZoom'
+                v-if='props.buttonChat'
                 class='col-auto ms-auto btn-list'
             >
                 <IconMessage
@@ -74,10 +76,6 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
-    buttonZoom: {
-        type: Boolean,
-        default: true
-    },
     buttonChat: {
         type: Boolean,
         default: true
@@ -107,7 +105,7 @@ async function isChatable(contact) {
 }
 
 async function flyTo(contact) {
-    if (!props.buttonZoom || !await isZoomable(contact)) return;
+    if (!await isZoomable(contact)) return;
 
     const cot = await mapStore.worker.db.get(contact.uid);
     if (!cot) return;

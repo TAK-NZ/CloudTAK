@@ -444,7 +444,7 @@ export const useMapStore = defineStore('cloudtak', {
                 maxPitch: 85,
                 style: {
                     version: 8,
-                    glyphs: String(stdurl('/fonts')) + '/{fontstack}/{range}.pbf',
+                    glyphs: String(stdurl('/api/fonts')) + '/{fontstack}/{range}.pbf?token=' + localStorage.token,
                     sprite: sprites,
                     sources: {
                         '-1': {
@@ -554,7 +554,12 @@ export const useMapStore = defineStore('cloudtak', {
             map.on('click', async (e: MapMouseEvent) => {
                 if (this.draw.mode !== DrawToolMode.STATIC) return;
 
-                if (this.radial.mode) this.radial.mode = undefined;
+                if (this.radial.mode) {
+                    // Clicking away closes the radial menu
+                    this.radial.mode = undefined;
+                    return;
+                }
+
                 if (this.select.feats) this.select.feats = [];
 
                 // Ignore Non-Clickable Layer
