@@ -79,6 +79,8 @@ export const useMapStore = defineStore('cloudtak', {
             y: number;
         },
         overlays: Array<Overlay>
+        onlineContactsCount: number;
+        contactsInterval?: ReturnType<typeof setInterval>;
     } => {
         const worker = Comlink.wrap<Atlas>(new Worker(AtlasWorker, {
             type: 'module'
@@ -131,6 +133,8 @@ export const useMapStore = defineStore('cloudtak', {
                 x: 0, y: 0,
             },
             overlays: [],
+            onlineContactsCount: 0,
+            contactsInterval: undefined,
 
             selected: new Map()
         }
@@ -160,6 +164,12 @@ export const useMapStore = defineStore('cloudtak', {
             if (this.gpsWatchId !== null) {
                 navigator.geolocation.clearWatch(this.gpsWatchId);
                 this.gpsWatchId = null;
+            }
+            
+            // Clean up contacts interval
+            if (this.contactsInterval) {
+                clearInterval(this.contactsInterval);
+                this.contactsInterval = undefined;
             }
 
             if (this._map) {
@@ -379,6 +389,8 @@ export const useMapStore = defineStore('cloudtak', {
                     } as TAKNotification);
                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
                     this.loadMission(msg.body.guid);
+                } else if (msg.type === WorkerMessageType.Contact_Change) {
+                    this.updateOnlineContactsCount();
                 }
             }
 
@@ -718,6 +730,17 @@ export const useMapStore = defineStore('cloudtak', {
             this.isLoaded = true;
 
             await this.updateAttribution();
+            
+            // Start periodic contact count updates after map is fully loaded
+            if (this.contactsInterval) {
+                clearInterval(this.contactsInterval);
+            }
+            this.contactsInterval = setInterval(() => {
+                this.updateOnlineContactsCount();
+            }, 5000);
+            
+            // Initial contact count
+            this.updateOnlineContactsCount();
         },
         updateIconRotation: function(enabled: boolean): void {
             for (const overlay of this.overlays) {
@@ -843,6 +866,63 @@ export const useMapStore = defineStore('cloudtak', {
 
             this.radial.cot = feat;
             this.radial.mode = opts.mode;
+        },
+        setOnlineContactsCount: function(count: number): void {
+            this.onlineContactsCount = count;
+        },
+        updateOnlineContactsCount: async function(): Promise<void> {
+            try {
+                const team = await this.worker.team.load();
+                const contacts = Array.from(team.values());
+                
+                // Get CoT list for online status
+                let localCots: Array<{ id: string, properties: { callsign?: string }, geometry: unknown, is_skittle: boolean }> = [];
+                try {
+                    localCots = await this.worker.db.list();
+                } catch (err) {
+                    console.warn('Error loading CoT list for contact count:', err);
+                    return;
+                }
+                
+                // Get current user to filter out self
+                let currentUserCallsign = '';
+                try {
+                    const profile = await this.worker.profile.load();
+                    currentUserCallsign = profile.tak_callsign;
+                } catch (err) {
+                    console.warn('Error loading profile for contact count:', err);
+                }
+                
+                // Deduplicate and count online contacts
+                const uniqueContacts = new Map<string, typeof contacts[0]>();
+                for (const contact of contacts) {
+                    const key = `${contact.callsign}:${contact.notes}`;
+                    if (!uniqueContacts.has(key)) {
+                        uniqueContacts.set(key, contact);
+                    }
+                }
+                
+                let onlineCount = 0;
+                for (const contact of uniqueContacts.values()) {
+                    // Skip current user
+                    if (contact.callsign === currentUserCallsign) continue;
+                    
+                    // Skip ETL entries
+                    if (!contact.uid || !contact.role || !contact.takv) continue;
+                    
+                    // Check if online
+                    const isOnline = localCots.some(cot => 
+                        cot.is_skittle && 
+                        cot.properties.callsign === contact.callsign
+                    );
+                    
+                    if (isOnline) onlineCount++;
+                }
+                
+                this.onlineContactsCount = onlineCount;
+            } catch (err) {
+                console.warn('Failed to update online contacts count:', err);
+            }
         }
     }
 })

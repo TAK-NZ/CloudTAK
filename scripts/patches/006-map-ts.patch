@@ -42,14 +42,6 @@ index 2da8a6d1b..ff7ea9f96 100644
                  }
              }
  
-@@ -438,6 +450,7 @@ export const useMapStore = defineStore('cloudtak', {
-                         '-1': {
-                             type: 'geojson',
-                             cluster: false,
-+                            promoteId: 'id',
-                             data: { type: 'FeatureCollection', features: [] }
-                         }
-                     },
 @@ -718,6 +731,17 @@ export const useMapStore = defineStore('cloudtak', {
              this.isLoaded = true;
  
