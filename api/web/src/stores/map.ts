@@ -450,7 +450,6 @@ export const useMapStore = defineStore('cloudtak', {
                         '-1': {
                             type: 'geojson',
                             cluster: false,
-                            promoteId: 'id',
                             data: { type: 'FeatureCollection', features: [] }
                         }
                     },
