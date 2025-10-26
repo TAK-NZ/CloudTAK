@@ -79,11 +79,11 @@ async function fetchList() {
     error.value = undefined;
 
     try {
-        const res = await server.GET('/api/marti/package', {});
+        const res = await server.GET(`/api/server/package`);
 
         if (res.error) throw new Error(res.error.message);
 
-        list.value = res.data || { total: 0, items: [] };
+        list.value = res.data;
         loading.value = false;
     } catch (err) {
         loading.value = false;
@@ -94,10 +94,10 @@ async function fetchList() {
 async function deletePackage(pkg: Package) {
     loading.value = true;
     try {
-        await server.DELETE('/api/marti/package/{:uid}', {
+        await server.DELETE(`/api/server/package/{:hash}`, {
             params: {
                 path: {
-                    ':uid': pkg.UID
+                    ':hash': pkg.Hash
                 }
             }
         })
