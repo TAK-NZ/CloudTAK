@@ -32,7 +32,7 @@
                 </TablerIconButton>
             </div>
         </template>
-        <template v-else-if='props.type === "Data Syncs"'>
+        <template v-else-if='props.type === "Missions"'>
             <IconAlertCircle
                 :size='32'
                 stroke='2'
