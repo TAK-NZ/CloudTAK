@@ -1,215 +1,123 @@
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue b/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
-index ed11d85dc..8d5fc1daa 100644
+index 8d5fc1daa..1bb4f6c95 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
 +++ b/api/web/src/components/CloudTAK/Menu/MenuOverlays.vue
-@@ -39,7 +39,7 @@
-             <template v-else>
-                 <div ref='sortableRef'>
-                     <div
--                        v-for='overlay in overlays'
-+                        v-for='overlay in sortedOverlays'
-                         :id='String(overlay.id)'
-                         :key='overlay.id'
-                         class='col-lg py-2'
-@@ -47,7 +47,7 @@
-                         <div class='py-2 px-3'>
-                             <div class='col-12 d-flex align-items-center'>
-                                 <IconGripVertical
--                                    v-if='isDraggable'
-+                                    v-if='isDraggable && overlay.name !== "CoT Icons"'
-                                     v-tooltip='"Draw to reorder"'
-                                     class='drag-handle cursor-move'
-                                     role='button'
-@@ -55,6 +55,17 @@
-                                     :size='20'
-                                     stroke='1'
-                                 />
-+                                <div
-+                                    v-else-if='isDraggable && overlay.name === "CoT Icons"'
-+                                    v-tooltip='"CoT Icons always stays at top"'
-+                                    class='opacity-50'
-+                                    :size='20'
-+                                >
-+                                    <IconGripVertical
-+                                        :size='20'
-+                                        stroke='1'
-+                                    />
-+                                </div>
- 
-                                 <template v-if='!overlay.healthy()'>
-                                     <IconAlertTriangle
-@@ -64,7 +75,7 @@
-                                         stroke='1'
-                                     />
-                                 </template>
--                                <template v-else-if='overlay.id !== 0'>
-+                                <template v-else-if='overlay.id !== 0 && overlay.mode !== "basemap"'>
-                                     <TablerIconButton
-                                         v-if='!isDraggable && !opened.has(overlay.id)'
-                                         title='Expand Options'
-@@ -86,26 +97,35 @@
-                                         />
+@@ -98,7 +98,7 @@
                                      </TablerIconButton>
                                  </template>
-+                                <template v-else-if='overlay.mode === "basemap" && !isDraggable'>
-+                                    <div style='width: 20px;'></div>
-+                                </template>
+                                 <template v-else-if='overlay.mode === "basemap" && !isDraggable'>
+-                                    <div style='width: 20px;'></div>
++                                    <div style='width: 20px;' />
+                                 </template>
  
                                  <span class='mx-2'>
-                                     <IconMap
--                                        v-if='overlay.type === "raster"'
--                                        v-tooltip='"Raster"'
-+                                        v-if='overlay.mode === "basemap"'
-+                                        v-tooltip='"Basemap"'
-                                         :size='20'
-                                         stroke='1'
-                                     />
--                                    <IconAmbulance
-+                                    <IconReplace
-                                         v-else-if='overlay.type === "geojson" && overlay.mode === "mission"'
-                                         v-tooltip='"Data Sync"'
-                                         :size='20'
-                                         stroke='1'
-                                     />
-                                     <IconVector
--                                        v-else
-+                                        v-else-if='overlay.name === "CoT Icons"'
-                                         v-tooltip='"Vector"'
-                                         :size='20'
-                                         stroke='1'
-                                     />
-+                                    <IconStack
-+                                        v-else
-+                                        v-tooltip='"Overlay"'
-+                                        :size='20'
-+                                        stroke='1'
-+                                    />
+@@ -129,12 +129,11 @@
                                  </span>
  
                                  <span
-@@ -118,6 +138,12 @@
+-                                    class='mx-2 user-select-none text-truncate'
+-                                    style='width: 200px;'
++                                    class='mx-2 user-select-none text-truncate flex-grow-1'
+                                 >
+                                     <a
+                                         v-if='overlay.mode === "mission"'
+-                                        class='cursor-pointer text-underline'
++                                        class='cursor-pointer text-white'
                                          @click='router.push(`/menu/missions/${overlay.mode_id}`)'
                                          v-text='overlay.name'
                                      />
-+                                    <a
-+                                        v-else-if='overlay.mode === "basemap"'
-+                                        class='cursor-pointer text-white'
-+                                        @click='router.push("/menu/basemaps")'
-+                                        v-text='overlay.name'
-+                                    />
-                                     <span
-                                         v-else
+@@ -149,54 +148,51 @@
                                          v-text='overlay.name'
-@@ -126,7 +152,7 @@
- 
-                                 <div class='ms-auto btn-list'>
-                                     <TablerIconButton
--                                        v-if='overlay.hasBounds()'
-+                                        v-if='overlay.hasBounds() && overlay.mode !== "basemap"'
-                                         title='Zoom To Overlay'
-                                         @click.stop.prevent='overlay.zoomTo()'
-                                     >
-@@ -151,7 +177,7 @@
                                      />
+                                 </span>
++                            </div>
  
-                                     <TablerIconButton
--                                        v-if='overlay.visible'
-+                                        v-if='overlay.visible && overlay.mode !== "basemap"'
-                                         title='Hide Layer'
-                                         @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
-                                     >
-@@ -161,7 +187,7 @@
-                                         />
-                                     </TablerIconButton>
-                                     <TablerIconButton
--                                        v-else
-+                                        v-else-if='overlay.mode !== "basemap"'
-                                         title='Show Layer'
-                                         @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
-                                     >
-@@ -176,7 +202,7 @@
+-                                <div class='ms-auto btn-list'>
+-                                    <TablerIconButton
+-                                        v-if='overlay.hasBounds() && overlay.mode !== "basemap"'
+-                                        title='Zoom To Overlay'
+-                                        @click.stop.prevent='overlay.zoomTo()'
+-                                    >
+-                                        <IconMaximize
+-                                            :size='20'
+-                                            stroke='1'
+-                                        />
+-                                    </TablerIconButton>
++                            <div class='ms-auto btn-list'>
++                                <TablerDelete
++                                    v-if='["mission", "data", "profile", "overlay"].includes(overlay.mode)'
++                                    :key='overlay.id'
++                                    v-tooltip='"Delete Overlay"'
++                                    :size='20'
++                                    role='button'
++                                    tabindex='0'
++                                    displaytype='icon'
++                                    @delete='removeOverlay(overlay.id)'
++                                />
  
-                         <template v-if='!isDraggable && opened.has(overlay.id)'>
-                             <div
--                                v-if='overlay.type === "raster"'
-+                                v-if='overlay.type === "raster" && overlay.mode !== "basemap"'
-                                 class='col-12'
-                                 style='margin-left: 30px; padding-right: 40px;'
-                             >
-@@ -212,7 +238,7 @@
- </template>
+-                                    <TablerDelete
+-                                        v-if='
+-                                            opened.has(overlay.id)
+-                                                && ["mission", "data", "profile", "overlay"].includes(overlay.mode)
+-                                        '
+-                                        :key='overlay.id'
+-                                        v-tooltip='"Delete Overlay"'
++                                <TablerIconButton
++                                    v-if='overlay.hasBounds() && overlay.mode !== "basemap"'
++                                    title='Zoom To Overlay'
++                                    @click.stop.prevent='overlay.zoomTo()'
++                                >
++                                    <IconMaximize
+                                         :size='20'
+-                                        role='button'
+-                                        tabindex='0'
+-                                        displaytype='icon'
+-                                        @delete='removeOverlay(overlay.id)'
++                                        stroke='1'
+                                     />
++                                </TablerIconButton>
  
- <script setup lang='ts'>
--import { ref, watch, useTemplateRef } from 'vue';
-+import { ref, watch, useTemplateRef, computed } from 'vue';
- import { useRouter } from 'vue-router';
- import MenuTemplate from '../util/MenuTemplate.vue';
- import {
-@@ -229,7 +255,8 @@ import {
-     IconAlertTriangle,
-     IconChevronRight,
-     IconChevronDown,
--    IconAmbulance,
-+    IconReplace,
-+    IconStack,
-     IconMaximize,
-     IconVector,
-     IconEyeOff,
-@@ -255,6 +282,20 @@ const opened = ref<Set<number>>(new Set());
- const isLoaded = mapStore.isLoaded;
- const overlays = mapStore.overlays;
- 
-+// Sort overlays with CoT Icons always at top, then reverse order (highest pos first)
-+const sortedOverlays = computed(() => {
-+    const sorted = [...overlays].sort((a, b) => {
-+        // CoT Icons (id: -1) always goes first
-+        if (a.name === 'CoT Icons') return -1;
-+        if (b.name === 'CoT Icons') return 1;
-+        
-+        // For all other overlays, reverse the position order (highest pos first)
-+        return (b.pos || 0) - (a.pos || 0);
-+    });
-+    
-+    return sorted;
-+});
-+
- const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
- 
- watch(isDraggable, () => {
-@@ -276,6 +317,14 @@ async function saveOrder(sortableEv: SortableEvent) {
-     const id = sortableEv.item.getAttribute('id');
-     if (!id) return;
- 
-+    // Prevent moving CoT Icons from the top position
-+    const draggedOverlay = mapStore.getOverlayById(parseInt(id));
-+    if (draggedOverlay?.name === 'CoT Icons') {
-+        // Reset the sortable to original position
-+        sortable.sort(sortable.toArray());
-+        return;
-+    }
-+
-     // TODO: Eventually it would be awesome to just move the Overlay in the overlays array
-     // And the MapStore would just dynamically re-order the layers so any part of the app could reorder
- 
-@@ -296,10 +345,17 @@ async function saveOrder(sortableEv: SortableEvent) {
-         }
-     }
- 
--    for (const overlay of overlays) {
--        await overlay.update({
--            pos: overlay_ids.indexOf(overlay.id)
--        });
-+    // Since we're displaying in reverse order, we need to reverse the position assignment
-+    // Higher visual position = lower pos value in database
-+    const maxPos = Math.max(...overlays.filter(o => o.name !== 'CoT Icons').map(o => o.pos || 0));
-+    
-+    for (let i = 0; i < overlay_ids.length; i++) {
-+        const overlayToUpdate = mapStore.getOverlayById(overlay_ids[i]);
-+        if (overlayToUpdate && overlayToUpdate.name !== 'CoT Icons') {
-+            // Reverse the position: first item in visual list gets highest pos value
-+            const newPos = maxPos - i;
-+            await overlayToUpdate.update({ pos: newPos });
-+        }
-     }
- }
+-                                    <TablerIconButton
+-                                        v-if='overlay.visible && overlay.mode !== "basemap"'
+-                                        title='Hide Layer'
+-                                        @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
+-                                    >
+-                                        <IconEye
+-                                            :size='20'
+-                                            stroke='1'
+-                                        />
+-                                    </TablerIconButton>
+-                                    <TablerIconButton
+-                                        v-else-if='overlay.mode !== "basemap"'
+-                                        title='Show Layer'
+-                                        @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
+-                                    >
+-                                        <IconEyeOff
+-                                            :size='20'
+-                                            stroke='1'
+-                                        />
+-                                    </TablerIconButton>
+-                                </div>
++                                <TablerIconButton
++                                    v-if='overlay.visible && overlay.mode !== "basemap"'
++                                    title='Hide Layer'
++                                    @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
++                                >
++                                    <IconEye
++                                        :size='20'
++                                        stroke='1'
++                                    />
++                                </TablerIconButton>
++                                <TablerIconButton
++                                    v-else-if='overlay.mode !== "basemap"'
++                                    title='Show Layer'
++                                    @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
++                                >
++                                    <IconEyeOff
++                                        :size='20'
++                                        stroke='1'
++                                    />
++                                </TablerIconButton>
+                             </div>
+                         </div>
  

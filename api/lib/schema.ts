@@ -177,6 +177,7 @@ export const Basemap = pgTable('basemaps', {
     username: text().references(() => Profile.username),
     bounds: geometry({ type: GeometryType.Polygon, srid: 4326 }).$type<Polygon>(),
     tilesize: integer().notNull().default(256),
+    frequency: integer(),
     attribution: text(),
     center: geometry({ type: GeometryType.Point, srid: 4326 }).$type<Point>(),
     minzoom: integer().notNull().default(0),
@@ -363,18 +364,6 @@ export const LayerIncoming = pgTable('layers_incoming', {
     groups: text().array().notNull().default([]),
 });
 
-export const LayerAlert = pgTable('layer_alerts', {
-    id: serial().primaryKey(),
-    created: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-    updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
-    layer: integer().notNull().references(() => Layer.id),
-    icon: text().notNull().default('alert-circle'),
-    priority: text().notNull().default('yellow'),
-    title: text().notNull(),
-    description: text().notNull().default('Details Unknown'),
-    hidden: boolean().notNull().default(false)
-});
-
 export const Setting = pgTable('settings', {
     key: text().primaryKey(),
     value: text().notNull().default('')
@@ -444,6 +433,7 @@ export const ProfileOverlay = pgTable('profile_overlays', {
     updated: timestamp({ withTimezone: true, mode: 'string' }).notNull().default(sql`Now()`),
     pos: integer().notNull().default(5),
     type: text().notNull().default('vector'),
+    frequency: integer(),
     opacity: numeric().notNull().default('1'),
     visible: boolean().notNull().default(true),
     token: text(),

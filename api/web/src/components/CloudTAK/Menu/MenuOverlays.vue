@@ -98,7 +98,7 @@
                                     </TablerIconButton>
                                 </template>
                                 <template v-else-if='overlay.mode === "basemap" && !isDraggable'>
-                                    <div style='width: 20px;'></div>
+                                    <div style='width: 20px;' />
                                 </template>
 
                                 <span class='mx-2'>
@@ -129,12 +129,11 @@
                                 </span>
 
                                 <span
-                                    class='mx-2 user-select-none text-truncate'
-                                    style='width: 200px;'
+                                    class='mx-2 user-select-none text-truncate flex-grow-1'
                                 >
                                     <a
                                         v-if='overlay.mode === "mission"'
-                                        class='cursor-pointer text-underline'
+                                        class='cursor-pointer text-white'
                                         @click='router.push(`/menu/missions/${overlay.mode_id}`)'
                                         v-text='overlay.name'
                                     />
@@ -149,54 +148,51 @@
                                         v-text='overlay.name'
                                     />
                                 </span>
+                            </div>
 
-                                <div class='ms-auto btn-list'>
-                                    <TablerIconButton
-                                        v-if='overlay.hasBounds() && overlay.mode !== "basemap"'
-                                        title='Zoom To Overlay'
-                                        @click.stop.prevent='overlay.zoomTo()'
-                                    >
-                                        <IconMaximize
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </TablerIconButton>
+                            <div class='ms-auto btn-list'>
+                                <TablerDelete
+                                    v-if='["mission", "data", "profile", "overlay"].includes(overlay.mode)'
+                                    :key='overlay.id'
+                                    v-tooltip='"Delete Overlay"'
+                                    :size='20'
+                                    role='button'
+                                    tabindex='0'
+                                    displaytype='icon'
+                                    @delete='removeOverlay(overlay.id)'
+                                />
 
-                                    <TablerDelete
-                                        v-if='
-                                            opened.has(overlay.id)
-                                                && ["mission", "data", "profile", "overlay"].includes(overlay.mode)
-                                        '
-                                        :key='overlay.id'
-                                        v-tooltip='"Delete Overlay"'
+                                <TablerIconButton
+                                    v-if='overlay.hasBounds() && overlay.mode !== "basemap"'
+                                    title='Zoom To Overlay'
+                                    @click.stop.prevent='overlay.zoomTo()'
+                                >
+                                    <IconMaximize
                                         :size='20'
-                                        role='button'
-                                        tabindex='0'
-                                        displaytype='icon'
-                                        @delete='removeOverlay(overlay.id)'
+                                        stroke='1'
                                     />
+                                </TablerIconButton>
 
-                                    <TablerIconButton
-                                        v-if='overlay.visible && overlay.mode !== "basemap"'
-                                        title='Hide Layer'
-                                        @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
-                                    >
-                                        <IconEye
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </TablerIconButton>
-                                    <TablerIconButton
-                                        v-else-if='overlay.mode !== "basemap"'
-                                        title='Show Layer'
-                                        @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
-                                    >
-                                        <IconEyeOff
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </TablerIconButton>
-                                </div>
+                                <TablerIconButton
+                                    v-if='overlay.visible && overlay.mode !== "basemap"'
+                                    title='Hide Layer'
+                                    @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
+                                >
+                                    <IconEye
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
+                                <TablerIconButton
+                                    v-else-if='overlay.mode !== "basemap"'
+                                    title='Show Layer'
+                                    @click.stop.prevent='overlay.update({ visible: !overlay.visible })'
+                                >
+                                    <IconEyeOff
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
                             </div>
                         </div>
 

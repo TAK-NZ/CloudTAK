@@ -4,8 +4,9 @@
 
 import { stdurl } from '../std.ts';
 import type Atlas from './atlas.ts';
+import TAKNotification from '../base/notification.ts';
 import { WorkerMessageType } from '../base/events.ts';
-import type { Feature } from '../types.ts';
+import type { Feature, Import } from '../types.ts';
 
 export default class AtlasConnection {
     atlas: Atlas;
@@ -71,6 +72,18 @@ export default class AtlasConnection {
                 };
 
                 throw new Error(err.properties.message);
+            } else if (body.type === 'import') {
+                const imp = (body as unknown as {
+                    properties: Import
+                }).properties;
+
+                await TAKNotification.create(
+                    'Import',
+                    `Import ${imp.status}`,
+                    `${imp.name} has been updated to status: ${imp.status}`,
+                    `/menu/imports/${imp.id}`,
+                    true
+                );
             } else if (body.type === 'cot') {
                 const feat = body.data as Feature;
 
@@ -82,27 +95,23 @@ export default class AtlasConnection {
                     'b-a-o-pan',
                     'b-a-o-opn'
                 ].includes(feat.properties.type)) {
-                    this.atlas.postMessage({
-                        type: WorkerMessageType.Notification,
-                        body: {
-                            type: 'Alert',
-                            name: `${feat.properties.callsign} Created`,
-                            body: '',
-                            url: `/cot/${feat.id}`
-                        }
-                    });
+                    await TAKNotification.create(
+                        'Alert',
+                        `${feat.properties.callsign} Created`,
+                        '',
+                        `/cot/${feat.id}`,
+                        true
+                    );
                 } else if ([
                     'b-r-f-h-c'
                 ].includes(feat.properties.type)) {
-                    this.atlas.postMessage({
-                        type: WorkerMessageType.Notification,
-                        body: {
-                            type: 'Medical',
-                            name: `${feat.properties.callsign} CASEVAC`,
-                            body: '',
-                            url: `/cot/${feat.id}`
-                        }
-                    });
+                    await TAKNotification.create(
+                        'Medical',
+                        `New CASEVAC`,
+                        `A CASEVAC has been requested for ${feat.properties.callsign}.`,
+                        `/cot/${feat.id}`,
+                        true
+                    );
                 }
             } else if (body.type === 'task') {
                 const task = body.data as Feature;
@@ -114,30 +123,26 @@ export default class AtlasConnection {
                     // CoT Delete Tasking
                     console.error('DELETE', task.properties);
                 } else if (task.properties.type === 't-x-m-n' && task.properties.mission) {
-                    this.atlas.postMessage({
-                        type: WorkerMessageType.Notification,
-                        body: {
-                            type: 'Mission',
-                            name: `${task.properties.mission.name} Created`,
-                            body: '',
-                            url: `/menu/missions/${task.properties.mission.guid}`
-                        }
-                    });
+                    await TAKNotification.create(
+                        'Mission',
+                        `${task.properties.mission.name} Created`,
+                        '',
+                        `/menu/missions/${task.properties.mission.guid}`,
+                        true
+                    );
                 } else {
                     console.warn('Unknown Task', JSON.stringify(task));
                 }
             } else if (body.type === 'chat') {
                 const chat = (body.data as Feature).properties;
                 if (chat.chat) {
-                    this.atlas.postMessage({
-                        type: WorkerMessageType.Notification,
-                        body: {
-                            type: 'Chat',
-                            name: `${chat.chat.senderCallsign} to ${chat.chat.chatroom} says:`,
-                            body: chat.remarks || '',
-                            url: `/menu/chats`
-                        }
-                    });
+                    await TAKNotification.create(
+                        'Chat',
+                        'New Chat Message',
+                        `${chat.chat.senderCallsign} to ${chat.chat.chatroom} says: ${chat.remarks}`,
+                        `/menu/chats`,
+                        true
+                    );
                 } else {
                     console.log('UNKNOWN Chat', body.data);
                 }
