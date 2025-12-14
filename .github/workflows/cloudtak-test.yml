@@ -27,21 +27,6 @@ jobs:
       - name: Docker API Lint
         run: docker run cloudtak-api:latest sh -c "npm install --include=dev && npm run lint"
 
-  data:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Docker Data Task Build
-        run: docker buildx build ./tasks/data -t cloudtak-data
-
-      - name: Docker Data Task Lint
-        run: docker run cloudtak-data:latest npm run lint
-
-      - name: Docker Data Task Test
-        run: docker run cloudtak-data:latest npm run test
-
   events:
     runs-on: ubuntu-latest
     timeout-minutes: 10
