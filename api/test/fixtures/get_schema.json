@@ -219,26 +219,6 @@
         "query": false,
         "res": true
     },
-    "GET /connection/:connectionid/layer/:layerid/alert": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /connection/:connectionid/layer/:layerid/alert": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /connection/:connectionid/layer/:layerid/alert": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /connection/:connectionid/layer/:layerid/alert/:alertid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "POST /layer/:layerid/cot": {
         "body": true,
         "query": true,
@@ -261,6 +241,36 @@
     },
     "PUT /connection/:connectionid/layer/:layerid/outgoing/ephemeral": {
         "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/task/invoke": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task/logs": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task/capabilities": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
         "query": false,
         "res": true
     },
@@ -325,36 +335,6 @@
         "res": true
     },
     "DELETE /connection/:connectionid/layer/:layerid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /connection/:connectionid/layer/:layerid/task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /connection/:connectionid/layer/:layerid/task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /connection/:connectionid/layer/:layerid/task/invoke": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /connection/:connectionid/layer/:layerid/task/logs": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /connection/:connectionid/layer/:layerid/task/capabilities": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "POST /connection/:connectionid/layer/:layerid/task": {
         "body": false,
         "query": false,
         "res": true
@@ -504,6 +484,46 @@
         "query": false,
         "res": false
     },
+    "GET /import": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import/raw": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "PATCH /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /iconset": {
         "body": false,
         "query": true,
@@ -554,11 +574,6 @@
         "query": false,
         "res": true
     },
-    "GET /iconset/:iconset/icon/:icon/raw": {
-        "body": false,
-        "query": true,
-        "res": false
-    },
     "GET /iconset/:iconset/sprite{:size}.json": {
         "body": false,
         "query": true,
@@ -568,46 +583,6 @@
         "body": false,
         "query": true,
         "res": false
-    },
-    "GET /import": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PUT /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import/raw": {
-        "body": false,
-        "query": true,
-        "res": false
-    },
-    "PATCH /import/:import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
     },
     "GET /layer": {
         "body": false,
@@ -634,11 +609,6 @@
         "query": false,
         "res": true
     },
-    "GET /template/:templateid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /ldap/channel": {
         "body": false,
         "query": true,
@@ -660,6 +630,11 @@
         "res": true
     },
     "GET /login": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest": {
         "body": false,
         "query": false,
         "res": true
@@ -716,7 +691,7 @@
     },
     "GET /marti/missions/:name/log": {
         "body": false,
-        "query": false,
+        "query": true,
         "res": true
     },
     "POST /marti/missions/:name/log": {
@@ -764,7 +739,12 @@
         "query": true,
         "res": true
     },
-    "POST /marti/missions": {
+    "POST /marti/mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/missions/:name": {
         "body": true,
         "query": false,
         "res": true
@@ -826,12 +806,12 @@
     },
     "GET /marti/package": {
         "body": false,
-        "query": false,
+        "query": true,
         "res": true
     },
     "GET /marti/package/:uid": {
         "body": false,
-        "query": true,
+        "query": false,
         "res": true
     },
     "DELETE /marti/package/:uid": {
@@ -891,6 +871,31 @@
     },
     "POST /marti/signClient": {
         "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission": {
+        "body": false,
         "query": false,
         "res": true
     },
@@ -1134,6 +1139,16 @@
         "query": true,
         "res": true
     },
+    "GET /server/package": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /server/package/:hash": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /search": {
         "body": false,
         "query": false,
@@ -1159,16 +1174,6 @@
         "query": true,
         "res": true
     },
-    "GET /server/package": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /server/package/:hash": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /server/repeater": {
         "body": false,
         "query": false,
@@ -1177,6 +1182,11 @@
     "DELETE /server/repeater/:uid": {
         "body": false,
         "query": false,
+        "res": true
+    },
+    "GET /server/video": {
+        "body": false,
+        "query": true,
         "res": true
     },
     "GET /server": {
@@ -1275,6 +1285,11 @@
         "res": true
     },
     "GET /video/lease/:lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /video/lease/:lease/metadata": {
         "body": false,
         "query": false,
         "res": true

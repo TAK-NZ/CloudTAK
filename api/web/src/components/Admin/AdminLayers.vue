@@ -89,8 +89,8 @@
                             class='cursor-pointer'
                             role='menuitem'
                             tabindex='0'
-                            @keyup.enter='layer.connection ? stdclick(router, $event, `/connection/${layer.connection}/layer/${layer.id}`) : stdclick(router, $event, `/admin/layer/${layer.id}`)'
-                            @click='layer.connection ? stdclick(router, $event, `/connection/${layer.connection}/layer/${layer.id}`) : stdclick(router, $event, `/admin/layer/${layer.id}`)'
+                            @keyup.enter='external(`/connection/${layer.connection || "template"}/layer/${layer.id}`)'
+                            @click='external(`/connection/${layer.connection || "template"}/layer/${layer.id}`)'
                         >
                             <template v-for='h in header'>
                                 <template v-if='h.display && h.name === "name"'>
@@ -169,7 +169,7 @@
 <script setup lang='ts'>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router';
-import { std, stdurl, stdclick } from '../../std.ts';
+import { std, stdurl } from '../../std.ts';
 import type { ETLLayerList, ETLLayer } from '../../types.ts';
 import TableHeader from '../util/TableHeader.vue'
 import TableFooter from '../util/TableFooter.vue'
@@ -242,6 +242,10 @@ async function redeploy() {
     loading.value = false;
 }
 
+function external(url: string) {
+    window.location.href = url;
+}
+
 async function listLayerSchema() {
     const schema = await std('/api/schema?method=GET&url=/layer');
 
@@ -249,7 +253,7 @@ async function listLayerSchema() {
     header.value = defaults.map((h) => {
         return { name: h, display: true };
     });
-    
+
     // @ts-expect-error Worth trying to type at some point maybe but not now
     header.value.push(...schema.query.properties.sort.enum.map((h) => {
         return {

@@ -11,7 +11,6 @@ export interface BatchProps {
   envConfig: ContextEnvironmentConfig;
   vpc: ec2.IVpc;
   ecrRepository: ecr.IRepository;
-  dataImageAsset?: ecrAssets.DockerImageAsset;
   assetBucketName: string;
   serviceUrl: string;
 }
@@ -24,7 +23,7 @@ export class Batch extends Construct {
   constructor(scope: Construct, id: string, props: BatchProps) {
     super(scope, id);
 
-    const { envConfig, vpc, ecrRepository, dataImageAsset, assetBucketName, serviceUrl } = props;
+    const { envConfig, vpc, ecrRepository, assetBucketName, serviceUrl } = props;
 
     const batchSecurityGroup = new ec2.SecurityGroup(this, 'BatchSecurityGroup', {
       vpc: vpc,
@@ -108,13 +107,9 @@ export class Batch extends Construct {
     });
 
     // Determine container image source
-    const containerImage = dataImageAsset 
-      ? `${dataImageAsset.repository.repositoryUri}:${dataImageAsset.imageTag}`
-      : (() => {
-          const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
-          const dataTag = cloudtakImageTag ? `data-${cloudtakImageTag.replace('cloudtak-', '')}` : 'data-latest';
-          return `${ecrRepository.repositoryUri}:${dataTag}`;
-        })();
+    const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
+    const dataTag = cloudtakImageTag ? `data-${cloudtakImageTag.replace('cloudtak-', '')}` : 'data-latest';
+    const containerImage = `${ecrRepository.repositoryUri}:${dataTag}`;
     
     this.jobDefinition = new batch.CfnJobDefinition(this, 'JobDefinition', {
       jobDefinitionName: `TAK-${envConfig.stackName}-CloudTAK-data-job`,

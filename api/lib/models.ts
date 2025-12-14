@@ -23,6 +23,8 @@ export default class Models {
     Palette: Palette;
     PaletteFeature: Modeler<typeof pgtypes.PaletteFeature>;
 
+    MissionTemplate: Modeler<typeof pgtypes.MissionTemplate>;
+
     Profile: Modeler<typeof pgtypes.Profile>;
     ProfileChat: ProfileChat;
     ProfileToken: Modeler<typeof pgtypes.ProfileToken>;
@@ -44,7 +46,6 @@ export default class Models {
     Layer: Layer;
     LayerIncoming: Modeler<typeof pgtypes.LayerIncoming>;
     LayerOutgoing: Modeler<typeof pgtypes.LayerOutgoing>;
-    LayerAlert: Modeler<typeof pgtypes.LayerAlert>;
 
     constructor(pg: Pool<typeof pgtypes>) {
         this.ProfileChat = new ProfileChat(pg);
@@ -57,6 +58,8 @@ export default class Models {
 
         this.Palette = new Palette(pg);
         this.PaletteFeature = new Modeler(pg, pgtypes.PaletteFeature);
+
+        this.MissionTemplate = new Modeler(pg, pgtypes.MissionTemplate);
 
         this.Profile = new Modeler(pg, pgtypes.Profile);
         this.ProfileToken = new Modeler(pg, pgtypes.ProfileToken);
@@ -77,7 +80,5 @@ export default class Models {
         this.Layer = new Layer(pg);
         this.LayerIncoming = new Modeler(pg, pgtypes.LayerIncoming);
         this.LayerOutgoing = new Modeler(pg, pgtypes.LayerOutgoing);
-
-        this.LayerAlert = new Modeler(pg, pgtypes.LayerAlert);
     }
 }

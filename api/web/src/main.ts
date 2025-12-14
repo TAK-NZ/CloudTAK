@@ -1,71 +1,37 @@
 import { createApp } from 'vue'
+import { version } from '../package.json'
+import type { PluginStatic } from '../plugin.ts'
 import * as VueRouter from 'vue-router'
 import { createPinia } from 'pinia'
 
-// @ts-expect-error Virtual Module
-import { registerSW } from 'virtual:pwa-register'
+if (!import.meta.env.DEV && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register(`/sw.js?v=${version}&build=${import.meta.env.HASH}`).then((registration) => {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }, (err) => {
+            console.log('ServiceWorker registration failed: ', err);
+        });
 
-registerSW({
-    immediate: true,
-    onNeedRefresh() {
-        console.error('App needs refresh');
-    },
-    onOfflineReady() {
-        console.log('App ready to work offline!')
-    }
-})
+        let refreshing = false;
+
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (!refreshing) {
+                window.location.reload()
+                refreshing = true
+            }
+        })
+    });
+}
 
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
 import App from './App.vue'
 
-// Template layers are hosted under the `admin/` prefix and
-// Connection layers under the `connection/` prefix
-const LayerFragment = (prefix: string) => {
-    return {
-        component: () => import('./components/ETL/Layer.vue'),
-        children: [{
-            path: '',
-            name: `${prefix}-default`,
-            redirect: () => {
-                return { name: `${prefix}-deployment` };
-            }
-        },{
-            path: 'deployment',
-            name: `${prefix}-deployment`,
-            component: () => import('./components/ETL/Layer/LayerDeployment.vue')
-        },{
-            path: 'alarm',
-            name: `${prefix}-alarm`,
-            component: () => import('./components/ETL/Layer/LayerAlarm.vue')
-        },{
-            path: 'incoming/config',
-            name: `${prefix}-incoming-config`,
-            component: () => import('./components/ETL/Layer/LayerIncomingConfig.vue')
-        },{
-            path: 'incoming/environment',
-            name: `${prefix}-incoming-environment`,
-            component: () => import('./components/ETL/Layer/LayerEnvironment.vue')
-        },{
-            path: 'incoming/schema',
-            name: `${prefix}-incoming-schema`,
-            component: () => import('./components/ETL/Layer/LayerIncomingSchema.vue')
-        },{
-            path: 'incoming/styles',
-            name: `${prefix}-incoming-styles`,
-            component: () => import('./components/ETL/Layer/LayerIncomingStyles.vue')
-        },{
-            path: 'outgoing/environment',
-            name: `${prefix}-outgoing-environment`,
-            component: () => import('./components/ETL/Layer/LayerEnvironment.vue')
-        },{
-            path: 'outgoing/config',
-            name: `${prefix}-outgoing-config`,
-            component: () => import('./components/ETL/Layer/LayerOutgoingConfig.vue')
-        }]
-    }
-}
+// Intentially not dynamic import to ensure it's included in the build
+// It contains a utility to hard reload the app
+import Login from './components/Login.vue'
+import MenuSettings from './components/CloudTAK/Menu/MenuSettings.vue'
 
 const router = VueRouter.createRouter({
     history: VueRouter.createWebHistory(),
@@ -88,7 +54,7 @@ const router = VueRouter.createRouter({
                 children: [{
                     path: 'settings',
                     name: 'home-menu-settings',
-                    component: () => import('./components/CloudTAK/Menu/MenuSettings.vue')
+                    component: MenuSettings
                 },{
                     path: 'settings/tokens',
                     name: 'home-menu-settings-tokens',
@@ -236,237 +202,45 @@ const router = VueRouter.createRouter({
             }]
         },
 
-        { path: '/connection/:connectionid/layer/new', name: 'connection-layer-new', component: () => import('./components/ETL/LayerEdit.vue') },
-        { path: '/connection/:connectionid/data/:dataid/layer/new', name: 'connection-data-layer-new', component: () => import('./components/ETL/LayerEdit.vue') },
-
-        {
-            path: '/connection/:connectionid/layer/:layerid',
-            name: 'layer',
-            ...LayerFragment('layer'),
-        },
-
-
-        { path: '/connection/:connectionid/layer/:layerid/edit', name: 'layer-edit', component: () => import('./components/ETL/LayerEdit.vue') },
-        { path: '/connection/:connectionid/layer/:layerid/alert', name: 'layer-alerts', component: () => import('./components/ETL/LayerAlerts.vue') },
-
-        { path: '/connection/:connectionid/data/new', name: 'data-new', component: () => import('./components/ETL/DataEdit.vue') },
-        {
-            path: '/connection/:connectionid/data/:dataid',
-            name: 'data',
-            component: () => import('./components/ETL/Data.vue'),
-            children: [{
-                path: '',
-                name: 'data-default',
-                redirect: () => {
-                    return { name: 'data-files' };
-                }
-            },{
-                path: 'groups',
-                name: 'data-groups',
-                component: () => import('./components/ETL/Data/DataGroups.vue')
-            },{
-                path: 'files',
-                name: 'data-files',
-                component: () => import('./components/ETL/Data/DataFiles.vue')
-            },{
-                path: 'layer',
-                name: 'data-layer',
-                component: () => import('./components/ETL/Data/DataLayer.vue')
-            }]
-        },
-        { path: '/connection/:connectionid/data/:dataid/edit', name: 'data-edit', component: () => import('./components/ETL/DataEdit.vue') },
-
-        { path: '/connection', name: 'connections', component: () => import('./components/ETL/Connections.vue') },
-        { path: '/connection/new', name: 'connection-new', component: () => import('./components/ETL/ConnectionEdit.vue') },
-
-        {
-            path: '/connection/:connectionid',
-            name: 'connection',
-            component: () => import('./components/ETL/Connection.vue'),
-            children: [{
-                path: '',
-                name: 'connection-default',
-                redirect: () => {
-                    return { name: 'connection-layers' };
-                }
-            },{
-                path: 'groups',
-                name: 'connection-groups',
-                component: () => import('./components/ETL/Connection/ConnectionGroups.vue')
-            },{
-                path: 'layer',
-                name: 'connection-layers',
-                component: () => import('./components/ETL/Connection/ConnectionLayer.vue')
-            },{
-                path: 'files',
-                name: 'connection-files',
-                component: () => import('./components/ETL/Connection/ConnectionFiles.vue')
-            },{
-                path: 'data',
-                name: 'connection-datas',
-                component: () => import('./components/ETL/Connection/ConnectionData.vue')
-            },{
-                path: 'video',
-                name: 'connection-videos',
-                component: () => import('./components/ETL/Connection/ConnectionVideos.vue')
-            },{
-                path: 'tokens',
-                name: 'connection-tokens',
-                component: () => import('./components/ETL/Connection/ConnectionTokens.vue')
-            }]
-        },
-
-        { path: '/connection/:connectionid/edit', name: 'connection-edit', component: () => import('./components/ETL/ConnectionEdit.vue') },
-
-        { path: '/login', name: 'login', component: () => import('./components/Login.vue') },
+        { path: '/login', name: 'login', component: Login },
 
         { path: '/configure', name: 'configure', component: () => import('./components/Configure.vue') },
-
-        {
-            path: '/admin',
-            name: 'admin',
-            component: () => import('./components/ServerAdmin.vue'),
-            children: [{
-                path: '',
-                name: 'admin-default',
-                redirect: () => {
-                    return { name: 'admin-server-connection' };
-                }
-            },{
-                path: 'layer',
-                name: 'admin-layers',
-                component: () => import('./components/Admin/AdminLayers.vue')
-            },{
-                path: 'layer/new',
-                name: 'admin-layer-new',
-                component: () => import('./components/Admin/AdminLayerTemplate.vue')
-            },{
-                path: 'layer/:layerid',
-                name: 'admin-layer',
-            ...LayerFragment('layer-template'),
-            },{
-                path: 'video',
-                name: 'admin-videos',
-                component: () => import('./components/Admin/AdminVideos.vue'),
-                children: [{
-                    path: '',
-                    name: 'admin-video-default',
-                    redirect: () => {
-                        return { name: 'admin-video-service' };
-                    }
-                },{
-                    path: 'service',
-                    name: 'admin-video-service',
-                    component: () => import('./components/Admin/Videos/AdminVideoService.vue')
-                },{
-                    path: 'leases',
-                    name: 'admin-video-leases',
-                    component: () => import('./components/Admin/Videos/AdminVideoLeases.vue')
-                }]
-            },{
-                path: 'overlay',
-                name: 'admin-overlays',
-                component: () => import('./components/Admin/AdminOverlays.vue')
-            },{
-                path: 'overlay/:overlay',
-                name: 'admin-overlays-edit',
-                component: () => import('./components/Admin/AdminOverlaysEdit.vue')
-            },{
-                path: 'data',
-                name: 'admin-data',
-                component: () => import('./components/Admin/AdminDatas.vue')
-            },{
-                path: 'connection',
-                name: 'admin-connection',
-                component: () => import('./components/Admin/AdminConnections.vue')
-            },{
-                path: 'user',
-                name: 'admin-users',
-                component: () => import('./components/Admin/AdminUsers.vue')
-            },{
-                path: 'user/:user',
-                name: 'admin-user',
-                component: () => import('./components/Admin/AdminUser.vue')
-            },{
-                path: 'palette',
-                name: 'admin-palettes',
-                component: () => import('./components/Admin/AdminPalettes.vue')
-            },{
-                path: 'palette/:palette',
-                name: 'admin-palette',
-                component: () => import('./components/Admin/AdminPalette.vue')
-            },{
-                path: 'import',
-                name: 'admin-imports',
-                component: () => import('./components/Admin/AdminImports.vue')
-            },{
-                path: 'palette/:palette/feature/:feature',
-                name: 'admin-palette-feature',
-                component: () => import('./components/Admin/AdminPaletteFeature.vue')
-            },{
-                path: 'tasks',
-                name: 'admin-tasks',
-                component: () => import('./components/Admin/AdminTasks.vue'),
-                children: [{
-                    path: '',
-                    name: 'admin-tasks-default',
-                    redirect: () => {
-                        return { name: 'admin-tasks-registered' };
-                    }
-                },{
-                    path: 'registered',
-                    name: 'admin-tasks-registered',
-                    component: () => import('./components/Admin/Tasks/AdminTasks.vue')
-                },{
-                    path: 'raw',
-                    name: 'admin-tasks-raw',
-                    component: () => import('./components/Admin/Tasks/AdminRawTasks.vue')
-                }]
-            },{
-                path: 'server',
-                name: 'admin-server',
-                component: () => import('./components/Admin/AdminServer.vue'),
-                children: [{
-                    path: '',
-                    name: 'admin-server-default',
-                    redirect: () => {
-                        return { name: 'admin-server-connection' };
-                    }
-                },{
-                    path: 'connection',
-                    name: 'admin-server-connection',
-                    component: () => import('./components/Admin/Server/ServerConnection.vue')
-                },{
-                    path: 'injector',
-                    name: 'admin-server-injector',
-                    component: () => import('./components/Admin/Server/ServerInjectors.vue')
-                },{
-                    path: 'repeater',
-                    name: 'admin-server-repeater',
-                    component: () => import('./components/Admin/Server/ServerRepeaters.vue')
-                },{
-                    path: 'packages',
-                    name: 'admin-server-packages',
-                    component: () => import('./components/Admin/Server/ServerPackages.vue')
-                }]
-            },{
-                path: 'config',
-                name: 'admin-config',
-                component: () => import('./components/Admin/AdminConfig.vue')
-            },{
-                path: 'export',
-                name: 'admin-export',
-                component: () => import('./components/Admin/AdminExport.vue')
-            }]
-        },
 
         { path: '/:catchAll(.*)', name: 'lost', component: () => import('./components/LostUser.vue') },
     ]
 });
 
+router.onError((error, to) => {
+    if (
+        error.message.includes('Failed to fetch dynamically imported module') ||
+        error.message.includes('Importing a module script failed')
+    ) {
+        if (!to?.query?.reload) {
+            if (navigator.onLine) {
+                window.location.href = to.fullPath;
+            } else {
+                console.error('Offline: Skipping reload for missing module', error);
+            }
+        }
+    }
+})
+
 const app = createApp(App);
 const pinia = createPinia()
+
 app.use(router);
 app.use(pinia);
 app.use(FloatingVue);
+
+
+const plugins: Record<string, {
+    default: PluginStatic
+}> = import.meta.glob('../plugins/*.ts', {
+    eager: true
+});
+
+for (const path in plugins) {
+    app.use(plugins[path].default);
+}
+
 app.mount('#app');

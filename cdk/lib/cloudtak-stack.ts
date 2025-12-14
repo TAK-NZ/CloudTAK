@@ -129,7 +129,6 @@ export class CloudTakStack extends cdk.Stack {
     let dockerImageAsset: ecrAssets.DockerImageAsset | undefined;
     let eventsImageAsset: ecrAssets.DockerImageAsset | undefined;
     let tilesImageAsset: ecrAssets.DockerImageAsset | undefined;
-    let dataImageAsset: ecrAssets.DockerImageAsset | undefined;
     
     if (usePreBuiltImages) {
       // Use BaseInfra ECR repository for CI/CD deployments
@@ -178,24 +177,6 @@ export class CloudTakStack extends cdk.Stack {
       
       tilesImageAsset = new ecrAssets.DockerImageAsset(this, 'TilesDockerAsset', {
         directory: '../tasks/pmtiles',
-        file: 'Dockerfile',
-        buildArgs: {
-          NODE_ENV: environment === 'prod' ? 'production' : 'development'
-        },
-        exclude: [
-          'node_modules/**',
-          '**/.git/**',
-          '**/.vscode/**',
-          '**/.idea/**',
-          '**/*.log',
-          '**/*.tmp',
-          '**/.DS_Store',
-          '**/Thumbs.db'
-        ]
-      });
-      
-      dataImageAsset = new ecrAssets.DockerImageAsset(this, 'DataDockerAsset', {
-        directory: '../tasks/data',
         file: 'Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
@@ -323,7 +304,6 @@ export class CloudTakStack extends cdk.Stack {
       envConfig,
       vpc,
       ecrRepository,
-      dataImageAsset,
       assetBucketName: s3Resources.assetBucket.bucketName,
       serviceUrl: route53Records.serviceUrl
     });

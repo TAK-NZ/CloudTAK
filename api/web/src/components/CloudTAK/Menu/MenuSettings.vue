@@ -1,56 +1,63 @@
 <template>
     <MenuTemplate name='Settings'>
-        <MenuItem
-            @click='router.push("/menu/settings/callsign")'
-            @keyup.enter='router.push("/menu/settings/callsign")'
-        >
-            <IconUserCog
-                :size='32'
-                stroke='1'
+        <div class='col-12 d-flex flex-column gap-2 p-3'>
+            <MenuItemCard
+                :icon='IconUserCog'
+                label='Callsign & Device Preferences'
+                @select='router.push("/menu/settings/callsign")'
             />
-            <span
-                class='mx-2'
-                style='font-size: 18px;'
-            >Callsign &amp; Device Preferences</span>
-        </MenuItem>
-        <MenuItem
-            @click='router.push("/menu/settings/display")'
-            @keyup.enter='router.push("/menu/settings/display")'
-        >
-            <IconAdjustments
-                :size='32'
-                stroke='1'
+            <MenuItemCard
+                :icon='IconAdjustments'
+                label='Display Preferences'
+                @select='router.push("/menu/settings/display")'
             />
-            <span
-                class='mx-2'
-                style='font-size: 18px;'
-            >Display Preferences</span>
-        </MenuItem>
-        <MenuItem
-            @click='router.push("/menu/settings/tokens")'
-            @keyup.enter='router.push("/menu/settings/tokens")'
-        >
-            <IconRobot
-                :size='32'
-                stroke='1'
+            <MenuItemCard
+                :icon='IconRobot'
+                label='API Tokens'
+                @select='router.push("/menu/settings/tokens")'
             />
-            <span
-                class='mx-2'
-                style='font-size: 18px;'
-            >API Tokens</span>
-        </MenuItem>
+            <MenuItemCard
+                :icon='IconRefresh'
+                label='Refresh App'
+                @select='refreshApp()'
+            />
+        </div>
     </MenuTemplate>
 </template>
 
 <script setup lang='ts'>
 import { useRouter } from 'vue-router';
 import MenuTemplate from '../util/MenuTemplate.vue';
-import MenuItem from '../util/MenuItem.vue'
+import MenuItemCard from './MenuItemCard.vue';
 import {
+    IconRefresh,
     IconRobot,
     IconUserCog,
     IconAdjustments,
 } from '@tabler/icons-vue';
 
 const router = useRouter();
+
+async function refreshApp() {
+    if (!navigator.onLine) {
+        throw new Error('Cannot refresh app while offline.');
+    }
+
+    if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+            await registration.unregister();
+        }
+    }
+
+    if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const key of keys) {
+            await caches.delete(key);
+        }
+    }
+
+    window.location.reload();
+}
 </script>
+
