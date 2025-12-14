@@ -1,5 +1,6 @@
 import type { paths } from './derived-types.js';
 import type { Origin } from './base/cot.ts'
+import type { Geometry } from 'geojson';
 
 /*
  * This file exports more human managable types from the
@@ -25,9 +26,10 @@ export type Search = paths["/api/search"]["get"]["responses"]["200"]["content"][
 export type SearchSuggest = paths["/api/search/suggest"]["get"]["responses"]["200"]["content"]["application/json"];
 export type SearchForward = paths["/api/search/forward"]["get"]["responses"]["200"]["content"]["application/json"];
 
-export type VideoLease = paths["/api/video/lease/{:lease}"]["get"]["responses"]["200"]["content"]["application/json"]["lease"];
+export type VideoLease = paths["/api/video/lease/{:lease}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type VideoLeaseList = paths["/api/video/lease"]["get"]["responses"]["200"]["content"]["application/json"];
-export type VideoLeaseProtocols = paths["/api/video/lease/{:lease}"]["get"]["responses"]["200"]["content"]["application/json"]["protocols"];
+export type VideoLeaseMetadata = paths["/api/video/lease/{:lease}/metadata"]["get"]["responses"]["200"]["content"]["application/json"];
+export type VideoLeaseProtocols = paths["/api/video/lease/{:lease}/metadata"]["get"]["responses"]["200"]["content"]["application/json"]["protocols"];
 export type VideoLeaseResponse = paths["/api/video/lease/{:lease}"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type Subscription = paths["/api/marti/subscription/{:clientuid}"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -48,7 +50,7 @@ export type VideoConnection_Create = paths["/api/marti/video"]["post"]["requestB
 export type VideoConnectionList = paths["/api/marti/video"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type Mission = paths["/api/marti/missions/{:name}"]["get"]["responses"]["200"]["content"]["application/json"];
-export type Mission_Create = paths["/api/marti/missions"]["post"]["requestBody"]["content"]["application/json"]
+export type Mission_Create = paths["/api/marti/mission"]["post"]["requestBody"]["content"]["application/json"]
 export type MissionList = paths["/api/marti/mission"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type MissionRole = paths["/api/marti/missions/{:name}/role"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -81,6 +83,9 @@ export type ImportList = paths["/api/import"]["get"]["responses"]["200"]["conten
 export type Package = paths["/api/marti/package/{:uid}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type PackageList = paths["/api/marti/package"]["get"]["responses"]["200"]["content"]["application/json"]
 
+export type ServerAdminPackageList = paths["/api/server/package"]["get"]["responses"]["200"]["content"]["application/json"]
+export type ServerAdminVideoList = paths["/api/server/video"]["get"]["responses"]["200"]["content"]["application/json"]
+
 export type IconsetList = paths["/api/iconset"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type AttachmentList = paths["/api/attachment"]["get"]["responses"]["200"]["content"]["application/json"]
@@ -97,6 +102,9 @@ export type Palette = paths["/api/palette/{:palette}"]["get"]["responses"]["200"
 export type PaletteList = paths["/api/palette"]["get"]["responses"]["200"]["content"]["application/json"]
 export type PaletteFeature = paths["/api/palette/{:palette}/feature/{:feature}"]["get"]["responses"]["200"]["content"]["application/json"]
 
+export type MissionTemplate = paths["/api/template/mission/{:mission}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type MissionTemplateList = paths["/api/template/mission"]["get"]["responses"]["200"]["content"]["application/json"]
+
 export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"]
 export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
 
@@ -108,7 +116,7 @@ export type ProfileVideo = paths["/api/profile/video/{:id}"]["get"]["responses"]
 export type ProfileFileList = paths["/api/profile/asset"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ProfileFile = ProfileFileList["items"][0];
 
-export type Feature = paths["/api/profile/feature/{:id}"]["get"]["responses"]["200"]["content"]["application/json"] & {
+export type Feature = Omit<paths["/api/profile/feature/{:id}"]["get"]["responses"]["200"]["content"]["application/json"], "geometry"> & {
     origin?: Origin
     properties: {
         'id': string;
@@ -117,9 +125,10 @@ export type Feature = paths["/api/profile/feature/{:id}"]["get"]["responses"]["2
 
         [index: string]: unknown
     }
+    geometry: Geometry
 }
 
-export type InputFeature = paths["/api/profile/feature/{:id}"]["get"]["responses"]["200"]["content"]["application/json"] & {
+export type InputFeature = Omit<paths["/api/profile/feature/{:id}"]["get"]["responses"]["200"]["content"]["application/json"], "geometry"> & {
     origin?: Origin
     properties: {
         'id'?: string;
@@ -128,6 +137,7 @@ export type InputFeature = paths["/api/profile/feature/{:id}"]["get"]["responses
 
         [index: string]: unknown
     }
+    geometry: Geometry
 }
 
 export type FeaturePropertyCreator = Exclude<Feature["properties"]["creator"], undefined>
@@ -164,7 +174,6 @@ export type ETLAgency = paths["/api/agency/{:agencyid}"]["get"]["responses"]["20
 
 export type ETLLayer = paths["/api/connection/{:connectionid}/layer/{:layerid}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ETLLayerList = paths["/api/connection/{:connectionid}/layer"]["get"]["responses"]["200"]["content"]["application/json"]
-export type ETLLayerAlertList = paths["/api/connection/{:connectionid}/layer/{:layerid}/alert"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ETLLayerTask = paths["/api/connection/{:connectionid}/layer/{:layerid}/task"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ETLLayerTaskCapabilities = paths["/api/connection/{:connectionid}/layer/{:layerid}/task/capabilities"]["get"]["responses"]["200"]["content"]["application/json"]
 export type ETLLayerIncoming = paths["/api/connection/{:connectionid}/layer/{:layerid}/incoming"]["post"]["responses"]["200"]["content"]["application/json"]

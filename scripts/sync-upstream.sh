@@ -49,12 +49,63 @@ else
     echo "📍 Using current branch: $SYNC_BRANCH"
 fi
 
-# Sync only api and tasks folders
-echo "📂 Syncing api/ folder from $TARGET_REF..."
-git checkout $TARGET_REF -- api/
+# Function to sync directory with proper deletion handling
+sync_directory() {
+    local dir=$1
+    local target_ref=$2
+    
+    echo "📂 Syncing $dir/ folder from $target_ref..."
+    
+    # Get list of files that exist in upstream
+    echo "   📋 Getting upstream file list..."
+    UPSTREAM_FILES=$(git ls-tree -r --name-only $target_ref $dir/ 2>/dev/null || true)
+    
+    # Get list of git-tracked files that exist locally
+    LOCAL_FILES=$(git ls-files $dir/ 2>/dev/null | sort || true)
+    
+    # Checkout all files from upstream (this handles updates and additions)
+    if [ -n "$UPSTREAM_FILES" ]; then
+        echo "   ⬇️  Checking out files from upstream..."
+        git checkout $target_ref -- $dir/ 2>/dev/null || true
+    fi
+    
+    # Find and remove files that exist locally but not in upstream
+    if [ -n "$LOCAL_FILES" ] && [ -n "$UPSTREAM_FILES" ]; then
+        echo "   🗑️  Checking for files to remove..."
+        
+        # Create temporary files for comparison
+        echo "$UPSTREAM_FILES" | sort > /tmp/upstream_files.txt
+        echo "$LOCAL_FILES" | sort > /tmp/local_files.txt
+        
+        # Find files that exist locally but not upstream
+        FILES_TO_DELETE=$(comm -23 /tmp/local_files.txt /tmp/upstream_files.txt || true)
+        
+        if [ -n "$FILES_TO_DELETE" ]; then
+            echo "   ❌ Removing files that were deleted upstream:"
+            echo "$FILES_TO_DELETE" | while read -r file; do
+                # Skip Dockerfiles - keep local versions
+                if [[ "$file" == *"/Dockerfile" ]]; then
+                    echo "      ⏭️  Skipping $file (keeping local version)"
+                    continue
+                fi
+                if [ -f "$file" ]; then
+                    echo "      - $file"
+                    rm "$file"
+                    git add "$file" 2>/dev/null || true
+                fi
+            done
+        else
+            echo "   ✅ No files to remove"
+        fi
+        
+        # Clean up temp files
+        rm -f /tmp/upstream_files.txt /tmp/local_files.txt
+    fi
+}
 
-echo "📂 Syncing tasks/ folder from $TARGET_REF..."
-git checkout $TARGET_REF -- tasks/
+# Sync directories with deletion handling
+sync_directory "api" "$TARGET_REF"
+sync_directory "tasks" "$TARGET_REF"
 
 # No additional patching or branding needed
 echo "📝 Changes ready for review (branding applied at build time)"
@@ -66,6 +117,18 @@ if [[ "$ADDED_UPSTREAM" == "true" ]]; then
 fi
 
 echo "✅ Sync complete!"
+
+# Run post-sync validation
+echo ""
+echo "🔍 Running post-sync validation..."
+if ./scripts/post-sync-validate.sh; then
+    echo "✅ Post-sync validation passed"
+else
+    echo "❌ Post-sync validation failed"
+    echo "   Please fix the issues above before proceeding"
+    exit 1
+fi
+
 echo ""
 if [[ "$USE_CURRENT_BRANCH" == "false" ]]; then
     echo "📋 Next steps:"

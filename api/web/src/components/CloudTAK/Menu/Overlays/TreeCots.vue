@@ -11,7 +11,7 @@
     <template v-else>
         <div
             v-if='Object.keys(groups).length'
-            class='ms-3'
+            @click.stop
         >
             <div class='align-items-center px-3 py-2 me-2 hover-button'>
                 <IconChevronRight
@@ -93,6 +93,7 @@
         <div
             v-if='Object.keys(markers).length'
             class='ms-3'
+            @click.stop
         >
             <div class='d-flex align-items-center px-3 py-2 me-2 hover-button'>
                 <IconChevronRight
@@ -185,6 +186,7 @@
         <div
             v-if='Object.keys(paths).length'
             class='ms-3'
+            @click.stop
         >
             <div class='d-flex align-items-center px-3 py-2 me-2 hover-button'>
                 <IconChevronRight
@@ -313,7 +315,10 @@ import { useMapStore } from '../../../../stores/map.ts';
 const mapStore = useMapStore();
 
 const props = defineProps({
-    element: Object
+    element: {
+        type: Object,
+        default: () => ({})
+    }
 });
 
 const loading = ref(true);
