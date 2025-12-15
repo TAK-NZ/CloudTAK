@@ -28,7 +28,7 @@
             <TablerLoading v-if='loading' />
             <EmptyInfo
                 v-else-if='!missions.length'
-                type='Missions'
+                type='Data Syncs'
             />
             <template v-else>
                 <div
