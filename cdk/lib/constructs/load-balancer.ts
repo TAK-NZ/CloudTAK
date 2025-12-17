@@ -72,6 +72,18 @@ export class LoadBalancer extends Construct {
       }
     });
 
+    // Block DyePack scanner
+    this.httpsListener.addAction('BlockScanner', {
+      priority: 1,
+      conditions: [
+        elbv2.ListenerCondition.httpHeader('User-Agent', ['*DynamicScanningFramework*', '*AmazonAutoTester-DyePack*'])
+      ],
+      action: elbv2.ListenerAction.fixedResponse(403, {
+        contentType: 'text/plain',
+        messageBody: 'Forbidden'
+      })
+    });
+
     this.httpsListener.addTargetGroups('DefaultAction', {
       targetGroups: [this.targetGroup]
     });
