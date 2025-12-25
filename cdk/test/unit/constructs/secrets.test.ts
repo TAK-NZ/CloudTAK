@@ -37,6 +37,12 @@ describe('Secrets Construct', () => {
       Description: 'TAK-DevTest-CloudTAK Media Secret'
     });
 
+    // Verify geofence secret exists
+    template.hasResourceProperties('AWS::SecretsManager::Secret', {
+      Name: 'TAK-DevTest-CloudTAK/api/geofence',
+      Description: 'TAK-DevTest-CloudTAK Geofence Secret'
+    });
+
     // Verify admin password secret exists
     template.hasResourceProperties('AWS::SecretsManager::Secret', {
       Name: 'TAK-DevTest-CloudTAK/API/Admin-Password',
@@ -44,8 +50,8 @@ describe('Secrets Construct', () => {
     });
   });
 
-  test('creates exactly 3 secrets', () => {
-    template.resourceCountIs('AWS::SecretsManager::Secret', 3);
+  test('creates exactly 4 secrets', () => {
+    template.resourceCountIs('AWS::SecretsManager::Secret', 4);
   });
 
   test('all secrets use KMS encryption', () => {

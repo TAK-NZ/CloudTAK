@@ -30,6 +30,7 @@ export interface CloudTakApiProps {
   vpc: ec2.IVpc;
   ecsCluster: ecs.ICluster;
   ecsSecurityGroup: ec2.SecurityGroup;
+  mediaSecurityGroup: ec2.SecurityGroup;
   albTargetGroup: elbv2.ApplicationTargetGroup;
   ecrRepository: ecr.IRepository;
   dockerImageAsset?: ecrAssets.DockerImageAsset;
@@ -56,6 +57,7 @@ export class CloudTakApi extends Construct {
       vpc, 
       ecsCluster, 
       ecsSecurityGroup,
+      mediaSecurityGroup,
       albTargetGroup,
       ecrRepository,
       dockerImageAsset,
@@ -161,12 +163,14 @@ export class CloudTakApi extends Construct {
               resources: [
                 `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/TAK-${envConfig.stackName}-media-*`,
                 `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/service-role/TAK-${envConfig.stackName}-media-*`,
-                `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/TAK-${envConfig.stackName}-CloudTAK-etl`
+                `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/TAK-${envConfig.stackName}-CloudTAK-etl`,
+                `arn:${cdk.Stack.of(this).partition}:iam::${cdk.Stack.of(this).account}:role/service-role/TAK-${envConfig.stackName}-CloudTAK-etl`
               ]
             }),
+            // EC2 permissions for VPC operations
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['ec2:DescribeNetworkInterfaces', 'ecs:ListTaskDefinitions'],
+              actions: ['ec2:DescribeNetworkInterfaces', 'ec2:DescribeSubnets', 'ec2:DescribeSecurityGroups', 'ecs:ListTaskDefinitions'],
               resources: ['*']
             }),
 
@@ -358,6 +362,7 @@ export class CloudTakApi extends Construct {
         'VpcId': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.VPC_ID)),
         'SubnetPublicA': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_A)),
         'SubnetPublicB': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_B)),
+        'MediaSecurityGroup': mediaSecurityGroup.securityGroupId,
         // CloudTAK Server configuration
         'CLOUDTAK_Server_name': `TAK.NZ ${environment === 'prod' ? 'Production' : 'Development'} Server`,
         'CLOUDTAK_Server_url': `ssl://${cdk.Fn.importValue(createTakImportValue(envConfig.stackName, TAK_EXPORT_NAMES.TAK_SERVICE_NAME))}:8089`,

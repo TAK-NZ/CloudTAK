@@ -123,7 +123,7 @@ export class Database extends Construct {
     });
 
     // Create parameter group for PostgreSQL
-    const engineVersionString = dbConfig.engineVersion || '17.4';
+    const engineVersionString = dbConfig.engineVersion || '17.5';
     const engineVersion = engineVersionString.startsWith('17') ? 
       rds.AuroraPostgresEngineVersion.VER_17_4 : 
       rds.AuroraPostgresEngineVersion.VER_16_6;
@@ -153,6 +153,7 @@ export class Database extends Construct {
         credentials: rds.Credentials.fromSecret(this.masterSecret),
         defaultDatabaseName: DATABASE_CONSTANTS.DEFAULT_DATABASE_NAME,
         port: DATABASE_CONSTANTS.PORT,
+        networkType: rds.NetworkType.DUAL,
         serverlessV2MinCapacity: 0.5,
         serverlessV2MaxCapacity: 4,
         writer: rds.ClusterInstance.serverlessV2('writer'),
@@ -196,6 +197,7 @@ export class Database extends Construct {
         credentials: rds.Credentials.fromSecret(this.masterSecret),
         defaultDatabaseName: DATABASE_CONSTANTS.DEFAULT_DATABASE_NAME,
         port: DATABASE_CONSTANTS.PORT,
+        networkType: rds.NetworkType.DUAL,
         writer: rds.ClusterInstance.provisioned('writer', {
           instanceType,
           enablePerformanceInsights: dbConfig.enablePerformanceInsights,

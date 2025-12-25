@@ -25,7 +25,6 @@ export interface LambdaFunctionsProps {
 export class LambdaFunctions extends Construct {
   public readonly tilesLambda: lambda.Function;
   public readonly tilesApi: apigateway.RestApi;
-  public readonly etlFunctionRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionsProps) {
     super(scope, id);
@@ -34,40 +33,7 @@ export class LambdaFunctions extends Construct {
 
     // Get image tag from context for CI/CD deployments
     const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
-    
-    // Create ETL Function Role for dynamic Lambda functions (matches CloudFormation export)
-    const etlFunctionRole = new iam.Role(this, 'ETLFunctionRole', {
-      roleName: `TAK-${envConfig.stackName}-CloudTAK-etl`,
-      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-      inlinePolicies: {
-        'etl-policy': new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                'sqs:SendMessage',
-                'sqs:ChangeMessageVisibility', 
-                'sqs:DeleteMessage',
-                'sqs:GetQueueUrl',
-                'sqs:GetQueueAttributes'
-              ],
-              resources: [`arn:${cdk.Stack.of(this).partition}:sqs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:tak-cloudtak-${envConfig.stackName}-layer-*`]
-            })
-          ]
-        })
-      },
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaSQSQueueExecutionRole'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
-      ]
-    });
-    
-    // Export ETL Role ARN for use by dynamic Lambda functions
-    new cdk.CfnOutput(this, 'ETLRoleOutput', {
-      value: etlFunctionRole.roleArn,
-      exportName: `TAK-${envConfig.stackName}-CloudTAK-etl-role`,
-      description: 'ETL Lambda Role'
-    });
+
     
     // Create PMTiles Lambda Role
     const tilesLambdaRole = new iam.Role(this, 'PMTilesLambdaRole', {
@@ -264,7 +230,5 @@ export class LambdaFunctions extends Construct {
       ),
       comment: `${cdk.Stack.of(this).stackName} PMTiles API IPv6 DNS Entry`
     });
-    
-    this.etlFunctionRole = etlFunctionRole;
   }
 }
