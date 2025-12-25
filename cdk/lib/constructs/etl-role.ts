@@ -22,7 +22,8 @@ export class EtlRole extends Construct {
       roleName: `TAK-${envConfig.stackName}-CloudTAK-etl`,
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaSQSQueueExecutionRole')
       ],
       inlinePolicies: {
         'etl-policy': new iam.PolicyDocument({
@@ -49,6 +50,20 @@ export class EtlRole extends Construct {
               ],
               resources: [
                 `arn:${cdk.Stack.of(this).partition}:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:TAK-${envConfig.stackName}-CloudTAK/*`
+              ]
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'sqs:SendMessage',
+                'sqs:ChangeMessageVisibility',
+                'sqs:DeleteMessage',
+                'sqs:GetQueueUrl',
+                'sqs:GetQueueAttributes',
+                'sqs:ReceiveMessage'
+              ],
+              resources: [
+                `arn:${cdk.Stack.of(this).partition}:sqs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:TAK-${envConfig.stackName}-CloudTAK-layer-*`
               ]
             })
           ]
