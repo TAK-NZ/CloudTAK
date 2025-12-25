@@ -15,6 +15,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
@@ -33,6 +34,8 @@ import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
+import { Webhooks } from './constructs/webhooks';
+import { EtlRole } from './constructs/etl-role';
 
 import { registerOutputs } from './outputs';
 import { createBaseImportValue, BASE_EXPORT_NAMES } from './cloudformation-imports';
@@ -286,6 +289,7 @@ export class CloudTakStack extends cdk.Stack {
       vpc,
       ecsCluster,
       ecsSecurityGroup: securityGroups.ecs,
+      mediaSecurityGroup: securityGroups.media,
       albTargetGroup: loadBalancer.targetGroup,
       ecrRepository,
       dockerImageAsset,
@@ -307,6 +311,21 @@ export class CloudTakStack extends cdk.Stack {
       assetBucketName: s3Resources.assetBucket.bucketName,
       serviceUrl: route53Records.serviceUrl
     });
+
+    // Create ETL role for Lambda layer functions
+    // Demo environment imports existing role from legacy deployment
+    // Production creates new role using EtlRole construct
+    const etlRole = envConfig.stackName === 'Demo'
+      ? iam.Role.fromRoleName(this, 'EtlRole', `TAK-${envConfig.stackName}-CloudTAK-etl`)
+      : new EtlRole(this, 'EtlRole', {
+          envConfig,
+          assetBucketName: s3Resources.assetBucket.bucketName,
+          kmsKey
+        });
+
+    const etlRoleArn = envConfig.stackName === 'Demo'
+      ? (etlRole as iam.IRole).roleArn
+      : (etlRole as EtlRole).role.roleArn;
 
     // Create monitoring and alarms
     const alarms = new Alarms(this, 'Alarms', {
@@ -366,6 +385,11 @@ export class CloudTakStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'MediaUrl', {
       value: `https://${envConfig.mediainfra.mediaHostname}.${hostedZone.zoneName}:9997`,
       exportName: `TAK-${envConfig.stackName}-CloudTAK-MediaUrl`
+    });
+
+    new cdk.CfnOutput(this, 'EtlRoleArn', {
+      value: etlRoleArn,
+      exportName: `TAK-${envConfig.stackName}-CloudTAK-etl-role`
     });
 
 

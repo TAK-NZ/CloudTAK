@@ -14,6 +14,7 @@ export class Secrets extends Construct {
   public readonly signingSecret: secretsmanager.Secret;
   public readonly adminPasswordSecret: secretsmanager.Secret;
   public readonly mediaSecret: secretsmanager.ISecret;
+  public readonly geofenceSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: SecretsProps) {
     super(scope, id);
@@ -37,6 +38,20 @@ export class Secrets extends Construct {
     this.mediaSecret = new secretsmanager.Secret(this, 'MediaSecret', {
       description: `TAK-${envConfig.stackName}-CloudTAK Media Secret`,
       secretName: `TAK-${envConfig.stackName}-CloudTAK/api/media`,
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 32
+      },
+      encryptionKey: kmsKey,
+      removalPolicy: envConfig.general.removalPolicy === 'RETAIN' 
+        ? cdk.RemovalPolicy.RETAIN 
+        : cdk.RemovalPolicy.DESTROY
+    });
+
+    // Create geofence secret
+    this.geofenceSecret = new secretsmanager.Secret(this, 'GeofenceSecret', {
+      description: `TAK-${envConfig.stackName}-CloudTAK Geofence Secret`,
+      secretName: `TAK-${envConfig.stackName}-CloudTAK/api/geofence`,
       generateSecretString: {
         excludePunctuation: true,
         passwordLength: 32
