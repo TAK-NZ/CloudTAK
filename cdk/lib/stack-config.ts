@@ -32,6 +32,7 @@ export interface ContextEnvironmentConfig {
     hostname: string;
     takAdminEmail: string;
     useS3CloudTAKConfigFile: boolean;
+    webhooksSubdomain?: string;
   };
   ecr: {
     imageRetentionCount: number;

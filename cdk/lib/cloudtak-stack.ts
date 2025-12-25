@@ -33,6 +33,7 @@ import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
+import { Webhooks } from './constructs/webhooks';
 
 import { registerOutputs } from './outputs';
 import { createBaseImportValue, BASE_EXPORT_NAMES } from './cloudformation-imports';
@@ -312,6 +313,14 @@ export class CloudTakStack extends cdk.Stack {
     const alarms = new Alarms(this, 'Alarms', {
       envConfig,
       eventsService: eventsService.service
+    });
+
+    // Create webhooks infrastructure for layer webhook support
+    const webhooks = new Webhooks(this, 'Webhooks', {
+      envConfig,
+      hostedZone,
+      certificate,
+      subdomainPrefix: envConfig.cloudtak.webhooksSubdomain || 'webhooks'
     });
 
     // Create Authentik user for CloudTAK admin
