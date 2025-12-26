@@ -21,6 +21,7 @@ export class EtlRole extends Construct {
     this.role = new iam.Role(this, 'ETLFunctionRole', {
       roleName: `TAK-${envConfig.stackName}-CloudTAK-etl`,
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      description: 'Execution role for CloudTAK ETL Lambda functions',
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
         iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaSQSQueueExecutionRole')
@@ -39,7 +40,7 @@ export class EtlRole extends Construct {
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
-              resources: [kmsKey.keyArn]
+              resources: ['*']
             }),
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
