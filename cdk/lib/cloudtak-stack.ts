@@ -313,19 +313,13 @@ export class CloudTakStack extends cdk.Stack {
     });
 
     // Create ETL role for Lambda layer functions
-    // Demo environment imports existing role from legacy deployment
-    // Production creates new role using EtlRole construct
-    const etlRole = envConfig.stackName === 'Demo'
-      ? iam.Role.fromRoleName(this, 'EtlRole', `TAK-${envConfig.stackName}-CloudTAK-etl`)
-      : new EtlRole(this, 'EtlRole', {
-          envConfig,
-          assetBucketName: s3Resources.assetBucket.bucketName,
-          kmsKey
-        });
+    const etlRole = new EtlRole(this, 'EtlRole', {
+      envConfig,
+      assetBucketName: s3Resources.assetBucket.bucketName,
+      kmsKey
+    });
 
-    const etlRoleArn = envConfig.stackName === 'Demo'
-      ? (etlRole as iam.IRole).roleArn
-      : (etlRole as EtlRole).role.roleArn;
+    const etlRoleArn = etlRole.role.roleArn;
 
     // Create monitoring and alarms
     const alarms = new Alarms(this, 'Alarms', {
