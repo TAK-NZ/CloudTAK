@@ -327,6 +327,14 @@ export class CloudTakStack extends cdk.Stack {
       eventsService: eventsService.service
     });
 
+    // Create webhooks infrastructure for layer webhook support
+    const webhooks = new Webhooks(this, 'Webhooks', {
+      envConfig,
+      hostedZone,
+      certificate,
+      subdomainPrefix: envConfig.cloudtak.webhooksSubdomain || 'webhooks'
+    });
+
     // Create Authentik user for CloudTAK admin
     const authentikUrl = cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);
     
