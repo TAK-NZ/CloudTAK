@@ -44,7 +44,8 @@
         "useS3CloudTAKConfigFile": false,
         "oidcEnabled": true,
         "authentikAppSlug": "cloudtak",
-        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK"
+        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
+        "syncAuthentikAttributesOnLogin": true
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -89,7 +90,8 @@
         "useS3CloudTAKConfigFile": true,
         "oidcEnabled": true,
         "authentikAppSlug": "cloudtak",
-        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK"
+        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
+        "syncAuthentikAttributesOnLogin": true
       },
       "ecr": {
         "imageRetentionCount": 20,

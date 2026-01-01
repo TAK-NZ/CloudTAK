@@ -154,55 +154,67 @@ export default async function router(schema: Schema, config: Config) {
                                     profile.auth.cert === '' || profile.auth.key === '' ||
                                     await isCertificateExpired(profile.auth.cert);
             
-            if (needsCertificate && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL && config.server.auth.key && config.server.auth.cert) {
+            // Check if we should sync attributes from Authentik
+            const shouldSyncAttributes = process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';
+            
+            if ((needsCertificate || shouldSyncAttributes) && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL && config.server.auth.key && config.server.auth.cert) {
                 try {
                     console.log(`${isNewUser ? 'Starting' : 'Retrying'} automatic certificate enrollment for ${auth.email}`);
                     
                     // Get Authentik API token
                     const authentikToken = await getAuthentikToken();
                     
-                    // Fetch user attributes from Authentik (only for new users)
-                    if (isNewUser) {
+                    // Fetch and update user attributes from Authentik
+                    if (shouldSyncAttributes || isNewUser) {
                         const userAttrs = await getAuthentikUserAttributes(
                             auth.email,
                             authentikToken,
                             process.env.AUTHENTIK_URL
                         );
                         
+                        console.log(`Fetched Authentik attributes for ${auth.email}:`, JSON.stringify(userAttrs));
+                        
                         // Update profile with Authentik attributes
                         const updates: any = {};
                         if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
                         if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
                         
+                        console.log(`Profile updates for ${auth.email}:`, JSON.stringify(updates));
+                        
                         if (Object.keys(updates).length > 0) {
                             await config.models.Profile.commit(auth.email, updates);
+                            console.log(`Successfully updated profile attributes for ${auth.email}`);
+                        } else {
+                            console.log(`No attribute updates needed for ${auth.email}`);
                         }
                     }
                     
-                    // Create application password in Authentik
-                    const appPassword = await createAuthentikAppPassword(
-                        auth.email,
-                        authentikToken,
-                        process.env.AUTHENTIK_URL
-                    );
-                    
-                    // Request certificate from TAK Server
-                    const takAuth = new APIAuthPassword(auth.email, appPassword);
-                    const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
-                    const certs = await api.Credentials.generate();
-                    
-                    // Update profile with certificate
-                    await config.models.Profile.commit(auth.email, {
-                        auth: certs
-                    });
-                    
-                    // Refresh profile to get updated cert
-                    profile = await config.models.Profile.from(auth.email);
-                    
-                    console.log(`Certificate enrolled successfully for ${auth.email}`);
-                } catch (enrollErr) {
-                    console.error('Failed to auto-enroll certificate:', enrollErr);
-                    // Don't fail login - user can try again on next login
+                    // Enroll certificate if needed
+                    if (needsCertificate) {
+                        const appPassword = await createAuthentikAppPassword(
+                            auth.email,
+                            authentikToken,
+                            process.env.AUTHENTIK_URL
+                        );
+                        
+                        // Request certificate from TAK Server
+                        const takAuth = new APIAuthPassword(auth.email, appPassword);
+                        const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
+                        const certs = await api.Credentials.generate();
+                        
+                        // Update profile with certificate
+                        await config.models.Profile.commit(auth.email, {
+                            auth: certs
+                        });
+                        
+                        // Refresh profile to get updated cert
+                        profile = await config.models.Profile.from(auth.email);
+                        
+                        console.log(`Certificate enrolled successfully for ${auth.email}`);
+                    }
+                } catch (certErr) {
+                    console.error('Certificate enrollment error:', certErr);
+                    // Continue with login even if certificate enrollment fails
                 }
             }
             

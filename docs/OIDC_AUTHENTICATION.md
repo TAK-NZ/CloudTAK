@@ -76,7 +76,11 @@ Enable OIDC in `cdk/cdk.json`:
 The following environment variables are automatically set by the CDK:
 
 - `ALB_OIDC_ENABLED`: Set to `"true"` when OIDC is enabled
-- `AUTHENTIK_URL`: URL of the Authentik instance (for logout redirect)
+- `AUTHENTIK_URL`: URL of the Authentik instance (imported from AuthInfra)
+- `AUTHENTIK_APP_SLUG`: Application slug in Authentik (default: "cloudtak")
+- `AUTHENTIK_API_TOKEN_SECRET_ARN`: ARN of Secrets Manager secret containing Authentik admin token (imported from AuthInfra)
+- `ALB_AUTH_SESSION_COOKIE`: Cookie name for ALB authentication session (default: "AWSELBAuthSessionCookie")
+- `SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN`: Set to `"true"` to sync user attributes (takCallsign, takColor) from Authentik on every login
 
 ## Components
 
@@ -110,7 +114,7 @@ The ALB is configured with an OIDC authentication action at priority 10:
 
 Backend components handle OIDC authentication and automatic certificate enrollment:
 
-- **oidcParser()**: Extracts email from ALB OIDC headers
+- **oidcParser()**: Extracts email and groups from ALB OIDC headers, verifies JWT signature using ALB public keys
 - **isOidcEnabled()**: Feature flag check
 - **GET /api/login/oidc**: OIDC login endpoint
   - Auto-creates users on first login
@@ -119,14 +123,35 @@ Backend components handle OIDC authentication and automatic certificate enrollme
     - Creates application password in Authentik (30-minute expiration)
     - Requests certificate from TAK Server using that password
     - Stores certificate in user profile
+  - **Authentik attribute syncing** (when enabled):
+    - Fetches takCallsign and takColor from Authentik user attributes
+    - Updates CloudTAK profile with these attributes
+    - Prevents "Welcome to CloudTAK" modal for users with pre-configured attributes
   - Updates last_login timestamp
   - Generates JWT token
   - Redirects to frontend with token
+- **GET /api/logout**: Logout endpoint
+  - Expires all ALB authentication cookie shards (0-3)
+  - Redirects to Authentik end-session endpoint
 - **GET /api/server/oidc**: Public endpoint for OIDC status
 
-### 4. Frontend Integration
+### 4. Nginx Configuration
 
-**Location**: `api/web/src/components/Login.vue`, `api/web/src/App.vue`
+**Location**: `api/nginx.conf.js`
+
+Nginx is configured to handle large ALB OIDC cookies:
+
+```javascript
+// Increase buffer sizes for ALB OIDC cookies
+large_client_header_buffers 4 32k;
+client_header_buffer_size 32k;
+```
+
+This prevents "400 Request Header Or Cookie Too Large" errors, especially on mobile devices where cookies can exceed default buffer sizes.
+
+### 5. Frontend Integration
+
+**Location**: `api/web/src/components/Login.vue`, `api/web/src/App.vue`, `api/web/src/components/CloudTAK/MainMenuContents.vue`
 
 Frontend components provide SSO user experience:
 
@@ -136,7 +161,9 @@ Frontend components provide SSO user experience:
   - Redirects to `/api/login/oidc` on SSO button click
 - **App.vue**:
   - Fetches OIDC configuration on mount
-  - Redirects to Authentik logout URL on logout
+  - Logout clears localStorage and redirects to `/api/logout`
+- **MainMenuContents.vue**:
+  - Logout clears localStorage and redirects to `/api/logout`
 
 ## User Flows
 
@@ -163,9 +190,11 @@ Frontend components provide SSO user experience:
 
 1. User clicks logout in CloudTAK
 2. Frontend clears localStorage token
-3. Frontend redirects to `https://account.test.tak.nz/application/o/cloudtak/end-session/`
-4. Authentik terminates session
-5. User is logged out of both CloudTAK and Authentik
+3. Frontend redirects to `/api/logout`
+4. Backend expires all ALB authentication cookie shards (0-3) by setting maxAge: -1
+5. Backend redirects to `https://account.test.tak.nz/application/o/cloudtak/end-session/`
+6. Authentik terminates session
+7. User is logged out of both CloudTAK and Authentik
 
 ### First-Time User
 
@@ -174,7 +203,7 @@ When a user logs in via SSO for the first time:
 1. Backend checks if profile exists
 2. If not found, auto-creates profile with:
    - Username: user's email from OIDC
-   - Access level: USER (default)
+   - Access level: USER (default, or ADMIN if in CloudTAKSystemAdmin group)
    - Empty certificate data (initially)
 3. **Automatic certificate enrollment with retry**:
    - Gets Authentik API token from Secrets Manager
@@ -182,8 +211,12 @@ When a user logs in via SSO for the first time:
    - Uses that password to request certificate from TAK Server
    - Stores certificate in user profile
    - **If enrollment fails**: User can login again to retry (self-healing)
-4. User can access CloudTAK immediately with full functionality
-5. Admin can upgrade access level if needed
+4. **Authentik attribute syncing** (when enabled):
+   - Fetches takCallsign and takColor from Authentik user attributes
+   - Updates CloudTAK profile with these attributes
+   - Prevents "Welcome to CloudTAK" modal for users with pre-configured attributes
+5. User can access CloudTAK immediately with full functionality
+6. Admin can upgrade access level if needed
 
 ### Certificate Auto-Retry Behavior
 
@@ -279,7 +312,27 @@ The deployment will:
 - Verify Authentik admin token has correct permissions
 - Check TAK Server is accessible from CloudTAK
 - Review CloudTAK logs for enrollment errors
-- Note: Login still succeeds even if enrollment fails (user can enroll manually later)
+- Note: Login still succeeds even if enrollment fails (user can retry on next login)
+
+### User Attributes Not Syncing
+
+- Verify `SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN` is set to `"true"`
+- Check Authentik user has `takCallsign` and `takColor` attributes set
+- Review CloudTAK logs for attribute fetch errors:
+  - Look for "Fetched Authentik attributes" log message
+  - Look for "Profile updates" log message
+  - Look for "Successfully updated profile attributes" log message
+- Verify attribute names match exactly: `takCallsign` and `takColor` (case-sensitive)
+
+### 400 Request Header Too Large Error
+
+- This occurs when ALB OIDC cookies exceed Nginx buffer sizes
+- Verify nginx.conf.js includes:
+  ```javascript
+  large_client_header_buffers 4 32k;
+  client_header_buffer_size 32k;
+  ```
+- Redeploy if nginx configuration is missing these settings
 
 ### Logout Not Working
 
@@ -287,7 +340,9 @@ The deployment will:
 - Check Authentik end-session endpoint is accessible
 - Verify application slug is "cloudtak"
 
-## Disabling OIDC
+## Configuration Options
+
+### Disabling OIDC
 
 To disable OIDC authentication:
 
@@ -307,6 +362,27 @@ To disable OIDC authentication:
 
 3. SSO button will disappear from login page
 4. Username/password authentication continues to work
+
+### Disabling Attribute Syncing
+
+To disable automatic attribute syncing from Authentik:
+
+1. Update `cdk/cdk.json`:
+   ```json
+   {
+     "cloudtak": {
+       "syncAuthentikAttributesOnLogin": false
+     }
+   }
+   ```
+
+2. Redeploy:
+   ```bash
+   npm run deploy:dev
+   ```
+
+3. User attributes will only be synced for new users, not on every login
+4. Users can still manually set their callsign and color in CloudTAK settings
 
 ## Backward Compatibility
 

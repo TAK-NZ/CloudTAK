@@ -19,7 +19,7 @@
                     /><span class='mx-2'>{{ selectedGroups.size }}</span>
                 </div>
                 <div class='d-flex align-items-center'>
-                    <IconAmbulance
+                    <IconReplace
                         :size='20'
                         stroke='1'
                     /><span class='mx-2'>{{ selectedMissions.size }}</span>
@@ -98,7 +98,7 @@
                     for='mode-missions'
                     type='button'
                     class='btn btn-sm'
-                ><IconAmbulance
+                ><IconReplace
                     v-tooltip='"Data Syncs"'
                     :size='24'
                     stroke='1'
@@ -177,7 +177,7 @@
                             class='col-lg-12 py-2 px-2 hover rounded cursor-pointer user-select-none'
                             @click='selectedMissions.has(m) ? selectedMissions.delete(m) : selectedMissions.add(m)'
                         >
-                            <IconAmbulance
+                            <IconReplace
                                 v-if='!selectedMissions.has(m)'
                                 :size='24'
                                 stroke='1'
@@ -252,7 +252,7 @@ import {
     IconCheck,
     IconBroadcast,
     IconAffiliate,
-    IconAmbulance,
+    IconReplace,
     IconShare2
 } from '@tabler/icons-vue';
 import Subscription from '../../../base/subscription.ts';

@@ -391,7 +391,8 @@ export class CloudTakApi extends Construct {
           'AUTHENTIK_URL': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_URL)),
           'AUTHENTIK_APP_SLUG': envConfig.cloudtak.authentikAppSlug || 'cloudtak',
           'ALB_AUTH_SESSION_COOKIE': envConfig.cloudtak.albAuthSessionCookie || 'AWSELBAuthSessionCookieCloudTAK',
-          'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN))
+          'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN)),
+          'SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN': envConfig.cloudtak.syncAuthentikAttributesOnLogin !== false ? 'true' : 'false'
         })
       },
       secrets: {

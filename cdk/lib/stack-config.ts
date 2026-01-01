@@ -37,6 +37,7 @@ export interface ContextEnvironmentConfig {
     authentikUrl?: string;
     authentikAppSlug?: string;
     albAuthSessionCookie?: string;
+    syncAuthentikAttributesOnLogin?: boolean;
   };
   ecr: {
     imageRetentionCount: number;

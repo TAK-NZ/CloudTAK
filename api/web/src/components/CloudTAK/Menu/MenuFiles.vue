@@ -139,7 +139,7 @@
                                 @click.stop.prevent='shareToMission = asset'
                                 @keyup.enter='shareToMission = asset'
                             >
-                                <IconAmbulance
+                                <IconReplace
                                     :size='32'
                                     stroke='1'
                                 />
@@ -247,7 +247,7 @@ import {
     TablerEpoch
 } from '@tak-ps/vue-tabler';
 import {
-    IconAmbulance,
+    IconReplace,
     IconPackage,
     IconUpload,
     IconMapOff,

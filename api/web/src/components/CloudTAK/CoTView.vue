@@ -295,7 +295,7 @@
                     class='col-12'
                 >
                     <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-accent'>
-                        <IconAmbulance
+                        <IconReplace
                             :size='32'
                             stroke='1'
                         />
@@ -710,7 +710,7 @@ import {
     IconDotsVertical,
     IconChevronRight,
     IconChevronDown,
-    IconAmbulance,
+    IconReplace,
     IconPlayerPlay,
     IconShare2,
     IconZoomPan,
