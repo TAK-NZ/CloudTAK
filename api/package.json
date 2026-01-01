@@ -58,6 +58,7 @@
         "ajv": "^8.11.2",
         "ajv-formats": "^3.0.0",
         "archiver": "^7.0.0",
+        "axios": "^1.7.0",
         "array-includes-with-glob": "^5.0.9",
         "busboy": "^1.6.0",
         "connect-history-api-fallback": "^2.0.0",

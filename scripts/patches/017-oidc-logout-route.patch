@@ -1,0 +1,46 @@
+diff --git a/api/routes/login.ts b/api/routes/login.ts
+index abc123..def456 100644
+--- a/api/routes/login.ts
++++ b/api/routes/login.ts
+@@ -250,4 +250,35 @@ export default async function router(schema: Schema, config: Config) {
+             return res.redirect(`/login?error=${encodeURIComponent(errorMsg)}`);
+         }
+     });
++
++    // Logout endpoint - clears ALB OIDC cookies and redirects to IdP logout
++    // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html#authentication-logout
++    await schema.get('/logout', {
++        name: 'Logout',
++        group: 'Login',
++        description: 'Logout and clear ALB OIDC session'
++    }, async (req, res) => {
++        try {
++            // Set expiration to -1 for all ALB authentication cookies
++            const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
++            const cookieOptions = {
++                path: '/',
++                httpOnly: true,
++                secure: true,
++                maxAge: -1  // Expire the cookie
++            };
++            
++            // ALB can create up to 4 cookie shards (0-3)
++            for (let i = 0; i < 4; i++) {
++                res.cookie(`${cookieName}-${i}`, '', cookieOptions);
++            }
++            
++            // Redirect to IdP logout endpoint if configured
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
++                const authentikUrl = process.env.AUTHENTIK_URL.replace(/\/$/, '');
++                const appSlug = process.env.AUTHENTIK_APP_SLUG;
++                const logoutUrl = `${authentikUrl}/application/o/${appSlug}/end-session/`;
++                return res.redirect(logoutUrl);
++            } else {
++                return res.redirect('/login');
++            }
++        } catch (err) {
++            console.error('Logout error:', err);
++            Err.respond(err, res);
++        }
++    });
+ }

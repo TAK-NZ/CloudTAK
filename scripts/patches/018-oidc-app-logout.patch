@@ -1,0 +1,14 @@
+diff --git a/api/web/src/App.vue b/api/web/src/App.vue
+index 6f8ae9cd8..84efd2509 100644
+--- a/api/web/src/App.vue
++++ b/api/web/src/App.vue
+@@ -218,7 +218,11 @@ function logout() {
+     user.value = undefined;
+     delete localStorage.token;
+ 
+-    router.push("/login");
++    // Redirect to backend logout endpoint
++    window.location.href = '/api/logout';
+ }
+ 
+ function external(url: string) {

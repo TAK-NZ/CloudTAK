@@ -107,6 +107,21 @@
                                             Sign In
                                         </button>
                                     </div>
+                                    <template v-if='ssoEnabled'>
+                                        <div class='text-center my-3'>
+                                            <div class='text-muted'>─── OR ───</div>
+                                        </div>
+                                        <div class='form-footer'>
+                                            <button
+                                                type='button'
+                                                class='btn btn-primary w-100'
+                                                @click='loginWithSSO'
+                                            >
+                                                <IconKey class='icon' :size='20' :stroke='"2"' />
+                                                Login with SSO
+                                            </button>
+                                        </div>
+                                    </template>
                                 </template>
                             </div>
                         </div>
@@ -138,6 +153,7 @@ import {
     TablerLoading,
     TablerInput
 } from '@tak-ps/vue-tabler'
+import { IconKey } from '@tabler/icons-vue';
 
 const emit = defineEmits([ 'login' ]);
 
@@ -146,6 +162,7 @@ const router = useRouter();
 const brandStore = useBrandStore();
 
 const loading = ref(false);
+const ssoEnabled = ref(false);
 const body = ref<Login_Create>({
     username: '',
     password: ''
@@ -153,6 +170,23 @@ const body = ref<Login_Create>({
 
 onMounted(async () => {
     await brandStore.init();
+
+    // Check for token in URL (from OIDC redirect)
+    if (route.query.token) {
+        localStorage.token = String(route.query.token);
+        emit('login');
+        const redirect = route.query.redirect || '/';
+        router.replace(String(redirect));
+        return;
+    }
+
+    // Check if SSO is enabled
+    try {
+        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
+        ssoEnabled.value = config.oidc_enabled;
+    } catch (error) {
+        console.error('Failed to check SSO status:', error);
+    }
 
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then((registrations) => {
@@ -194,5 +228,10 @@ async function createLogin() {
         loading.value = false;
         throw err;
     }
+}
+
+function loginWithSSO() {
+    const redirect = route.query.redirect || '/';
+    window.location.href = `/api/login/oidc?redirect=${encodeURIComponent(String(redirect))}`;
 }
 </script>

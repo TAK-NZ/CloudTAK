@@ -20,7 +20,7 @@ import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { ContextEnvironmentConfig } from '../stack-config';
-import { createTakImportValue, TAK_EXPORT_NAMES, createBaseImportValue, BASE_EXPORT_NAMES } from '../cloudformation-imports';
+import { createTakImportValue, TAK_EXPORT_NAMES, createBaseImportValue, BASE_EXPORT_NAMES, createAuthImportValue, AUTH_EXPORT_NAMES } from '../cloudformation-imports';
 
 import { CLOUDTAK_CONSTANTS } from '../utils/constants';
 
@@ -333,6 +333,16 @@ export class CloudTakApi extends Construct {
     takAdminCertSecret.grantRead(taskRole); // Task role for application access
     connectionStringSecret.grantRead(executionRole);
     adminPasswordSecret.grantRead(executionRole);
+    
+    // Grant access to Authentik admin secret if OIDC is enabled
+    if (envConfig.cloudtak.oidcEnabled) {
+      const authentikAdminSecret = secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        'AuthentikAdminSecretForGrant',
+        cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN))
+      );
+      authentikAdminSecret.grantRead(taskRole);
+    }
 
 
 
@@ -374,7 +384,15 @@ export class CloudTakApi extends Construct {
         'ECR_TASKS_REPOSITORY_NAME': etlEcrRepository.repositoryName,
         'ECS_CLUSTER_PREFIX': `TAK-${envConfig.stackName}-BaseInfra`,
         // Media server URL
-        'MEDIA_URL': `https://${envConfig.mediainfra.mediaHostname}.${cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.HOSTED_ZONE_NAME))}:9997`
+        'MEDIA_URL': `https://${envConfig.mediainfra.mediaHostname}.${cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.HOSTED_ZONE_NAME))}:9997`,
+        // OIDC configuration
+        'ALB_OIDC_ENABLED': envConfig.cloudtak.oidcEnabled ? 'true' : 'false',
+        ...(envConfig.cloudtak.oidcEnabled && {
+          'AUTHENTIK_URL': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_URL)),
+          'AUTHENTIK_APP_SLUG': envConfig.cloudtak.authentikAppSlug || 'cloudtak',
+          'ALB_AUTH_SESSION_COOKIE': envConfig.cloudtak.albAuthSessionCookie || 'AWSELBAuthSessionCookieCloudTAK',
+          'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN))
+        })
       },
       secrets: {
         'SigningSecret': ecs.Secret.fromSecretsManager(signingSecret),

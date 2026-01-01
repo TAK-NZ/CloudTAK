@@ -33,6 +33,10 @@ export interface ContextEnvironmentConfig {
     takAdminEmail: string;
     useS3CloudTAKConfigFile: boolean;
     webhooksSubdomain?: string;
+    oidcEnabled?: boolean;
+    authentikUrl?: string;
+    authentikAppSlug?: string;
+    albAuthSessionCookie?: string;
   };
   ecr: {
     imageRetentionCount: number;

@@ -218,7 +218,8 @@ function logout() {
     user.value = undefined;
     delete localStorage.token;
 
-    router.push("/login");
+    // Redirect to backend logout endpoint
+    window.location.href = '/api/logout';
 }
 
 function external(url: string) {

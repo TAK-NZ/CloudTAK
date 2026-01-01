@@ -1,0 +1,45 @@
+diff --git a/api/lib/auth.ts b/api/lib/auth.ts
+index 227e4d9fa..7583d63bb 100644
+--- a/api/lib/auth.ts
++++ b/api/lib/auth.ts
+@@ -359,3 +359,40 @@ export async function tokenParser(
+     }
+ }
+ 
++// OIDC authentication parser for ALB OIDC headers
++export function oidcParser(req: Request): { user: AuthUser; groups: string[] } {
++    // Check if OIDC is enabled
++    if (!process.env.ALB_OIDC_ENABLED || process.env.ALB_OIDC_ENABLED !== 'true') {
++        throw new Err(404, null, 'OIDC authentication not enabled');
++    }
++    
++    const oidcData = req.headers['x-amzn-oidc-data'];
++    if (!oidcData || typeof oidcData !== 'string') {
++        throw new Err(401, null, 'No OIDC data');
++    }
++    
++    const payload = JSON.parse(
++        Buffer.from(oidcData.split('.')[1], 'base64').toString()
++    );
++    
++    console.log('OIDC Payload:', JSON.stringify(payload, null, 2));
++    
++    if (!payload.email) {
++        throw new Err(401, null, 'No email in OIDC data');
++    }
++    
++    // Extract groups from OIDC token
++    const groups = Array.isArray(payload.groups) ? payload.groups : [];
++    
++    // Default to USER access, will be upgraded based on profile
++    return {
++        user: new AuthUser(AuthUserAccess.USER, payload.email),
++        groups
++    };
++}
++
++// Helper to check if OIDC is enabled
++export function isOidcEnabled(): boolean {
++    return process.env.ALB_OIDC_ENABLED === 'true';
++}
++
