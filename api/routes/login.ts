@@ -125,23 +125,45 @@ export default async function router(schema: Schema, config: Config) {
             
             const { user: auth, groups } = await oidcParser(req);
             
+            // Parse groups for role assignment (used for both new and existing users)
+            const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
+            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
+            
+            const isSystemAdmin = groups.includes(systemAdminGroup);
+            
+            // Parse agency admin groups (e.g., "CloudTAKAgencyAdmin1", "CloudTAKAgencyAdmin5")
+            const agencyAdminIds: number[] = [];
+            for (const group of groups) {
+                if (group.startsWith(agencyAdminPrefix)) {
+                    const agencyIdStr = group.substring(agencyAdminPrefix.length);
+                    const agencyId = parseInt(agencyIdStr, 10);
+                    if (!isNaN(agencyId) && agencyId > 0) {
+                        agencyAdminIds.push(agencyId);
+                    }
+                }
+            }
+            
             // Check if user exists, auto-create if not
             let profile;
             let isNewUser = false;
             try {
                 profile = await config.models.Profile.from(auth.email);
+                
+                // Update group membership for existing users
+                await config.models.Profile.commit(auth.email, {
+                    system_admin: isSystemAdmin,
+                    agency_admin: agencyAdminIds
+                });
+                profile = await config.models.Profile.from(auth.email);
             } catch (err) {
                 if (err instanceof Error && err.message.includes('Item Not Found')) {
                     isNewUser = true;
-                    // Auto-create user on first OIDC login
-                    // Parse groups for role assignment
-                    const isSystemAdmin = groups.includes('CloudTAKSystemAdmin');
-                    
-                    profile = await config.models.Profile.generate({
+                    // Auto-create user on first OIDC login using ProfileControl to respect system defaults
+                    profile = await provider.profile.generate({
                         username: auth.email,
                         auth: { ca: [], key: '', cert: '' },
                         system_admin: isSystemAdmin,
-                        agency_admin: [],
+                        agency_admin: agencyAdminIds,
                         last_login: new Date().toISOString()
                     });
                 } else {
@@ -176,14 +198,20 @@ export default async function router(schema: Schema, config: Config) {
                         
                         // Update profile with Authentik attributes
                         const updates: any = {};
-                        if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
+                        if (userAttrs.takCallsign) {
+                            updates.tak_callsign = userAttrs.takCallsign;
+                            updates.tak_remarks = userAttrs.takCallsign;
+                        }
                         if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
                         
                         console.log(`Profile updates for ${auth.email}:`, JSON.stringify(updates));
                         
                         if (Object.keys(updates).length > 0) {
+                            updates.updated = new Date().toISOString();
                             await config.models.Profile.commit(auth.email, updates);
                             console.log(`Successfully updated profile attributes for ${auth.email}`);
+                            // Refresh profile to get updated attributes
+                            profile = await config.models.Profile.from(auth.email);
                         } else {
                             console.log(`No attribute updates needed for ${auth.email}`);
                         }

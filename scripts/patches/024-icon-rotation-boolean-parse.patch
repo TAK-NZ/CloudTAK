@@ -1,0 +1,13 @@
+diff --git a/api/lib/control/profile.ts b/api/lib/control/profile.ts
+index 1234567..abcdefg 100644
+--- a/api/lib/control/profile.ts
++++ b/api/lib/control/profile.ts
+@@ -130,7 +130,7 @@ export default class ProfileControl {
+                 options: Object.values(Profile_Text)
+             },
+             icon_rotation: {
+-                value: final.icon_rotation === 'false' ? false : true,
++                value: final.icon_rotation === 'true' ? true : false,
+                 options: [true, false]
+             }
+         }

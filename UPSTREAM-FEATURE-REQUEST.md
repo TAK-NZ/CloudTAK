@@ -504,20 +504,39 @@ The TAK.NZ deployment uses Authentik as the identity provider with the following
 - **takColor**: User's team color (maps to TAK groups like Blue, Red, Orange, etc.)
 
 ### Access Control via Groups
-- **CloudTAKSystemAdmin**: System administrator with full access
-  - Mapped from OIDC `groups` claim during first login
+- **CloudTAKSystemAdmin** (configurable): System administrator with full access
+  - Default group name: `CloudTAKSystemAdmin`
+  - Configurable via `OIDC_SYSTEM_ADMIN_GROUP` environment variable
+  - Mapped from OIDC `groups` claim on every login
   - Grants `system_admin = true` in user profile
   - Full access to all CloudTAK features and settings
+  - Group membership changes take effect on next login
 
-**Note**: Agency admin roles (`agency_admin` field) require CloudTAK's external system integration to be configured. Without an external system, only system admin and regular user roles are available.
+- **CloudTAKAgencyAdminX** (configurable): Agency administrator for agency X
+  - Default group prefix: `CloudTAKAgencyAdmin`
+  - Configurable via `OIDC_AGENCY_ADMIN_GROUP_PREFIX` environment variable
+  - Numeric suffix indicates agency ID (e.g., `CloudTAKAgencyAdmin1` for agency 1)
+  - Mapped from OIDC `groups` claim on every login
+  - Grants `agency_admin: [1]` in user profile
+  - Can manage connections where `connection.agency` matches their agency IDs
+  - Supports multiple agencies: user in `CloudTAKAgencyAdmin1` and `CloudTAKAgencyAdmin5` gets `agency_admin: [1, 5]`
+  - Group membership changes take effect on next login
+  - Works without external system integration
 
 ### Automatic Provisioning
 - **Certificate Enrollment with Auto-Retry**: Temporary 30-minute application passwords for TAK Server certificate requests
   - Automatically retries enrollment on every login if certificate is missing, invalid, or expired
   - Renews certificates expiring within 7 days
   - Self-healing: users never stuck without valid certificates
-- **Role Assignment**: Groups mapped to roles on first login only
-- **Attribute Sync**: Callsign and color fetched from user attributes
+- **Role Assignment**: Groups mapped to roles on every login
+  - System admin status synced from `OIDC_SYSTEM_ADMIN_GROUP` membership
+  - Agency admin IDs synced from `OIDC_AGENCY_ADMIN_GROUP_PREFIX` + numeric suffix
+  - Removing user from group revokes access on next login
+  - Adding user to group grants access on next login
+- **Attribute Sync**: Callsign and color fetched from user attributes on every login (configurable)
+  - Prevents "Welcome to CloudTAK" modal for users with pre-configured attributes
+  - Controlled by `SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN` environment variable
+  - Profile refreshed after attribute updates to ensure UI displays correct values
 - **Manual Override**: System admins can modify roles in CloudTAK UI after initial provisioning
 
 ### Environment Variables
@@ -531,9 +550,13 @@ This approach provides seamless onboarding while maintaining flexibility for oth
 ### Environment Variables
 
 - `ALB_OIDC_ENABLED`: Enable/disable OIDC authentication (true/false)
-- `AUTHENTIK_URL`: Identity provider URL (for logout redirect)
+- `AUTHENTIK_URL`: Identity provider URL (for logout redirect and API calls)
 - `AUTHENTIK_APP_SLUG`: Application slug in Authentik (for logout redirect)
 - `AUTHENTIK_API_TOKEN_SECRET_ARN`: Secrets Manager ARN for IdP API token (optional, for auto-enrollment)
+- `ALB_AUTH_SESSION_COOKIE`: Cookie name for ALB authentication session (default: "AWSELBAuthSessionCookie")
+- `SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN`: Sync user attributes from Authentik on every login (default: true)
+- `OIDC_SYSTEM_ADMIN_GROUP`: Group name for system administrators (default: "CloudTAKSystemAdmin")
+- `OIDC_AGENCY_ADMIN_GROUP_PREFIX`: Group prefix for agency administrators (default: "CloudTAKAgencyAdmin")
 
 ### Feature Flag
 
@@ -550,12 +573,21 @@ The `ALB_OIDC_ENABLED` environment variable acts as a feature flag:
 5. **User Friendly**: Single sign-on with automatic certificate provisioning
 6. **Self-Healing**: Automatic certificate retry and renewal on every login
 7. **Zero Maintenance**: Expired certificates automatically renewed (7-day threshold)
+8. **Seamless Onboarding**: Attribute syncing prevents setup dialogs for pre-configured users
+9. **Mobile Optimized**: Nginx buffer configuration handles large ALB OIDC cookies
 
 ## Testing
 
 1. Deploy with `ALB_OIDC_ENABLED=false` - verify traditional login works
 2. Deploy with `ALB_OIDC_ENABLED=true` - verify SSO button appears
-3. Test first-time login - verify user creation and certificate enrollment
-4. Test existing user login - verify authentication and token generation
-5. Test logout - verify IdP logout redirect
-6. Check CloudWatch logs for OIDC payload structure
+3. Test first-time login - verify user creation, attribute sync, and certificate enrollment
+4. Test existing user login - verify authentication, attribute sync, group sync, and token generation
+5. Test group membership changes:
+   - Add user to `CloudTAKSystemAdmin` group - verify system admin access on next login
+   - Remove user from system admin group - verify access revoked on next login
+   - Add user to `CloudTAKAgencyAdmin1` group - verify agency admin access on next login
+   - Remove user from agency admin group - verify access revoked on next login
+6. Test logout - verify ALB cookie expiration and IdP logout redirect
+7. Check CloudWatch logs for OIDC payload structure, attribute sync, and group sync messages
+8. Test on mobile devices - verify no "400 Request Header Too Large" errors
+9. Verify callsign and color display correctly in UI after first login

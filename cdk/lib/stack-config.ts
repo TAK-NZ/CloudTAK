@@ -38,6 +38,8 @@ export interface ContextEnvironmentConfig {
     authentikAppSlug?: string;
     albAuthSessionCookie?: string;
     syncAuthentikAttributesOnLogin?: boolean;
+    oidcSystemAdminGroup?: string;
+    oidcAgencyAdminGroupPrefix?: string;
   };
   ecr: {
     imageRetentionCount: number;

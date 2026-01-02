@@ -45,7 +45,9 @@
         "oidcEnabled": true,
         "authentikAppSlug": "cloudtak",
         "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
-        "syncAuthentikAttributesOnLogin": true
+        "syncAuthentikAttributesOnLogin": true,
+        "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgencyAdmin"
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -91,7 +93,9 @@
         "oidcEnabled": true,
         "authentikAppSlug": "cloudtak",
         "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
-        "syncAuthentikAttributesOnLogin": true
+        "syncAuthentikAttributesOnLogin": true,
+        "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgencyAdmin"
       },
       "ecr": {
         "imageRetentionCount": 20,

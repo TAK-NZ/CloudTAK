@@ -111,7 +111,7 @@
                                         <div class='text-center my-3'>
                                             <div class='text-muted'>─── OR ───</div>
                                         </div>
-                                        <div class='form-footer'>
+                                        <div>
                                             <button
                                                 type='button'
                                                 class='btn btn-primary w-100'

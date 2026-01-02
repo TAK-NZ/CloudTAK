@@ -26,14 +26,21 @@ index 1234567..abcdefg 100644
 +                        
                          // Update profile with Authentik attributes
                          const updates: any = {};
-                         if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
+-                        if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
++                        if (userAttrs.takCallsign) {
++                            updates.tak_callsign = userAttrs.takCallsign;
++                            updates.tak_remarks = userAttrs.takCallsign;
++                        }
                          if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
                          
 +                        console.log(`Profile updates for ${auth.email}:`, JSON.stringify(updates));
 +                        
                          if (Object.keys(updates).length > 0) {
++                            updates.updated = new Date().toISOString();
                              await config.models.Profile.commit(auth.email, updates);
 +                            console.log(`Successfully updated profile attributes for ${auth.email}`);
++                            // Refresh profile to get updated attributes
++                            profile = await config.models.Profile.from(auth.email);
 +                        } else {
 +                            console.log(`No attribute updates needed for ${auth.email}`);
                          }
