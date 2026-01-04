@@ -142,17 +142,8 @@ index 000000000..d32e1d927
 +        const creatorData: any = await userResponse.json();
 +        const creatorUsername = creatorData.results[0]?.username || 'unknown';
 +
-+        let agencyName = '';
-+        if (body.agency_id) {
-+            try {
-+                const agency = await this.agency(uid, body.agency_id);
-+                agencyName = agency.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-';
-+            } catch (err) {
-+                console.error('Failed to fetch agency name:', err);
-+            }
-+        }
-+
-+        const username = `etl-${agencyName}${body.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
++        const agencyPrefix = body.agency_id ? `agency${body.agency_id}-` : '';
++        const username = `etl-${agencyPrefix}${body.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 +
 +        const createUrl = new URL('/api/v3/core/users/service_account/', this.authentikUrl);
 +        const createResponse = await fetch(createUrl, {

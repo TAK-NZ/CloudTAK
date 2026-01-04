@@ -177,7 +177,8 @@ If upstream modified the same code:
    - **Machine User Management**: Complete createMachineUser(), fetchMachineUser(), updateMachineUser() implementation
    - **Channel Assignment**: Implements attachMachineUser() to assign users to channel groups
    - **Admin Privileges**: Fully implements login() method to fetch groups and determine system/agency admin status
-   - **Username Format**: Service accounts use `etl-{agency}-{name}` format (lowercase alphanumeric)
+   - **Username Format**: Service accounts use `etl-agency{id}-{name}` format (e.g., `etl-agency1-fire-data`)
+   - **Simplified Logic**: Uses agency ID directly instead of fetching and sanitizing agency name
    - **Critical Fix**: Sets both `name` and `username` fields to formatted username (Authentik uses name field)
    - **Token Management**: AWS Secrets Manager integration with 1-hour caching
    - **Channel Filtering**: Filters by agency attribute, removes "tak_" prefix, uses channelId or num_pk for IDs
@@ -200,6 +201,27 @@ If upstream modified the same code:
    - Redirects to standard login page instead of showing modal
    - Standard login page handles both traditional and OIDC SSO login
    - See UPSTREAM-BUG-LOGIN-MODAL.md for details
+
+20. **030-fix-connection-agency-edit-permission.patch** - `api/routes/connection.ts`
+   - Fixes permission check for agency field updates
+   - Only system admins can change agency after connection creation
+   - Prevents agency admins from moving connections between agencies
+
+21. **031-connection-cleanup-cert-revoke.patch** - `api/routes/connection.ts`
+   - **Certificate Revocation**: Automatically revokes TAK Server certificates when connections are deleted
+   - **Service Account Cleanup**: Deletes Authentik service accounts (machine users) on connection deletion
+   - **Security Enhancement**: Prevents deleted connections from accessing TAK Server
+   - **Graceful Error Handling**: Connection deletion succeeds even if cleanup fails
+   - **Logging**: All cleanup operations logged for audit trail
+   - Uses `@tak-ps/node-tak` Certificate.revoke() method
+   - Only deletes Authentik users marked as `machineUser: true`
+
+22. **032-authentik-delete-machine-user.patch** - `api/lib/authentik-provider.ts`
+   - **Adds deleteMachineUser() method**: Safely deletes Authentik service accounts
+   - **Safety Checks**: Only deletes users with `machineUser: true` attribute
+   - **Error Handling**: Logs errors but doesn't throw (allows connection deletion to continue)
+   - **Audit Logging**: Success and failure messages logged
+   - **Integration**: Called by connection deletion endpoint when using Authentik provider
 
 ## Applying Patches
 

@@ -30,10 +30,21 @@ export default async function router(schema: Schema, config: Config) {
         })
     }, async (req, res) => {
         try {
+            // Check if OIDC is forced and local login is restricted to system admins
+            const oidcForced = process.env.OIDC_FORCED === 'true';
+            
             let profile;
 
             if (config.server.auth.key && config.server.auth.cert) {
                 const email = await provider.login(req.body.username, req.body.password);
+                
+                // If OIDC is forced, only allow system admins to login locally
+                if (oidcForced) {
+                    const tempProfile = await config.models.Profile.from(email);
+                    if (!tempProfile.system_admin) {
+                        throw new Err(403, null, 'Local login is restricted. Please use SSO.');
+                    }
+                }
 
                 if (config.external && config.external.configured) {
                     try {

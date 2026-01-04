@@ -1,0 +1,56 @@
+diff --git a/api/routes/connection.ts b/api/routes/connection.ts
+index existing..new 100644
+--- a/api/routes/connection.ts
++++ b/api/routes/connection.ts
+@@ -1,4 +1,6 @@
+ import Err from '@openaddresses/batch-error';
++import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
++import AuthentikProvider from '../lib/authentik-provider.js';
+ import S3 from '../lib/aws/s3.js';
+ import { sql, and, inArray } from 'drizzle-orm';
+ import Config from '../lib/config.js';
+@@ -329,6 +331,9 @@ export default async function router(schema: Schema, config: Config) {
+     }, async (req, res) => {
+         try {
+             await Auth.is_connection(config, req, {}, req.params.connectionid);
++            
++            const connection = await config.models.Connection.from(req.params.connectionid);
++            const machineUsername = connection.username;
+ 
+             if (await config.models.Layer.count({
+                 where: sql`connection = ${req.params.connectionid}`
+@@ -342,6 +347,35 @@ export default async function router(schema: Schema, config: Config) {
+                 where: sql`connection = ${req.params.connectionid}`
+             }) > 0) throw new Err(400, null, 'Connection has active Video LEases - Delete Leases before deleting Connection');
+ 
++            // Revoke certificate in TAK Server before deletion
++            if (config.server && connection.auth.cert) {
++                try {
++                    const { hash } = new X509Certificate(connection.auth.cert);
++                    
++                    const api = await TAKAPI.init(
++                        new URL(config.server.webtak),
++                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key)
++                    );
++                    
++                    await api.Certificate.revoke(hash);
++                    console.log(`Revoked certificate ${hash} for connection ${req.params.connectionid}`);
++                } catch (err) {
++                    console.error(`Failed to revoke certificate for connection ${req.params.connectionid}:`, err);
++                    // Continue with deletion even if revocation fails
++                }
++            }
++
++            // Delete Authentik service account if using Authentik provider
++            if (config.external && config.external instanceof AuthentikProvider && machineUsername) {
++                try {
++                    await config.external.deleteMachineUser(machineUsername);
++                } catch (err) {
++                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
++                    // Continue with deletion even if service account deletion fails
++                }
++            }
++
+             await S3.del(`connection/${String(req.params.connectionid)}/`, { recurse: true });
+ 
+             await config.models.ConnectionToken.delete(sql`

@@ -230,6 +230,35 @@ CloudTAK implements **self-healing certificate enrollment**:
 
 This ensures users are never permanently stuck without certificates due to transient failures (network issues, service unavailability, etc.) or certificate expiration.
 
+### Connection Certificate Auto-Renewal
+
+ETL connections using the Authentik provider also support **automatic certificate renewal**:
+
+- **Health Check Endpoint**: `GET /api/layer/:layerid/health`
+- **ETL Library Integration**: @tak-ps/etl library calls this endpoint automatically at startup
+- **Renewal Threshold**: Certificates expiring within 7 days
+- **Self-Healing**: Automatic retry on next ETL execution if renewal fails
+- **Zero Downtime**: Connection remains active during renewal
+- **No ETL Changes**: Works transparently without modifying ETL task code
+
+**How it works**:
+1. ETL library calls health check endpoint at startup (using ETL_TOKEN)
+2. Endpoint checks certificate expiration for the layer's connection
+3. If expiring soon (≤7 days), triggers automatic renewal:
+   - Creates temporary password in Authentik
+   - Requests new certificate from TAK Server
+   - Updates connection record with new certificate
+   - Refreshes active connection if enabled
+4. Returns health status to ETL
+5. ETL continues with valid certificate
+
+**Benefits**:
+- No ETL task code changes required
+- Automatic integration via @tak-ps/etl library
+- Prevents ETL failures due to expired certificates
+- Consistent with user certificate renewal behavior
+- Minimal performance impact (check is fast, renewal only when needed)
+
 ## Security
 
 ### Authentication Flow
@@ -391,3 +420,203 @@ To disable automatic attribute syncing from Authentik:
 - No database schema changes required
 - Existing users unaffected
 - Zero impact when feature is disabled
+
+## Forced OIDC Login
+
+### Overview
+
+CloudTAK supports forced OIDC authentication, requiring all non-system-admin users to authenticate via SSO. System administrators retain emergency access via local login.
+
+### Configuration
+
+**File:** `cdk/cdk.json`
+
+```json
+{
+  "cloudtak": {
+    "oidcEnabled": true,
+    "oidcForced": true  // Set to false to allow local login for all users
+  }
+}
+```
+
+### User Access Matrix
+
+| User Type | `/login` | `/login?local=true` | API `/api/login` |
+|-----------|----------|---------------------|------------------|
+| **Regular User** (oidcForced=true) | → OIDC redirect | → OIDC redirect | 403 Forbidden |
+| **System Admin** (oidcForced=true) | → OIDC redirect | ✓ Local login | ✓ Local login |
+| **Any User** (oidcForced=false) | ✓ Both options | ✓ Local login | ✓ Local login |
+
+### Behavior
+
+**When `oidcForced: true` (default):**
+- Regular users visiting `/login` → Automatically redirected to OIDC
+- Regular users visiting `/login?local=true` → Can see form but authentication fails, redirected to OIDC
+- System admins visiting `/login` → Redirected to OIDC
+- System admins visiting `/login?local=true` → Can use local login successfully
+
+**When `oidcForced: false`:**
+- All users can choose between local and OIDC login
+- Traditional behavior maintained
+
+### Implementation
+
+**Backend (`api/routes/login.ts`):**
+```typescript
+const oidcForced = process.env.OIDC_FORCED === 'true';
+
+if (oidcForced) {
+    const tempProfile = await config.models.Profile.from(email);
+    if (!tempProfile.system_admin) {
+        throw new Err(403, null, 'Local login is restricted. Please use SSO.');
+    }
+}
+```
+
+**Frontend (`api/web/src/components/Login.vue`):**
+```typescript
+const oidcForced = ref(false);
+
+onMounted(async () => {
+    const config = await std('/api/server/oidc');
+    oidcForced.value = config.oidc_forced || false;
+    
+    if (oidcForced.value && !route.query.local) {
+        loginWithSSO();
+        return;
+    }
+});
+```
+
+### Testing Scenarios
+
+1. **Regular User - Auto Redirect**: Visit `/login` → Should redirect to Authentik
+2. **Regular User - Local Attempt**: Visit `/login?local=true` → Should fail and redirect to OIDC
+3. **System Admin - OIDC**: Visit `/login` → Should redirect to Authentik
+4. **System Admin - Local**: Visit `/login?local=true` → Should allow local login
+5. **API Login - Regular User**: POST to `/api/login` → Should return 403
+6. **API Login - System Admin**: POST to `/api/login` → Should succeed
+
+### Troubleshooting
+
+**Regular users can still access local login:**
+- Check `oidcForced` is `true` in `cdk.json`
+- Verify `OIDC_FORCED` environment variable in ECS task
+- Check `/api/server/oidc` endpoint response
+
+**System admins cannot login locally:**
+- Verify using `/login?local=true` URL
+- Check user's `system_admin` status in database
+- Review CloudTAK API logs
+
+**Automatic redirect not working:**
+- Open browser developer console
+- Check for JavaScript errors
+- Verify `/api/server/oidc` returns `oidc_forced: true`
+
+### Quick Commands
+
+```bash
+# Check config
+grep -A 5 "oidcForced" cdk/cdk.json
+
+# Test OIDC config endpoint
+curl https://map.tak.nz/api/server/oidc
+
+# Test local login (should fail for non-admins)
+curl -X POST https://map.tak.nz/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"user@example.com","password":"password"}'
+```
+
+### Rollback
+
+To disable forced OIDC:
+
+1. Edit `cdk/cdk.json`: `"oidcForced": false`
+2. Deploy: `npm run deploy:dev`
+3. Verify: `curl https://map.tak.nz/api/server/oidc`
+
+## Connection Deletion and Cleanup
+
+### Automatic Cleanup on Connection Deletion
+
+When a connection is deleted in CloudTAK, the system performs comprehensive cleanup:
+
+#### 1. Certificate Revocation
+
+- **TAK Server Certificate**: Automatically revoked using `@tak-ps/node-tak` library
+- **Immediate Effect**: Certificate becomes invalid immediately
+- **Security**: Prevents deleted connections from accessing TAK Server
+- **Implementation**: Uses `api.Certificate.revoke(hash)` method
+
+#### 2. Authentik Service Account Deletion
+
+- **Service Account**: Automatically deleted from Authentik
+- **Safety Check**: Only deletes accounts marked as `machineUser: true`
+- **Graceful Failure**: Connection deletion continues even if service account deletion fails
+- **Logging**: Success and failure messages logged for audit trail
+
+### Implementation Details
+
+**Location**: `api/routes/connection.ts` (DELETE endpoint)
+
+The deletion process follows this sequence:
+
+1. **Validation**: Check for active layers, data syncs, and video leases
+2. **Certificate Revocation**:
+   ```typescript
+   const { hash } = new X509Certificate(connection.auth.cert);
+   const api = await TAKAPI.init(...);
+   await api.Certificate.revoke(hash);
+   ```
+3. **Service Account Deletion** (Authentik only):
+   ```typescript
+   if (config.external instanceof AuthentikProvider) {
+       await config.external.deleteMachineUser(machineUsername);
+   }
+   ```
+4. **Database Cleanup**: Remove connection records, tokens, and features
+5. **S3 Cleanup**: Delete connection assets
+
+### Security Benefits
+
+- **Defense in Depth**: Multiple layers of access control removed
+- **Immediate Revocation**: Certificate invalid immediately, not waiting for expiration
+- **Audit Trail**: All cleanup actions logged
+- **No Orphaned Accounts**: Service accounts cleaned up automatically
+
+### Error Handling
+
+- **Certificate Revocation Failure**: Logged but doesn't block deletion
+- **Service Account Deletion Failure**: Logged but doesn't block deletion
+- **Graceful Degradation**: Connection deletion always succeeds
+- **Retry**: Manual cleanup possible via Authentik admin interface if needed
+
+### Comparison with COTAK OAuth
+
+The Authentik implementation provides better cleanup than the original COTAK OAuth:
+
+| Feature | COTAK OAuth | Authentik Provider |
+|---------|-------------|--------------------|
+| Certificate Revocation | ❌ Not implemented | ✅ Automatic |
+| Machine User Deletion | ❌ Optional parameter not used | ✅ Automatic |
+| Error Handling | ⚠️ Silent failure | ✅ Logged with graceful degradation |
+| Safety Checks | ❌ None | ✅ Verifies machineUser attribute |
+
+### Monitoring
+
+Check CloudTAK logs for cleanup operations:
+
+```bash
+# Certificate revocation
+Revoked certificate <hash> for connection <id>
+
+# Service account deletion
+Successfully deleted Authentik service account: <username>
+
+# Errors
+Failed to revoke certificate for connection <id>: <error>
+Failed to delete machine user <username>: <error>
+```

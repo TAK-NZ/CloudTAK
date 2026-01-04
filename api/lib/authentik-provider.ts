@@ -3,6 +3,8 @@ import Err from '@openaddresses/batch-error';
 import Config from './config.js';
 import { Static } from '@sinclair/typebox';
 import { Agency, MachineUser, Channel } from './external.js';
+import crypto from 'crypto';
+import TAKAPI from '@tak-ps/node-tak';
 
 export default class AuthentikProvider {
     config: Config;
@@ -136,17 +138,8 @@ export default class AuthentikProvider {
         const creatorData: any = await userResponse.json();
         const creatorUsername = creatorData.results[0]?.username || 'unknown';
 
-        let agencyName = '';
-        if (body.agency_id) {
-            try {
-                const agency = await this.agency(uid, body.agency_id);
-                agencyName = agency.name.toLowerCase().replace(/[^a-z0-9]/g, '') + '-';
-            } catch (err) {
-                console.error('Failed to fetch agency name:', err);
-            }
-        }
-
-        const username = `etl-${agencyName}${body.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+        const agencyPrefix = body.agency_id ? `agency${body.agency_id}-` : '';
+        const username = `etl-${agencyPrefix}${body.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
 
         const createUrl = new URL('/api/v3/core/users/service_account/', this.authentikUrl);
         const createResponse = await fetch(createUrl, {
@@ -333,6 +326,62 @@ export default class AuthentikProvider {
         return;
     }
 
+    async deleteMachineUser(username: string): Promise<void> {
+        try {
+            const creds = await this.auth();
+
+            // Fetch user by username
+            const url = new URL('/api/v3/core/users/', this.authentikUrl);
+            url.searchParams.append('username', username);
+
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${creds.token}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.error(`Failed to fetch machine user ${username}:`, await response.text());
+                return;
+            }
+
+            const data: any = await response.json();
+            const user = data.results[0];
+
+            if (!user) {
+                console.log(`Machine user ${username} not found, skipping deletion`);
+                return;
+            }
+
+            // Only delete if it's a machine user (service account)
+            if (!user.attributes?.machineUser) {
+                console.log(`User ${username} is not a machine user, skipping deletion`);
+                return;
+            }
+
+            // Delete the user
+            const deleteUrl = new URL(`/api/v3/core/users/${user.pk}/`, this.authentikUrl);
+            const deleteResponse = await fetch(deleteUrl, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${creds.token}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            if (!deleteResponse.ok) {
+                console.error(`Failed to delete machine user ${username}:`, await deleteResponse.text());
+                return;
+            }
+
+            console.log(`Successfully deleted Authentik service account: ${username}`);
+        } catch (err) {
+            console.error(`Error deleting machine user ${username}:`, err);
+            // Don't throw - allow connection deletion to continue
+        }
+    }
+
     async login(username: string): Promise<{
         id: number;
         name: string;
@@ -409,5 +458,43 @@ export default class AuthentikProvider {
             tak_callsign: attributes.takCallsign,
             tak_group: attributes.takColor
         };
+    }
+
+    async renewConnectionCertificate(
+        machineUserId: number,
+        takApi: TAKAPI
+    ): Promise<{ cert: string; key: string }> {
+        const creds = await this.auth();
+        const tempPassword = crypto.randomBytes(32).toString('base64url');
+        
+        const passwordUrl = new URL(`/api/v3/core/users/${machineUserId}/set_password/`, this.authentikUrl);
+        const passwordResponse = await fetch(passwordUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${creds.token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ password: tempPassword })
+        });
+        
+        if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set password');
+        
+        const userUrl = new URL(`/api/v3/core/users/${machineUserId}/`, this.authentikUrl);
+        const userResponse = await fetch(userUrl, {
+            headers: {
+                'Authorization': `Bearer ${creds.token}`,
+                'Accept': 'application/json'
+            }
+        });
+        
+        if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Failed to fetch user');
+        const userData: any = await userResponse.json();
+        
+        const enrollment = await takApi.Certificate.generate({
+            username: userData.username,
+            password: tempPassword
+        });
+        
+        return { cert: enrollment.cert, key: enrollment.key };
     }
 }

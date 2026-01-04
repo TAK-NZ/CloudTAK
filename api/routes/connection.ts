@@ -11,6 +11,9 @@ import { MachineConnConfig, ConnectionAuth } from '../lib/connection-config.js';
 import Schema from '@openaddresses/batch-schema';
 import * as Default from '../lib/limits.js';
 import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
+import { needsCertRenewal } from '../lib/cert-health.js';
+import AuthentikProvider from '../lib/authentik-provider.js';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/connection', {
@@ -329,6 +332,109 @@ export default async function router(schema: Schema, config: Config) {
                 certificate: { validFrom, validTo, subject },
                 ...connection
             });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/connection/:connectionid/cert/renew', {
+        name: 'Renew Certificate',
+        group: 'Connection',
+        description: 'Check and renew connection certificate if needed',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 })
+        }),
+        res: Type.Object({
+            renewed: Type.Boolean(),
+            message: Type.String()
+        })
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+            }, req.params.connectionid);
+
+            if (!(config.external instanceof AuthentikProvider)) {
+                return res.json({ renewed: false, message: 'Certificate renewal only supported with Authentik provider' });
+            }
+
+            if (!needsCertRenewal(connection.auth.cert)) {
+                return res.json({ renewed: false, message: 'Certificate does not need renewal' });
+            }
+
+            const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
+
+            await config.models.Connection.commit(req.params.connectionid, {
+                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+            });
+
+            if (connection.enabled && config.conns.has(connection.id)) {
+                await config.conns.delete(connection.id);
+                const updatedConn = await config.models.Connection.from(connection.id);
+                await config.conns.add(new MachineConnConfig(config, updatedConn));
+            }
+
+            res.json({ renewed: true, message: `Certificate renewed for connection ${connection.id}` });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/layer/:layerid/health', {
+        name: 'Layer Health Check',
+        group: 'Layer',
+        description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
+        params: Type.Object({
+            layerid: Type.Integer({ minimum: 1 })
+        }),
+        res: Type.Object({
+            healthy: Type.Boolean(),
+            cert_renewed: Type.Boolean(),
+            message: Type.Optional(Type.String())
+        })
+    }, async (req, res) => {
+        try {
+            const auth = await Auth.as_user(config, req, { token: true });
+            if (auth.access !== 'layer' || auth.id !== req.params.layerid) {
+                throw new Err(401, null, 'Invalid layer token');
+            }
+
+            const layer = await config.models.Layer.from(req.params.layerid);
+            if (!layer.connection) {
+                return res.json({ healthy: true, cert_renewed: false });
+            }
+
+            const connection = await config.models.Connection.from(layer.connection);
+            
+            if (!(config.external instanceof AuthentikProvider)) {
+                return res.json({ healthy: true, cert_renewed: false });
+            }
+
+            if (!needsCertRenewal(connection.auth.cert)) {
+                return res.json({ healthy: true, cert_renewed: false });
+            }
+
+            try {
+                const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
+                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
+
+                await config.models.Connection.commit(connection.id, {
+                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+                });
+
+                if (connection.enabled && config.conns.has(connection.id)) {
+                    await config.conns.delete(connection.id);
+                    const updatedConn = await config.models.Connection.from(connection.id);
+                    await config.conns.add(new MachineConnConfig(config, updatedConn));
+                }
+
+                console.log(`Certificate renewed for connection ${connection.id} via layer ${layer.id} health check`);
+                return res.json({ healthy: true, cert_renewed: true, message: 'Certificate renewed' });
+            } catch (err) {
+                console.error(`Certificate renewal failed for connection ${connection.id}:`, err);
+                return res.json({ healthy: true, cert_renewed: false, message: 'Renewal failed, will retry' });
+            }
         } catch (err) {
             Err.respond(err, res);
         }

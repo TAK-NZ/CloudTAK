@@ -136,6 +136,13 @@ This stack uses a **hybrid Docker image strategy** that supports both pre-built 
 - **Branding Application**: TAK.NZ customizations applied after sync
 - **Version Tagging**: Git SHA and version-based image tags
 
+### Certificate Management
+- **User Certificates**: Automatic enrollment and renewal on OIDC login (7-day threshold)
+- **Connection Certificates**: Self-healing renewal for ETL connections via API endpoint
+- **Renewal Threshold**: Certificates expiring within 7 days are automatically renewed
+- **Zero Downtime**: Connections remain active during certificate renewal
+- **Graceful Failure**: Automatic retry on next execution if renewal fails
+
 ### Authentication Integration
 - **Authentik User Creation**: Automatically creates CloudTAK admin user in Authentik
 - **SSO Integration**: Integrates with AuthInfra layer for single sign-on
@@ -212,6 +219,7 @@ npm run deploy:local:dev
 - **[🔧 Environment Variables](docs/ENVIRONMENT_VARIABLES.md)** - CloudTAK application configuration via environment variables
 - **[🪝 Webhooks Guide](docs/WEBHOOKS.md)** - Incoming webhook support for ETL layers
 - **[🔐 OIDC Authentication](docs/OIDC_AUTHENTICATION.md)** - Single Sign-On setup with ALB and Authentik
+- **[📜 Certificate Management](docs/CERTIFICATE_MANAGEMENT.md)** - Automatic certificate monitoring and renewal
 
 ## Security Features
 

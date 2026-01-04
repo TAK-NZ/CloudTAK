@@ -280,6 +280,151 @@ listener.addAction('AllowLogin', {
 2. **JWT Expiration**: CloudTAK JWT tokens expire after 16 hours
 3. **Auto-Provisioning**: New users are created with minimal permissions (USER access)
 4. **Role Mapping**: System admin and agency admin roles must be set separately (see related feature request for external provider integration)
+5. **Certificate Lifecycle Management**: See "Certificate Revocation" section below for proper cleanup
+
+## Certificate Revocation
+
+### Current Security Gap in CloudTAK
+
+When a connection is deleted in CloudTAK, there is a **security vulnerability**:
+
+1. **Machine Account Not Deleted**: The COTAK machine user remains active
+   - The `deleteIntegrationByConnectionId()` method has a `?delete_machine_user` query parameter
+   - This parameter is **NOT currently used** in the implementation
+   - Machine accounts can still authenticate to TAK Server after connection deletion
+
+2. **Certificate Not Revoked**: The X.509 certificate remains valid
+   - No certificate revocation occurs when connections are deleted
+   - Certificates remain valid until natural expiration
+   - Deleted connections could potentially continue accessing TAK Server
+
+### Solution: Proper Certificate Revocation
+
+The `@tak-ps/node-tak` library **supports certificate revocation** via the `Certificate.revoke()` method:
+
+```typescript
+// In api/routes/connection.ts - DELETE /connection/:connectionid
+
+await schema.delete('/connection/:connectionid', {
+    name: 'Delete Connection',
+    group: 'Connection',
+    description: 'Delete a connection',
+    params: Type.Object({
+        connectionid: Type.Integer({ minimum: 1 })
+    }),
+    res: StandardResponse
+}, async (req, res) => {
+    try {
+        await Auth.is_connection(config, req, {}, req.params.connectionid);
+        const connection = await config.models.Connection.from(req.params.connectionid);
+
+        // Validation checks...
+
+        // SECURITY FIX: Revoke certificate before deletion
+        if (config.server && connection.auth.cert) {
+            try {
+                const { hash } = new X509Certificate(connection.auth.cert);
+                
+                // Initialize TAK API with admin credentials
+                const api = await TAKAPI.init(
+                    new URL(config.server.webtak),
+                    new APIAuthCertificate(config.server.auth.cert, config.server.auth.key)
+                );
+                
+                // Revoke the certificate
+                await api.Certificate.revoke(hash);
+                console.log(`Revoked certificate ${hash} for connection ${req.params.connectionid}`);
+            } catch (err) {
+                console.error(`Failed to revoke certificate for connection ${req.params.connectionid}:`, err);
+                // Continue with deletion even if revocation fails
+            }
+        }
+
+        // Existing deletion logic...
+        await S3.del(`connection/${String(req.params.connectionid)}/`, { recurse: true });
+        await config.models.ConnectionToken.delete(sql`connection = ${req.params.connectionid}`);
+        await config.models.ConnectionFeature.delete(sql`connection = ${req.params.connectionid}`);
+        await config.models.Connection.delete(req.params.connectionid);
+        config.conns.delete(req.params.connectionid);
+
+        // SECURITY FIX: Delete machine user from COTAK
+        if (config.external && config.external.configured) {
+            const user = await Auth.as_user(config, req);
+            const profile = await config.models.Profile.from(user.email);
+
+            if (profile.id) {
+                // Add delete_machine_user parameter to clean up machine account
+                await config.external.deleteIntegrationByConnectionId(profile.id, {
+                    connection_id: req.params.connectionid,
+                    delete_machine_user: true  // NEW: Actually delete the machine user
+                });
+            }
+        }
+
+        res.json({
+            status: 200,
+            message: 'Connection Deleted'
+        });
+    } catch (err) {
+        Err.respond(err, res);
+    }
+});
+```
+
+### Required Changes to External Provider
+
+Update `api/lib/external.ts` to support machine user deletion:
+
+```typescript
+async deleteIntegrationByConnectionId(uid: number, body: {
+    connection_id: number;
+    delete_machine_user?: boolean;  // NEW: Optional parameter
+}): Promise<void> {
+    const creds = await this.auth();
+
+    const url = new URL(`api/v1/proxy/integrations/etl/identifier/${body.connection_id}`, this.provider.url);
+    url.searchParams.append('proxy_user_id', String(uid));
+    
+    // NEW: Add parameter to delete associated machine users
+    if (body.delete_machine_user) {
+        url.searchParams.append('delete_machine_user', 'true');
+    }
+
+    await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            Accept: 'application/json',
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${creds.token}`
+        }
+    });
+
+    return;
+}
+```
+
+### Certificate Revocation Methods Available
+
+The `@tak-ps/node-tak` library provides multiple revocation methods:
+
+1. **`Certificate.revoke(hash)`**: Revoke by certificate hash
+2. **`Certificate.revokeIds(ids)`**: Revoke by certificate ID
+3. **`Certificate.deleteIds(ids)`**: Permanently delete certificate record
+4. **`Certificate.listRevoked()`**: List all revoked certificates
+
+### Benefits of Proper Revocation
+
+1. **Immediate Access Termination**: Certificate becomes invalid immediately
+2. **Security Compliance**: Follows security best practices for credential lifecycle
+3. **Audit Trail**: Revocation events logged in TAK Server
+4. **Defense in Depth**: Multiple layers of access control (machine user + certificate)
+
+### Implementation Priority
+
+This security fix should be implemented **before** or **alongside** the OIDC feature to ensure:
+- Proper cleanup when users are deprovisioned from IdP
+- Certificate revocation when connections are deleted
+- Machine account cleanup to prevent orphaned accounts
 
 ## Testing
 

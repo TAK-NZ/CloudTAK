@@ -544,3 +544,8 @@ export function isOidcEnabled(): boolean {
     return process.env.ALB_OIDC_ENABLED === 'true';
 }
 
+// Helper to check if OIDC is forced (only system admins can use local login)
+export function isOidcForced(): boolean {
+    return process.env.OIDC_FORCED === 'true';
+}
+

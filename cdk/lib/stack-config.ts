@@ -34,6 +34,7 @@ export interface ContextEnvironmentConfig {
     useS3CloudTAKConfigFile: boolean;
     webhooksSubdomain?: string;
     oidcEnabled?: boolean;
+    oidcForced?: boolean;
     authentikUrl?: string;
     authentikAppSlug?: string;
     albAuthSessionCookie?: string;

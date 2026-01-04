@@ -163,6 +163,7 @@ const brandStore = useBrandStore();
 
 const loading = ref(false);
 const ssoEnabled = ref(false);
+const oidcForced = ref(false);
 const body = ref<Login_Create>({
     username: '',
     password: ''
@@ -180,10 +181,17 @@ onMounted(async () => {
         return;
     }
 
-    // Check if SSO is enabled
+    // Check if SSO is enabled and if OIDC is forced
     try {
-        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
+        const config = await std('/api/server/oidc') as { oidc_enabled: boolean; oidc_forced?: boolean };
         ssoEnabled.value = config.oidc_enabled;
+        oidcForced.value = config.oidc_forced || false;
+        
+        // If OIDC is forced and no local=true query param, redirect to SSO immediately
+        if (oidcForced.value && !route.query.local) {
+            loginWithSSO();
+            return;
+        }
     } catch (error) {
         console.error('Failed to check SSO status:', error);
     }
@@ -226,7 +234,12 @@ async function createLogin() {
         }
     } catch (err) {
         loading.value = false;
-        throw err;
+        // If OIDC is forced and user is not a system admin, redirect to SSO
+        if (oidcForced.value && err instanceof Error && err.message.includes('restricted')) {
+            loginWithSSO();
+        } else {
+            throw err;
+        }
     }
 }
 

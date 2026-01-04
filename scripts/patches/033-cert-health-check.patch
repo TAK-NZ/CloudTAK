@@ -1,0 +1,19 @@
+diff --git a/api/lib/cert-health.ts b/api/lib/cert-health.ts
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/api/lib/cert-health.ts
+@@ -0,0 +1,11 @@
++import { X509Certificate } from 'crypto';
++
++export function needsCertRenewal(certPem: string, thresholdDays: number = 7): boolean {
++    if (!certPem) return true;
++    
++    try {
++        const cert = new X509Certificate(certPem);
++        const daysLeft = (new Date(cert.validTo).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
++        return daysLeft <= thresholdDays;
++    } catch {
++        return true;
++    }
++}
