@@ -145,6 +145,64 @@ If upstream modified the same code:
 2. Resolve conflicts manually
 3. Update patch if needed
 
+### Authentik Provider Implementation
+
+10. **020-nginx-buffer-size.patch** - `api/nginx.conf.js`
+   - Increases proxy buffer size for large OIDC headers
+   - Sets `proxy_buffer_size 16k` and `proxy_buffers 8 16k`
+
+11. **021-authentik-attribute-sync.patch** - `api/lib/control/profile.ts`
+   - Syncs TAK attributes from Authentik to profile on login
+   - Updates `tak_callsign` and `tak_group` from OIDC data
+
+12. **022-icon-rotation-default.patch** - Multiple Vue files
+   - Fixes icon rotation default to respect system setting
+   - Updates CoTView, Map, MenuFiles, MenuImports, MenuOverlays, NotificationIcon, SelectFeats, Share, ShareToMission, LayerIncomingConfig
+
+13. **023-oidc-configurable-groups.patch** - `api/routes/login.ts`
+   - Makes admin group names configurable via environment variables
+   - Uses `OIDC_SYSTEM_ADMIN_GROUP` and `OIDC_AGENCY_ADMIN_GROUP_PREFIX`
+
+14. **024-icon-rotation-boolean-parse.patch** - Multiple Vue files
+   - Ensures icon rotation is parsed as boolean
+   - Prevents string "false" from being truthy
+
+15. **025-oidc-use-profile-control.patch** - `api/routes/login.ts`
+   - Uses Profile.commit() instead of direct database update
+   - Ensures proper profile management
+
+16. **026-authentik-provider-complete.patch** - `api/lib/authentik-provider.ts` (NEW FILE)
+   - **Complete AuthentikProvider Implementation**: Creates full Authentik API integration class
+   - **Agencies & Channels**: Implements agencies(), agency(), channels() with agency filtering
+   - **Machine User Management**: Complete createMachineUser(), fetchMachineUser(), updateMachineUser() implementation
+   - **Channel Assignment**: Implements attachMachineUser() to assign users to channel groups
+   - **Admin Privileges**: Fully implements login() method to fetch groups and determine system/agency admin status
+   - **Username Format**: Service accounts use `etl-{agency}-{name}` format (lowercase alphanumeric)
+   - **Critical Fix**: Sets both `name` and `username` fields to formatted username (Authentik uses name field)
+   - **Token Management**: AWS Secrets Manager integration with 1-hour caching
+   - **Channel Filtering**: Filters by agency attribute, removes "tak_" prefix, uses channelId or num_pk for IDs
+
+17. **027-fix-machine-user-profile-lookup.patch** - `api/routes/ldap.ts`
+   - Fixes missing profile.id by calling external.login() on demand
+   - Fetches and stores Authentik user ID when profile.id is null
+   - Applies to GET /api/ldap/channel, POST /api/ldap/user, PUT /api/ldap/user/:email
+   - Prevents "External ID must be set on profile" errors
+
+## Applying Patches
+
+After syncing with upstream, apply patches in order:
+
+```bash
+# Navigate to CloudTAK root
+cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
+
+# Apply all patches in order
+for patch in scripts/patches/0*-*.patch; do
+    echo "Applying $patch..."
+    git apply "$patch" || echo "Failed to apply $patch"
+done
+```
+
 ## Documentation
 
 See `docs/OIDC_AUTHENTICATION.md` for complete implementation details and `UPSTREAM-FEATURE-REQUEST.md` for the feature request to submit upstream.

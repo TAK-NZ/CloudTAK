@@ -40,6 +40,7 @@ export interface ContextEnvironmentConfig {
     syncAuthentikAttributesOnLogin?: boolean;
     oidcSystemAdminGroup?: string;
     oidcAgencyAdminGroupPrefix?: string;
+    authentikChannelGroupPrefix?: string;
   };
   ecr: {
     imageRetentionCount: number;

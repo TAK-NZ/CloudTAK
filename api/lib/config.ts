@@ -1,6 +1,7 @@
 import Err from '@openaddresses/batch-error';
 import STS from '@aws-sdk/client-sts';
 import External from './external.js';
+import AuthentikProvider from './authentik-provider.js';
 import SecretsManager from '@aws-sdk/client-secrets-manager';
 import EventsPool from './events-pool.js';
 import { Pool, GenerateUpsert } from '@openaddresses/batch-generic';
@@ -154,8 +155,17 @@ export default class Config {
             console.error(`ok - StackName: ${config.StackName}`);
         }
 
-        const external = await External.init(config);
-        config.external = external;
+        if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+            const external = await AuthentikProvider.init(config);
+            config.external = external;
+            if (!config.silent) {
+                console.error('ok - External Provider: Authentik');
+            }
+        } else {
+            const external = await External.init(config);
+            config.external = external;
+        }
+
 
         for (const envkey in process.env) {
             if (!envkey.startsWith('CLOUDTAK')) continue;

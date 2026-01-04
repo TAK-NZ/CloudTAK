@@ -443,7 +443,7 @@ function verifyJwtSignature(token: string, publicKeyPem: string): boolean {
 }
 
 // OIDC authentication parser for ALB OIDC headers with full security validation
-export async function oidcParser(req: Request): Promise<{ user: AuthUser; groups: string[] }> {
+export async function oidcParser(req: Request): Promise<{ user: AuthUser }> {
     // 1. Check if OIDC is enabled
     if (!process.env.ALB_OIDC_ENABLED || process.env.ALB_OIDC_ENABLED !== 'true') {
         throw new Err(404, null, 'OIDC authentication not enabled');
@@ -534,13 +534,8 @@ export async function oidcParser(req: Request): Promise<{ user: AuthUser; groups
         throw new Err(401, null, 'No email in OIDC data');
     }
     
-    // 10. Extract groups from OIDC token
-    const groups = Array.isArray(payload.groups) ? payload.groups : [];
-    
-    // Default to USER access, will be upgraded based on profile
     return {
-        user: new AuthUser(AuthUserAccess.USER, payload.email),
-        groups
+        user: new AuthUser(AuthUserAccess.USER, payload.email)
     };
 }
 

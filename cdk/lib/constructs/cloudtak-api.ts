@@ -394,7 +394,8 @@ export class CloudTakApi extends Construct {
           'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN)),
           'SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN': envConfig.cloudtak.syncAuthentikAttributesOnLogin !== false ? 'true' : 'false',
           'OIDC_SYSTEM_ADMIN_GROUP': envConfig.cloudtak.oidcSystemAdminGroup || 'CloudTAKSystemAdmin',
-          'OIDC_AGENCY_ADMIN_GROUP_PREFIX': envConfig.cloudtak.oidcAgencyAdminGroupPrefix || 'CloudTAKAgencyAdmin'
+          'OIDC_AGENCY_ADMIN_GROUP_PREFIX': envConfig.cloudtak.oidcAgencyAdminGroupPrefix || 'CloudTAKAgency',
+          'AUTHENTIK_CHANNEL_GROUP_PREFIX': envConfig.cloudtak.authentikChannelGroupPrefix || 'tak_'
         })
       },
       secrets: {

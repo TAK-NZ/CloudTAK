@@ -39,10 +39,23 @@ export default async function router(schema: Schema, config: Config) {
                     try {
                         const response = await config.external.login(email);
 
-                        await config.models.Profile.commit(email, {
-                            ...response,
+                        const updates: any = {
+                            id: response.id,
+                            system_admin: response.system_admin,
+                            agency_admin: response.agency_admin,
                             last_login: new Date().toISOString()
-                        });
+                        };
+                        
+                        // Apply TAK attributes if provided (AuthentikProvider)
+                        if (response.tak_callsign) {
+                            updates.tak_callsign = response.tak_callsign;
+                            updates.tak_remarks = response.tak_callsign;
+                        }
+                        if (response.tak_group) {
+                            updates.tak_group = response.tak_group;
+                        }
+
+                        await config.models.Profile.commit(email, updates);
                     } catch (err) {
                         console.error(err);
 
@@ -123,15 +136,29 @@ export default async function router(schema: Schema, config: Config) {
                 });
             }
             
-            const { user: auth, groups } = await oidcParser(req);
+            const { user: auth } = await oidcParser(req);
+            
+            // Fetch groups from Authentik API
+            let groups: string[] = [];
+            let authentikUserId: number | undefined;
+            if (process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL) {
+                try {
+                    const authentikToken = await getAuthentikToken();
+                    const userGroups = await getAuthentikUserGroups(auth.email, authentikToken, process.env.AUTHENTIK_URL);
+                    groups = userGroups.groups;
+                    authentikUserId = userGroups.userId;
+                } catch (err) {
+                    console.error('Failed to fetch user groups:', err);
+                }
+            }
             
             // Parse groups for role assignment (used for both new and existing users)
             const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
-            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
+            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
             
             const isSystemAdmin = groups.includes(systemAdminGroup);
             
-            // Parse agency admin groups (e.g., "CloudTAKAgencyAdmin1", "CloudTAKAgencyAdmin5")
+            // Parse agency admin groups (e.g., "CloudTAKAgency1", "CloudTAKAgency5")
             const agencyAdminIds: number[] = [];
             for (const group of groups) {
                 if (group.startsWith(agencyAdminPrefix)) {
@@ -149,10 +176,12 @@ export default async function router(schema: Schema, config: Config) {
             try {
                 profile = await config.models.Profile.from(auth.email);
                 
-                // Update group membership for existing users
+                // Update group membership and last_login for existing users
                 await config.models.Profile.commit(auth.email, {
+                    id: authentikUserId,
                     system_admin: isSystemAdmin,
-                    agency_admin: agencyAdminIds
+                    agency_admin: agencyAdminIds,
+                    last_login: new Date().toISOString()
                 });
                 profile = await config.models.Profile.from(auth.email);
             } catch (err) {
@@ -161,6 +190,7 @@ export default async function router(schema: Schema, config: Config) {
                     // Auto-create user on first OIDC login using ProfileControl to respect system defaults
                     profile = await provider.profile.generate({
                         username: auth.email,
+                        id: authentikUserId,
                         auth: { ca: [], key: '', cert: '' },
                         system_admin: isSystemAdmin,
                         agency_admin: agencyAdminIds,
@@ -329,6 +359,8 @@ async function getAuthentikToken(): Promise<string> {
         throw new Error('Authentik API token secret is empty');
     }
     
+    return response.SecretString;
+    
     try {
         const secret = JSON.parse(response.SecretString);
         return secret.token || response.SecretString;
@@ -400,6 +432,40 @@ async function createAuthentikAppPassword(
     );
     
     return keyResponse.data.key;
+}
+
+// Helper function to get user groups from Authentik
+async function getAuthentikUserGroups(
+    username: string,
+    authToken: string,
+    authentikUrl: string
+): Promise<{ groups: string[]; userId: number }> {
+    const apiUrl = authentikUrl.endsWith('/') ? authentikUrl.slice(0, -1) : authentikUrl;
+    
+    const userResponse = await axios.get(
+        `${apiUrl}/api/v3/core/users/?username=${encodeURIComponent(username)}`,
+        { headers: { 'Authorization': `Bearer ${authToken}` } }
+    );
+    
+    if (!userResponse.data.results?.[0]) return { groups: [], userId: 0 };
+    
+    const user = userResponse.data.results[0];
+    const groupUuids = user.groups || [];
+    const groups: string[] = [];
+    
+    for (const groupUuid of groupUuids) {
+        try {
+            const groupResponse = await axios.get(
+                `${apiUrl}/api/v3/core/groups/${groupUuid}/`,
+                { headers: { 'Authorization': `Bearer ${authToken}` } }
+            );
+            if (groupResponse.data.name) groups.push(groupResponse.data.name);
+        } catch (err) {
+            console.error(`Failed to fetch group ${groupUuid}:`, err);
+        }
+    }
+    
+    return { groups, userId: user.pk };
 }
 
 // Helper function to get user attributes from Authentik

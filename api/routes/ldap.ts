@@ -23,13 +23,17 @@ export default async function router(schema: Schema, config: Config) {
         })
     }, async (req, res) => {
         try {
-            const profile = await Auth.as_profile(config, req);
+            let profile = await Auth.as_profile(config, req);
 
             if (!config.external || !config.external.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+            if (!profile.id) {
+                const response = await config.external.login(profile.username);
+                await config.models.Profile.commit(profile.username, { id: response.id });
+                profile = await config.models.Profile.from(profile.username);
+            }
 
             const list = await config.external.channels(profile.id, req.query)
 
@@ -60,13 +64,17 @@ export default async function router(schema: Schema, config: Config) {
         })
     }, async (req, res) => {
         try {
-            const profile = await Auth.as_profile(config, req);
+            let profile = await Auth.as_profile(config, req);
 
             if (!config.external || !config.external.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+            if (!profile.id) {
+                const response = await config.external.login(profile.username);
+                await config.models.Profile.commit(profile.username, { id: response.id });
+                profile = await config.models.Profile.from(profile.username);
+            }
 
             const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
                 .map((n) => String.fromCharCode((n % 94) + 33))
@@ -121,13 +129,17 @@ export default async function router(schema: Schema, config: Config) {
         })
     }, async (req, res) => {
         try {
-            const profile = await Auth.as_profile(config, req);
+            let profile = await Auth.as_profile(config, req);
 
             if (!config.external || !config.external.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+            if (!profile.id) {
+                const response = await config.external.login(profile.username);
+                await config.models.Profile.commit(profile.username, { id: response.id });
+                profile = await config.models.Profile.from(profile.username);
+            }
 
             const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
                 .map((n) => String.fromCharCode((n % 94) + 33))

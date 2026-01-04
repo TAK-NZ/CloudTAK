@@ -47,7 +47,8 @@
         "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
         "syncAuthentikAttributesOnLogin": true,
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
-        "oidcAgencyAdminGroupPrefix": "CloudTAKAgencyAdmin"
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
+        "authentikChannelGroupPrefix": "tak_"
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -95,7 +96,8 @@
         "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
         "syncAuthentikAttributesOnLogin": true,
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
-        "oidcAgencyAdminGroupPrefix": "CloudTAKAgencyAdmin"
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
+        "authentikChannelGroupPrefix": "tak_"
       },
       "ecr": {
         "imageRetentionCount": 20,
