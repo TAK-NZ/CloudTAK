@@ -12,7 +12,9 @@ Allows setting admin credentials via environment variables:
 
 ## Source
 
-Based on upstream PR #712 from the `takserver-config-env` branch, which was never merged into dfpc-coe/CloudTAK upstream.
+Based on upstream PR #752: https://github.com/dfpc-coe/CloudTAK/pull/752
+
+This PR has not yet been merged into dfpc-coe/CloudTAK upstream.
 
 ## Files Modified
 
@@ -20,17 +22,21 @@ Based on upstream PR #712 from the `takserver-config-env` branch, which was neve
 
 ## Application
 
-This patch is applied automatically by `scripts/sync-upstream.sh` after syncing with upstream.
+This patch is applied automatically by `scripts/apply-patches.sh` after syncing with upstream.
 
 ## Manual Application
 
 ```bash
 cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
-git apply scripts/patches/037-admin-env-vars-config.patch
+git apply scripts/patches/000-admin-env-vars-config.patch
 ```
+
+## When PR #752 Merges
+
+Once PR #752 is merged into upstream, this patch can be removed as the functionality will be included in the base CloudTAK code.
 
 ## Related
 
-- Original branch: `origin/takserver-config-env`
-- Upstream PR: #712 (not merged)
-- TAK-NZ specific feature
+- Upstream PR: #752 (pending merge)
+- Previous branch: `origin/takserver-config-env` (deprecated)
+- TAK-NZ specific until upstream merge
