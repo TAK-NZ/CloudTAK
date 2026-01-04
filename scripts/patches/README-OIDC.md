@@ -188,6 +188,19 @@ If upstream modified the same code:
    - Applies to GET /api/ldap/channel, POST /api/ldap/user, PUT /api/ldap/user/:email
    - Prevents "External ID must be set on profile" errors
 
+18. **028-agency-description-field.patch** - `api/routes/agency.ts`, `api/web/src/components/ETL/Connection/AgencyBadge.vue`, `api/web/src/derived-types.d.ts`
+   - Adds description field to AgencyResponse schema as optional
+   - Fixes frontend to display agency.description instead of hardcoded "No Description"
+   - Updates TypeScript type definition to include description field
+   - Maintains backward compatibility with COTAK provider using Type.Optional(Type.Any())
+
+19. **029-remove-login-modal.patch** - `api/web/src/App.vue`, `api/web/src/components/util/LoginModal.vue`
+   - Removes LoginModal component usage on session expiry
+   - Deletes unused LoginModal.vue file with hardcoded COTAK URLs
+   - Redirects to standard login page instead of showing modal
+   - Standard login page handles both traditional and OIDC SSO login
+   - See UPSTREAM-BUG-LOGIN-MODAL.md for details
+
 ## Applying Patches
 
 After syncing with upstream, apply patches in order:

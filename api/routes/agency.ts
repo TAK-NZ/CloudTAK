@@ -8,6 +8,7 @@ import * as Default from '../lib/limits.js';
 export const AgencyResponse = Type.Object({
     id: Type.Integer(),
     name: Type.String(),
+    description: Type.Optional(Type.Any())
 });
 
 export default async function router(schema: Schema, config: Config) {

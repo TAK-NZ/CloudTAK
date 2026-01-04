@@ -113,11 +113,6 @@
             :err='error'
             @close='error = undefined'
         />
-        <LoginModal
-            v-if='login'
-            @close='login = false'
-            @login='login= false'
-        />
     </div>
 </template>
 
@@ -128,7 +123,6 @@ import type { Login, Server } from './types.ts';
 import { useBrandStore } from './stores/brand.ts';
 import '@tabler/core/dist/js/tabler.min.js';
 import '@tabler/core/dist/css/tabler.min.css';
-import LoginModal from './components/util/LoginModal.vue'
 import {
     IconCode,
     IconLogout,
@@ -147,7 +141,6 @@ const route = useRoute();
 const brandStore = useBrandStore();
 
 const loading = ref(true);
-const login = ref(false);
 const mounted = ref(false);
 const user = ref<Login | undefined>();
 const error = ref<Error | undefined>();
@@ -171,10 +164,9 @@ onErrorCaptured((err) => {
     const e = err as Error;
 
     if (e.message === '401') {
-        // Popup Modal if reauthenticating vs initial login
-
+        // Redirect to login page on authentication failure
         if (route.name !== 'login') {
-            login.value = true;
+            routeLogin();
         }
     } else if (String(e) === 'Error: Authentication Required') {
         routeLogin();

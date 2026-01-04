@@ -22,6 +22,8 @@ CloudTAK appears as an application in the Authentik user dashboard:
 
 *Screenshot shows the CloudTAK application tile in Authentik's application dashboard, automatically configured during deployment.*
 
+# Upstream Feature Request: OIDC Authentication via ALB
+
 ## Motivation
 
 Enterprise deployments require centralized authentication through identity providers (Authentik, Okta, Azure AD, etc.) rather than managing separate credentials in each application. CloudTAK's requirement for X.509 certificates makes SSO integration more complex than typical web applications.
@@ -31,32 +33,33 @@ Enterprise deployments require centralized authentication through identity provi
 1. **Enterprise SSO**: Organizations need CloudTAK to integrate with their existing identity infrastructure
 2. **Simplified Management**: Centralized user provisioning, deprovisioning, and access control
 3. **Enhanced Security**: Leverage IdP security features (MFA, conditional access, audit logging)
-4. **Seamless Onboarding**: Users authenticate once and immediately have full CloudTAK access including certificates
+4. **Seamless Onboarding**: Users authenticate once and immediately have full CloudTAK access
 
 ## Implementation Overview
 
-This feature has two components:
-
-1. **OIDC Authentication** (Core) - Works with any OIDC-compliant provider via ALB
-2. **Automatic Certificate Enrollment** (Optional) - Provider-specific integration for passwordless certificate provisioning
+This feature enables OIDC authentication via AWS Application Load Balancer (ALB), which handles the OAuth2/OIDC flow and passes authenticated user information to CloudTAK via HTTP headers.
 
 ### Architecture
 
 ```
 User → ALB OIDC → Identity Provider → ALB (validates) → CloudTAK Backend
                                                               ↓
-                                                    Extract email from OIDC token
+                                                    Extract email from x-amzn-oidc-data header
                                                               ↓
                                                     Auto-create user profile (if new)
                                                               ↓
-                                          [Optional: Fetch user attributes from IdP API]
-                                                              ↓
-                                          [Optional: Auto-enroll certificate via IdP]
-                                                              ↓
                                                     Generate JWT token
                                                               ↓
-                                                    Redirect to frontend
+                                                    Redirect to frontend with token
 ```
+
+### Benefits
+
+- Works with any OIDC-compliant identity provider
+- No CloudTAK code changes needed for different IdPs
+- ALB handles token validation and refresh
+- Secure: CloudTAK never sees IdP credentials
+- Scalable: ALB handles authentication load
 
 ## Backend Implementation
 
@@ -83,9 +86,6 @@ export function oidcParser(req: Request): AuthUser {
         Buffer.from(oidcData.split('.')[1], 'base64').toString()
     );
     
-    // Debug: Log OIDC payload to see available claims
-    console.log('OIDC Payload:', JSON.stringify(payload, null, 2));
-    
     if (!payload.email) {
         throw new Err(401, null, 'No email in OIDC data');
     }
@@ -103,10 +103,6 @@ export function isOidcEnabled(): boolean {
 Add OIDC login endpoint:
 
 ```typescript
-import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-import axios from 'axios';
-
 await schema.get('/login/oidc', {
     name: 'OIDC Login',
     group: 'Login',
@@ -139,58 +135,6 @@ await schema.get('/login/oidc', {
                     agency_admin: [],
                     last_login: new Date().toISOString()
                 });
-                
-                // Optional: Fetch user attributes and auto-enroll certificate
-                // This section is provider-specific (example uses Authentik)
-                if (process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && 
-                    config.server.auth.key && 
-                    config.server.auth.cert) {
-                    try {
-                        console.log(`Starting automatic setup for ${auth.email}`);
-                        
-                        // Get identity provider API token
-                        const idpToken = await getIdPToken();
-                        
-                        // Fetch user attributes from IdP (callsign, color, etc.)
-                        const userAttrs = await getIdPUserAttributes(
-                            auth.email,
-                            idpToken,
-                            process.env.AUTHENTIK_URL
-                        );
-                        
-                        // Update profile with IdP attributes
-                        const updates: any = {};
-                        if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
-                        if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
-                        
-                        if (Object.keys(updates).length > 0) {
-                            await config.models.Profile.commit(auth.email, updates);
-                        }
-                        
-                        // Create application password for certificate enrollment
-                        const appPassword = await createIdPAppPassword(
-                            auth.email,
-                            idpToken,
-                            process.env.AUTHENTIK_URL
-                        );
-                        
-                        // Request certificate from TAK Server
-                        const takAuth = new APIAuthPassword(auth.email, appPassword);
-                        const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
-                        const certs = await api.Credentials.generate();
-                        
-                        // Update profile with certificate
-                        await config.models.Profile.commit(auth.email, {
-                            auth: certs
-                        });
-                        
-                        profile = await config.models.Profile.from(auth.email);
-                        console.log(`Automatic setup completed for ${auth.email}`);
-                    } catch (setupErr) {
-                        console.error('Failed to complete automatic setup:', setupErr);
-                        // Don't fail login - user can complete setup manually
-                    }
-                }
             } else {
                 throw err;
             }
@@ -201,14 +145,7 @@ await schema.get('/login/oidc', {
             last_login: new Date().toISOString()
         });
         
-        // Determine access level
-        // Group-based role mapping from OIDC token
-        // Reads from database profile fields set during user creation:
-        //   - profile.system_admin (boolean) → ADMIN access
-        //   - profile.agency_admin (array of numeric agency IDs) → AGENCY access
-        //
-        // System admin is set from 'CloudTAKSystemAdmin' group membership
-        // Agency admin requires external system integration (not implemented here)
+        // Determine access level from profile
         let access = AuthUserAccess.USER;
         if (profile.system_admin) {
             access = AuthUserAccess.ADMIN;
@@ -235,7 +172,145 @@ await schema.get('/login/oidc', {
 });
 ```
 
-### 3. Helper Functions (Provider-Specific)
+## Frontend Implementation
+
+### 1. Login Page (`api/web/src/components/Login.vue`)
+
+Add OIDC login button:
+
+```vue
+<template>
+    <div class='login-container'>
+        <!-- Existing username/password form -->
+        
+        <!-- OIDC Login Button -->
+        <div v-if='oidcEnabled' class='mt-3'>
+            <div class='text-center mb-2'>or</div>
+            <a :href='oidcLoginUrl' class='btn btn-primary w-100'>
+                <IconLogin :size='20' />
+                Sign in with SSO
+            </a>
+        </div>
+    </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { std } from '../std.ts';
+
+const route = useRoute();
+const router = useRouter();
+const oidcEnabled = ref(false);
+
+const oidcLoginUrl = computed(() => {
+    const redirect = route.query.redirect || '/';
+    return `/api/login/oidc?redirect=${encodeURIComponent(redirect)}`;
+});
+
+onMounted(async () => {
+    // Check if OIDC is enabled
+    try {
+        const response = await fetch('/api/login/oidc');
+        oidcEnabled.value = response.status !== 404;
+    } catch (err) {
+        oidcEnabled.value = false;
+    }
+    
+    // Handle token from OIDC redirect
+    if (route.query.token) {
+        localStorage.token = route.query.token;
+        const redirect = route.query.redirect || '/';
+        router.push(redirect);
+    }
+    
+    // Handle error from OIDC redirect
+    if (route.query.error) {
+        console.error('OIDC login error:', route.query.error);
+        // Show error to user
+    }
+});
+</script>
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Enable OIDC authentication
+ALB_OIDC_ENABLED=true
+```
+
+### ALB Configuration (Infrastructure)
+
+The ALB must be configured with OIDC authentication:
+
+```typescript
+// Example CDK configuration
+const listener = alb.addListener('HttpsListener', {
+    port: 443,
+    certificates: [certificate],
+    defaultAction: elbv2.ListenerAction.authenticateOidc({
+        authorizationEndpoint: 'https://idp.example.com/oauth2/authorize',
+        tokenEndpoint: 'https://idp.example.com/oauth2/token',
+        userInfoEndpoint: 'https://idp.example.com/oauth2/userinfo',
+        clientId: 'cloudtak-client-id',
+        clientSecret: elbv2.SecretValue.secretsManager('oidc-client-secret'),
+        issuer: 'https://idp.example.com',
+        scope: 'openid email profile',
+        onUnauthenticatedRequest: elbv2.UnauthenticatedAction.AUTHENTICATE,
+        next: elbv2.ListenerAction.forward([targetGroup])
+    })
+});
+
+// Allow unauthenticated access to login page and API login endpoint
+listener.addAction('AllowLogin', {
+    priority: 1,
+    conditions: [
+        elbv2.ListenerCondition.pathPatterns(['/login', '/api/login/*'])
+    ],
+    action: elbv2.ListenerAction.forward([targetGroup])
+});
+```
+
+## Security Considerations
+
+1. **Token Validation**: ALB validates OIDC tokens before passing to CloudTAK
+2. **JWT Expiration**: CloudTAK JWT tokens expire after 16 hours
+3. **Auto-Provisioning**: New users are created with minimal permissions (USER access)
+4. **Role Mapping**: System admin and agency admin roles must be set separately (see related feature request for external provider integration)
+
+## Testing
+
+1. Configure ALB with OIDC authentication pointing to your IdP
+2. Set `ALB_OIDC_ENABLED=true` in CloudTAK environment
+3. Navigate to CloudTAK login page
+4. Click "Sign in with SSO" button
+5. Complete authentication with IdP
+6. Verify redirect back to CloudTAK with valid session
+7. Verify new user profile is auto-created
+8. Verify JWT token works for API requests
+
+## Related Feature Requests
+
+- **External Provider Integration for Authentik**: Automatic certificate enrollment and role synchronization (see separate feature request)
+- **Generic External Provider Interface**: Extensible framework for IdP-specific integrations
+
+## Benefits for Upstream
+
+- Enables enterprise adoption of CloudTAK
+- Works with any OIDC provider (vendor-neutral)
+- Minimal code changes (single endpoint + helper functions)
+- No breaking changes to existing authentication
+- Follows AWS best practices for ALB OIDC
+
+## Implementation Notes
+
+- OIDC authentication is opt-in via environment variable
+- Traditional username/password authentication remains available
+- Auto-provisioning creates users with default settings
+- Role assignment requires separate mechanism (manual or via external provider integration)
 
 These functions are specific to Authentik but can be adapted for other providers:
 
