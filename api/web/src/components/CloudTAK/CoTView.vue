@@ -68,6 +68,23 @@
                             />
                         </TablerIconButton>
 
+                        <TablerIconButton
+                            v-if='cot.geometry.type === "Point"'
+                            :title='isLocked ? "Unlock" : "Lock On"'
+                            @click='toggleLock'
+                        >
+                            <IconLock
+                                v-if='isLocked'
+                                :size='32'
+                                stroke='1'
+                            />
+                            <IconLockOpen
+                                v-else
+                                :size='32'
+                                stroke='1'
+                            />
+                        </TablerIconButton>
+
 
                         <TablerIconButton
                             v-if='cot.properties.video && cot.properties.video.url'
@@ -123,7 +140,6 @@
                                 stroke='1'
                             />
                         </TablerIconButton>
-
 
                         <TablerIconButton
                             v-if='cot.properties.group && !cot.is_self'
@@ -295,7 +311,7 @@
                     class='col-12'
                 >
                     <div class='d-flex align-items-center py-2 px-2 my-2 mx-2 rounded bg-accent'>
-                        <IconReplace
+                        <IconAmbulance
                             :size='32'
                             stroke='1'
                         />
@@ -567,63 +583,14 @@
                 :creator='cot.properties.creator'
             />
 
-            <div
+            <PropertyMetadata
                 v-if='
                     cot.properties.takv
                         && cot.properties.takv
                         && Object.keys(cot.properties.takv).length
                 '
-                class='col-12 px-1 pb-2'
-            >
-                <div
-                    class='col-12 py-2 d-flex align-items-center hover cursor-pointer user-select-none'
-                    @click='chevrons.has("metadata") ? chevrons.delete("metadata") : chevrons.add("metadata")'
-                >
-                    <TablerIconButton
-                        v-if='!chevrons.has("metadata")'
-                        title='Open Metadata'
-                    >
-                        <IconChevronRight
-                            :size='24'
-                            stroke='1'
-                        />
-                    </TablerIconbutton>
-
-                    <TablerIconButton
-                        v-else
-                        title='Close Metadata'
-                    >
-                        <IconChevronDown
-                            :size='24'
-                            stroke='1'
-                        />
-                    </TablerIconbutton>
-                    <label class='subheader user-select-none cursor-pointer'>Metadata</label>
-                </div>
-                <div
-                    v-if='chevrons.has("metadata")'
-                    class='table-responsive rounded mx-2 py-2 px-2'
-                >
-                    <table class='table card-table table-hover table-vcenter datatable'>
-                        <thead>
-                            <tr>
-                                <th>Key</th>
-                                <th>Value</th>
-                            </tr>
-                        </thead>
-                        <tbody class='bg-accent'>
-                            <tr
-                                v-for='prop of Object.keys(cot.properties.takv)'
-                                :key='prop'
-                            >
-                                <td v-text='prop' />
-                                <!-- @vue-expect-error Not a KeyOf -->
-                                <td v-text='cot.properties.takv[prop]' />
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                :cot='cot'
+            />
         </div>
         <template v-else-if='mode === "channels"'>
             <div
@@ -694,6 +661,7 @@ import PropertyElevation from './util/PropertyElevation.vue';
 import PropertyAttachments from './util/PropertyAttachments.vue';
 import PropertyLinks from './util/PropertyLinks.vue';
 import PropertyTimes from './util/PropertyTimes.vue';
+import PropertyMetadata from './util/PropertyMetadata.vue';
 import PropertyStyle from './util/PropertyStyle.vue';
 import {
     IconPencil,
@@ -708,9 +676,8 @@ import {
     IconMessage,
     IconBlockquote,
     IconDotsVertical,
-    IconChevronRight,
     IconChevronDown,
-    IconReplace,
+    IconAmbulance,
     IconPlayerPlay,
     IconShare2,
     IconZoomPan,
@@ -718,6 +685,8 @@ import {
     IconAffiliate,
     IconInfoCircle,
     IconPaperclip,
+    IconLock,
+    IconLockOpen,
 } from '@tabler/icons-vue';
 import Subscriptions from './util/Subscriptions.vue';
 import { std } from '../../std.ts';
@@ -741,7 +710,6 @@ const units = ref({
     display_distance: 'mile'
 });
 
-const chevrons = ref<Set<string>>(new Set());
 const username = ref<string | undefined>();
 const type = ref<COTType | undefined>();
 const mode = ref('default');
@@ -808,6 +776,23 @@ const center = computed(() => {
 
     return arr;
 })
+
+const isLocked = computed(() => {
+    if (!cot.value) return false;
+    const id = cot.value.properties.id || cot.value.id;
+    return mapStore.locked.length > 0 && mapStore.locked[mapStore.locked.length - 1] === id;
+});
+
+function toggleLock() {
+    if (!cot.value) return;
+    const id = cot.value.properties.id || cot.value.id;
+
+    if (isLocked.value) {
+        mapStore.locked = mapStore.locked.filter(l => l !== id);
+    } else {
+        mapStore.locked.push(id);
+    }
+}
 
 async function load_cot() {
     username.value = undefined;

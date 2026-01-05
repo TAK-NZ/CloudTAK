@@ -139,7 +139,7 @@
                                 @click.stop.prevent='shareToMission = asset'
                                 @keyup.enter='shareToMission = asset'
                             >
-                                <IconReplace
+                                <IconAmbulance
                                     :size='32'
                                     stroke='1'
                                 />
@@ -247,7 +247,7 @@ import {
     TablerEpoch
 } from '@tak-ps/vue-tabler';
 import {
-    IconReplace,
+    IconAmbulance,
     IconPackage,
     IconUpload,
     IconMapOff,
@@ -314,6 +314,7 @@ async function createOverlay(asset: ProfileFile) {
             name: asset.name,
             mode: 'profile',
             mode_id: asset.name,
+            iconset: asset.iconset,
             type: 'vector',
         }));
     } else {
@@ -322,6 +323,7 @@ async function createOverlay(asset: ProfileFile) {
             name: asset.name,
             mode: 'profile',
             mode_id: asset.name,
+            iconset: asset.iconset,
             type: 'raster',
         }));
     }

@@ -1,42 +1,36 @@
-# Admin Environment Variables Patch
+# Admin Environment Variables Patch (000)
 
 ## Overview
+This patch adds support for configuring CloudTAK server settings via environment variables, based on upstream PR #712.
 
-This patch adds support for creating the initial CloudTAK admin user via environment variables instead of requiring manual configuration through the UI.
+## Changes
+- Adds `CLOUDTAK_Server_*` environment variable support for server configuration
+- Adds support for P12 certificate loading from AWS Secrets Manager
+- Adds VPC-related configuration (VpcId, SubnetPublicA, SubnetPublicB, MediaSecurityGroup)
+- Adds MediaSecret and DynamoDB configuration
 
-## Feature
+## Modifications from PR #712
+- **Removed Cacher references**: PR #712 references `./cacher.js` which doesn't exist in upstream. These references have been removed from our patch.
 
-Allows setting admin credentials via environment variables:
-- `CLOUDTAK_ADMIN_USERNAME` - Admin email address
-- `CLOUDTAK_ADMIN_PASSWORD` - Admin password
+## Known TypeScript Errors
+The following TypeScript errors are expected and will be resolved when upstream merges related PRs:
+- `lib/config.ts(195,51)`: Server generation with Record<string, unknown>
+- `lib/config.ts(343,45)`: Profile generation with password in auth
 
-## Source
+These errors don't affect runtime functionality.
 
-Based on upstream PR #752: https://github.com/dfpc-coe/CloudTAK/pull/752
+## Upstream Status
+- Based on: [PR #712](https://github.com/dfpc-coe/CloudTAK/pull/712)
+- Status: Not yet merged
+- Note: Once PR #712 is merged, this patch can be removed
 
-This PR has not yet been merged into dfpc-coe/CloudTAK upstream.
-
-## Files Modified
-
-- `api/lib/config.ts` - Adds environment variable support for admin user creation
-
-## Application
-
-This patch is applied automatically by `scripts/apply-patches.sh` after syncing with upstream.
-
-## Manual Application
-
+## Usage
+Environment variables can be set to configure the server:
 ```bash
-cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
-git apply scripts/patches/000-admin-env-vars-config.patch
+CLOUDTAK_Server_name="Production Server"
+CLOUDTAK_Server_url="ssl://tak.example.com:8089"
+CLOUDTAK_Server_api="https://tak.example.com:8443"
+CLOUDTAK_Server_webtak="https://tak.example.com:8444"
+CLOUDTAK_Server_auth_p12_secret_arn="arn:aws:secretsmanager:..."
+CLOUDTAK_Server_auth_password="password"
 ```
-
-## When PR #752 Merges
-
-Once PR #752 is merged into upstream, this patch can be removed as the functionality will be included in the base CloudTAK code.
-
-## Related
-
-- Upstream PR: #752 (pending merge)
-- Previous branch: `origin/takserver-config-env` (deprecated)
-- TAK-NZ specific until upstream merge

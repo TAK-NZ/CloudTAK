@@ -9,7 +9,7 @@
         />
         <div class='modal-header text-white'>
             <div class='d-flex align-items-center'>
-                <IconReplace
+                <IconAmbulance
                     :size='28'
                     stroke='1'
                 />
@@ -50,7 +50,7 @@
                                         stroke='1'
                                         style='margin-left: 16px;'
                                     />
-                                    <IconReplace
+                                    <IconAmbulance
                                         v-else
                                         :size='32'
                                         stroke='1'
@@ -109,7 +109,7 @@ import {
 } from '@tak-ps/vue-tabler';
 import {
     IconCheck,
-    IconReplace,
+    IconAmbulance,
     IconShare2
 } from '@tabler/icons-vue';
 import type { Feature } from '../../../types.ts';

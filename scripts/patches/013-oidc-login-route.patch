@@ -1,8 +1,6 @@
-diff --git a/api/routes/login.ts b/api/routes/login.ts
-index df01b6fcd..10da4e2ae 100644
---- a/api/routes/login.ts
-+++ b/api/routes/login.ts
-@@ -1,10 +1,15 @@
+--- a/api/routes/login.ts	2026-01-05 04:00:57.115831609 +0000
++++ b/api/routes/login.ts	2026-01-05 04:55:06.014073185 +0000
+@@ -1,12 +1,19 @@
  import jwt from 'jsonwebtoken';
  import Err from '@openaddresses/batch-error';
 -import Auth, { AuthUserAccess } from '../lib/auth.js';
@@ -18,8 +16,61 @@ index df01b6fcd..10da4e2ae 100644
 +import moment from 'moment';
  
  export default async function router(schema: Schema, config: Config) {
-     const provider = new Provider(config);
-@@ -87,13 +92,6 @@ export default async function router(schema: Schema, config: Config) {
++    const provider = new Provider(config);
++
+     await schema.post('/login', {
+         name: 'Create Login',
+         group: 'Login',
+@@ -23,20 +30,43 @@
+         })
+     }, async (req, res) => {
+         try {
++            // Check if OIDC is forced and local login is restricted to system admins
++            const oidcForced = process.env.OIDC_FORCED === 'true';
++            
+             let profile;
+ 
+-            if (config.server.auth.key && config.server.auth.cert && config.server.webtak) {
+-                const provider = new Provider(config);
++            if (config.server.auth.key && config.server.auth.cert) {
+                 const email = await provider.login(req.body.username, req.body.password);
++                
++                // If OIDC is forced, only allow system admins to login locally
++                if (oidcForced) {
++                    const tempProfile = await config.models.Profile.from(email);
++                    if (!tempProfile.system_admin) {
++                        throw new Err(403, null, 'Local login is restricted. Please use SSO.');
++                    }
++                }
+ 
+                 if (config.external && config.external.configured) {
+                     try {
+                         const response = await config.external.login(email);
+ 
+-                        await config.models.Profile.commit(email, {
+-                            ...response,
++                        const updates: any = {
++                            id: response.id,
++                            system_admin: response.system_admin,
++                            agency_admin: response.agency_admin,
+                             last_login: new Date().toISOString()
+-                        });
++                        };
++                        
++                        // Apply TAK attributes if provided (AuthentikProvider)
++                        if (response.tak_callsign) {
++                            updates.tak_callsign = response.tak_callsign;
++                            updates.tak_remarks = response.tak_callsign;
++                        }
++                        if (response.tak_group) {
++                            updates.tak_group = response.tak_group;
++                        }
++
++                        await config.models.Profile.commit(email, updates);
+                     } catch (err) {
+                         console.error(err);
+ 
+@@ -86,14 +116,6 @@
          try {
              const user = await Auth.as_user(config, req);
  
@@ -27,13 +78,14 @@ index df01b6fcd..10da4e2ae 100644
 -
 -            // If the server hasn't been configured the user won't have a valid cert
 -            if (config.server.auth.key && config.server.auth.cert) {
+-                const provider = new Provider(config);
 -                await provider.valid(profile);
 -            }
 -
              res.json({
                  email: user.email,
                  access: user.access
-@@ -102,4 +100,321 @@ export default async function router(schema: Schema, config: Config) {
+@@ -102,4 +124,406 @@
               Err.respond(err, res);
          }
      });
@@ -60,25 +112,64 @@ index df01b6fcd..10da4e2ae 100644
 +                });
 +            }
 +            
-+            const { user: auth, groups } = await oidcParser(req);
++            const { user: auth } = await oidcParser(req);
++            
++            // Fetch groups from Authentik API
++            let groups: string[] = [];
++            let authentikUserId: number | undefined;
++            if (process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL) {
++                try {
++                    const authentikToken = await getAuthentikToken();
++                    const userGroups = await getAuthentikUserGroups(auth.email, authentikToken, process.env.AUTHENTIK_URL);
++                    groups = userGroups.groups;
++                    authentikUserId = userGroups.userId;
++                } catch (err) {
++                    console.error('Failed to fetch user groups:', err);
++                }
++            }
++            
++            // Parse groups for role assignment (used for both new and existing users)
++            const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
++            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
++            
++            const isSystemAdmin = groups.includes(systemAdminGroup);
++            
++            // Parse agency admin groups (e.g., "CloudTAKAgency1", "CloudTAKAgency5")
++            const agencyAdminIds: number[] = [];
++            for (const group of groups) {
++                if (group.startsWith(agencyAdminPrefix)) {
++                    const agencyIdStr = group.substring(agencyAdminPrefix.length);
++                    const agencyId = parseInt(agencyIdStr, 10);
++                    if (!isNaN(agencyId) && agencyId > 0) {
++                        agencyAdminIds.push(agencyId);
++                    }
++                }
++            }
 +            
 +            // Check if user exists, auto-create if not
 +            let profile;
 +            let isNewUser = false;
 +            try {
 +                profile = await config.models.Profile.from(auth.email);
++                
++                // Update group membership and last_login for existing users
++                await config.models.Profile.commit(auth.email, {
++                    id: authentikUserId,
++                    system_admin: isSystemAdmin,
++                    agency_admin: agencyAdminIds,
++                    last_login: new Date().toISOString()
++                });
++                profile = await config.models.Profile.from(auth.email);
 +            } catch (err) {
 +                if (err instanceof Error && err.message.includes('Item Not Found')) {
 +                    isNewUser = true;
-+                    // Auto-create user on first OIDC login
-+                    // Parse groups for role assignment
-+                    const isSystemAdmin = groups.includes('CloudTAKSystemAdmin');
-+                    
-+                    profile = await config.models.Profile.generate({
++                    // Auto-create user on first OIDC login using ProfileControl to respect system defaults
++                    profile = await provider.profile.generate({
 +                        username: auth.email,
++                        id: authentikUserId,
 +                        auth: { ca: [], key: '', cert: '' },
 +                        system_admin: isSystemAdmin,
-+                        agency_admin: [],
++                        agency_admin: agencyAdminIds,
 +                        last_login: new Date().toISOString()
 +                    });
 +                } else {
@@ -91,55 +182,73 @@ index df01b6fcd..10da4e2ae 100644
 +                                    profile.auth.cert === '' || profile.auth.key === '' ||
 +                                    await isCertificateExpired(profile.auth.cert);
 +            
-+            if (needsCertificate && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL && config.server.auth.key && config.server.auth.cert) {
++            // Check if we should sync attributes from Authentik
++            const shouldSyncAttributes = process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';
++            
++            if ((needsCertificate || shouldSyncAttributes) && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN && process.env.AUTHENTIK_URL && config.server.auth.key && config.server.auth.cert) {
 +                try {
 +                    console.log(`${isNewUser ? 'Starting' : 'Retrying'} automatic certificate enrollment for ${auth.email}`);
 +                    
 +                    // Get Authentik API token
 +                    const authentikToken = await getAuthentikToken();
 +                    
-+                    // Fetch user attributes from Authentik (only for new users)
-+                    if (isNewUser) {
++                    // Fetch and update user attributes from Authentik
++                    if (shouldSyncAttributes || isNewUser) {
 +                        const userAttrs = await getAuthentikUserAttributes(
 +                            auth.email,
 +                            authentikToken,
 +                            process.env.AUTHENTIK_URL
 +                        );
 +                        
++                        console.log(`Fetched Authentik attributes for ${auth.email}:`, JSON.stringify(userAttrs));
++                        
 +                        // Update profile with Authentik attributes
 +                        const updates: any = {};
-+                        if (userAttrs.takCallsign) updates.tak_callsign = userAttrs.takCallsign;
++                        if (userAttrs.takCallsign) {
++                            updates.tak_callsign = userAttrs.takCallsign;
++                            updates.tak_remarks = userAttrs.takCallsign;
++                        }
 +                        if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
 +                        
++                        console.log(`Profile updates for ${auth.email}:`, JSON.stringify(updates));
++                        
 +                        if (Object.keys(updates).length > 0) {
++                            updates.updated = new Date().toISOString();
 +                            await config.models.Profile.commit(auth.email, updates);
++                            console.log(`Successfully updated profile attributes for ${auth.email}`);
++                            // Refresh profile to get updated attributes
++                            profile = await config.models.Profile.from(auth.email);
++                        } else {
++                            console.log(`No attribute updates needed for ${auth.email}`);
 +                        }
 +                    }
 +                    
-+                    // Create application password in Authentik
-+                    const appPassword = await createAuthentikAppPassword(
-+                        auth.email,
-+                        authentikToken,
-+                        process.env.AUTHENTIK_URL
-+                    );
-+                    
-+                    // Request certificate from TAK Server
-+                    const takAuth = new APIAuthPassword(auth.email, appPassword);
-+                    const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
-+                    const certs = await api.Credentials.generate();
-+                    
-+                    // Update profile with certificate
-+                    await config.models.Profile.commit(auth.email, {
-+                        auth: certs
-+                    });
-+                    
-+                    // Refresh profile to get updated cert
-+                    profile = await config.models.Profile.from(auth.email);
-+                    
-+                    console.log(`Certificate enrolled successfully for ${auth.email}`);
-+                } catch (enrollErr) {
-+                    console.error('Failed to auto-enroll certificate:', enrollErr);
-+                    // Don't fail login - user can try again on next login
++                    // Enroll certificate if needed
++                    if (needsCertificate) {
++                        const appPassword = await createAuthentikAppPassword(
++                            auth.email,
++                            authentikToken,
++                            process.env.AUTHENTIK_URL
++                        );
++                        
++                        // Request certificate from TAK Server
++                        const takAuth = new APIAuthPassword(auth.email, appPassword);
++                        const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
++                        const certs = await api.Credentials.generate();
++                        
++                        // Update profile with certificate
++                        await config.models.Profile.commit(auth.email, {
++                            auth: certs
++                        });
++                        
++                        // Refresh profile to get updated cert
++                        profile = await config.models.Profile.from(auth.email);
++                        
++                        console.log(`Certificate enrolled successfully for ${auth.email}`);
++                    }
++                } catch (certErr) {
++                    console.error('Certificate enrollment error:', certErr);
++                    // Continue with login even if certificate enrollment fails
 +                }
 +            }
 +            
@@ -175,47 +284,39 @@ index df01b6fcd..10da4e2ae 100644
 +        }
 +    });
 +
-+    // Logout endpoint - returns proper ALB logout URL
++    // Logout endpoint - clears ALB OIDC cookies and redirects to IdP logout
++    // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/listener-authenticate-users.html#authentication-logout
 +    await schema.get('/logout', {
-+        name: 'Get Logout URL',
++        name: 'Logout',
 +        group: 'Login',
-+        description: 'Get logout URL for OIDC or local logout',
-+        res: Type.Object({
-+            logoutUrl: Type.String(),
-+            oidcEnabled: Type.Boolean()
-+        })
++        description: 'Logout and clear ALB OIDC session'
 +    }, async (req, res) => {
 +        try {
-+            if (isOidcEnabled() && process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
-+                // Set ALB session cookie expiration to -1 to invalidate it
-+                const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
-+                
-+                // ALB can create multiple cookie shards (0, 1, etc.)
-+                for (let i = 0; i < 5; i++) {
-+                    res.cookie(`${cookieName}-${i}`, '', { 
-+                        maxAge: -1,
-+                        httpOnly: true,
-+                        secure: true,
-+                        sameSite: 'none'
-+                    });
-+                }
-+                
-+                // Redirect to IdP logout endpoint using app slug from env
++            // Set expiration to -1 for all ALB authentication cookies
++            const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
++            const cookieOptions = {
++                path: '/',
++                httpOnly: true,
++                secure: true,
++                maxAge: -1  // Expire the cookie
++            };
++            
++            // ALB can create up to 4 cookie shards (0-3)
++            for (let i = 0; i < 4; i++) {
++                res.cookie(`${cookieName}-${i}`, '', cookieOptions);
++            }
++            
++            // Redirect to IdP logout endpoint if configured
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
 +                const authentikUrl = process.env.AUTHENTIK_URL.replace(/\/$/, '');
 +                const appSlug = process.env.AUTHENTIK_APP_SLUG;
 +                const logoutUrl = `${authentikUrl}/application/o/${appSlug}/end-session/`;
-+                
-+                return res.json({
-+                    logoutUrl,
-+                    oidcEnabled: true
-+                });
++                return res.redirect(logoutUrl);
 +            } else {
-+                return res.json({
-+                    logoutUrl: '/login',
-+                    oidcEnabled: false
-+                });
++                return res.redirect('/login');
 +            }
 +        } catch (err) {
++            console.error('Logout error:', err);
 +            Err.respond(err, res);
 +        }
 +    });
@@ -233,6 +334,8 @@ index df01b6fcd..10da4e2ae 100644
 +    if (!response.SecretString) {
 +        throw new Error('Authentik API token secret is empty');
 +    }
++    
++    return response.SecretString;
 +    
 +    try {
 +        const secret = JSON.parse(response.SecretString);
@@ -305,6 +408,40 @@ index df01b6fcd..10da4e2ae 100644
 +    );
 +    
 +    return keyResponse.data.key;
++}
++
++// Helper function to get user groups from Authentik
++async function getAuthentikUserGroups(
++    username: string,
++    authToken: string,
++    authentikUrl: string
++): Promise<{ groups: string[]; userId: number }> {
++    const apiUrl = authentikUrl.endsWith('/') ? authentikUrl.slice(0, -1) : authentikUrl;
++    
++    const userResponse = await axios.get(
++        `${apiUrl}/api/v3/core/users/?username=${encodeURIComponent(username)}`,
++        { headers: { 'Authorization': `Bearer ${authToken}` } }
++    );
++    
++    if (!userResponse.data.results?.[0]) return { groups: [], userId: 0 };
++    
++    const user = userResponse.data.results[0];
++    const groupUuids = user.groups || [];
++    const groups: string[] = [];
++    
++    for (const groupUuid of groupUuids) {
++        try {
++            const groupResponse = await axios.get(
++                `${apiUrl}/api/v3/core/groups/${groupUuid}/`,
++                { headers: { 'Authorization': `Bearer ${authToken}` } }
++            );
++            if (groupResponse.data.name) groups.push(groupResponse.data.name);
++        } catch (err) {
++            console.error(`Failed to fetch group ${groupUuid}:`, err);
++        }
++    }
++    
++    return { groups, userId: user.pk };
 +}
 +
 +// Helper function to get user attributes from Authentik

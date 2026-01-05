@@ -53,9 +53,12 @@
                 <div
                     v-for='imported in list.items'
                     :key='imported.id'
-                    @click='router.push(`/menu/imports/${imported.id}`)'
+                    class='col-12 px-2 py-1'
                 >
-                    <div class='cursor-pointer col-12 py-2 px-3 d-flex align-items-center hover'>
+                    <StandardItem
+                        class='d-flex align-items-center py-2 px-3'
+                        @click='router.push(`/menu/imports/${imported.id}`)'
+                    >
                         <div class='col-auto'>
                             <Status
                                 :dark='true'
@@ -66,7 +69,7 @@
                             v-tooltip='`${imported.source} Import`'
                             class='col-auto mx-2'
                         >
-                            <IconReplace
+                            <IconAmbulance
                                 v-if='imported.source === "Mission"'
                                 :size='32'
                                 stroke='0.5'
@@ -83,11 +86,10 @@
                             />
                         </div>
                         <div
-                            class='mx-2 col-auto row'
-                            style='width: 280px;'
+                            class='mx-2 col d-flex flex-column'
                         >
                             <div
-                                class='text-truncate'
+                                class='text-break'
                                 v-text='imported.name'
                             />
                             <div
@@ -95,7 +97,7 @@
                                 v-text='timeDiff(imported.created)'
                             />
                         </div>
-                    </div>
+                    </StandardItem>
                 </div>
             </template>
 
@@ -131,10 +133,11 @@ import {
 import {
     IconUpload,
     IconFile,
-    IconReplace,
+    IconAmbulance,
     IconPackages,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import StandardItem from '../util/StandardItem.vue';
 import Status from '../../util/StatusDot.vue';
 import timeDiff from '../../../timediff.ts';
 import Upload from '../../util/Upload.vue';
@@ -177,6 +180,7 @@ function uploadComplete(event: unknown) {
 
 async function fetchList() {
     loading.value = true;
+    error.value = undefined;
 
     try {
         const url = stdurl('/api/import');

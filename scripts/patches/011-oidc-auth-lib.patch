@@ -1,45 +1,198 @@
 diff --git a/api/lib/auth.ts b/api/lib/auth.ts
-index 227e4d9fa..7583d63bb 100644
+index 227e4d9fa..593bc3875 100644
 --- a/api/lib/auth.ts
 +++ b/api/lib/auth.ts
-@@ -359,3 +359,40 @@ export async function tokenParser(
+@@ -359,3 +359,193 @@ export async function tokenParser(
      }
  }
  
-+// OIDC authentication parser for ALB OIDC headers
-+export function oidcParser(req: Request): { user: AuthUser; groups: string[] } {
-+    // Check if OIDC is enabled
++import { createPublicKey, createVerify, KeyObject } from 'crypto';
++import axios from 'axios';
++
++// Cache for ALB public keys (in-memory cache)
++const albPublicKeys = new Map<string, string>();
++
++// Fetch ALB public key for JWT verification
++async function getAlbPublicKey(region: string, keyId: string): Promise<string> {
++    const cacheKey = `${region}:${keyId}`;
++    
++    if (albPublicKeys.has(cacheKey)) {
++        return albPublicKeys.get(cacheKey)!;
++    }
++    
++    const url = `https://public-keys.auth.elb.${region}.amazonaws.com/${keyId}`;
++    const response = await axios.get(url, { timeout: 5000 });
++    
++    if (!response.data) {
++        throw new Error('Failed to fetch ALB public key');
++    }
++    
++    albPublicKeys.set(cacheKey, response.data);
++    return response.data;
++}
++
++// Verify JWT signature using ALB public key
++function verifyJwtSignature(token: string, publicKeyPem: string): boolean {
++    const [headerB64, payloadB64, signatureB64] = token.split('.');
++    
++    if (!headerB64 || !payloadB64 || !signatureB64) {
++        throw new Error('Invalid JWT format');
++    }
++    
++    try {
++        const message = `${headerB64}.${payloadB64}`;
++        // Convert base64url to base64
++        const signatureBase64 = signatureB64.replace(/-/g, '+').replace(/_/g, '/');
++        const signature = Buffer.from(signatureBase64, 'base64');
++        
++        // Create public key object
++        const publicKey: KeyObject = createPublicKey({
++            key: publicKeyPem,
++            format: 'pem'
++        });
++        
++        // Create verifier for ECDSA with SHA-256
++        const verify = createVerify('SHA256');
++        verify.update(message);
++        verify.end();
++        
++        // Try verification with ieee-p1363 encoding (ALB uses this for ES256)
++        try {
++            const isValid = verify.verify(
++                { key: publicKey, dsaEncoding: 'ieee-p1363' },
++                signature
++            );
++            
++            if (isValid) {
++                return true;
++            }
++        } catch (err) {
++            console.error('ieee-p1363 verification failed, trying DER:', err);
++        }
++        
++        // Fallback: try with default DER encoding
++        const verify2 = createVerify('SHA256');
++        verify2.update(message);
++        verify2.end();
++        
++        const isValid = verify2.verify(publicKey, signature);
++        
++        if (!isValid) {
++            console.error('JWT signature verification failed with both encodings');
++            console.error('Signature length:', signature.length, 'bytes');
++        }
++        
++        return isValid;
++    } catch (err) {
++        console.error('Error during JWT signature verification:', err);
++        throw err;
++    }
++}
++
++// OIDC authentication parser for ALB OIDC headers with full security validation
++export async function oidcParser(req: Request): Promise<{ user: AuthUser }> {
++    // 1. Check if OIDC is enabled
 +    if (!process.env.ALB_OIDC_ENABLED || process.env.ALB_OIDC_ENABLED !== 'true') {
 +        throw new Err(404, null, 'OIDC authentication not enabled');
 +    }
 +    
++    // 2. Validate OIDC data header exists
 +    const oidcData = req.headers['x-amzn-oidc-data'];
 +    if (!oidcData || typeof oidcData !== 'string') {
 +        throw new Err(401, null, 'No OIDC data');
 +    }
 +    
++    // 3. Validate access token header exists (ensures request came through ALB)
++    const accessToken = req.headers['x-amzn-oidc-accesstoken'];
++    if (!accessToken) {
++        throw new Err(401, null, 'No OIDC access token - request may not have come through ALB');
++    }
++    
++    // 4. Extract and validate JWT header
++    const [headerB64] = oidcData.split('.');
++    if (!headerB64) {
++        throw new Err(401, null, 'Invalid JWT format');
++    }
++    
++    const header = JSON.parse(Buffer.from(headerB64, 'base64').toString());
++    const keyId = header.kid;
++    const alg = header.alg;
++    
++    if (!keyId) {
++        throw new Err(401, null, 'No key ID in JWT header');
++    }
++    
++    if (alg !== 'ES256') {
++        throw new Err(401, null, `Invalid JWT algorithm: ${alg}. Expected ES256`);
++    }
++    
++    // 5. Get ALB public key and verify signature
++    const region = process.env.AWS_REGION || 'us-west-2';
++    let publicKeyPem: string;
++    
++    try {
++        publicKeyPem = await getAlbPublicKey(region, keyId);
++    } catch (err) {
++        throw new Err(401, err instanceof Error ? err : new Error(String(err)), 'Failed to fetch ALB public key');
++    }
++    
++    let isValid: boolean;
++    try {
++        isValid = verifyJwtSignature(oidcData, publicKeyPem);
++    } catch (err) {
++        throw new Err(401, err instanceof Error ? err : new Error(String(err)), 'JWT signature verification failed');
++    }
++    
++    if (!isValid) {
++        throw new Err(401, null, 'Invalid JWT signature');
++    }
++    
++    // 6. Decode and validate payload
 +    const payload = JSON.parse(
 +        Buffer.from(oidcData.split('.')[1], 'base64').toString()
 +    );
 +    
 +    console.log('OIDC Payload:', JSON.stringify(payload, null, 2));
 +    
++    // 7. Validate token expiration
++    if (payload.exp) {
++        const now = Math.floor(Date.now() / 1000);
++        if (payload.exp < now) {
++            throw new Err(401, null, 'OIDC token expired');
++        }
++    }
++    
++    // 8. Validate issuer (if configured)
++    const expectedIssuer = process.env.AUTHENTIK_URL;
++    if (expectedIssuer && payload.iss) {
++        // Normalize URLs for comparison (remove trailing slash)
++        const normalizedExpected = expectedIssuer.replace(/\/$/, '');
++        const normalizedActual = payload.iss.replace(/\/$/, '');
++        
++        // Check if issuer starts with the expected base URL
++        // This allows for application-specific issuer paths like /application/o/cloudtak/
++        if (!normalizedActual.startsWith(normalizedExpected)) {
++            throw new Err(401, null, `Invalid token issuer: ${payload.iss}`);
++        }
++    }
++    
++    // 9. Validate email claim
 +    if (!payload.email) {
 +        throw new Err(401, null, 'No email in OIDC data');
 +    }
 +    
-+    // Extract groups from OIDC token
-+    const groups = Array.isArray(payload.groups) ? payload.groups : [];
-+    
-+    // Default to USER access, will be upgraded based on profile
 +    return {
-+        user: new AuthUser(AuthUserAccess.USER, payload.email),
-+        groups
++        user: new AuthUser(AuthUserAccess.USER, payload.email)
 +    };
 +}
 +
 +// Helper to check if OIDC is enabled
 +export function isOidcEnabled(): boolean {
 +    return process.env.ALB_OIDC_ENABLED === 'true';
++}
++
++// Helper to check if OIDC is forced (only system admins can use local login)
++export function isOidcForced(): boolean {
++    return process.env.OIDC_FORCED === 'true';
 +}
 +

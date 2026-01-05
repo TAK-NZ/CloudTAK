@@ -192,7 +192,7 @@
                                 type='button'
                                 class='btn btn-sm'
                             >
-                                <IconReplace
+                                <IconAmbulance
                                     v-tooltip='"Data Sync"'
                                     :size='32'
                                     stroke='1'
@@ -275,7 +275,7 @@ import {
 import {
     IconCalendarClock,
     IconAffiliate,
-    IconReplace,
+    IconAmbulance,
     IconPlayerPlay,
     IconWebhook,
     IconPencil,

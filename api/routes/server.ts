@@ -3,7 +3,7 @@ import { Static, Type } from '@sinclair/typebox'
 import { X509Certificate } from 'crypto';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced } from '../lib/auth.js';
+import Auth, { AuthUserAccess, isOidcEnabled } from '../lib/auth.js';
 import { sql } from 'drizzle-orm';
 import Config from '../lib/config.js';
 import { ServerResponse } from '../lib/types.js';
@@ -21,13 +21,11 @@ export default async function router(schema: Schema, config: Config) {
         description: 'Get OIDC Status (public endpoint)',
         res: Type.Object({
             oidc_enabled: Type.Boolean(),
-            oidc_forced: Type.Boolean(),
             authentik_url: Type.Optional(Type.String())
         })
     }, async (req, res) => {
         res.json({ 
             oidc_enabled: isOidcEnabled(),
-            oidc_forced: isOidcForced(),
             authentik_url: process.env.AUTHENTIK_URL
         });
     });

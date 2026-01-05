@@ -544,6 +544,11 @@
         "query": true,
         "res": true
     },
+    "POST /iconset/:iconset/regen": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "DELETE /iconset/:iconset": {
         "body": false,
         "query": false,
@@ -551,7 +556,7 @@
     },
     "POST /iconset/:iconset/icon": {
         "body": true,
-        "query": false,
+        "query": true,
         "res": true
     },
     "GET /icon": {
@@ -884,6 +889,31 @@
         "query": false,
         "res": true
     },
+    "GET /template/mission/:mission/log": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /template/mission/:mission/log": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission/:mission/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission/log/:log": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "POST /template/mission": {
         "body": true,
         "query": false,
@@ -1139,14 +1169,19 @@
         "query": true,
         "res": true
     },
-    "GET /server/package": {
+    "GET /server/repeater": {
         "body": false,
         "query": false,
         "res": true
     },
-    "DELETE /server/package/:hash": {
+    "DELETE /server/repeater/:uid": {
         "body": false,
         "query": false,
+        "res": true
+    },
+    "GET /server/video": {
+        "body": false,
+        "query": true,
         "res": true
     },
     "GET /search": {
@@ -1170,21 +1205,6 @@
         "res": true
     },
     "GET /search/suggest": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "GET /server/repeater": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /server/repeater/:uid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /server/video": {
         "body": false,
         "query": true,
         "res": true
