@@ -27,20 +27,12 @@ export class CloudTakOidcSetup extends Construct {
     const oidcSetupFunction = new lambda.Function(this, 'OidcSetupFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../src/cloudtak-oidc-setup'), {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm ci --omit=dev --cache /tmp/.npm'
-          ],
-        },
-      }),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../src/cloudtak-oidc-setup')),
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       vpc: props.vpc,
       securityGroups: props.securityGroup ? [props.securityGroup] : undefined,
-      vpcSubnets: props.vpc ? { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_NAT } : undefined,
+      vpcSubnets: props.vpc ? { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS } : undefined,
       environment: {
         AUTHENTIK_URL: props.authentikUrl,
         AUTHENTIK_ADMIN_SECRET_ARN: props.authentikAdminSecretArn,
