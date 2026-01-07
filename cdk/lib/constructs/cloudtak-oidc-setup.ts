@@ -49,6 +49,7 @@ export class CloudTakOidcSetup extends Construct {
       vpc: props.vpc,
       securityGroups: props.securityGroup ? [props.securityGroup] : undefined,
       vpcSubnets: props.vpc ? { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS } : undefined,
+      vpcSubnets: props.vpc ? { subnetType: cdk.aws_ec2.SubnetType.PRIVATE_WITH_EGRESS } : undefined,
       environment: {
         AUTHENTIK_URL: props.authentikUrl,
         AUTHENTIK_ADMIN_SECRET_ARN: props.authentikAdminSecretArn,
