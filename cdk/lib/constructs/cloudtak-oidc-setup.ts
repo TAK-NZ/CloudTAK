@@ -34,7 +34,6 @@ export class CloudTakOidcSetup extends Construct {
         sourceMap: true,
         target: 'node20',
         externalModules: ['@aws-sdk/*'],
-        nodeModules: ['axios', 'form-data'],
         forceDockerBundling: false,
         commandHooks: {
           beforeBundling: () => [],
