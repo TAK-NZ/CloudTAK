@@ -21,7 +21,7 @@ export class AuthentikUserCreator extends Construct {
 
     const createUserLambda = new lambda.Function(this, 'Function', {
       functionName: `${cdk.Stack.of(this).stackName}-AuthentikUserCreator`,
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       timeout: cdk.Duration.minutes(5),
       code: lambda.Code.fromInline(`
