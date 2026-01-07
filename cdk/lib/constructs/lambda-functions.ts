@@ -23,8 +23,8 @@ export interface LambdaFunctionsProps {
   hostedZone: cdk.aws_route53.IHostedZone;
   certificate: cdk.aws_certificatemanager.ICertificate;
   vpc: ec2.IVpc;
-  efsAccessPoint: efs.AccessPoint;
-  lambdaSecurityGroup: ec2.SecurityGroup;
+  efsAccessPoint: efs.IAccessPoint;
+  lambdaSecurityGroup: ec2.ISecurityGroup;
 }
 
 export class LambdaFunctions extends Construct {
