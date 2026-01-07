@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -24,10 +25,25 @@ export class CloudTakOidcSetup extends Construct {
     super(scope, id);
 
     // Create Lambda function for OIDC setup
-    const oidcSetupFunction = new lambda.Function(this, 'OidcSetupFunction', {
+    const oidcSetupFunction = new nodejs.NodejsFunction(this, 'OidcSetupFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../src/cloudtak-oidc-setup')),
+      entry: path.join(__dirname, '../../src/cloudtak-oidc-setup/index.js'),
+      handler: 'handler',
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        target: 'node20',
+        externalModules: ['@aws-sdk/*'],
+        nodeModules: ['axios', 'form-data'],
+        forceDockerBundling: false,
+        commandHooks: {
+          beforeBundling: () => [],
+          beforeInstall: () => [],
+          afterBundling: (inputDir: string, outputDir: string) => [
+            `cp ${inputDir}/src/cloudtak-oidc-setup/CloudTAKLogo.png ${outputDir}/CloudTAKLogo.png`
+          ]
+        }
+      },
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       vpc: props.vpc,
