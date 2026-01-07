@@ -32,7 +32,7 @@ export class CloudTakOidcSetup extends Construct {
           image: lambda.Runtime.NODEJS_20_X.bundlingImage,
           command: [
             'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm ci --omit=dev'
+            'cp -r . /asset-output && cd /asset-output && npm ci --omit=dev --cache /tmp/.npm'
           ],
         },
       }),
