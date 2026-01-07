@@ -136,7 +136,7 @@ export default class SpriteBuilder {
 
         const coords: Record<string, any> = {};
         for (const key in doc.coordinates) {
-            coords[key.replace(/.png/, '')] = {
+            coords[key.replace(/\.png$/, '')] = {
                 ...doc.coordinates[key],
                 pixelRatio: 1
             }
