@@ -27,15 +27,7 @@ export class CloudTakOidcSetup extends Construct {
     const oidcSetupFunction = new lambda.Function(this, 'OidcSetupFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../../src/cloudtak-oidc-setup'), {
-        bundling: {
-          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'cp -r . /asset-output && cd /asset-output && npm ci --omit=dev --cache /tmp/.npm'
-          ],
-        },
-      }),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../../src/cloudtak-oidc-setup')),
       timeout: cdk.Duration.minutes(5),
       memorySize: 256,
       vpc: props.vpc,
