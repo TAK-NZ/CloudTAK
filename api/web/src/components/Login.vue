@@ -64,9 +64,9 @@
                                 </h2>
                                 <TablerLoading
                                     v-if='loading'
-                                    desc='Logging in'
+                                    :desc='loadingMessage'
                                 />
-                                <template v-else>
+                                <template v-if='!loading && !route.query.token && !(oidcForced && !route.query.local)'>
                                     <div class='mb-3'>
                                         <TablerInput
                                             v-model='body.username'
@@ -111,7 +111,7 @@
                                         <div class='text-center my-3'>
                                             <div class='text-muted'>─── OR ───</div>
                                         </div>
-                                        <div class='form-footer'>
+                                        <div>
                                             <button
                                                 type='button'
                                                 class='btn btn-primary w-100'
@@ -162,7 +162,9 @@ const router = useRouter();
 const brandStore = useBrandStore();
 
 const loading = ref(false);
+const loadingMessage = ref('Logging in');
 const ssoEnabled = ref(false);
+const oidcForced = ref(false);
 const body = ref<Login_Create>({
     username: '',
     password: ''
@@ -173,6 +175,8 @@ onMounted(async () => {
 
     // Check for token in URL (from OIDC redirect)
     if (route.query.token) {
+        loading.value = true;
+        loadingMessage.value = 'Completing login...';
         localStorage.token = String(route.query.token);
         emit('login');
         const redirect = route.query.redirect || '/';
@@ -180,10 +184,19 @@ onMounted(async () => {
         return;
     }
 
-    // Check if SSO is enabled
+    // Check if SSO is enabled and if OIDC is forced
     try {
-        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
+        const config = await std('/api/server/oidc') as { oidc_enabled: boolean; oidc_forced?: boolean };
         ssoEnabled.value = config.oidc_enabled;
+        oidcForced.value = config.oidc_forced || false;
+        
+        // If OIDC is forced and no local=true query param, redirect to SSO immediately
+        if (oidcForced.value && !route.query.local) {
+            loading.value = true;
+            loadingMessage.value = 'Redirecting to SSO...';
+            loginWithSSO();
+            return;
+        }
     } catch (error) {
         console.error('Failed to check SSO status:', error);
     }
@@ -205,6 +218,7 @@ onMounted(async () => {
 
 async function createLogin() {
     loading.value = true;
+    loadingMessage.value = 'Logging in';
 
     try {
         const login = await std('/api/login', {
@@ -226,7 +240,12 @@ async function createLogin() {
         }
     } catch (err) {
         loading.value = false;
-        throw err;
+        // If OIDC is forced and user is not a system admin, redirect to SSO
+        if (oidcForced.value && err instanceof Error && err.message.includes('restricted')) {
+            loginWithSSO();
+        } else {
+            throw err;
+        }
     }
 }
 

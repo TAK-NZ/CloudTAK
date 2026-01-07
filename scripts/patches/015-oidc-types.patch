@@ -1,5 +1,3 @@
-diff --git a/api/lib/types.ts b/api/lib/types.ts
-index 746a7acda..42ee25804 100644
 --- a/api/lib/types.ts
 +++ b/api/lib/types.ts
 @@ -166,6 +166,7 @@ export const ServerResponse = Type.Object({

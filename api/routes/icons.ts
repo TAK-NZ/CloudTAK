@@ -606,7 +606,10 @@ export default async function router(schema: Schema, config: Config) {
                 if (iconset.spritesheet_json) {
                     res.json(JSON.parse(String(iconset.spritesheet_json)));
                 } else {
-                    throw new Err(400, null, 'Request regeneration of Iconset Spritesheet');
+                    // Return empty sprite JSON instead of error to prevent cascading failure
+                    // This handles KMZ imports with no custom icons
+                    console.warn(`Iconset ${req.params.iconset} has no spritesheet_json - returning empty sprite`);
+                    res.json({});
                 }
             }
         } catch (err) {
@@ -642,7 +645,11 @@ export default async function router(schema: Schema, config: Config) {
                 if (iconset.spritesheet_data) {
                     res.send(Buffer.from(iconset.spritesheet_data, 'base64'));
                 } else {
-                    throw new Err(400, null, 'Request regeneration of Iconset Spritesheet');
+                    // Return empty 1x1 transparent PNG instead of error to prevent cascading failure
+                    // This handles KMZ imports with no custom icons
+                    console.warn(`Iconset ${req.params.iconset} has no spritesheet_data - returning empty sprite`);
+                    const emptyPNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+                    res.send(Buffer.from(emptyPNG, 'base64'));
                 }
             }
         } catch (err) {
