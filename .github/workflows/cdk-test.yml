@@ -61,7 +61,7 @@ jobs:
         run: |
           # Check if override is requested
           OVERRIDE="false"
-          if echo '${{ github.event.head_commit.message }}' | grep -q '\[force-deploy\]'; then
+          if printf '%s' "${{ github.event.head_commit.message }}" | grep -q '\[force-deploy\]'; then
             OVERRIDE="true"
           fi
           ./scripts/github/check-breaking-changes.sh cloudtak prod $OVERRIDE
