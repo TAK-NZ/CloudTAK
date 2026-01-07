@@ -56,8 +56,7 @@ jobs:
       - name: Validate Change Set
         run: |
           # Check if override is requested
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          if [[ "$COMMIT_MSG" == *"[force-deploy]"* ]]; then
+          if printf '%s' "${{ github.event.head_commit.message }}" | grep -q '\[force-deploy\]'; then
             echo "🚨 Force deploy detected - skipping change set validation"
           else
             ./scripts/github/validate-changeset.sh TAK-${{ vars.DEMO_STACK_NAME }}-CloudTAK
@@ -91,13 +90,12 @@ jobs:
       - name: Configure Database Context
         id: db-config
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          if [[ "$COMMIT_MSG" != *"[use-prod-db]"* ]]; then
-            echo "🔄 Using dev-test database settings for faster deployment"
-            echo "db-context=--context instanceClass=db.serverless --context instanceCount=1 --context enablePerformanceInsights=false --context monitoringInterval=0 --context backupRetentionDays=7 --context deleteProtection=false" >> $GITHUB_OUTPUT
-          else
+          if printf '%s' "${{ github.event.head_commit.message }}" | grep -q '\[use-prod-db\]'; then
             echo "🚀 Using production database settings"
             echo "db-context=" >> $GITHUB_OUTPUT
+          else
+            echo "🔄 Using dev-test database settings for faster deployment"
+            echo "db-context=--context instanceClass=db.serverless --context instanceCount=1 --context enablePerformanceInsights=false --context monitoringInterval=0 --context backupRetentionDays=7 --context deleteProtection=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Demo with Prod Profile
