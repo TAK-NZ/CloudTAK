@@ -19,7 +19,7 @@
         :size='props.size'
         stroke='1'
     />
-    <IconAmbulance
+    <IconReplace
         v-else-if='type === NotificationType.Mission'
         :size='props.size'
         stroke='1'
@@ -37,7 +37,7 @@ import {
     IconMessage,
     IconAlertTriangle,
     IconHeartbeat,
-    IconAmbulance,
+    IconReplace,
     IconCircleDot,
 } from '@tabler/icons-vue';
 

@@ -79,6 +79,10 @@ http {
 
     access_log  /var/log/nginx/access.log  main;
 
+    # Increase buffer sizes for ALB OIDC cookies
+    large_client_header_buffers 4 32k;
+    client_header_buffer_size 32k;
+
     server {
         listen 5000;
         listen [::]:5000;

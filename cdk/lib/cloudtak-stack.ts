@@ -36,6 +36,8 @@ import { Alarms } from './constructs/alarms';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
 import { EtlRole } from './constructs/etl-role';
+import { CloudTakOidcSetup } from './constructs/cloudtak-oidc-setup';
+import { PMTilesEfs } from './constructs/pmtiles-efs';
 
 import { registerOutputs } from './outputs';
 import { createBaseImportValue, BASE_EXPORT_NAMES } from './cloudformation-imports';
@@ -239,13 +241,49 @@ export class CloudTakStack extends cdk.Stack {
       cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.S3_ELB_LOGS))
     );
     
+    // Configure OIDC if enabled
+    let oidcConfig: any = undefined;
+    if (envConfig.cloudtak.oidcEnabled) {
+      const authentikUrl = envConfig.cloudtak.authentikUrl || 
+        cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);
+      
+      const authentikAdminSecretArn = cdk.Fn.importValue(
+        `TAK-${envConfig.stackName}-AuthInfra-AuthentikAdminTokenArn`
+      );
+      
+      const serviceUrl = `https://${envConfig.cloudtak.hostname}.${hostedZone.zoneName}`;
+      
+      // Create OIDC setup (creates Authentik application and returns credentials)
+      const oidcSetup = new CloudTakOidcSetup(this, 'OidcSetup', {
+        stackName: envConfig.stackName,
+        authentikUrl,
+        authentikAdminSecretArn,
+        cloudtakUrl: serviceUrl,
+        kmsKeyArn: kmsKey.keyArn,
+        vpc,
+        securityGroup: securityGroups.ecs,
+      });
+
+      oidcConfig = {
+        enabled: true,
+        issuer: `${authentikUrl}/application/o/cloudtak/`,
+        authorizationEndpoint: `${authentikUrl}/application/o/authorize/`,
+        tokenEndpoint: `${authentikUrl}/application/o/token/`,
+        userInfoEndpoint: `${authentikUrl}/application/o/userinfo/`,
+        clientId: oidcSetup.clientId,
+        clientSecret: oidcSetup.clientSecret,
+        sessionCookieName: envConfig.cloudtak.albAuthSessionCookie || 'AWSELBAuthSessionCookieCloudTAK'
+      };
+    }
+    
     // Create Application Load Balancer with HTTPS
     const loadBalancer = new LoadBalancer(this, 'LoadBalancer', {
       envConfig,
       vpc,
       albSecurityGroup: securityGroups.alb,
       certificate,
-      logsBucket
+      logsBucket,
+      oidcConfig
     });
 
     // Create Route53 DNS record for the service
@@ -269,7 +307,14 @@ export class CloudTakStack extends cdk.Stack {
       kmsKey
     });
 
-    // Create Lambda functions for PMTiles processing only
+    // Create PMTiles EFS infrastructure
+    const pmtilesEfs = new PMTilesEfs(this, 'PMTilesEfs', {
+      envConfig,
+      vpc,
+      kmsKey
+    });
+
+    // Create Lambda functions for PMTiles processing
     const lambdaFunctions = new LambdaFunctions(this, 'LambdaFunctions', {
       envConfig,
       ecrRepository,
@@ -279,7 +324,10 @@ export class CloudTakStack extends cdk.Stack {
       signingSecret: secrets.signingSecret,
       kmsKey,
       hostedZone,
-      certificate
+      certificate,
+      vpc,
+      efsAccessPoint: pmtilesEfs.accessPoint,
+      lambdaSecurityGroup: pmtilesEfs.lambdaSecurityGroup
     });
 
     // Create ECS Fargate service for the CloudTAK API

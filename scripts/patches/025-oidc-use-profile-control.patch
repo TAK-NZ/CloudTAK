@@ -1,0 +1,15 @@
+diff --git a/api/routes/login.ts b/api/routes/login.ts
+index 1234567..abcdefg 100644
+--- a/api/routes/login.ts
++++ b/api/routes/login.ts
+@@ -172,8 +172,8 @@ export default async function router(schema: Schema, config: Config) {
+             } catch (err) {
+                 if (err instanceof Error && err.message.includes('Item Not Found')) {
+                     isNewUser = true;
+-                    // Auto-create user on first OIDC login
+-                    profile = await config.models.Profile.generate({
++                    // Auto-create user on first OIDC login using ProfileControl to respect system defaults
++                    profile = await provider.profile.generate({
+                         username: auth.email,
+                         auth: { ca: [], key: '', cert: '' },
+                         system_admin: isSystemAdmin,

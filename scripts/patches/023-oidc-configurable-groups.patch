@@ -1,0 +1,68 @@
+diff --git a/api/routes/login.ts b/api/routes/login.ts
+index 1234567..abcdefg 100644
+--- a/api/routes/login.ts
++++ b/api/routes/login.ts
+@@ -120,24 +120,42 @@ export default async function router(schema: Schema, config: Config) {
+             
+             const { user: auth, groups } = await oidcParser(req);
+             
++            // Parse groups for role assignment (used for both new and existing users)
++            const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
++            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
++            
++            const isSystemAdmin = groups.includes(systemAdminGroup);
++            
++            // Parse agency admin groups (e.g., "CloudTAKAgencyAdmin1", "CloudTAKAgencyAdmin5")
++            const agencyAdminIds: number[] = [];
++            for (const group of groups) {
++                if (group.startsWith(agencyAdminPrefix)) {
++                    const agencyIdStr = group.substring(agencyAdminPrefix.length);
++                    const agencyId = parseInt(agencyIdStr, 10);
++                    if (!isNaN(agencyId) && agencyId > 0) {
++                        agencyAdminIds.push(agencyId);
++                    }
++                }
++            }
++            
+             // Check if user exists, auto-create if not
+             let profile;
+             let isNewUser = false;
+             try {
+                 profile = await config.models.Profile.from(auth.email);
++                
++                // Update group membership for existing users
++                await config.models.Profile.commit(auth.email, {
++                    system_admin: isSystemAdmin,
++                    agency_admin: agencyAdminIds
++                });
++                profile = await config.models.Profile.from(auth.email);
+             } catch (err) {
+                 if (err instanceof Error && err.message.includes('Item Not Found')) {
+                     isNewUser = true;
+                     // Auto-create user on first OIDC login
+-                    // Parse groups for role assignment
+-                    const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
+-                    const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
+-                    
+-                    const isSystemAdmin = groups.includes(systemAdminGroup);
+-                    
+-                    // Parse agency admin groups (e.g., "CloudTAKAgencyAdmin1", "CloudTAKAgencyAdmin5")
+-                    const agencyAdminIds: number[] = [];
+-                    for (const group of groups) {
+-                        if (group.startsWith(agencyAdminPrefix)) {
+-                            const agencyIdStr = group.substring(agencyAdminPrefix.length);
+-                            const agencyId = parseInt(agencyIdStr, 10);
+-                            if (!isNaN(agencyId) && agencyId > 0) {
+-                                agencyAdminIds.push(agencyId);
+-                            }
+-                        }
+-                    }
+-                    
+                     profile = await config.models.Profile.generate({
+                         username: auth.email,
+                         auth: { ca: [], key: '', cert: '' },
+                         system_admin: isSystemAdmin,
+-                        agency_admin: [],
++                        agency_admin: agencyAdminIds,
+                         last_login: new Date().toISOString()
+                     });

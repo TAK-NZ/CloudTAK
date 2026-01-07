@@ -1,0 +1,75 @@
+diff --git a/api/routes/login.ts b/api/routes/login.ts
+index 1234567..abcdefg 100644
+--- a/api/routes/login.ts
++++ b/api/routes/login.ts
+@@ -28,10 +28,18 @@ export default async function router(schema: Schema, config: Config) {
+         })
+     }, async (req, res) => {
+         try {
++            // Check if OIDC is forced and local login is restricted to system admins
++            const oidcForced = process.env.OIDC_FORCED === 'true';
++            
+             let profile;
+ 
+             if (config.server.auth.key && config.server.auth.cert) {
+                 const email = await provider.login(req.body.username, req.body.password);
++                
++                // If OIDC is forced, only allow system admins to login locally
++                if (oidcForced) {
++                    const tempProfile = await config.models.Profile.from(email);
++                    if (!tempProfile.system_admin) {
++                        throw new Err(403, null, 'Local login is restricted. Please use SSO.');
++                    }
++                }
+ 
+                 if (config.external && config.external.configured) {
+                     try {
+diff --git a/api/web/src/components/Login.vue b/api/web/src/components/Login.vue
+index 1234567..abcdefg 100644
+--- a/api/web/src/components/Login.vue
++++ b/api/web/src/components/Login.vue
+@@ -168,6 +168,7 @@ const router = useRouter();
+ const brandStore = useBrandStore();
+ 
+ const loading = ref(false);
+ const ssoEnabled = ref(false);
++const oidcForced = ref(false);
+ const body = ref<Login_Create>({
+     username: '',
+     password: ''
+@@ -183,10 +184,17 @@ onMounted(async () => {
+         return;
+     }
+ 
+-    // Check if SSO is enabled
++    // Check if SSO is enabled and if OIDC is forced
+     try {
+-        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
++        const config = await std('/api/server/oidc') as { oidc_enabled: boolean; oidc_forced?: boolean };
+         ssoEnabled.value = config.oidc_enabled;
++        oidcForced.value = config.oidc_forced || false;
++        
++        // If OIDC is forced and no local=true query param, redirect to SSO immediately
++        if (oidcForced.value && !route.query.local) {
++            loginWithSSO();
++            return;
++        }
+     } catch (error) {
+         console.error('Failed to check SSO status:', error);
+     }
+@@ -220,8 +228,14 @@ async function createLogin() {
+             router.push("/");
+         }
+     } catch (err) {
++    } catch (err: any) {
+         loading.value = false;
+-        throw err;
++        // If OIDC is forced and user is not a system admin, redirect to SSO
++        if (oidcForced.value && err?.message?.includes('restricted')) {
++            loginWithSSO();
++        } else {
++            throw err;
++        }
+     }
+ }
+ 

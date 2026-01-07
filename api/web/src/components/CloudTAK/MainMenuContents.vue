@@ -538,7 +538,7 @@ function returnHome() {
 
 function logout() {
     delete localStorage.token;
-    router.push("/login");
+    window.location.href = '/api/logout';
 }
 </script>
 

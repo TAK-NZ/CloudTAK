@@ -8,6 +8,8 @@ import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53targets from 'aws-cdk-lib/aws-route53-targets';
+import * as efs from 'aws-cdk-lib/aws-efs';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { ContextEnvironmentConfig } from '../stack-config';
 
 export interface LambdaFunctionsProps {
@@ -20,6 +22,9 @@ export interface LambdaFunctionsProps {
   kmsKey: cdk.aws_kms.IKey;
   hostedZone: cdk.aws_route53.IHostedZone;
   certificate: cdk.aws_certificatemanager.ICertificate;
+  vpc: ec2.IVpc;
+  efsAccessPoint: efs.IAccessPoint;
+  lambdaSecurityGroup: ec2.ISecurityGroup;
 }
 
 export class LambdaFunctions extends Construct {
@@ -29,7 +34,7 @@ export class LambdaFunctions extends Construct {
   constructor(scope: Construct, id: string, props: LambdaFunctionsProps) {
     super(scope, id);
 
-    const { envConfig, ecrRepository, tilesImageAsset, assetBucketName, serviceUrl, signingSecret, kmsKey, hostedZone, certificate } = props;
+    const { envConfig, ecrRepository, tilesImageAsset, assetBucketName, serviceUrl, signingSecret, kmsKey, hostedZone, certificate, vpc, efsAccessPoint, lambdaSecurityGroup } = props;
 
     // Get image tag from context for CI/CD deployments
     const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
@@ -54,21 +59,24 @@ export class LambdaFunctions extends Construct {
             }),
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
-              actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
-              resources: ['*'],
-              conditions: {
-                StringEquals: {
-                  'kms:ViaService': [`s3.${cdk.Stack.of(this).region}.amazonaws.com`, `secretsmanager.${cdk.Stack.of(this).region}.amazonaws.com`]
-                }
-              }
+              actions: [
+                'elasticfilesystem:ClientMount',
+                'elasticfilesystem:ClientWrite',
+                'elasticfilesystem:DescribeMountTargets'
+              ],
+              resources: ['*']
             })
           ]
         })
       },
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole')
       ]
     });
+
+    // Grant KMS permissions for S3, Secrets Manager, and EFS encryption
+    kmsKey.grantDecrypt(tilesLambdaRole);
     
     // Create PMTiles Lambda
     const tilesTag = cloudtakImageTag ? `pmtiles-${cloudtakImageTag.replace('cloudtak-', '')}` : 'pmtiles-latest';
@@ -88,8 +96,8 @@ export class LambdaFunctions extends Construct {
       handler: lambda.Handler.FROM_IMAGE,
       role: tilesLambdaRole,
       memorySize: 256,
-      timeout: cdk.Duration.seconds(15),
-      description: 'Return Mapbox Vector Tiles from a PMTiles Store - Fixed',
+      timeout: cdk.Duration.seconds(60),
+      description: 'Return Mapbox Vector Tiles from a PMTiles Store',
       environment: {
         'StackName': cdk.Stack.of(this).stackName,
         'ASSET_BUCKET': assetBucketName,
@@ -97,7 +105,11 @@ export class LambdaFunctions extends Construct {
         'APIROOT': `https://${tilesHostname}`,  // Legacy value for PMTILES_URL
         'SigningSecret': `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`
       },
-      environmentEncryption: kmsKey
+      environmentEncryption: kmsKey,
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [lambdaSecurityGroup],
+      filesystem: lambda.FileSystem.fromEfsAccessPoint(efsAccessPoint, '/mnt/efs')
     });
     
     // Note: No need to grant read access when using CloudFormation dynamic references

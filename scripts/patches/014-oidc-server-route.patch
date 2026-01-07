@@ -1,0 +1,77 @@
+diff --git a/api/routes/server.ts b/api/routes/server.ts
+index b07df92e9..6ed9204be 100644
+--- a/api/routes/server.ts
++++ b/api/routes/server.ts
+@@ -3,7 +3,7 @@ import { Static, Type } from '@sinclair/typebox'
+ import { X509Certificate } from 'crypto';
+ import Schema from '@openaddresses/batch-schema';
+ import Err from '@openaddresses/batch-error';
+-import Auth, { AuthUserAccess } from '../lib/auth.js';
++import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced } from '../lib/auth.js';
+ import { sql } from 'drizzle-orm';
+ import Config from '../lib/config.js';
+ import { ServerResponse } from '../lib/types.js';
+@@ -15,6 +15,23 @@ const pkg = JSON.parse(String(fs.readFileSync(new URL('../package.json', import.
+ export default async function router(schema: Schema, config: Config) {
+     const profileControl = new ProfileControl(config);
+ 
++    await schema.get('/server/oidc', {
++        name: 'Get OIDC Status',
++        group: 'Server',
++        description: 'Get OIDC Status (public endpoint)',
++        res: Type.Object({
++            oidc_enabled: Type.Boolean(),
++            oidc_forced: Type.Boolean(),
++            authentik_url: Type.Optional(Type.String())
++        })
++    }, async (req, res) => {
++        res.json({ 
++            oidc_enabled: isOidcEnabled(),
++            oidc_forced: isOidcForced(),
++            authentik_url: process.env.AUTHENTIK_URL
++        });
++    });
++
+     await schema.get('/server', {
+         name: 'Get Server',
+         group: 'Server',
+@@ -33,7 +50,8 @@ export default async function router(schema: Schema, config: Config) {
+                     url: '',
+                     api: '',
+                     webtak: '',
+-                    auth: false
++                    auth: false,
++                    oidc_enabled: isOidcEnabled()
+                 });
+             } else {
+                 const user = await Auth.as_user(config, req);
+@@ -48,7 +66,8 @@ export default async function router(schema: Schema, config: Config) {
+                             status: 'configured',
+                             version: pkg.version,
+                             ...config.server,
+-                            auth
++                            auth,
++                            oidc_enabled: isOidcEnabled()
+                     };
+ 
+                     if (config.server.auth.cert && config.server.auth.key) {
+@@ -68,7 +87,8 @@ export default async function router(schema: Schema, config: Config) {
+                         url: config.server.url,
+                         api: config.server.api,
+                         webtak: config.server.webtak,
+-                        auth
++                        auth,
++                        oidc_enabled: isOidcEnabled()
+                     })
+                 }
+             }
+@@ -147,7 +167,8 @@ export default async function router(schema: Schema, config: Config) {
+                 status: 'configured',
+                 version: pkg.version,
+                 ...config.server,
+-                auth
++                auth,
++                oidc_enabled: isOidcEnabled()
+             };
+ 
+             if (config.server.auth.cert && config.server.auth.key) {

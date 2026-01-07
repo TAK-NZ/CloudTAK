@@ -26,10 +26,19 @@ export const TAK_EXPORT_NAMES = {
   TAK_SERVICE_NAME: 'TakServiceName'
 } as const;
 
+export const AUTH_EXPORT_NAMES = {
+  AUTHENTIK_URL: 'AuthentikUrl',
+  AUTHENTIK_ADMIN_TOKEN_ARN: 'AuthentikAdminTokenArn'
+} as const;
+
 export function createBaseImportValue(stackNameComponent: string, exportName: string): string {
   return `TAK-${stackNameComponent}-BaseInfra-${exportName}`;
 }
 
 export function createTakImportValue(stackNameComponent: string, exportName: string): string {
   return `TAK-${stackNameComponent}-TakInfra-${exportName}`;
+}
+
+export function createAuthImportValue(stackNameComponent: string, exportName: string): string {
+  return `TAK-${stackNameComponent}-AuthInfra-${exportName}`;
 }

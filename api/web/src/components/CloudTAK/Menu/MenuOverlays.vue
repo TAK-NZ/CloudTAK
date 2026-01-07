@@ -114,7 +114,7 @@
                                         stroke='1'
                                         class='flex-shrink-0 text-white-50'
                                     />
-                                    <IconAmbulance
+                                    <IconReplace
                                         v-else-if='card.overlay.type === "geojson" && card.overlay.mode === "mission"'
                                         v-tooltip='"Data Sync"'
                                         :size='20'
@@ -309,7 +309,7 @@ import TreeVector from './Overlays/TreeVector.vue';
 import TreeMission from './Overlays/TreeMission.vue';
 import {
     IconGripVertical,
-    IconAmbulance,
+    IconReplace,
     IconMaximize,
     IconVector,
     IconEyeOff,

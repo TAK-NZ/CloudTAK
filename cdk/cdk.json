@@ -41,7 +41,15 @@
       "cloudtak": {
         "hostname": "map",
         "takAdminEmail": "admin@tak.nz",
-        "useS3CloudTAKConfigFile": false
+        "useS3CloudTAKConfigFile": false,
+        "oidcEnabled": true,
+        "oidcForced": true,
+        "authentikAppSlug": "cloudtak",
+        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
+        "syncAuthentikAttributesOnLogin": true,
+        "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
+        "authentikChannelGroupPrefix": "tak_"
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -83,7 +91,15 @@
       "cloudtak": {
         "hostname": "map",
         "takAdminEmail": "admin@tak.nz",
-        "useS3CloudTAKConfigFile": true
+        "useS3CloudTAKConfigFile": true,
+        "oidcEnabled": true,
+        "oidcForced": true,
+        "authentikAppSlug": "cloudtak",
+        "albAuthSessionCookie": "AWSELBAuthSessionCookieCloudTAK",
+        "syncAuthentikAttributesOnLogin": true,
+        "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
+        "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
+        "authentikChannelGroupPrefix": "tak_"
       },
       "ecr": {
         "imageRetentionCount": 20,

@@ -1,0 +1,37 @@
+diff --git a/api/routes/agency.ts b/api/routes/agency.ts
+index b04d5c2fa..f4bfd5ba6 100644
+--- a/api/routes/agency.ts
++++ b/api/routes/agency.ts
+@@ -8,6 +8,7 @@ import * as Default from '../lib/limits.js';
+ export const AgencyResponse = Type.Object({
+     id: Type.Integer(),
+     name: Type.String(),
++    description: Type.Optional(Type.Any())
+ });
+ 
+ export default async function router(schema: Schema, config: Config) {
+diff --git a/api/web/src/components/ETL/Connection/AgencyBadge.vue b/api/web/src/components/ETL/Connection/AgencyBadge.vue
+index 46dfb3e74..a1940fc62 100644
+--- a/api/web/src/components/ETL/Connection/AgencyBadge.vue
++++ b/api/web/src/components/ETL/Connection/AgencyBadge.vue
+@@ -51,7 +51,7 @@
+                             </div>
+                             <div
+                                 class='datagrid-content'
+-                                v-text='"No Description"'
++                                v-text='agency.description || "No Description"'
+                             />
+                         </div>
+                     </div>
+diff --git a/api/web/src/derived-types.d.ts b/api/web/src/derived-types.d.ts
+index f419174b4..3f7fe1aad 100644
+--- a/api/web/src/derived-types.d.ts
++++ b/api/web/src/derived-types.d.ts
+@@ -344,6 +344,7 @@ export interface paths {
+                         "application/json": {
+                             id: number;
+                             name: string;
++                            description?: unknown;
+                         };
+                     };
+                 };
