@@ -1,5 +1,5 @@
 diff --git a/api/web/src/base/overlay.ts b/api/web/src/base/overlay.ts
-index 578f78369..093373fbd 100644
+index 578f78369..8e1234567 100644
 --- a/api/web/src/base/overlay.ts
 +++ b/api/web/src/base/overlay.ts
 @@ -229,18 +229,22 @@ export default class Overlay {
