@@ -25,6 +25,13 @@ export default class IconManager {
 
         await db.iconset.put(iconset);
 
+        // Check if sprite already exists to prevent duplicate error
+        const sprites = this.map.getSprite();
+        if (sprites && sprites.find((s: { id: string }) => s.id === iconset.uid)) {
+            console.log(`Sprite ${iconset.uid} already loaded, skipping`);
+            return;
+        }
+
         this.map.addSprite(
             iconset.uid,
             String(stdurl(`/api/iconset/${iconset.uid}/sprite?token=${localStorage.token}`))
@@ -53,7 +60,7 @@ export default class IconManager {
         for (const iconset of iconsets.items) {
             sprites.push({
                 id: iconset.uid,
-                url: String(stdurl(`/api/iconset/${iconset.uid}/sprites?token=${localStorage.token}`))
+                url: String(stdurl(`/api/iconset/${iconset.uid}/sprite?token=${localStorage.token}`))
             });
         }
 
