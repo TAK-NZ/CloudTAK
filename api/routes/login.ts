@@ -341,6 +341,14 @@ export default async function router(schema: Schema, config: Config) {
                 res.cookie(`${cookieName}-${i}`, '', cookieOptions);
             }
             
+            // Also clear the base cookie (without shard number)
+            res.cookie(cookieName, '', cookieOptions);
+            
+            // Add cache control headers to prevent caching
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            
             // Redirect to IdP logout endpoint if configured
             if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
                 const authentikUrl = process.env.AUTHENTIK_URL.replace(/\/$/, '');
