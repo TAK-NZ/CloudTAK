@@ -40,16 +40,20 @@ index 657b802da..27e1a37e1 100644
  const body = ref<Login_Create>({
      username: '',
      password: ''
-@@ -154,6 +171,23 @@ const body = ref<Login_Create>({
+@@ -154,6 +171,24 @@ const body = ref<Login_Create>({
  onMounted(async () => {
      await brandStore.init();
  
 +    // Check for token in URL (from OIDC redirect)
 +    if (route.query.token) {
++        loading.value = true;
 +        localStorage.token = String(route.query.token);
 +        emit('login');
-+        const redirect = route.query.redirect || '/';
-+        router.replace(String(redirect));
++        // Small delay to let auth state settle before navigation
++        setTimeout(() => {
++            const redirect = route.query.redirect || '/';
++            router.replace(String(redirect));
++        }, 200);
 +        return;
 +    }
 +

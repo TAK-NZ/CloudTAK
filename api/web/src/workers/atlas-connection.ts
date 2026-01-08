@@ -17,6 +17,8 @@ export default class AtlasConnection {
     isDestroyed: boolean;
     isOpen: boolean;
     ws: WebSocket | undefined;
+    reconnectAttempts: number;
+    maxReconnectAttempts: number;
 
     version: string;
 
@@ -26,6 +28,8 @@ export default class AtlasConnection {
         this.isDestroyed = false;
         this.isOpen = false;
         this.ws = undefined;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
 
         this.version = version;
     }
@@ -50,6 +54,7 @@ export default class AtlasConnection {
         this.ws.addEventListener('open', () => {
             this.atlas.postMessage({ type: WorkerMessageType.Connection_Open });
             this.isOpen = true;
+            this.reconnectAttempts = 0;
         });
 
         this.ws.addEventListener('error', (err) => {
@@ -57,13 +62,22 @@ export default class AtlasConnection {
         });
 
         this.ws.addEventListener('close', () => {
-            // Otherwise the user is probably logged out
-            if (!this.isDestroyed) {
-                this.connect(connection);
-            }
-
-            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
             this.isOpen = false;
+            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
+            
+            if (!this.isDestroyed && this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+                console.log(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                
+                setTimeout(() => {
+                    if (!this.isDestroyed) {
+                        this.connect(connection);
+                    }
+                }, delay);
+            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error('WebSocket: Max reconnection attempts reached. Please refresh the page.');
+            }
         });
 
         this.ws.addEventListener('message', async (msg) => {

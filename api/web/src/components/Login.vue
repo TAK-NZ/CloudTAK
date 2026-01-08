@@ -179,8 +179,11 @@ onMounted(async () => {
         loadingMessage.value = 'Completing login...';
         localStorage.token = String(route.query.token);
         emit('login');
-        const redirect = route.query.redirect || '/';
-        router.replace(String(redirect));
+        // Small delay to let auth state settle before navigation
+        setTimeout(() => {
+            const redirect = route.query.redirect || '/';
+            router.replace(String(redirect));
+        }, 200);
         return;
     }
 
