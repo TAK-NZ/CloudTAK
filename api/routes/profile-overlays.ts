@@ -254,11 +254,45 @@ export default async function router(schema: Schema, config: Config) {
         }),
         res: AugmentedProfileOverlayResponse
     }, async (req, res) => {
+        let user;
         try {
-            const user = await Auth.as_user(config, req);
+            user = await Auth.as_user(config, req);
 
             if (req.body.styles && req.body.styles.length) {
                 TileJSON.isValidStyle(req.body.type || 'raster', req.body.styles);
+            }
+
+            // Normalize URL
+            if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
+                const url = new URL(req.body.url);
+                req.body.url = url.pathname;
+            }
+
+            // Check if overlay already exists and unhide it
+            const existing = await config.models.ProfileOverlay.list({
+                limit: 1,
+                where: sql`username = ${user.email} AND url = ${req.body.url}`
+            });
+
+            if (existing.total > 0) {
+                const overlay = await config.models.ProfileOverlay.commit(existing.items[0].id, {
+                    visible: true
+                });
+
+                if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
+                    const basemap = await config.models.Basemap.from(overlay.mode_id);
+                    return res.json({
+                        ...overlay,
+                        actions: TileJSON.actions(basemap.url),
+                        opacity: Number(overlay.opacity)
+                    });
+                } else {
+                    return res.json({
+                        ...overlay,
+                        actions: TileJSON.actions(),
+                        opacity: Number(overlay.opacity)
+                    });
+                }
             }
 
             if (req.body.active && req.body.mode !== 'mission') {
@@ -291,11 +325,6 @@ export default async function router(schema: Schema, config: Config) {
                     token: sub.data.token
                 })
             } else {
-                if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
-                    const url = new URL(req.body.url);
-                    req.body.url = url.pathname;
-                }
-
                 overlay = await config.models.ProfileOverlay.generate({
                     ...req.body,
                     opacity: String(req.body.opacity || 1),
@@ -319,11 +348,7 @@ export default async function router(schema: Schema, config: Config) {
                 });
             }
         } catch (err) {
-            if (String(err).includes('duplicate key value violates unique constraint')) {
-                 Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'Overlay appears to exist - cannot add duplicate'), res)
-            } else {
-                 Err.respond(err, res);
-            }
+            return Err.respond(err, res);
         }
     });
 
@@ -346,6 +371,16 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             await config.models.ProfileOverlay.delete(overlay.id);
+
+            // Delete associated iconset if it exists
+            if (overlay.iconset) {
+                try {
+                    await config.models.Iconset.delete(overlay.iconset);
+                } catch (err) {
+                    // Iconset might be shared or already deleted, ignore error
+                    console.warn(`Failed to delete iconset ${overlay.iconset}:`, err);
+                }
+            }
 
             if (overlay.mode === 'mission' && overlay.mode_id) {
                 const profile = await config.models.Profile.from(user.email);

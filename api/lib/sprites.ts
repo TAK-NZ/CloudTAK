@@ -120,16 +120,14 @@ export default class SpriteBuilder {
                 .toBuffer();
 
             // @ts-expect-error Deal with indexing issue on icon
-            let path = spriteConfig.name ? icon[spriteConfig.name] + '.png' : icon.path.replace(/.*?\//, '');
-            if (!path.endsWith('.png')) {
-                if (path.indexOf('.') !== -1) {
-                    path = path.replace(/\..*?$/, '.png');
-                } else {
-                    path = path + '.png';
-                }
+            let iconPath = spriteConfig.name ? icon[spriteConfig.name] : icon.path.replace(/.*?\//, '');
+            
+            // Ensure path ends with .png extension
+            if (!iconPath.endsWith('.png')) {
+                iconPath = iconPath + '.png';
             }
 
-            src.push(new Vinyl({ path, contents }))
+            src.push(new Vinyl({ path: iconPath, contents }))
         }
 
         const doc = await SpriteSmith({ src });
