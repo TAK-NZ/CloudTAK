@@ -1,0 +1,35 @@
+diff --git a/api/web/src/base/overlay.ts b/api/web/src/base/overlay.ts
+index 578f78369..093373fbd 100644
+--- a/api/web/src/base/overlay.ts
++++ b/api/web/src/base/overlay.ts
+@@ -229,18 +229,22 @@ export default class Overlay {
+ 
+             const tileJSON = await std(url.toString()) as TileJSON
+ 
+-            mapStore.map.addSource(String(this.id), {
+-                ...tileJSON,
+-                type: 'raster',
+-            });
++            if (!mapStore.map.getSource(String(this.id))) {
++                mapStore.map.addSource(String(this.id), {
++                    ...tileJSON,
++                    type: 'raster',
++                });
++            }
+         } else if (this.type === 'vector' && this.url) {
+             const url = stdurl(this.url);
+             url.searchParams.append('token', localStorage.token);
+ 
+-            mapStore.map.addSource(String(this.id), {
+-                type: 'vector',
+-                url: String(url)
+-            });
++            if (!mapStore.map.getSource(String(this.id))) {
++                mapStore.map.addSource(String(this.id), {
++                    type: 'vector',
++                    url: String(url)
++                });
++            }
+         } else if (this.type === 'geojson') {
+             if (!mapStore.map.getSource(String(this.id))) {
+                 const data: FeatureCollection = { type: 'FeatureCollection', features: [] };
