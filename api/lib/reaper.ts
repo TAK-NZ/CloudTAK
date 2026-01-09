@@ -33,34 +33,37 @@ export default class Reaper {
         const bufferSeconds = parseInt(process.env.REAPER_BUFFER || '30');
         
         try {
-            const result = await this.config.pg.pool.query(`
+            // @ts-expect-error session.client not in types but exists
+            const client = this.config.pg.session.client;
+            
+            const result = await client`
                 SELECT 
                     connection,
                     id
                 FROM connection_features
                 WHERE 
                     properties->>'stale' IS NOT NULL
-                    AND (properties->>'stale')::timestamptz < NOW() - INTERVAL '${bufferSeconds} seconds'
+                    AND (properties->>'stale')::timestamptz < NOW() - INTERVAL ${bufferSeconds} seconds
                     AND ST_GeometryType(geometry) IN (
                         'ST_Polygon', 
                         'ST_LineString', 
                         'ST_MultiPolygon', 
                         'ST_MultiLineString'
                     )
-                LIMIT $1
-            `, [batchSize]);
+                LIMIT ${batchSize}
+            `;
             
-            if (result.rows.length > 0) {
-                console.log(`Reaper: Found ${result.rows.length} stale features to clean up`);
+            if (result.length > 0) {
+                console.log(`Reaper: Found ${result.length} stale features to clean up`);
             }
             
-            for (const feat of result.rows) {
+            for (const feat of result) {
                 await this.sendForceDelete(feat.connection, feat.id);
                 
-                await this.config.pg.pool.query(
-                    'DELETE FROM connection_features WHERE connection = $1 AND id = $2',
-                    [feat.connection, feat.id]
-                );
+                await client`
+                    DELETE FROM connection_features 
+                    WHERE connection = ${feat.connection} AND id = ${feat.id}
+                `;
             }
         } catch (err) {
             console.error('Reaper sweep failed:', err);
