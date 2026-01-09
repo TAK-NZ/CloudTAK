@@ -4,6 +4,7 @@ import External from './external.js';
 import AuthentikProvider from './authentik-provider.js';
 import SecretsManager from '@aws-sdk/client-secrets-manager';
 import EventsPool from './events-pool.js';
+import Reaper from './reaper.js';
 import { Pool, GenerateUpsert } from '@openaddresses/batch-generic';
 import ConnectionPool from './connection-pool.js';
 import { ConnectionWebSocket } from './connection-web.js';
@@ -40,6 +41,7 @@ export default class Config {
     conns: ConnectionPool;
     server: InferSelectModel<typeof Server>;
     events: EventsPool;
+    reaper: Reaper;
     VpcId?: string;
     SubnetPublicA?: string;
     SubnetPublicB?: string;
@@ -82,6 +84,7 @@ export default class Config {
         this.conns = new ConnectionPool(this);
 
         this.events = new EventsPool(this.StackName);
+        this.reaper = new Reaper(this);
     }
 
     serverCert(): {
