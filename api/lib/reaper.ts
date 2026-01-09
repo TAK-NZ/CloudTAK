@@ -33,7 +33,7 @@ export default class Reaper {
         const bufferSeconds = parseInt(process.env.REAPER_BUFFER || '30');
         
         try {
-            const result = await this.config.pg.query(`
+            const result = await this.config.pg.pool.query(`
                 SELECT 
                     connection,
                     id
@@ -57,7 +57,7 @@ export default class Reaper {
             for (const feat of result.rows) {
                 await this.sendForceDelete(feat.connection, feat.id);
                 
-                await this.config.pg.query(
+                await this.config.pg.pool.query(
                     'DELETE FROM connection_features WHERE connection = $1 AND id = $2',
                     [feat.connection, feat.id]
                 );
