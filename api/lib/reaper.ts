@@ -1,4 +1,4 @@
-import { ForceDelete } from '@tak-ps/node-cot';
+import CoT from '@tak-ps/node-cot';
 import type Config from './config.js';
 
 /**
@@ -9,8 +9,8 @@ import type Config from './config.js';
  * the connection_features table and sends ForceDelete messages when polygons/lines
  * become stale.
  * 
- * This is an interim solution with no schema changes. Retries are handled via
- * setTimeout and will be lost on restart (acceptable trade-off for simplicity).
+ * The t-x-d-d messages are sent with a configurable stale time (default 30 days)
+ * so TAK Server persists them and delivers to offline clients when they reconnect.
  */
 export default class Reaper {
     config: Config;
@@ -25,7 +25,7 @@ export default class Reaper {
             this.sweep().catch(err => console.error('Reaper sweep error:', err));
         }, interval);
         
-        console.log(`ok - Reaper service started (interval: ${interval}ms)`);
+        console.error(`ok - Reaper service started (interval: ${interval}ms)`);
     }
     
     async sweep(): Promise<void> {
@@ -43,7 +43,7 @@ export default class Reaper {
                 FROM connection_features
                 WHERE 
                     properties->>'stale' IS NOT NULL
-                    AND (properties->>'stale')::timestamptz < NOW() - INTERVAL ${bufferSeconds} seconds
+                    AND (properties->>'stale')::timestamptz < NOW() - INTERVAL '${client.unsafe(bufferSeconds.toString())} seconds'
                     AND ST_GeometryType(geometry) IN (
                         'ST_Polygon', 
                         'ST_LineString', 
@@ -75,36 +75,47 @@ export default class Reaper {
             const pooledClient = await this.config.conns.get(connection);
             if (!pooledClient?.config.enabled) return;
             
-            const deleteMsg = new ForceDelete(uid);
+            const staleDays = parseInt(process.env.REAPER_STALE_DAYS || '30');
+            const now = new Date();
+            const staleDate = new Date(now.getTime() + staleDays * 24 * 60 * 60 * 1000);
             
-            console.log(`Reaper: Force-deleting stale feature ${uid} from connection ${connection}`);
+            const deleteMsg = new CoT({
+                event: {
+                    _attributes: {
+                        version: '2.0',
+                        uid: uid,
+                        type: 't-x-d-d',
+                        how: 'm-g',
+                        time: now.toISOString(),
+                        start: now.toISOString(),
+                        stale: staleDate.toISOString()
+                    },
+                    point: {
+                        _attributes: {
+                            lat: '0.0',
+                            lon: '0.0',
+                            hae: '0.0',
+                            ce: '9999999',
+                            le: '9999999'
+                        }
+                    },
+                    detail: {
+                        link: {
+                            _attributes: {
+                                uid: uid,
+                                type: 'none',
+                                relation: 'none'
+                            }
+                        },
+                        __forcedelete: {}
+                    }
+                }
+            });
+            
+            console.log(`Reaper: Force-deleting stale feature ${uid} from connection ${connection} (stale=${staleDays}d)`);
             
             pooledClient.tak.write([deleteMsg]);
             await this.config.conns.cots(pooledClient.config, [deleteMsg]);
-            
-            // Schedule retries for offline clients (T+5m, T+15m)
-            // Note: These are lost on restart, but acceptable for interim solution
-            setTimeout(async () => {
-                try {
-                    const client = await this.config.conns.get(connection);
-                    if (client?.config.enabled) {
-                        client.tak.write([new ForceDelete(uid)]);
-                    }
-                } catch (err) {
-                    console.error(`Reaper retry (T+5m) failed for ${uid}:`, err);
-                }
-            }, 5 * 60 * 1000);
-            
-            setTimeout(async () => {
-                try {
-                    const client = await this.config.conns.get(connection);
-                    if (client?.config.enabled) {
-                        client.tak.write([new ForceDelete(uid)]);
-                    }
-                } catch (err) {
-                    console.error(`Reaper retry (T+15m) failed for ${uid}:`, err);
-                }
-            }, 15 * 60 * 1000);
         } catch (err) {
             console.error(`Reaper: Failed to send ForceDelete for ${uid}:`, err);
         }

@@ -84,7 +84,14 @@ export default class Config {
         this.conns = new ConnectionPool(this);
 
         this.events = new EventsPool(this.StackName);
-        this.reaper = new Reaper(this);
+        
+        console.error('ok - Initializing Reaper service...');
+        try {
+            this.reaper = new Reaper(this);
+        } catch (err) {
+            console.error('Error initializing Reaper service:', err);
+            throw err;
+        }
     }
 
     serverCert(): {
