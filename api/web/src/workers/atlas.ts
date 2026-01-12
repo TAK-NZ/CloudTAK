@@ -60,13 +60,25 @@ export default class Atlas {
 
         this.token = authToken;
 
-        const username = await this.profile.init();
-        await this.conn.connect(username)
+        try {
+            const username = await this.profile.init();
+            await this.conn.connect(username)
 
-        await Promise.all([
-            this.db.init(),
-            this.team.init()
-        ])
+            await Promise.all([
+                this.db.init(),
+                this.team.init()
+            ])
+        } catch (err) {
+            console.error('Atlas initialization failed:', err);
+            
+            // If connection fails (e.g., "other side closed"), auto-logout
+            if (err instanceof Error && (err.message.includes('other side closed') || err.message.includes('401') || err.message.includes('403'))) {
+                console.log('Session expired or connection failed. Redirecting to logout...');
+                window.location.href = '/api/logout';
+            } else {
+                throw err;
+            }
+        }
     }
 
     destroy() {
