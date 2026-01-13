@@ -42,6 +42,7 @@ export interface ContextEnvironmentConfig {
     oidcSystemAdminGroup?: string;
     oidcAgencyAdminGroupPrefix?: string;
     authentikChannelGroupPrefix?: string;
+    localOnlyAccounts?: string[];
   };
   ecr: {
     imageRetentionCount: number;

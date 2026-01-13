@@ -1,0 +1,68 @@
+diff --git a/api/web/src/base/events.ts b/api/web/src/base/events.ts
+index 1234567..abcdefg 100644
+--- a/api/web/src/base/events.ts
++++ b/api/web/src/base/events.ts
+@@ -20,6 +20,8 @@ export enum WorkerMessageType {
+     Connection_Open = 'connection:open',
+     Connection_Close = 'connection:close',
+ 
++    Session_Logout = 'session:logout',
++
+     Mission_Change_Feature = 'mission:change:feature',
+ }
+ 
+diff --git a/api/web/src/stores/map.ts b/api/web/src/stores/map.ts
+index 1234567..abcdefg 100644
+--- a/api/web/src/stores/map.ts
++++ b/api/web/src/stores/map.ts
+@@ -450,6 +450,8 @@ export const useMapStore = defineStore('cloudtak', {
+                     this.hasNoChannels = true;
+                 } else if (msg.type === WorkerMessageType.Channels_List) {
+                     this.hasNoChannels = false;
++                } else if (msg.type === WorkerMessageType.Session_Logout) {
++                    window.location.href = '/api/logout';
+                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
+                     await this.loadMission(msg.body.guid);
+                 } else if (msg.type === WorkerMessageType.Contact_Change) {
+diff --git a/api/web/src/workers/atlas.ts b/api/web/src/workers/atlas.ts
+index 1234567..abcdefg 100644
+--- a/api/web/src/workers/atlas.ts
++++ b/api/web/src/workers/atlas.ts
+@@ -54,11 +54,23 @@ export default class Atlas {
+     async init(authToken: string) {
+         if (this.token) return;
+ 
+         this.token = authToken;
+ 
+-        const username = await this.profile.init();
+-        await this.conn.connect(username)
+-
+-        await Promise.all([
+-            this.db.init(),
+-            this.team.init()
+-        ])
++        try {
++            const username = await this.profile.init();
++            await this.conn.connect(username)
++
++            await Promise.all([
++                this.db.init(),
++                this.team.init()
++            ])
++        } catch (err) {
++            console.error('Atlas initialization failed:', err);
++            
++            // If connection fails (e.g., "other side closed"), auto-logout
++            if (err instanceof Error && (err.message.includes('other side closed') || err.message.includes('401') || err.message.includes('403'))) {
++                console.log('Session expired or connection failed. Redirecting to logout...');
++                // Send message to main thread to perform redirect (Web Workers can't navigate)
++                this.postMessage({
++                    type: WorkerMessageType.Session_Logout
++                });
++            } else {
++                throw err;
++            }
++        }
+     }
+ 
+     destroy() {

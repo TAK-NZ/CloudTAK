@@ -436,6 +436,8 @@ export const useMapStore = defineStore('cloudtak', {
                     this.hasNoChannels = true;
                 } else if (msg.type === WorkerMessageType.Channels_List) {
                     this.hasNoChannels = false;
+                } else if (msg.type === WorkerMessageType.Session_Logout) {
+                    window.location.href = '/api/logout';
                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
                     await this.loadMission(msg.body.guid);
                 } else if (msg.type === WorkerMessageType.Contact_Change) {
@@ -547,6 +549,21 @@ export const useMapStore = defineStore('cloudtak', {
             this.updateDistanceUnit(profile.display_distance);
 
             this.isOpen = await this.worker.conn.isOpen;
+
+            // Handle tab visibility changes to reconnect WebSocket and refresh data
+            document.addEventListener('visibilitychange', async () => {
+                if (!document.hidden) {
+                    const isOpen = await this.worker.conn.isOpen;
+                    if (!isOpen) {
+                        console.log('Tab became visible with closed connection, reconnecting...');
+                        const profile = await this.worker.profile.profile;
+                        if (profile) {
+                            await this.worker.conn.reconnect(profile.username);
+                        }
+                    }
+                    await this.updateCOT();
+                }
+            });
         },
         startGPSWatch: function(): void {
             if (!("geolocation" in navigator)) return;
