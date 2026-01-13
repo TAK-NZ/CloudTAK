@@ -272,8 +272,10 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
             if (connConfig instanceof MachineConnConfig) {
                 try {
                     const feat = await CoTParser.to_geojson(cot);
-                    if (feat.geometry && feat.properties?.stale && 
+                    if (feat.geometry && feat.properties?.stale &&
                         ['Polygon', 'LineString', 'MultiPolygon', 'MultiLineString'].includes(feat.geometry.type)) {
+                        
+                        console.log(`Reaper - Caching: ${feat.id}, stale=${feat.properties.stale}, type=${feat.properties.type}`);
                         
                         // @ts-expect-error session.client not in types but exists
                         const client = this.config.pg.session.client;
@@ -284,7 +286,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                 ${connConfig.id},
                                 ${feat.id},
                                 ${feat.path || '/'},
-                                ${JSON.stringify(feat.properties)},
+                                ${JSON.stringify(feat.properties)}::jsonb,
                                 ST_Force3DZ(ST_GeomFromGeoJSON(${JSON.stringify(feat.geometry)}))
                             )
                             ON CONFLICT (connection, id) DO UPDATE SET
@@ -292,6 +294,8 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                 geometry = EXCLUDED.geometry,
                                 path = EXCLUDED.path
                         `;
+                        
+                        console.log(`Reaper - Cached: ${feat.id}`);
                     }
                 } catch (err) {
                     console.error('Failed to cache polygon/line for Reaper:', err);
