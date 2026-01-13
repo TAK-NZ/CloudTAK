@@ -43,7 +43,7 @@ export default class Reaper {
                 FROM connection_features
                 WHERE 
                     properties->>'stale' IS NOT NULL
-                    AND (properties->>'stale')::timestamptz < NOW() - INTERVAL '${client.unsafe(bufferSeconds.toString())} seconds'
+                    AND (properties->>'stale')::timestamptz < NOW() - (${bufferSeconds}::text || ' seconds')::interval
                     AND ST_GeometryType(geometry) IN (
                         'ST_Polygon', 
                         'ST_LineString', 
