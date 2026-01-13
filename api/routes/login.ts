@@ -30,18 +30,21 @@ export default async function router(schema: Schema, config: Config) {
         })
     }, async (req, res) => {
         try {
-            // Check if OIDC is forced and local login is restricted to system admins
+            // Check if OIDC is forced and local login is restricted
             const oidcForced = process.env.OIDC_FORCED === 'true';
+            const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '').split(',').map(a => a.trim()).filter(Boolean);
             
             let profile;
 
             if (config.server.auth.key && config.server.auth.cert) {
                 const email = await provider.login(req.body.username, req.body.password);
                 
-                // If OIDC is forced, only allow system admins to login locally
+                // If OIDC is forced, only allow configured local-only accounts or system admins
                 if (oidcForced) {
                     const tempProfile = await config.models.Profile.from(email);
-                    if (!tempProfile.system_admin) {
+                    const isLocalOnly = localOnlyAccounts.includes(email);
+                    
+                    if (!isLocalOnly && !tempProfile.system_admin) {
                         throw new Err(403, null, 'Local login is restricted. Please use SSO.');
                     }
                 }
@@ -187,7 +190,16 @@ export default async function router(schema: Schema, config: Config) {
             try {
                 profile = await config.models.Profile.from(auth.email);
                 
-                // Update group membership and last_login for existing users
+                // Block OIDC login for local-only accounts (configured via env var)
+                const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '').split(',').map(a => a.trim()).filter(Boolean);
+                const isLocalOnly = localOnlyAccounts.includes(auth.email);
+                
+                if (isLocalOnly) {
+                    console.log(`Blocking OIDC login for local-only account: ${auth.email}`);
+                    throw new Error('This account is configured for local login only. Please use /login?local=true');
+                }
+                
+                // Update group membership and last_login for existing OIDC users
                 await config.models.Profile.commit(auth.email, {
                     id: authentikUserId,
                     system_admin: isSystemAdmin,
@@ -213,9 +225,8 @@ export default async function router(schema: Schema, config: Config) {
             }
             
             // Check if certificate is missing, invalid, or expired
-            const needsCertificate = !profile.auth.cert || !profile.auth.key || 
-                                    profile.auth.cert === '' || profile.auth.key === '' ||
-                                    await isCertificateExpired(profile.auth.cert);
+            const hasValidCert = profile.auth && profile.auth.cert && profile.auth.cert.length > 0;
+            const needsCertificate = !hasValidCert || (hasValidCert && await isCertificateExpired(profile.auth.cert));
             
             // Check if we should sync attributes from Authentik
             const shouldSyncAttributes = process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';

@@ -217,7 +217,9 @@ export default async function server(config: Config): Promise<ServerManager> {
                 let client;
                 if (!config.conns.has(parsedParams.connection)) {
                     const profile = await config.models.Profile.from(parsedParams.connection);
-                    if (!profile.auth.cert || !profile.auth.key) throw new Error('No Cert Found on profile');
+                    if (!profile.auth.cert || !profile.auth.key) {
+                        throw new Error('Certificate required. Please visit /api/enroll to generate a certificate.');
+                    }
 
                     client = await config.conns.add(new ProfileConnConfig(config, parsedParams.connection, profile.auth));
                 } else {

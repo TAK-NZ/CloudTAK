@@ -396,7 +396,8 @@ export class CloudTakApi extends Construct {
           'OIDC_FORCED': envConfig.cloudtak.oidcForced !== false ? 'true' : 'false',
           'OIDC_SYSTEM_ADMIN_GROUP': envConfig.cloudtak.oidcSystemAdminGroup || 'CloudTAKSystemAdmin',
           'OIDC_AGENCY_ADMIN_GROUP_PREFIX': envConfig.cloudtak.oidcAgencyAdminGroupPrefix || 'CloudTAKAgency',
-          'AUTHENTIK_CHANNEL_GROUP_PREFIX': envConfig.cloudtak.authentikChannelGroupPrefix || 'tak_'
+          'AUTHENTIK_CHANNEL_GROUP_PREFIX': envConfig.cloudtak.authentikChannelGroupPrefix || 'tak_',
+          'LOCAL_ONLY_ACCOUNTS': (envConfig.cloudtak.localOnlyAccounts || []).join(',')
         })
       },
       secrets: {

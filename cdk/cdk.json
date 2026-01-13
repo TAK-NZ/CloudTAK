@@ -49,7 +49,8 @@
         "syncAuthentikAttributesOnLogin": true,
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
         "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
-        "authentikChannelGroupPrefix": "tak_"
+        "authentikChannelGroupPrefix": "tak_",
+        "localOnlyAccounts": ["ckadmin"]
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -99,7 +100,8 @@
         "syncAuthentikAttributesOnLogin": true,
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
         "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
-        "authentikChannelGroupPrefix": "tak_"
+        "authentikChannelGroupPrefix": "tak_",
+        "localOnlyAccounts": ["ckadmin"]
       },
       "ecr": {
         "imageRetentionCount": 20,
