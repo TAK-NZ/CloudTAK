@@ -349,14 +349,29 @@ export default class Config {
             try {
                 console.error('ok - Ensuring admin user has admin permissions');
                 
-                // Create admin user directly in database with admin permissions
-                await config.models.Profile.generate({
-                    username: process.env.CLOUDTAK_ADMIN_USERNAME,
-                    auth: { password: process.env.CLOUDTAK_ADMIN_PASSWORD },
-                    system_admin: true
-                }, { upsert: GenerateUpsert.UPDATE });
-                
-                console.error('ok - Admin user ensured with admin permissions');
+                // Try to get existing profile
+                let profile;
+                try {
+                    profile = await config.models.Profile.from(process.env.CLOUDTAK_ADMIN_USERNAME);
+                    // Profile exists - only update password and system_admin, preserve everything else
+                    await config.models.Profile.commit(process.env.CLOUDTAK_ADMIN_USERNAME, {
+                        auth: { ...profile.auth, password: process.env.CLOUDTAK_ADMIN_PASSWORD },
+                        system_admin: true
+                    });
+                    console.error('ok - Admin user password and permissions updated');
+                } catch (err) {
+                    if (err instanceof Error && err.message.includes('Item Not Found')) {
+                        // Profile doesn't exist - create it
+                        await config.models.Profile.generate({
+                            username: process.env.CLOUDTAK_ADMIN_USERNAME,
+                            auth: { password: process.env.CLOUDTAK_ADMIN_PASSWORD },
+                            system_admin: true
+                        });
+                        console.error('ok - Admin user created with admin permissions');
+                    } else {
+                        throw err;
+                    }
+                }
             } catch (err) {
                 console.error(`Error ensuring admin user: ${err instanceof Error ? err.message : String(err)}`);
             }

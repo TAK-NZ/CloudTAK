@@ -228,6 +228,15 @@ export default class AtlasConnection {
         });
     }
 
+    reconnect(connection: string) {
+        console.log('Forcing WebSocket reconnection...');
+        this.reconnectAttempts = 0;
+        if (this.ws) {
+            this.ws.close();
+        }
+        this.connect(connection);
+    }
+
     destroy() {
         this.isDestroyed = true;
 

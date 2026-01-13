@@ -209,6 +209,13 @@ export default async function router(schema: Schema, config: Config) {
                 profile = await config.models.Profile.from(auth.email);
             } catch (err) {
                 if (err instanceof Error && err.message.includes('Item Not Found')) {
+                    // Block OIDC from creating local-only accounts
+                    const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '').split(',').map(a => a.trim()).filter(Boolean);
+                    if (localOnlyAccounts.includes(auth.email)) {
+                        console.log(`Blocking OIDC account creation for local-only account: ${auth.email}`);
+                        throw new Error('This account is configured for local login only. Please use /login?local=true');
+                    }
+                    
                     isNewUser = true;
                     // Auto-create user on first OIDC login using ProfileControl to respect system defaults
                     profile = await provider.profile.generate({

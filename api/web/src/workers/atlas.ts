@@ -17,6 +17,7 @@ export default class Atlas {
     sync: BroadcastChannel;
 
     token: string;
+    username: string = '';
 
     db = Comlink.proxy(new AtlasDatabase(this));
     team = Comlink.proxy(new AtlasTeam(this));
@@ -61,8 +62,8 @@ export default class Atlas {
         this.token = authToken;
 
         try {
-            const username = await this.profile.init();
-            await this.conn.connect(username)
+            this.username = await this.profile.init();
+            await this.conn.connect(this.username)
 
             await Promise.all([
                 this.db.init(),
@@ -74,7 +75,10 @@ export default class Atlas {
             // If connection fails (e.g., "other side closed"), auto-logout
             if (err instanceof Error && (err.message.includes('other side closed') || err.message.includes('401') || err.message.includes('403'))) {
                 console.log('Session expired or connection failed. Redirecting to logout...');
-                window.location.href = '/api/logout';
+                // Send message to main thread to perform redirect (Web Workers can't navigate)
+                this.postMessage({
+                    type: WorkerMessageType.Session_Logout
+                });
             } else {
                 throw err;
             }
