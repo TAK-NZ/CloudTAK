@@ -13,7 +13,6 @@ import * as Default from '../lib/limits.js';
 import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
 import { needsCertRenewal } from '../lib/cert-health.js';
 import AuthentikProvider from '../lib/authentik-provider.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/connection', {
@@ -362,8 +361,7 @@ export default async function router(schema: Schema, config: Config) {
                 return res.json({ renewed: false, message: 'Certificate does not need renewal' });
             }
 
-            const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
-            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
+            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
 
             await config.models.Connection.commit(req.params.connectionid, {
                 auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
@@ -416,8 +414,7 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             try {
-                const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
-                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
+                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
 
                 await config.models.Connection.commit(connection.id, {
                     auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }

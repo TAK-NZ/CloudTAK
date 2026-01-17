@@ -195,11 +195,20 @@ async function uploadApplicationIcon(api, appSlug) {
       return;
     }
     
+    // Step 1: Upload file to Authentik media storage
     const form = new FormData();
-    form.append('file', fs.createReadStream(iconPath));
+    form.append('file', fs.createReadStream(iconPath), 'CloudTAKLogo.png');
     
-    await api.post(`/api/v3/core/applications/${appSlug}/set_icon/`, form, {
-      headers: form.getHeaders(),
+    const uploadResponse = await axios.post(`${api.defaults.baseURL}/api/v3/admin/file/`, form, {
+      headers: {
+        'Authorization': api.defaults.headers['Authorization'],
+        ...form.getHeaders(),
+      },
+    });
+    
+    // Step 2: Update application with uploaded file path
+    await api.patch(`/api/v3/core/applications/${appSlug}/`, {
+      meta_icon: uploadResponse.data.url
     });
     
     console.log('Icon uploaded successfully');
