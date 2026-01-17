@@ -56,3 +56,54 @@ index 1234567..abcdefg 100644
                      isNewUser = true;
                      // Auto-create user on first OIDC login using ProfileControl to respect system defaults
                      profile = await provider.profile.generate({
+@@ -231,9 +260,14 @@ export default async function router(schema: Schema, config: Config) {
+                 }
+             }
+             
+-            // Check if certificate is missing, invalid, or expired
++            // Check if certificate is missing, invalid, expired, or revoked
+             const hasValidCert = profile.auth && profile.auth.cert && profile.auth.cert.length > 0;
+-            const needsCertificate = !hasValidCert || (hasValidCert && await isCertificateExpired(profile.auth.cert));
++            let needsCertificate = !hasValidCert || (hasValidCert && await isCertificateExpired(profile.auth.cert));
++            
++            // If certificate exists and isn't expired, test if it's revoked by TAK Server
++            if (hasValidCert && !needsCertificate && config.server.auth.key && config.server.auth.cert) {
++                needsCertificate = await isCertificateRevoked(profile.auth, config.server.webtak);
++            }
+             
+             // Check if we should sync attributes from Authentik
+             const shouldSyncAttributes = process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';
+@@ -553,3 +587,33 @@ async function isCertificateExpired(certPem: string): Promise<boolean> {
+         return true; // Treat invalid certificates as expired
+     }
+ }
++
++// Helper function to check if certificate is revoked by TAK Server
++async function isCertificateRevoked(auth: { cert: string; key: string }, takServerUrl: string): Promise<boolean> {
++    try {
++        const cert = new X509Certificate(auth.cert);
++        const serialNumber = cert.serialNumber.toLowerCase();
++        
++        // Check TAK Server API for certificate status
++        const api = await TAKAPI.init(new URL(takServerUrl), {
++            cert: auth.cert,
++            key: auth.key
++        });
++        
++        // Get active certificates and check if ours has a revocationDate
++        const response = await api.axios.get('/Marti/api/certadmin/cert/active');
++        const certs = response.data?.data || [];
++        
++        const certInfo = certs.find((c: any) => c.serialNumber?.toLowerCase() === serialNumber);
++        
++        if (certInfo && certInfo.revocationDate) {
++            console.log(`Certificate ${serialNumber} is revoked (revocationDate: ${certInfo.revocationDate})`);
++            return true;
++        }
++        
++        return false;
++    } catch (err) {
++        console.warn('Certificate revocation check failed (assuming valid):', err instanceof Error ? err.message : String(err));
++        return false;
++    }
++}
