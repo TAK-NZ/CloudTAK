@@ -198,7 +198,7 @@ async function uploadApplicationIcon(api, appSlug) {
     const form = new FormData();
     form.append('file', fs.createReadStream(iconPath));
     
-    await api.post(`/api/v3/core/applications/${appSlug}/set_icon/`, form, {
+    await api.post(`/api/v3/core/applications/${appSlug}/set_icon_url/`, form, {
       headers: form.getHeaders(),
     });
     
