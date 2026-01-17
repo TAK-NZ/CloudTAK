@@ -289,7 +289,7 @@ export default async function router(schema: Schema, config: Config) {
                             process.env.AUTHENTIK_URL
                         );
                         
-                        // Request certificate from TAK Server
+                        // Request certificate from TAK Server using password auth (not revoked cert)
                         const takAuth = new APIAuthPassword(auth.email, appPassword);
                         const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
                         const certs = await api.Credentials.generate();
@@ -302,7 +302,7 @@ export default async function router(schema: Schema, config: Config) {
                         // Refresh profile to get updated cert
                         profile = await config.models.Profile.from(auth.email);
                         
-                        console.log(`Certificate enrolled successfully for ${auth.email}`);
+                        console.log(`Certificate ${hasValidCert ? 'renewed' : 'enrolled'} successfully for ${auth.email}`);
                     }
                 } catch (certErr) {
                     console.error('Certificate enrollment error:', certErr);

@@ -462,7 +462,7 @@ export default class AuthentikProvider {
 
     async renewConnectionCertificate(
         machineUserId: number,
-        takApi: TAKAPI
+        takServerUrl: string
     ): Promise<{ cert: string; key: string }> {
         const creds = await this.auth();
         const tempPassword = crypto.randomBytes(32).toString('base64url');
@@ -490,6 +490,10 @@ export default class AuthentikProvider {
         if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Failed to fetch user');
         const userData: any = await userResponse.json();
         
+        // Use password auth instead of potentially revoked certificate
+        const { APIAuthPassword } = await import('@tak-ps/node-tak');
+        const takAuth = new APIAuthPassword(userData.username, tempPassword);
+        const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
         const enrollment = await takApi.Certificate.generate({
             username: userData.username,
             password: tempPassword
