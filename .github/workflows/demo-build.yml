@@ -49,11 +49,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Set up Docker Buildx with docker driver
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-          install: true
+      - name: Disable BuildKit for Docker v2 manifest
+        run: |
+          echo "DOCKER_BUILDKIT=0" >> $GITHUB_ENV
         
 
         
