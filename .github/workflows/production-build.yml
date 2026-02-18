@@ -113,6 +113,9 @@ jobs:
             echo "⏭️ Branding disabled, building with upstream code"
           fi
       
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
       - name: Build and Push CloudTAK Images
         run: |
           REPO_NAME=$(echo ${{ steps.tags.outputs.ecr-repo-uri }} | cut -d'/' -f2)
@@ -128,8 +131,9 @@ jobs:
               --no-cache \
               --platform linux/amd64 \
               --output type=docker \
+              --provenance=false \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
-              api/ | docker load
+              api/
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
           fi
           
@@ -148,8 +152,9 @@ jobs:
                   --no-cache \
                   --platform linux/amd64 \
                   --output type=docker \
+                  --provenance=false \
                   -t ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG \
-                  tasks/$task/ | docker load
+                  tasks/$task/
                 docker push ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG
               fi
             fi
