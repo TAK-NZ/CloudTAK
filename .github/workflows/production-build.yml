@@ -45,6 +45,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx with docker driver
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+          install: true
         
       - name: Setup CDK Environment
         uses: ./.github/actions/setup-cdk
@@ -127,7 +133,6 @@ jobs:
               -f api/Dockerfile \
               --no-cache \
               --rm \
-              --output type=docker \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
               api/
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
@@ -147,7 +152,6 @@ jobs:
                   -f tasks/$task/Dockerfile \
                   --no-cache \
                   --rm \
-                  --output type=docker \
                   -t ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG \
                   tasks/$task/
                 docker push ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG
