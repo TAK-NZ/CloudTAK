@@ -131,10 +131,10 @@ jobs:
             docker buildx build \
               -f api/Dockerfile \
               --no-cache \
-              --load \
               --platform linux/amd64 \
+              --output type=docker \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
-              api/
+              api/ | docker load
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
           fi
           
@@ -151,10 +151,10 @@ jobs:
                 docker buildx build \
                   -f tasks/$task/Dockerfile \
                   --no-cache \
-                  --load \
                   --platform linux/amd64 \
+                  --output type=docker \
                   -t ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG \
-                  tasks/$task/
+                  tasks/$task/ | docker load
                 docker push ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG
               fi
             fi
