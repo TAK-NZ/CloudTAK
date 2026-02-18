@@ -540,7 +540,7 @@ async function isCertificateExpired(certPem: string): Promise<boolean> {
         const cert = new X509Certificate(certPem);
         const validTo = cert.validTo;
         // Renew if expired or expiring within 7 days
-        return moment(validTo, "MMM DD hh:mm:ss YYYY").isBefore(moment().add(7, 'days'));
+        return moment(validTo, "MMM DD HH:mm:ss YYYY").isBefore(moment().add(7, 'days'));
     } catch (err) {
         console.error('Certificate validation error:', err);
         return true; // Treat invalid certificates as expired
