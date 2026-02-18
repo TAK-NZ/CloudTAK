@@ -245,6 +245,9 @@ export default async function router(schema: Schema, config: Config) {
                     // Get Authentik API token
                     const authentikToken = await getAuthentikToken();
                     
+                    // Collect all updates in a single object
+                    const updates: any = {};
+                    
                     // Fetch and update user attributes from Authentik
                     if (shouldSyncAttributes || isNewUser) {
                         const userAttrs = await getAuthentikUserAttributes(
@@ -255,8 +258,6 @@ export default async function router(schema: Schema, config: Config) {
                         
                         console.log(`Fetched Authentik attributes for ${auth.email}:`, JSON.stringify(userAttrs));
                         
-                        // Update profile with Authentik attributes
-                        const updates: any = {};
                         if (userAttrs.takCallsign) {
                             updates.tak_callsign = userAttrs.takCallsign;
                             updates.tak_remarks = userAttrs.takCallsign;
@@ -264,16 +265,6 @@ export default async function router(schema: Schema, config: Config) {
                         if (userAttrs.takColor) updates.tak_group = userAttrs.takColor;
                         
                         console.log(`Profile updates for ${auth.email}:`, JSON.stringify(updates));
-                        
-                        if (Object.keys(updates).length > 0) {
-                            updates.updated = new Date().toISOString();
-                            await config.models.Profile.commit(auth.email, updates);
-                            console.log(`Successfully updated profile attributes for ${auth.email}`);
-                            // Refresh profile to get updated attributes
-                            profile = await config.models.Profile.from(auth.email);
-                        } else {
-                            console.log(`No attribute updates needed for ${auth.email}`);
-                        }
                     }
                     
                     // Enroll certificate if needed
@@ -284,20 +275,22 @@ export default async function router(schema: Schema, config: Config) {
                             process.env.AUTHENTIK_URL
                         );
                         
-                        // Request certificate from TAK Server using password auth (not revoked cert)
+                        // Request certificate from TAK Server using password auth
                         const takAuth = new APIAuthPassword(auth.email, appPassword);
                         const api = await TAKAPI.init(new URL(config.server.webtak), takAuth);
                         const certs = await api.Credentials.generate();
                         
-                        // Update profile with certificate
-                        await config.models.Profile.commit(auth.email, {
-                            auth: certs
-                        });
-                        
-                        // Refresh profile to get updated cert
-                        profile = await config.models.Profile.from(auth.email);
-                        
+                        updates.auth = certs;
                         console.log(`Certificate ${hasValidCert ? 'renewed' : 'enrolled'} successfully for ${auth.email}`);
+                    }
+                    
+                    // Commit all updates in a single transaction
+                    if (Object.keys(updates).length > 0) {
+                        updates.updated = new Date().toISOString();
+                        await config.models.Profile.commit(auth.email, updates);
+                        console.log(`Successfully updated profile for ${auth.email}`);
+                        // Refresh profile to get all updates
+                        profile = await config.models.Profile.from(auth.email);
                     }
                 } catch (certErr) {
                     console.error('Certificate enrollment error:', certErr);
