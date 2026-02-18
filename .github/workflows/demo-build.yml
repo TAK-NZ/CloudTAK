@@ -132,6 +132,7 @@ jobs:
               -f api/Dockerfile \
               --no-cache \
               --rm \
+              --output type=docker \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
               api/
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
@@ -151,6 +152,7 @@ jobs:
                   -f tasks/$task/Dockerfile \
                   --no-cache \
                   --rm \
+                  --output type=docker \
                   -t ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG \
                   tasks/$task/
                 docker push ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG
