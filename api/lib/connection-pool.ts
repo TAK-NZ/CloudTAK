@@ -174,11 +174,17 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
 
                     try {
                         if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
+                            // The chatroom is always feat.properties.chat.chatroom — the TAK
+                            // chatroom field which is always the recipient's callsign. This
+                            // ensures all users (sender, recipient, observers) store the message
+                            // under the same chatroom name, matching ATAK behaviour.
+                            const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
+
                             await this.config.models.ProfileChat.generate({
                                 username: String(conn.id),
-                                chatroom: feat.properties.chat.senderCallsign,
+                                chatroom: feat.properties.chat.chatroom,
                                 sender_callsign: feat.properties.chat.senderCallsign,
-                                sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
+                                sender_uid: senderUid,
                                 message_id: feat.properties.chat.messageId || randomUUID(),
                                 message: feat.properties.remarks || ''
                             });
@@ -210,6 +216,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                         chatroom: feat.properties.chat.chatroom,
                                         messageId: feat.properties.chat.messageId,
                                         from: {
+                                            uid: feat.properties.chat.chatgrp?._attributes?.uid0,
                                             callsign: feat.properties.chat.senderCallsign,
                                         },
                                         message: feat.properties.remarks,

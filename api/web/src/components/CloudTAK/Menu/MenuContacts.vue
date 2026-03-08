@@ -161,6 +161,7 @@ const visibleActiveContacts = ref<ContactList>([]);
 const visibleOfflineContacts = ref<ContactList>([]);
 
 const channel = new BroadcastChannel("cloudtak");
+let presenceRefreshInterval: ReturnType<typeof setInterval> | undefined;
 
 channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const msg = event.data;
@@ -181,11 +182,21 @@ onMounted(async () => {
     ]);
 
     await updateContacts();
+
+    // Periodically re-evaluate online/offline status. Contact_Change fires when
+    // a new presence CoT arrives or a stale one is removed, but the interval
+    // ensures the panel stays accurate even if no CoTs arrive for a while.
+    presenceRefreshInterval = setInterval(async () => {
+        await updateContacts();
+    }, 30000);
 });
 
 onBeforeUnmount(() => {
     if (channel) {
         channel.close();
+    }
+    if (presenceRefreshInterval) {
+        clearInterval(presenceRefreshInterval);
     }
 })
 
@@ -207,7 +218,14 @@ async function updateContacts() {
         if (!contact.callsign.toLowerCase().includes(paging.value.filter.toLowerCase())) continue;
         if (contact.uid === self.value) continue;
 
-        if (await mapStore.worker.db.has(contact.uid)) {
+        // A contact is online if their CoT is present in the live map store.
+        // Server-side entities (e.g. plugin bots with endpoint *:-1:stcp) are
+        // absent from /api/contacts/all but are added to the team contacts map
+        // when their presence CoT is received, so check both sources.
+        const onlineInMap = await mapStore.worker.db.has(contact.uid);
+        const onlineInTeam = !!(await mapStore.worker.team.get(contact.uid));
+
+        if (onlineInMap || onlineInTeam) {
             if (contact.team) {
                 newTeams.add(contact.team);
                 newOpened.add(contact.team);
@@ -229,8 +247,12 @@ async function fetchList(loading: Ref<boolean>) {
     loading.value = true;
 
     try {
+        // load() merges API contacts into the team map and returns the full map,
+        // including contacts discovered from received CoTs (e.g. plugin/bot entities
+        // absent from /api/contacts/all). Use the return value directly — accessing
+        // team.contacts as a raw property across the Comlink boundary does not work.
         const team = await mapStore.worker.team.load();
-        contacts.value = Array.from(team.values())
+        contacts.value = Array.from(team.values());
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err))
     }

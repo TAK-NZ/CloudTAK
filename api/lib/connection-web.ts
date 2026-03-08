@@ -1,5 +1,4 @@
 import { Static } from '@sinclair/typebox'
-import { randomUUID } from 'node:crypto';
 import { DirectChat, CoTParser }  from '@tak-ps/node-cot';
 import type { Feature }  from '@tak-ps/node-cot';
 import { WebSocket } from 'ws';
@@ -21,18 +20,24 @@ export class ConnectionWebSocket {
                     const msg = JSON.parse(String(data));
 
                     if (msg.type === 'chat') {
+                        if (!msg.data.to?.uid || !msg.data.to?.callsign) {
+                            throw new Error(`Chat message is missing recipient uid/callsign: ${JSON.stringify(msg.data.to)}`);
+                        }
                         const chat = new DirectChat(msg.data);
+                        // TAK Server plugins (e.g. tak-gpt) route incoming messages by
+                        // searching xmlDetail for `dest callsign="..."`. The TAK Server
+                        // strips <marti> before populating xmlDetail, so addDest() is
+                        // insufficient. A <dest callsign="..."> element must be placed
+                        // directly inside <detail> to survive the protobuf conversion.
+                        if (!chat.raw.event.detail) chat.raw.event.detail = {};
+                        (chat.raw.event.detail as Record<string, unknown>).dest = {
+                            _attributes: { callsign: msg.data.to.callsign }
+                        };
                         client.tak.write([chat]);
-
-                        const feat = await CoTParser.to_geojson(chat);
-                        await client.config.config.models.ProfileChat.generate({
-                            username: String(client.config.id),
-                            chatroom: msg.data.chatroom,
-                            sender_callsign: msg.data.from.callsign,
-                            sender_uid: msg.data.from.uid,
-                            message_id: feat.properties.chat ? (feat.properties.chat.messageId || randomUUID()) : randomUUID(),
-                            message: msg.data.message
-                        })
+                        // Do NOT store the outgoing message here. The TAK Server echoes
+                        // the CoT back on the sender's TCP connection, which triggers
+                        // connection-pool.ts cots() to store it. Storing here as well
+                        // would result in the sender seeing the message twice.
                     } else {
                         const feat = msg.data as Static<typeof Feature.Feature>;
 

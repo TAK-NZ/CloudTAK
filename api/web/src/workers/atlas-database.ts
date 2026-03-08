@@ -133,6 +133,13 @@ export default class AtlasDatabase {
                 )
             ) {
                 diff.remove.push(cot.vectorId())
+                // If this was a contact (skittle), notify the Contacts panel so it
+                // can move the contact to Offline without waiting for the next
+                // presence CoT from another user to trigger Contact_Change.
+                if (cot.is_skittle) {
+                    this.atlas.team.contacts.delete(cot.id);
+                    this.atlas.postMessage({ type: WorkerMessageType.Contact_Change });
+                }
             } else if (!cot.properties.archived) {
                 if (now < stale && (cot.properties['icon-opacity'] !== 1 || cot.properties['marker-opacity'] !== 1)) {
                     cot.properties['icon-opacity'] = 1;

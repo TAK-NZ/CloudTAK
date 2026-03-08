@@ -29,37 +29,34 @@ export default class AtlasTeam {
 
         const entry = this.contacts.get(cot.id);
 
-        if (entry) {
-            return entry;
-        } else {
-            const contact: Contact = {
-                uid: cot.id,
-                notes: '',
-                filterGroups: null,
-                callsign: cot.properties.callsign,
-                team: cot.properties.group.name,
-                role: cot.properties.group.role,
-                takv: ''
-            }
-
-            this.contacts.set(cot.id, contact);
-
-            this.atlas.postMessage({
-                type: WorkerMessageType.Contact_Change
-            });
-
-            if (this.atlas.profile.uid() !== cot.id) {
-                await TAKNotification.create(
-                    NotificationType.Contact,
-                    'Online Contact',
-                    `${cot.properties.callsign} is now Online`,
-                    `/cot/${cot.id}`,
-                    false
-                );
-            }
-
-            return contact;
+        const contact: Contact = {
+            uid: cot.id,
+            notes: entry?.notes || '',
+            filterGroups: entry?.filterGroups || null,
+            callsign: cot.properties.callsign,
+            team: cot.properties.group.name,
+            role: cot.properties.group.role,
+            takv: entry?.takv || ''
         }
+
+        this.contacts.set(cot.id, contact);
+
+        this.atlas.postMessage({
+            type: WorkerMessageType.Contact_Change
+        });
+
+        // Only notify on first appearance — not on updates or reconnect replays
+        if (!entry && this.atlas.profile.uid() !== cot.id) {
+            await TAKNotification.create(
+                NotificationType.Contact,
+                'Online Contact',
+                `${cot.properties.callsign} is now Online`,
+                `/cot/${cot.id}`,
+                false
+            );
+        }
+
+        return contact;
     }
 
     async get(uid: string): Promise<Contact | undefined> {
@@ -78,8 +75,10 @@ export default class AtlasTeam {
             token: this.atlas.token
         }) as ContactList;
 
-        this.contacts.clear();
-
+        // Merge rather than replace — contacts discovered from received CoTs
+        // (e.g. server-side plugin/bot entities with endpoint *:-1:stcp that are
+        // absent from /api/contacts/all) must survive reconnects so they remain
+        // visible in the Contacts panel and do not re-trigger "Online" notifications.
         for (const contact of contacts) {
             if (!contact.uid) continue;
             this.contacts.set(contact.uid, contact);
