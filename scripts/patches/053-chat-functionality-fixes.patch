@@ -1,0 +1,539 @@
+diff --git a/api/lib/connection-pool.ts b/api/lib/connection-pool.ts
+index 209aec7c5..ab6519104 100644
+--- a/api/lib/connection-pool.ts
++++ b/api/lib/connection-pool.ts
+@@ -174,11 +174,17 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
+ 
+                     try {
+                         if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
++                            // The chatroom is always feat.properties.chat.chatroom — the TAK
++                            // chatroom field which is always the recipient's callsign. This
++                            // ensures all users (sender, recipient, observers) store the message
++                            // under the same chatroom name, matching ATAK behaviour.
++                            const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
++
+                             await this.config.models.ProfileChat.generate({
+                                 username: String(conn.id),
+-                                chatroom: feat.properties.chat.senderCallsign,
++                                chatroom: feat.properties.chat.chatroom,
+                                 sender_callsign: feat.properties.chat.senderCallsign,
+-                                sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
++                                sender_uid: senderUid,
+                                 message_id: feat.properties.chat.messageId || randomUUID(),
+                                 message: feat.properties.remarks || ''
+                             });
+@@ -210,6 +216,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
+                                         chatroom: feat.properties.chat.chatroom,
+                                         messageId: feat.properties.chat.messageId,
+                                         from: {
++                                            uid: feat.properties.chat.chatgrp?._attributes?.uid0,
+                                             callsign: feat.properties.chat.senderCallsign,
+                                         },
+                                         message: feat.properties.remarks,
+diff --git a/api/lib/connection-web.ts b/api/lib/connection-web.ts
+index 34e282347..1ba3c53d5 100644
+--- a/api/lib/connection-web.ts
++++ b/api/lib/connection-web.ts
+@@ -1,5 +1,4 @@
+ import { Static } from '@sinclair/typebox'
+-import { randomUUID } from 'node:crypto';
+ import { DirectChat, CoTParser }  from '@tak-ps/node-cot';
+ import type { Feature }  from '@tak-ps/node-cot';
+ import { WebSocket } from 'ws';
+@@ -21,18 +20,24 @@ export class ConnectionWebSocket {
+                     const msg = JSON.parse(String(data));
+ 
+                     if (msg.type === 'chat') {
++                        if (!msg.data.to?.uid || !msg.data.to?.callsign) {
++                            throw new Error(`Chat message is missing recipient uid/callsign: ${JSON.stringify(msg.data.to)}`);
++                        }
+                         const chat = new DirectChat(msg.data);
++                        // TAK Server plugins (e.g. tak-gpt) route incoming messages by
++                        // searching xmlDetail for `dest callsign="..."`. The TAK Server
++                        // strips <marti> before populating xmlDetail, so addDest() is
++                        // insufficient. A <dest callsign="..."> element must be placed
++                        // directly inside <detail> to survive the protobuf conversion.
++                        if (!chat.raw.event.detail) chat.raw.event.detail = {};
++                        (chat.raw.event.detail as Record<string, unknown>).dest = {
++                            _attributes: { callsign: msg.data.to.callsign }
++                        };
+                         client.tak.write([chat]);
+-
+-                        const feat = await CoTParser.to_geojson(chat);
+-                        await client.config.config.models.ProfileChat.generate({
+-                            username: String(client.config.id),
+-                            chatroom: msg.data.chatroom,
+-                            sender_callsign: msg.data.from.callsign,
+-                            sender_uid: msg.data.from.uid,
+-                            message_id: feat.properties.chat ? (feat.properties.chat.messageId || randomUUID()) : randomUUID(),
+-                            message: msg.data.message
+-                        })
++                        // Do NOT store the outgoing message here. The TAK Server echoes
++                        // the CoT back on the sender's TCP connection, which triggers
++                        // connection-pool.ts cots() to store it. Storing here as well
++                        // would result in the sender seeing the message twice.
+                     } else {
+                         const feat = msg.data as Static<typeof Feature.Feature>;
+ 
+diff --git a/api/routes/profile-chat.ts b/api/routes/profile-chat.ts
+index 2730280c4..8ba291a49 100644
+--- a/api/routes/profile-chat.ts
++++ b/api/routes/profile-chat.ts
+@@ -156,7 +156,7 @@ export default async function router(schema: Schema, config: Config) {
+             for (const chat of req.query.chat) {
+                 await config.models.ProfileChat.delete(sql`
+                     username = ${user.email}
+-                    AND id = ${chat}
++                    AND message_id = ${chat}
+                 `);
+             }
+ 
+diff --git a/api/web/src/base/chatroom-chats.ts b/api/web/src/base/chatroom-chats.ts
+index 1782e0c02..bf9721fe0 100644
+--- a/api/web/src/base/chatroom-chats.ts
++++ b/api/web/src/base/chatroom-chats.ts
+@@ -98,11 +98,6 @@ export default class ChatroomChats {
+                         uid: contact.uid,
+                         callsign: contact.callsign
+                     }
+-                } else {
+-                    recipient = {
+-                        uid: this.chatroom,
+-                        callsign: this.chatroom
+-                    }
+                 }
+             }
+         }
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuChat.vue b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
+index 151290e01..0145efc78 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuChat.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
+@@ -20,56 +20,85 @@
+         </template>
+         <template #default>
+             <TablerLoading v-if='loading' />
+-            <GenericSelect
++            <div
+                 v-else
+-                ref='select'
+-                role='menu'
+-                :disabled='!multiselect'
+-                :items='chats'
++                class='col-12 d-flex flex-column'
++                style='height: 100%; overflow: hidden;'
+             >
+-                <template #buttons='{disabled}'>
+-                    <TablerDelete
+-                        :disabled='disabled'
+-                        displaytype='icon'
+-                        @delete='deleteChats'
+-                    />
+-                </template>
+-                <template #item='{item}'>
+-                    <div class='w-100 d-flex my-2 px-2'>
+-                        <div
+-                            v-if='item.sender_uid !== id'
+-                            class='bg-blue px-2 py-2 rounded'
+-                        >
+-                            <span v-text='item.message' />
+-                        </div>
+-                        <div
+-                            v-else
+-                            class='ms-auto bg-accent px-2 py-2 rounded'
+-                        >
+-                            <span v-text='item.message' />
+-                        </div>
+-                    </div>
+-                </template>
+-            </GenericSelect>
+-
+-            <div class='border-top position-absolute start-0 bottom-0 end-0'>
+-                <div class='d-flex align-items-center mx-2 my-2'>
+-                    <div class='flex-grow-1 me-2'>
+-                        <TablerInput
+-                            v-model='message'
+-                            @keyup.enter='sendMessage'
++                <div
++                    ref='scrollContainer'
++                    class='flex-grow-1'
++                    style='min-height: 0; overflow-y: auto;'
++                    @scroll='onScroll'
++                >
++                    <GenericSelect
++                        ref='select'
++                        role='menu'
++                        :disabled='!multiselect'
++                        :items='chats'
++                    >
++                        <template #buttons='{disabled}'>
++                            <TablerDelete
++                                :disabled='disabled'
++                                displaytype='icon'
++                                @delete='deleteChats'
++                            />
++                        </template>
++                        <template #item='{item}'>
++                            <div class='w-100 d-flex my-2 px-2'>
++                                <div
++                                    v-if='item.sender_uid !== id'
++                                    class='bg-blue px-2 py-2 rounded'
++                                >
++                                    <div class='fw-bold small mb-1'>
++                                        <span v-text='item.sender' />
++                                    </div>
++                                    <span v-text='item.message' />
++                                </div>
++                                <div
++                                    v-else
++                                    class='ms-auto bg-accent px-2 py-2 rounded'
++                                >
++                                    <div class='fw-bold small mb-1 text-end'>
++                                        Me
++                                    </div>
++                                    <span v-text='item.message' />
++                                </div>
++                            </div>
++                        </template>
++                    </GenericSelect>
++                </div>
++
++                <div class='col-12 flex-shrink-0 border-top position-relative'>
++                    <button
++                        v-if='!atBottom'
++                        class='position-absolute top-0 start-50 translate-middle btn btn-secondary btn-sm rounded-circle opacity-75'
++                        style='z-index: 10;'
++                        @click='scrollToBottom'
++                    >
++                        <IconArrowDown
++                            :size='16'
++                            stroke='2'
+                         />
+-                    </div>
+-                    <div>
+-                        <TablerIconButton
+-                            title='Send Message'
+-                            @click='sendMessage'
+-                        >
+-                            <IconSend
+-                                :size='32'
+-                                stroke='1'
++                    </button>
++                    <div class='d-flex align-items-center mx-2 my-2'>
++                        <div class='flex-grow-1 me-2'>
++                            <TablerInput
++                                v-model='message'
++                                @keyup.enter='sendMessage'
+                             />
+-                        </TablerIconButton>
++                        </div>
++                        <div>
++                            <TablerIconButton
++                                title='Send Message'
++                                @click='sendMessage'
++                            >
++                                <IconSend
++                                    :size='32'
++                                    stroke='1'
++                                />
++                            </TablerIconButton>
++                        </div>
+                     </div>
+                 </div>
+             </div>
+@@ -78,7 +107,7 @@
+ </template>
+ 
+ <script setup>
+-import { ref, onMounted, shallowRef, watch, onUnmounted } from 'vue';
++import { ref, onMounted, shallowRef, watch, onUnmounted, nextTick } from 'vue';
+ import { useRoute, useRouter } from 'vue-router';
+ import Chatroom from '../../../base/chatroom.ts';
+ import GenericSelect from '../util/GenericSelect.vue';
+@@ -86,6 +115,7 @@ import { liveQuery } from 'dexie';
+ import {
+     IconListCheck,
+     IconSend,
++    IconArrowDown,
+ } from '@tabler/icons-vue';
+ import {
+     TablerRefreshButton,
+@@ -105,24 +135,38 @@ const id = ref('')
+ const callsign = ref('');
+ const loading = ref(true);
+ const select = ref(null);
++const scrollContainer = ref(null);
++const atBottom = ref(true);
+ const multiselect = ref(false);
+ const name = ref(route.params.chatroom === 'new' ? route.query.callsign : route.params.chatroom);
+ const room = shallowRef();
+ 
++// Preserve recipient uid/callsign across the /new -> /:chatroom navigation.
++// route.query.uid is only present on the /new route; once we navigate away it
++// is lost, so we capture it into component state on mount.
++const recipientUid = ref(route.query.uid ? String(route.query.uid) : '');
++const recipientCallsign = ref(route.query.callsign ? String(route.query.callsign) : '');
++
+ const chats = ref([]);
+ let subscription;
+ 
+-watch([room, () => route.params.chatroom], ([newRoom, chatroom]) => {
++watch([room, () => route.params.chatroom], ([newRoom]) => {
+     if (subscription) {
+         subscription.unsubscribe();
+         subscription = null;
+     }
+ 
+-    if (newRoom && chatroom !== 'new') {
++    // Subscribe to liveQuery for both the /new route and named chatrooms so
++    // that a sent message appears immediately without waiting for navigation.
++    if (newRoom) {
+         const obs = liveQuery(() => newRoom.chats.list());
+         subscription = obs.subscribe({
+-            next: (val) => {
++            next: async (val) => {
+                 chats.value = val;
++                if (atBottom.value) {
++                    await nextTick();
++                    scrollToBottom();
++                }
+             },
+             error: (err) => {
+                 console.error(err);
+@@ -163,20 +207,27 @@ async function sendMessage() {
+     if (!message.value.trim().length) return;
+     if (!room.value) return;
+ 
++    // Use the captured recipient state, which survives the /new -> /:chatroom
++    // navigation. Fall back to route query params if state was not yet set
++    // (e.g. component mounted directly on a named chatroom route).
+     let recipient;
+-    if (route.query.uid && route.query.callsign) {
+-        recipient = {
+-            uid: String(route.query.uid),
+-            callsign: String(route.query.callsign)
+-        }
++    const rUid = recipientUid.value || (route.query.uid ? String(route.query.uid) : '');
++    const rCallsign = recipientCallsign.value || (route.query.callsign ? String(route.query.callsign) : '');
++    if (rUid && rCallsign) {
++        recipient = { uid: rUid, callsign: rCallsign };
+     }
+ 
+-    await room.value.chats.send(
+-        message.value,
+-        { uid: id.value, callsign: callsign.value },
+-        mapStore.worker,
+-        recipient
+-    );
++    try {
++        await room.value.chats.send(
++            message.value,
++            { uid: id.value, callsign: callsign.value },
++            mapStore.worker,
++            recipient
++        );
++    } catch (err) {
++        console.error('Failed to send chat message:', err);
++        return;
++    }
+ 
+     message.value = ''
+ 
+@@ -219,4 +270,16 @@ async function fetchChats() {
+ 
+     loading.value = false;
+ }
++
++function onScroll() {
++    const el = scrollContainer.value;
++    if (!el) return;
++    atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
++}
++
++function scrollToBottom() {
++    const el = scrollContainer.value;
++    if (!el) return;
++    el.scrollTop = el.scrollHeight;
++}
+ </script>
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue b/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
+index 389c295c5..d65dd0f7f 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
+@@ -161,6 +161,7 @@ const visibleActiveContacts = ref<ContactList>([]);
+ const visibleOfflineContacts = ref<ContactList>([]);
+ 
+ const channel = new BroadcastChannel("cloudtak");
++let presenceRefreshInterval: ReturnType<typeof setInterval> | undefined;
+ 
+ channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+     const msg = event.data;
+@@ -181,12 +182,22 @@ onMounted(async () => {
+     ]);
+ 
+     await updateContacts();
++
++    // Periodically re-evaluate online/offline status. Contact_Change fires when
++    // a new presence CoT arrives or a stale one is removed, but the interval
++    // ensures the panel stays accurate even if no CoTs arrive for a while.
++    presenceRefreshInterval = setInterval(async () => {
++        await updateContacts();
++    }, 30000);
+ });
+ 
+ onBeforeUnmount(() => {
+     if (channel) {
+         channel.close();
+     }
++    if (presenceRefreshInterval) {
++        clearInterval(presenceRefreshInterval);
++    }
+ })
+ 
+ watch(paging.value, async () => {
+@@ -207,7 +218,14 @@ async function updateContacts() {
+         if (!contact.callsign.toLowerCase().includes(paging.value.filter.toLowerCase())) continue;
+         if (contact.uid === self.value) continue;
+ 
+-        if (await mapStore.worker.db.has(contact.uid)) {
++        // A contact is online if their CoT is present in the live map store.
++        // Server-side entities (e.g. plugin bots with endpoint *:-1:stcp) are
++        // absent from /api/contacts/all but are added to the team contacts map
++        // when their presence CoT is received, so check both sources.
++        const onlineInMap = await mapStore.worker.db.has(contact.uid);
++        const onlineInTeam = !!(await mapStore.worker.team.get(contact.uid));
++
++        if (onlineInMap || onlineInTeam) {
+             if (contact.team) {
+                 newTeams.add(contact.team);
+                 newOpened.add(contact.team);
+@@ -229,8 +247,12 @@ async function fetchList(loading: Ref<boolean>) {
+     loading.value = true;
+ 
+     try {
++        // load() merges API contacts into the team map and returns the full map,
++        // including contacts discovered from received CoTs (e.g. plugin/bot entities
++        // absent from /api/contacts/all). Use the return value directly — accessing
++        // team.contacts as a raw property across the Comlink boundary does not work.
+         const team = await mapStore.worker.team.load();
+-        contacts.value = Array.from(team.values())
++        contacts.value = Array.from(team.values());
+     } catch (err) {
+         error.value = err instanceof Error ? err : new Error(String(err))
+     }
+diff --git a/api/web/src/components/CloudTAK/util/NotificationToast.vue b/api/web/src/components/CloudTAK/util/NotificationToast.vue
+index 297b63643..c0cc51d22 100644
+--- a/api/web/src/components/CloudTAK/util/NotificationToast.vue
++++ b/api/web/src/components/CloudTAK/util/NotificationToast.vue
+@@ -38,7 +38,11 @@
+                     />
+                 </div>
+                 <div class='toast-body'>
+-                    <span v-text='notification.body' />
++                    <span
++                        class='text-truncate d-block'
++                        style='max-width: 220px;'
++                        v-text='notification.body'
++                    />
+                 </div>
+                 <div class='loading-bar' />
+             </div>
+diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
+index b967a1ce7..f10897342 100644
+--- a/api/web/src/workers/atlas-database.ts
++++ b/api/web/src/workers/atlas-database.ts
+@@ -133,6 +133,13 @@ export default class AtlasDatabase {
+                 )
+             ) {
+                 diff.remove.push(cot.vectorId())
++                // If this was a contact (skittle), notify the Contacts panel so it
++                // can move the contact to Offline without waiting for the next
++                // presence CoT from another user to trigger Contact_Change.
++                if (cot.is_skittle) {
++                    this.atlas.team.contacts.delete(cot.id);
++                    this.atlas.postMessage({ type: WorkerMessageType.Contact_Change });
++                }
+             } else if (!cot.properties.archived) {
+                 if (now < stale && (cot.properties['icon-opacity'] !== 1 || cot.properties['marker-opacity'] !== 1)) {
+                     cot.properties['icon-opacity'] = 1;
+diff --git a/api/web/src/workers/atlas-team.ts b/api/web/src/workers/atlas-team.ts
+index 68ff71ac1..ed29c8fc2 100644
+--- a/api/web/src/workers/atlas-team.ts
++++ b/api/web/src/workers/atlas-team.ts
+@@ -29,37 +29,34 @@ export default class AtlasTeam {
+ 
+         const entry = this.contacts.get(cot.id);
+ 
+-        if (entry) {
+-            return entry;
+-        } else {
+-            const contact: Contact = {
+-                uid: cot.id,
+-                notes: '',
+-                filterGroups: null,
+-                callsign: cot.properties.callsign,
+-                team: cot.properties.group.name,
+-                role: cot.properties.group.role,
+-                takv: ''
+-            }
+-
+-            this.contacts.set(cot.id, contact);
+-
+-            this.atlas.postMessage({
+-                type: WorkerMessageType.Contact_Change
+-            });
+-
+-            if (this.atlas.profile.uid() !== cot.id) {
+-                await TAKNotification.create(
+-                    NotificationType.Contact,
+-                    'Online Contact',
+-                    `${cot.properties.callsign} is now Online`,
+-                    `/cot/${cot.id}`,
+-                    false
+-                );
+-            }
+-
+-            return contact;
++        const contact: Contact = {
++            uid: cot.id,
++            notes: entry?.notes || '',
++            filterGroups: entry?.filterGroups || null,
++            callsign: cot.properties.callsign,
++            team: cot.properties.group.name,
++            role: cot.properties.group.role,
++            takv: entry?.takv || ''
+         }
++
++        this.contacts.set(cot.id, contact);
++
++        this.atlas.postMessage({
++            type: WorkerMessageType.Contact_Change
++        });
++
++        // Only notify on first appearance — not on updates or reconnect replays
++        if (!entry && this.atlas.profile.uid() !== cot.id) {
++            await TAKNotification.create(
++                NotificationType.Contact,
++                'Online Contact',
++                `${cot.properties.callsign} is now Online`,
++                `/cot/${cot.id}`,
++                false
++            );
++        }
++
++        return contact;
+     }
+ 
+     async get(uid: string): Promise<Contact | undefined> {
+@@ -78,8 +75,10 @@ export default class AtlasTeam {
+             token: this.atlas.token
+         }) as ContactList;
+ 
+-        this.contacts.clear();
+-
++        // Merge rather than replace — contacts discovered from received CoTs
++        // (e.g. server-side plugin/bot entities with endpoint *:-1:stcp that are
++        // absent from /api/contacts/all) must survive reconnects so they remain
++        // visible in the Contacts panel and do not re-trigger "Online" notifications.
+         for (const contact of contacts) {
+             if (!contact.uid) continue;
+             this.contacts.set(contact.uid, contact);
