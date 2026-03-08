@@ -29,18 +29,20 @@ export class Alarms extends Construct {
       topicName: `TAK-${envConfig.stackName}-CloudTAK-low-urgency`
     });
 
-    // Create alarm for Events ECS service running count
+    // Create alarm for Events ECS service - uses CPUUtilization as proxy for service health.
+    // RunningTaskCount requires Container Insights (not enabled); when the service has 0 running
+    // tasks ECS stops publishing CPU metrics, so BREACHING on missing data triggers the alarm.
     new cloudwatch.Alarm(this, 'EventsServiceAlarm', {
       alarmName: `TAK-${envConfig.stackName}-CloudTAK-EventsService`,
       metric: new cloudwatch.Metric({
         namespace: 'AWS/ECS',
-        metricName: 'RunningTaskCount',
+        metricName: 'CPUUtilization',
         dimensionsMap: {
           ServiceName: eventsService.serviceName,
           ClusterName: eventsService.cluster.clusterName
         },
         period: cdk.Duration.minutes(5),
-        statistic: 'Average'
+        statistic: 'SampleCount'
       }),
       threshold: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
