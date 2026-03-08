@@ -32,8 +32,9 @@ describe('Alarms Construct', () => {
 
     const template = Template.fromStack(stack);
     template.hasResourceProperties('AWS::CloudWatch::Alarm', {
-      MetricName: 'RunningTaskCount',
-      Namespace: 'AWS/ECS'
+      MetricName: 'CPUUtilization',
+      Namespace: 'AWS/ECS',
+      Statistic: 'SampleCount'
     });
   });
 
