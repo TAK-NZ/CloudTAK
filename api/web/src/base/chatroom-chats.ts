@@ -98,11 +98,6 @@ export default class ChatroomChats {
                         uid: contact.uid,
                         callsign: contact.callsign
                     }
-                } else {
-                    recipient = {
-                        uid: this.chatroom,
-                        callsign: this.chatroom
-                    }
                 }
             }
         }
