@@ -324,6 +324,9 @@ export default class AtlasProfile {
         return `ANDROID-CloudTAK-${this.profile.username}`;
     }
 
+    currentCoordinates(): number[] {
+        return [...this.location.coordinates];
+    }
     async CoT(coords?: number[], accuracy?: number, altitude?: number | null): Promise<void> {
         if (!this.profile || !this.server) throw new Error('Profile must be loaded before CoT is called');
 

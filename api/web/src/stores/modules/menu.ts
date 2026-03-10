@@ -19,6 +19,7 @@ import {
     IconFileImport,
     IconAffiliate,
 } from '@tabler/icons-vue';
+import Chatroom from '../../base/chatroom.ts';
 
 export type MenuItemConfig = {
     key: string;
@@ -42,6 +43,7 @@ export default class MenuManager {
     filter: Ref<string>;
     preferredLayout: Ref<'list' | 'tiles'>;
     onlineContactsCount: Ref<number>;
+    unreadChatsCount: Ref<number>;
     isSystemAdmin: Ref<boolean>;
     isAgencyAdmin: Ref<boolean>;
     pluginMenuItems: Ref<MenuItemConfig[]>;
@@ -51,6 +53,7 @@ export default class MenuManager {
         this.mapStore = mapStore;
         this.filter = ref('');
         this.onlineContactsCount = ref(0);
+        this.unreadChatsCount = ref(0);
         this.isSystemAdmin = ref(false);
         this.isAgencyAdmin = ref(false);
         this.pluginMenuItems = ref([]);
@@ -63,6 +66,10 @@ export default class MenuManager {
         this.isSystemAdmin.value = await this.mapStore.worker.profile.isSystemAdmin();
         this.isAgencyAdmin.value = await this.mapStore.worker.profile.isAgencyAdmin();
         await this.updateContactsCount();
+
+        Chatroom.liveUnreadCount().subscribe((count: number) => {
+            this.unreadChatsCount.value = count;
+        });
     }
 
     get baseMenuItems(): MenuItemConfig[] {
@@ -220,6 +227,12 @@ export default class MenuManager {
                 if (item.requiresAgencyAdmin && !(this.isAgencyAdmin.value || this.isSystemAdmin.value)) return false;
                 return true;
             }).map((item) => {
+                if (item.key === 'chats' && this.unreadChatsCount?.value > 0) {
+                    return {
+                        ...item,
+                        badge: this.unreadChatsCount.value > 99 ? '99+' : String(this.unreadChatsCount.value)
+                    }
+                }
                 if (item.key === 'contacts' && this.onlineContactsCount.value > 0) {
                     return {
                         ...item,

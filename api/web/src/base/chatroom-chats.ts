@@ -22,23 +22,33 @@ export default class ChatroomChats {
         const list = await std(url) as ProfileChatList;
 
         await db.transaction('rw', db.chatroom_chats, async () => {
-            await db.chatroom_chats
-                .where('chatroom')
-                .equals(this.chatroom)
-                .delete();
-
+            // Add server messages not already in local DB.
+            // Never delete local messages during refresh — the server may not
+            // have echoed back sent messages yet. Only explicit user deletion
+            // should remove messages from the local DB.
             for (const chat of list.items) {
                 const c = chat as APIProfileChat;
+                const existing = await db.chatroom_chats.get(c.message_id);
                 await db.chatroom_chats.put({
                     id: c.message_id,
                     chatroom: this.chatroom,
                     sender: c.sender_callsign,
                     sender_uid: c.sender_uid,
                     message: c.message,
-                    created: c.created
+                    // Preserve local created timestamp if record already exists
+                    // so sort order matches what the user saw when the message
+                    // was first stored locally.
+                    created: existing?.created || c.created
                 });
             }
         });
+
+        const activeItem = list.items[list.items.length - 1];
+        if (activeItem) {
+            await db.chatroom.update(this.chatroom, {
+                updated: (activeItem as APIProfileChat).created
+            });
+        }
     }
 
     async list(
@@ -62,6 +72,10 @@ export default class ChatroomChats {
         return chats;
     }
 
+    async markRead(): Promise<void> {
+        await db.chatroom.update(this.chatroom, { unread: 0 });
+    }
+
     async send(
         message: string,
         sender: { uid: string, callsign: string },
@@ -70,6 +84,21 @@ export default class ChatroomChats {
     ): Promise<void> {
         const id = crypto.randomUUID();
         const created = new Date().toISOString();
+
+        // Ensure the chatroom record exists. Use put only if it doesn't
+        // exist yet to avoid overwriting the created timestamp.
+        const existingRoom = await db.chatroom.get(this.chatroom);
+        if (!existingRoom) {
+            await db.chatroom.put({
+                id: this.chatroom,
+                name: this.chatroom,
+                created: created,
+                updated: created,
+                last_read: null
+            });
+        } else {
+            await db.chatroom.update(this.chatroom, { updated: created });
+        }
 
         await db.chatroom_chats.put({
             id: id,
@@ -104,6 +133,13 @@ export default class ChatroomChats {
 
         if (!recipient) throw new Error('Error sending Chat - Contact is not defined');
 
+        let location: number[] | undefined;
+        try {
+            location = await worker.profile.currentCoordinates();
+        } catch {
+            // location is best-effort, don't fail the send
+        }
+
         await worker.conn.sendCOT({
             chatroom: this.chatroom,
             from: {
@@ -113,7 +149,8 @@ export default class ChatroomChats {
             to: recipient,
             message: message,
             messageId: id,
-            time: created
+            time: created,
+            location
         }, 'chat');
     }
 }

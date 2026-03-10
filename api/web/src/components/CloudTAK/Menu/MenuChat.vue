@@ -22,12 +22,11 @@
             <TablerLoading v-if='loading' />
             <div
                 v-else
-                class='col-12 d-flex flex-column'
-                style='height: 100%; overflow: hidden;'
+                class='d-flex flex-column h-100 overflow-hidden'
             >
                 <div
                     ref='scrollContainer'
-                    class='flex-grow-1'
+                    class='flex-grow-1 position-relative'
                     style='min-height: 0; overflow-y: auto;'
                     @scroll='onScroll'
                 >
@@ -51,37 +50,45 @@
                                     class='bg-blue px-2 py-2 rounded'
                                 >
                                     <div class='fw-bold small mb-1'>
-                                        <span v-text='item.sender' />
+                                        <span v-text='item.sender || "Unknown"' />
                                     </div>
-                                    <span v-text='item.message' />
+                                    <div v-text='item.message' />
+                                    <div
+                                        class='text-end'
+                                        style='font-size: 0.75rem; opacity: 0.75;'
+                                        v-text='formatTime(item.created)'
+                                    />
                                 </div>
                                 <div
                                     v-else
                                     class='ms-auto bg-accent px-2 py-2 rounded'
                                 >
-                                    <div class='fw-bold small mb-1 text-end'>
-                                        Me
-                                    </div>
-                                    <span v-text='item.message' />
+                                    <div v-text='item.message' />
+                                    <div
+                                        class='text-end'
+                                        style='font-size: 0.75rem; opacity: 0.75;'
+                                        v-text='formatTime(item.created)'
+                                    />
                                 </div>
                             </div>
                         </template>
                     </GenericSelect>
                 </div>
 
-                <div class='col-12 flex-shrink-0 border-top position-relative'>
+                <div class='flex-shrink-0 border-top position-relative pt-1'>
                     <button
-                        v-if='!atBottom'
-                        class='position-absolute top-0 start-50 translate-middle btn btn-secondary btn-sm rounded-circle opacity-75'
-                        style='z-index: 10;'
+                        v-if='chats.length && !atBottom'
+                        class='btn btn-primary rounded-circle position-absolute start-50 p-1 scroll-bottom-btn'
+                        style='z-index: 10; top: -56px; width: 44px; height: 44px;'
+                        title='Scroll to bottom'
                         @click='scrollToBottom'
                     >
                         <IconArrowDown
-                            :size='16'
-                            stroke='2'
+                            :size='24'
+                            stroke='2.5'
                         />
                     </button>
-                    <div class='d-flex align-items-center mx-2 my-2'>
+                    <div class='d-flex align-items-center mx-2 mb-2 mt-1'>
                         <div class='flex-grow-1 me-2'>
                             <TablerInput
                                 v-model='message'
@@ -138,7 +145,7 @@ const select = ref(null);
 const scrollContainer = ref(null);
 const atBottom = ref(true);
 const multiselect = ref(false);
-const name = ref(route.params.chatroom === 'new' ? route.query.callsign : route.params.chatroom);
+const name = ref(route.params.chatroom === 'new' ? String(route.query.callsign || '') : String(route.params.chatroom || ''));
 const room = shallowRef();
 
 // Preserve recipient uid/callsign across the /new -> /:chatroom navigation.
@@ -166,6 +173,7 @@ watch([room, () => route.params.chatroom], ([newRoom]) => {
                 if (atBottom.value) {
                     await nextTick();
                     scrollToBottom();
+                    if (room.value?.chats?.markRead) await room.value.chats.markRead();
                 }
             },
             error: (err) => {
@@ -195,12 +203,12 @@ onMounted(async () => {
 
 watch(() => route.params.chatroom, async (newChatroom) => {
     if (newChatroom === 'new') {
-        name.value = route.query.callsign;
+        name.value = String(route.query.callsign || '');
     } else {
-        name.value = newChatroom;
+        name.value = String(newChatroom || '');
     }
     room.value = new Chatroom(name.value);
-    await fetchChats();
+    await fetchChats({ skipRefresh: history.state?.skipRefresh });
 });
 
 async function sendMessage() {
@@ -234,7 +242,8 @@ async function sendMessage() {
     if (route.params.chatroom === 'new') {
         await router.push({
             name: 'home-menu-chat',
-            params: { chatroom: name.value }
+            params: { chatroom: name.value },
+            state: { skipRefresh: true }
         });
     }
 }
@@ -256,10 +265,10 @@ async function deleteChats() {
     await fetchChats();
 }
 
-async function fetchChats() {
+async function fetchChats(opts = {}) {
     loading.value = true;
 
-    if (route.params.chatroom !== 'new' && room.value) {
+    if (route.params.chatroom !== 'new' && room.value && !opts.skipRefresh) {
         try {
             await Chatroom.load(room.value.name, { reload: false });
             await room.value.chats.refresh();
@@ -274,12 +283,55 @@ async function fetchChats() {
 function onScroll() {
     const el = scrollContainer.value;
     if (!el) return;
-    atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    const wasAtBottom = atBottom.value;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    atBottom.value = isAtBottom;
+    if (!wasAtBottom && isAtBottom && room.value?.chats?.markRead) {
+        room.value.chats.markRead();
+    }
 }
 
 function scrollToBottom() {
     const el = scrollContainer.value;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
+    atBottom.value = true;
+    if (room.value?.chats?.markRead) {
+        room.value.chats.markRead();
+    }
+}
+function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const month = d.toLocaleString('default', { month: 'short' });
+    const day = d.getDate();
+    const hour = String(d.getHours()).padStart(2, '0');
+    const minute = String(d.getMinutes()).padStart(2, '0');
+    return `${month} ${day}, ${hour}:${minute}`;
 }
 </script>
+
+<style scoped>
+@keyframes float {
+    0% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-6px); }
+    100% { transform: translateX(-50%) translateY(0); }
+}
+
+.scroll-bottom-btn {
+    opacity: 0.9;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+    animation: float 2.5s ease-in-out infinite;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.scroll-bottom-btn:hover {
+    opacity: 1;
+    background-color: var(--bs-primary-dark, #0b5ed7);
+    animation: none;
+    transform: translateX(-50%) translateY(0);
+}
+</style>
