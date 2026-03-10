@@ -1,37 +1,5 @@
-diff --git a/api/lib/connection-pool.ts b/api/lib/connection-pool.ts
-index 209aec7c5..ab6519104 100644
---- a/api/lib/connection-pool.ts
-+++ b/api/lib/connection-pool.ts
-@@ -174,11 +174,17 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
- 
-                     try {
-                         if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
-+                            // The chatroom is always feat.properties.chat.chatroom — the TAK
-+                            // chatroom field which is always the recipient's callsign. This
-+                            // ensures all users (sender, recipient, observers) store the message
-+                            // under the same chatroom name, matching ATAK behaviour.
-+                            const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
-+
-                             await this.config.models.ProfileChat.generate({
-                                 username: String(conn.id),
--                                chatroom: feat.properties.chat.senderCallsign,
-+                                chatroom: feat.properties.chat.chatroom,
-                                 sender_callsign: feat.properties.chat.senderCallsign,
--                                sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
-+                                sender_uid: senderUid,
-                                 message_id: feat.properties.chat.messageId || randomUUID(),
-                                 message: feat.properties.remarks || ''
-                             });
-@@ -210,6 +216,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
-                                         chatroom: feat.properties.chat.chatroom,
-                                         messageId: feat.properties.chat.messageId,
-                                         from: {
-+                                            uid: feat.properties.chat.chatgrp?._attributes?.uid0,
-                                             callsign: feat.properties.chat.senderCallsign,
-                                         },
-                                         message: feat.properties.remarks,
 diff --git a/api/lib/connection-web.ts b/api/lib/connection-web.ts
-index 34e282347..1ba3c53d5 100644
+index 34e282347..a89b3df75 100644
 --- a/api/lib/connection-web.ts
 +++ b/api/lib/connection-web.ts
 @@ -1,5 +1,4 @@
@@ -40,7 +8,7 @@ index 34e282347..1ba3c53d5 100644
  import { DirectChat, CoTParser }  from '@tak-ps/node-cot';
  import type { Feature }  from '@tak-ps/node-cot';
  import { WebSocket } from 'ws';
-@@ -21,18 +20,24 @@ export class ConnectionWebSocket {
+@@ -21,18 +20,26 @@ export class ConnectionWebSocket {
                      const msg = JSON.parse(String(data));
  
                      if (msg.type === 'chat') {
@@ -48,15 +16,28 @@ index 34e282347..1ba3c53d5 100644
 +                            throw new Error(`Chat message is missing recipient uid/callsign: ${JSON.stringify(msg.data.to)}`);
 +                        }
                          const chat = new DirectChat(msg.data);
-+                        // TAK Server plugins (e.g. tak-gpt) route incoming messages by
-+                        // searching xmlDetail for `dest callsign="..."`. The TAK Server
-+                        // strips <marti> before populating xmlDetail, so addDest() is
-+                        // insufficient. A <dest callsign="..."> element must be placed
-+                        // directly inside <detail> to survive the protobuf conversion.
++                        // TAK Server plugins (e.g. tak-gpt) are server-side entities
++                        // (endpoint *:-1:stcp) with no TCP connection. The TAK Server
++                        // routes <marti><dest uid="..."/> to connected TCP clients only,
++                        // so messages to plugins are silently dropped.
++                        // Use <marti><dest callsign="..."/> with the bot UID (matching
++                        // ATAK's wire format). The TAK Server resolves the UID to the
++                        // human-readable callsign in xmlDetail before delivering to the
++                        // plugin, so tak-gpt's llmManagers.containsKey(botName) matches.
++                        // Also inject <dest callsign="..."> directly inside <detail> as
++                        // a fallback for plugins that search xmlDetail directly.
 +                        if (!chat.raw.event.detail) chat.raw.event.detail = {};
++                        if (chat.raw.event.detail.marti) {
++                            (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
++                                { _attributes: { callsign: msg.data.to.callsign } }
++                            ];
++                        }
 +                        (chat.raw.event.detail as Record<string, unknown>).dest = {
 +                            _attributes: { callsign: msg.data.to.callsign }
 +                        };
++                        if (msg.data.location && msg.data.location[0] !== 0 && msg.data.location[1] !== 0) {
++                            chat.position(msg.data.location);
++                        }
                          client.tak.write([chat]);
 -
 -                        const feat = await CoTParser.to_geojson(chat);
@@ -76,7 +57,7 @@ index 34e282347..1ba3c53d5 100644
                          const feat = msg.data as Static<typeof Feature.Feature>;
  
 diff --git a/api/routes/profile-chat.ts b/api/routes/profile-chat.ts
-index 2730280c4..8ba291a49 100644
+index 2730280c4..e82b91f81 100644
 --- a/api/routes/profile-chat.ts
 +++ b/api/routes/profile-chat.ts
 @@ -156,7 +156,7 @@ export default async function router(schema: Schema, config: Config) {
@@ -88,183 +69,11 @@ index 2730280c4..8ba291a49 100644
                  `);
              }
  
-diff --git a/api/web/src/base/chatroom-chats.ts b/api/web/src/base/chatroom-chats.ts
-index 1782e0c02..bf9721fe0 100644
---- a/api/web/src/base/chatroom-chats.ts
-+++ b/api/web/src/base/chatroom-chats.ts
-@@ -98,11 +98,6 @@ export default class ChatroomChats {
-                         uid: contact.uid,
-                         callsign: contact.callsign
-                     }
--                } else {
--                    recipient = {
--                        uid: this.chatroom,
--                        callsign: this.chatroom
--                    }
-                 }
-             }
-         }
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuChat.vue b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
-index 151290e01..0145efc78 100644
+index 151290e01..90d5e1256 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuChat.vue
 +++ b/api/web/src/components/CloudTAK/Menu/MenuChat.vue
-@@ -20,56 +20,85 @@
-         </template>
-         <template #default>
-             <TablerLoading v-if='loading' />
--            <GenericSelect
-+            <div
-                 v-else
--                ref='select'
--                role='menu'
--                :disabled='!multiselect'
--                :items='chats'
-+                class='col-12 d-flex flex-column'
-+                style='height: 100%; overflow: hidden;'
-             >
--                <template #buttons='{disabled}'>
--                    <TablerDelete
--                        :disabled='disabled'
--                        displaytype='icon'
--                        @delete='deleteChats'
--                    />
--                </template>
--                <template #item='{item}'>
--                    <div class='w-100 d-flex my-2 px-2'>
--                        <div
--                            v-if='item.sender_uid !== id'
--                            class='bg-blue px-2 py-2 rounded'
--                        >
--                            <span v-text='item.message' />
--                        </div>
--                        <div
--                            v-else
--                            class='ms-auto bg-accent px-2 py-2 rounded'
--                        >
--                            <span v-text='item.message' />
--                        </div>
--                    </div>
--                </template>
--            </GenericSelect>
--
--            <div class='border-top position-absolute start-0 bottom-0 end-0'>
--                <div class='d-flex align-items-center mx-2 my-2'>
--                    <div class='flex-grow-1 me-2'>
--                        <TablerInput
--                            v-model='message'
--                            @keyup.enter='sendMessage'
-+                <div
-+                    ref='scrollContainer'
-+                    class='flex-grow-1'
-+                    style='min-height: 0; overflow-y: auto;'
-+                    @scroll='onScroll'
-+                >
-+                    <GenericSelect
-+                        ref='select'
-+                        role='menu'
-+                        :disabled='!multiselect'
-+                        :items='chats'
-+                    >
-+                        <template #buttons='{disabled}'>
-+                            <TablerDelete
-+                                :disabled='disabled'
-+                                displaytype='icon'
-+                                @delete='deleteChats'
-+                            />
-+                        </template>
-+                        <template #item='{item}'>
-+                            <div class='w-100 d-flex my-2 px-2'>
-+                                <div
-+                                    v-if='item.sender_uid !== id'
-+                                    class='bg-blue px-2 py-2 rounded'
-+                                >
-+                                    <div class='fw-bold small mb-1'>
-+                                        <span v-text='item.sender' />
-+                                    </div>
-+                                    <span v-text='item.message' />
-+                                </div>
-+                                <div
-+                                    v-else
-+                                    class='ms-auto bg-accent px-2 py-2 rounded'
-+                                >
-+                                    <div class='fw-bold small mb-1 text-end'>
-+                                        Me
-+                                    </div>
-+                                    <span v-text='item.message' />
-+                                </div>
-+                            </div>
-+                        </template>
-+                    </GenericSelect>
-+                </div>
-+
-+                <div class='col-12 flex-shrink-0 border-top position-relative'>
-+                    <button
-+                        v-if='!atBottom'
-+                        class='position-absolute top-0 start-50 translate-middle btn btn-secondary btn-sm rounded-circle opacity-75'
-+                        style='z-index: 10;'
-+                        @click='scrollToBottom'
-+                    >
-+                        <IconArrowDown
-+                            :size='16'
-+                            stroke='2'
-                         />
--                    </div>
--                    <div>
--                        <TablerIconButton
--                            title='Send Message'
--                            @click='sendMessage'
--                        >
--                            <IconSend
--                                :size='32'
--                                stroke='1'
-+                    </button>
-+                    <div class='d-flex align-items-center mx-2 my-2'>
-+                        <div class='flex-grow-1 me-2'>
-+                            <TablerInput
-+                                v-model='message'
-+                                @keyup.enter='sendMessage'
-                             />
--                        </TablerIconButton>
-+                        </div>
-+                        <div>
-+                            <TablerIconButton
-+                                title='Send Message'
-+                                @click='sendMessage'
-+                            >
-+                                <IconSend
-+                                    :size='32'
-+                                    stroke='1'
-+                                />
-+                            </TablerIconButton>
-+                        </div>
-                     </div>
-                 </div>
-             </div>
-@@ -78,7 +107,7 @@
- </template>
- 
- <script setup>
--import { ref, onMounted, shallowRef, watch, onUnmounted } from 'vue';
-+import { ref, onMounted, shallowRef, watch, onUnmounted, nextTick } from 'vue';
- import { useRoute, useRouter } from 'vue-router';
- import Chatroom from '../../../base/chatroom.ts';
- import GenericSelect from '../util/GenericSelect.vue';
-@@ -86,6 +115,7 @@ import { liveQuery } from 'dexie';
- import {
-     IconListCheck,
-     IconSend,
-+    IconArrowDown,
- } from '@tabler/icons-vue';
- import {
-     TablerRefreshButton,
-@@ -105,24 +135,38 @@ const id = ref('')
- const callsign = ref('');
- const loading = ref(true);
- const select = ref(null);
-+const scrollContainer = ref(null);
-+const atBottom = ref(true);
- const multiselect = ref(false);
- const name = ref(route.params.chatroom === 'new' ? route.query.callsign : route.params.chatroom);
+@@ -142,6 +142,11 @@ const name = ref(route.params.chatroom === 'new' ? route.query.callsign : route.
  const room = shallowRef();
  
 +// Preserve recipient uid/callsign across the /new -> /:chatroom navigation.
@@ -274,32 +83,14 @@ index 151290e01..0145efc78 100644
 +const recipientCallsign = ref(route.query.callsign ? String(route.query.callsign) : '');
 +
  const chats = ref([]);
- let subscription;
- 
--watch([room, () => route.params.chatroom], ([newRoom, chatroom]) => {
-+watch([room, () => route.params.chatroom], ([newRoom]) => {
-     if (subscription) {
-         subscription.unsubscribe();
-         subscription = null;
+@@ -156,7 +161,8 @@ watch(() => route.params.chatroom, async (newChatroom) => {
      }
+     room.value = new Chatroom(name.value);
+-    await fetchChats();
++    await fetchChats({ skipRefresh: history.state?.skipRefresh });
+ });
  
--    if (newRoom && chatroom !== 'new') {
-+    // Subscribe to liveQuery for both the /new route and named chatrooms so
-+    // that a sent message appears immediately without waiting for navigation.
-+    if (newRoom) {
-         const obs = liveQuery(() => newRoom.chats.list());
-         subscription = obs.subscribe({
--            next: (val) => {
-+            next: async (val) => {
-                 chats.value = val;
-+                if (atBottom.value) {
-+                    await nextTick();
-+                    scrollToBottom();
-+                }
-             },
-             error: (err) => {
-                 console.error(err);
-@@ -163,20 +207,27 @@ async function sendMessage() {
+ async function sendMessage() {
      if (!message.value.trim().length) return;
      if (!room.value) return;
  
@@ -318,43 +109,25 @@ index 151290e01..0145efc78 100644
 +        recipient = { uid: rUid, callsign: rCallsign };
      }
  
--    await room.value.chats.send(
--        message.value,
--        { uid: id.value, callsign: callsign.value },
--        mapStore.worker,
--        recipient
--    );
-+    try {
-+        await room.value.chats.send(
-+            message.value,
-+            { uid: id.value, callsign: callsign.value },
-+            mapStore.worker,
-+            recipient
-+        );
-+    } catch (err) {
-+        console.error('Failed to send chat message:', err);
-+        return;
-+    }
- 
-     message.value = ''
- 
-@@ -219,4 +270,16 @@ async function fetchChats() {
- 
-     loading.value = false;
+     if (route.params.chatroom === 'new') {
+         await router.push({
+             name: 'home-menu-chat',
+-            params: { chatroom: name.value }
++            params: { chatroom: name.value },
++            state: { skipRefresh: true }
+         });
+     }
  }
-+
-+function onScroll() {
-+    const el = scrollContainer.value;
-+    if (!el) return;
-+    atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-+}
-+
-+function scrollToBottom() {
-+    const el = scrollContainer.value;
-+    if (!el) return;
-+    el.scrollTop = el.scrollHeight;
-+}
- </script>
+ 
+-async function fetchChats() {
++async function fetchChats(opts = {}) {
+     loading.value = true;
+ 
+-    if (route.params.chatroom !== 'new' && room.value) {
++    if (route.params.chatroom !== 'new' && room.value && !opts.skipRefresh) {
+         try {
+             await Chatroom.load(room.value.name, { reload: false });
+             await room.value.chats.refresh();
 diff --git a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue b/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
 index 389c295c5..d65dd0f7f 100644
 --- a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
@@ -389,7 +162,6 @@ index 389c295c5..d65dd0f7f 100644
 +    }
  })
  
- watch(paging.value, async () => {
 @@ -207,7 +218,14 @@ async function updateContacts() {
          if (!contact.callsign.toLowerCase().includes(paging.value.filter.toLowerCase())) continue;
          if (contact.uid === self.value) continue;
@@ -420,23 +192,44 @@ index 389c295c5..d65dd0f7f 100644
      } catch (err) {
          error.value = err instanceof Error ? err : new Error(String(err))
      }
-diff --git a/api/web/src/components/CloudTAK/util/NotificationToast.vue b/api/web/src/components/CloudTAK/util/NotificationToast.vue
-index 297b63643..c0cc51d22 100644
---- a/api/web/src/components/CloudTAK/util/NotificationToast.vue
-+++ b/api/web/src/components/CloudTAK/util/NotificationToast.vue
-@@ -38,7 +38,11 @@
-                     />
-                 </div>
-                 <div class='toast-body'>
--                    <span v-text='notification.body' />
-+                    <span
-+                        class='text-truncate d-block'
-+                        style='max-width: 220px;'
-+                        v-text='notification.body'
-+                    />
-                 </div>
-                 <div class='loading-bar' />
-             </div>
+diff --git a/api/web/src/components/CloudTAK/Notifications.vue b/api/web/src/components/CloudTAK/Notifications.vue
+index e988976b9..431e8aaaa 100644
+--- a/api/web/src/components/CloudTAK/Notifications.vue
++++ b/api/web/src/components/CloudTAK/Notifications.vue
+@@ -2,7 +2,8 @@
+     <div
+         class='card'
+         style='
+-            min-width: 400px;
++            width: 400px;
++            max-width: 90vw;
+             max-height: 50vh;
+         '
+     >
+@@ -89,7 +90,7 @@
+                             :type='n.type'
+                         />
+                     </div>
+-                    <div class='text-truncate'>
++                    <div style='min-width: 0; flex: 1;'>
+                         <div
+                             class='text-body d-block'
+                             v-text='n.name'
+diff --git a/api/web/src/workers/atlas-connection.ts b/api/web/src/workers/atlas-connection.ts
+index 93443c91e..44655cd13 100644
+--- a/api/web/src/workers/atlas-connection.ts
++++ b/api/web/src/workers/atlas-connection.ts
+@@ -192,8 +197,8 @@ export default class AtlasConnection {
+                 await TAKNotification.create(
+                     NotificationType.Chat,
+                     'New Chat Message',
+-                    `${chat.from.callsign} to ${chat.chatroom} says: ${chat.message}`,
+-                    `/menu/chats`,
++                    `${chat.from.callsign} to ${chatroom} says: ${chat.message}`,
++                    `/menu/chats/${encodeURIComponent(chatroom)}`,
+                     true
+                 );
+             } else if (body.type === 'status') {
 diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
 index b967a1ce7..f10897342 100644
 --- a/api/web/src/workers/atlas-database.ts
@@ -537,3 +330,21 @@ index 68ff71ac1..ed29c8fc2 100644
          for (const contact of contacts) {
              if (!contact.uid) continue;
              this.contacts.set(contact.uid, contact);
+diff --git a/api/web/src/base/chatroom-chats.ts b/api/web/src/base/chatroom-chats.ts
+index bf9721fe0..abc123456 100644
+--- a/api/web/src/base/chatroom-chats.ts
++++ b/api/web/src/base/chatroom-chats.ts
+@@ -128,7 +128,8 @@ export default class ChatroomChats {
+         await worker.conn.sendCOT({
+             chatroom: this.chatroom,
+             from: {
+                 uid: sender.uid,
+                 callsign: sender.callsign
+             },
+             to: recipient,
+             message: message,
+             messageId: id,
+-            time: created
++            time: created,
++            location
+         }, 'chat');

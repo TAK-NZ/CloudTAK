@@ -2,7 +2,8 @@
     <div
         class='card'
         style='
-            min-width: 400px;
+            width: 400px;
+            max-width: 90vw;
             max-height: 50vh;
         '
     >
@@ -89,7 +90,7 @@
                             :type='n.type'
                         />
                     </div>
-                    <div class='text-truncate'>
+                    <div style='min-width: 0; flex: 1;'>
                         <div
                             class='text-body d-block'
                             v-text='n.name'

@@ -174,15 +174,19 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
 
                     try {
                         if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
-                            // The chatroom is always feat.properties.chat.chatroom — the TAK
-                            // chatroom field which is always the recipient's callsign. This
-                            // ensures all users (sender, recipient, observers) store the message
-                            // under the same chatroom name, matching ATAK behaviour.
+                            const myUid = `ANDROID-CloudTAK-${conn.id}`;
                             const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
+                            const isOutgoing = senderUid === myUid;
+                            // For outgoing messages the chatroom field is the recipient's callsign.
+                            // For incoming messages the chatroom field is our own callsign, so we
+                            // use senderCallsign to identify the conversation partner instead.
+                            const chatroom = isOutgoing
+                                ? feat.properties.chat.chatroom
+                                : feat.properties.chat.senderCallsign;
 
                             await this.config.models.ProfileChat.generate({
                                 username: String(conn.id),
-                                chatroom: feat.properties.chat.chatroom,
+                                chatroom: chatroom,
                                 sender_callsign: feat.properties.chat.senderCallsign,
                                 sender_uid: senderUid,
                                 message_id: feat.properties.chat.messageId || randomUUID(),
