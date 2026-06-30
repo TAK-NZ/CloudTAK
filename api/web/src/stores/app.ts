@@ -146,7 +146,9 @@ export const useAppStore = defineStore('cloudtak-app', {
             this.user = false;
             this.tokenExpiry = null;
             await this.destroySession();
-            window.location.href = '/login';
+            // Redirect through the backend logout endpoint to expire ALB OIDC cookies
+            // and trigger the IdP end-session. Falls back to /login for non-OIDC deployments.
+            window.location.href = '/api/logout';
         },
 
         // Returns true when bootstrap completed normally, false when it

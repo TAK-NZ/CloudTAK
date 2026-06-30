@@ -3,7 +3,7 @@ import { Static, Type } from '@sinclair/typebox';
 import { X509Certificate } from 'crypto';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess } from '../lib/auth.js';
+import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced } from '../lib/auth.js';
 import { sql } from 'drizzle-orm';
 import Config from '../lib/config.js';
 import { AdminConnConfig } from '../lib/connection-config.js';
@@ -15,6 +15,24 @@ const pkg = JSON.parse(String(fs.readFileSync(new URL('../package.json', import.
 
 export default async function router(schema: Schema, config: Config) {
     const profileControl = new ProfileControl(config);
+
+    // Public endpoint — returns env-var based OIDC status for ALB OIDC integration
+    await schema.get('/server/oidc', {
+        name: 'Get OIDC Status',
+        group: 'Server',
+        description: 'Public endpoint returning ALB OIDC configuration status',
+        res: Type.Object({
+            oidc_enabled: Type.Boolean(),
+            oidc_forced: Type.Boolean(),
+            authentik_url: Type.Optional(Type.String()),
+        }),
+    }, async (req, res) => {
+        res.json({
+            oidc_enabled: isOidcEnabled(),
+            oidc_forced: isOidcForced(),
+            authentik_url: process.env.AUTHENTIK_URL,
+        });
+    });
 
     await schema.get('/server', {
         name: 'Get Server',

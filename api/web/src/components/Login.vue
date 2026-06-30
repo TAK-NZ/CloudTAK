@@ -509,6 +509,32 @@ const certRenewal = reactive<{
 });
 
 onMounted(async () => {
+    // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
+    if (route.query.token) {
+        loading.value = true;
+        const token = String(route.query.token);
+        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
+        // Decode the JWT minimally to extract email and session for persistence
+        try {
+            const parts = token.split('.');
+            if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                if (payload.email && payload.s) {
+                    await appStore.persistSession({ token, username: payload.email, session: payload.s });
+                } else {
+                    localStorage.token = token;
+                }
+            } else {
+                localStorage.token = token;
+            }
+        } catch {
+            localStorage.token = token;
+        }
+        emit('login');
+        await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
+        return;
+    }
+
     const config = await Config.list([
         'login::name',
         'login::logo',
