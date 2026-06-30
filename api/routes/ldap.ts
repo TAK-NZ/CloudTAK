@@ -1,12 +1,12 @@
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import crypto from 'node:crypto';
 import Config from '../lib/config.js';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import { ConnectionAuth } from '../lib/connection-config.js';
-import { Channel, ChannelAccess } from '../lib/external.js';
-import { TAKAPI, APIAuthPassword, } from '@tak-ps/node-tak';
+import { Channel, ChannelAccess } from '../lib/interface-user.js';
+import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/ldap/channel', {
@@ -15,27 +15,25 @@ export default async function router(schema: Schema, config: Config) {
         description: 'List Channels by proxy',
         query: Type.Object({
             agency: Type.Optional(Type.Integer()),
-            filter: Type.String({ default: '' })
+            filter: Type.String({ default: '' }),
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(Channel)
-        })
+            items: Type.Array(Channel),
+        }),
     }, async (req, res) => {
         try {
-            let profile = await Auth.as_profile(config, req);
+            const profile = await Auth.as_profile(config, req);
 
-            if (!config.external || !config.external.configured) {
+            const cotak = config.user?.get('cotak');
+
+            if (!cotak || !cotak.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) {
-                const response = await config.external.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
+            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 
-            const list = await config.external.channels(profile.id, req.query)
+            const list = await cotak.channels(profile.id, req.query);
 
             res.json(list);
         } catch (err) {
@@ -50,67 +48,57 @@ export default async function router(schema: Schema, config: Config) {
         body: Type.Object({
             name: Type.String(),
             description: Type.String(),
-            agency_id: Type.Union([Type.Null(), Type.Integer()]),
+            locking: Type.Optional(Type.Boolean({ default: true })),
+            agency_id: Type.Optional(Type.Integer()),
             channels: Type.Array(Type.Object({
                 id: Type.Integer(),
-                access: ChannelAccess
+                access: ChannelAccess,
             }), {
-                minItems: 1
-            })
+                minItems: 1,
+            }),
         }),
         res: Type.Object({
             integrationId: Type.Optional(Type.Integer()),
-            auth: ConnectionAuth
-        })
+            auth: ConnectionAuth,
+        }),
     }, async (req, res) => {
         try {
-            let profile = await Auth.as_profile(config, req);
+            const profile = await Auth.as_profile(config, req);
 
-            if (!config.external || !config.external.configured) {
+            const cotak = config.user?.get('cotak');
+
+            if (!cotak || !cotak.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) {
-                const response = await config.external.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
+            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 
-            const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
-                .map((n) => String.fromCharCode((n % 94) + 33))
-                .join('');
+            const password = Array.from({ length: 16 }, () => {
+                return String.fromCharCode(crypto.randomInt(94) + 33);
+            }).join('');
 
-            const user = await config.external.createMachineUser(profile.id, {
-                ...req.body,
-                agency_id: req.body.agency_id || undefined,
+            const user = await cotak.createMachineUser(profile.id, {
+                name: req.body.name,
+                description: req.body.description,
+                management_url: config.API_URL,
+                active: false,
+                locking: req.body.locking ?? true,
+                agency_id: req.body.agency_id,
                 password,
-                integration: {
-                    name: req.body.name,
-                    description: req.body.description,
-                    management_url: config.API_URL,
-                    active: false,
-                }
+                channels: req.body.channels,
             });
-
-            for (const channel of req.body.channels) {
-                await config.external.attachMachineUser(profile.id, {
-                    machine_id: user.id,
-                    channel_id: channel.id,
-                    access: channel.access
-                })
-            }
 
             const api = await TAKAPI.init(
                 new URL(config.server.webtak),
-                new APIAuthPassword(user.email, password)
+                new APIAuthPassword(user.email, password),
             );
 
             const certs = await api.Credentials.generate();
 
             res.json({
                 integrationId: user.integrations.find(Boolean)?.id ?? undefined,
-                auth: certs
-            })
+                auth: certs,
+            });
         } catch (err) {
             Err.respond(err, res);
         }
@@ -121,45 +109,42 @@ export default async function router(schema: Schema, config: Config) {
         group: 'LDAP',
         description: 'Reset the password on an existing user and regen a certificate',
         params: Type.Object({
-            email: Type.String()
+            email: Type.String(),
         }),
         res: Type.Object({
             integrationId: Type.Optional(Type.Integer()),
-            auth: ConnectionAuth
-        })
+            auth: ConnectionAuth,
+        }),
     }, async (req, res) => {
         try {
-            let profile = await Auth.as_profile(config, req);
+            const profile = await Auth.as_profile(config, req);
 
-            if (!config.external || !config.external.configured) {
+            const cotak = config.user?.get('cotak');
+
+            if (!cotak || !cotak.configured) {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
 
-            if (!profile.id) {
-                const response = await config.external.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
+            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 
-            const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
-                .map((n) => String.fromCharCode((n % 94) + 33))
+            const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
                 .join('');
 
-            const user = await config.external.fetchMachineUser(profile.id, req.params.email)
+            const user = await cotak.fetchMachineUser(profile.id, req.params.email);
 
-            await config.external.updateMachineUser(profile.id, user.id, { password });
+            await cotak.updateMachineUser(profile.id, { id: user.id, password });
 
             const api = await TAKAPI.init(
                 new URL(config.server.webtak),
-                new APIAuthPassword(user.email, password)
+                new APIAuthPassword(user.email, password),
             );
 
             const certs = await api.Credentials.generate();
 
             res.json({
                 integrationId: user.integrations.find(Boolean)?.id ?? undefined,
-                auth: certs
-            })
+                auth: certs,
+            });
         } catch (err) {
             Err.respond(err, res);
         }

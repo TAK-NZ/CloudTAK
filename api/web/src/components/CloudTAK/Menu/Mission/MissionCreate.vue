@@ -162,9 +162,11 @@
                     <div class='row g-2'>
                         <div class='col-12'>
                             <label class='px-2 w-100'>Keywords</label>
-                            <TagEntry
+                            <Keywords
                                 placeholder='Enter Keywords'
-                                @tags='mission.keywords = $event'
+                                :keywords='mission.keywords'
+                                :relevant='[]'
+                                @update:keywords='mission.keywords = $event'
                             />
                         </div>
 
@@ -178,6 +180,7 @@
                                 v-model='mission.password'
                                 :disabled='!mission.passwordProtected'
                                 type='password'
+                                autocomplete='new-password'
                                 label='Password'
                             />
                         </div>
@@ -210,7 +213,7 @@
 <script setup lang='ts'>
 import { ref, computed, watch, onMounted } from 'vue';
 import { server } from '../../../../std.ts';
-import type { Mission_Create, MissionTemplate } from '../../../../types.ts';
+import type { Mission_Create, MissionTemplateList } from '../../../../types.ts';
 import { useMapStore } from '../../../../stores/map.ts'
 import {
     IconLock,
@@ -222,8 +225,8 @@ import {
     IconLayout
 } from '@tabler/icons-vue';
 import GroupSelect from '../../util/GroupSelect.vue';
-import TagEntry from '../../util/TagEntry.vue';
-import Overlay from '../../../../base/overlay.ts';
+import Keywords from '../../util/Keywords.vue';
+import OverlayManager from '../../../../base/overlay.ts';
 import {
     TablerInput,
     TablerEnum,
@@ -239,7 +242,7 @@ const attempted = ref(false);
 const loading = ref(false);
 const advanced = ref(false);
 
-const templates = ref<MissionTemplate[]>([]);
+const templates = ref<MissionTemplateList['items']>([]);
 const templatesLoading = ref(false);
 const showSearch = ref(false);
 
@@ -256,8 +259,22 @@ const mission = ref({
     role: 'Subscriber',
     description: '',
     groups: [],
-    keywords: [],
+    keywords: [] as string[],
     hashtags: ''
+});
+
+watch(selectedTemplate, (newId) => {
+    const template = templates.value.find((t) => t.id === newId);
+
+    mission.value.keywords = [];
+
+    if (template && template.keywords) {
+        for (const keyword of template.keywords) {
+            if (!mission.value.keywords.includes(keyword)) {
+                mission.value.keywords.push(keyword);
+            }
+        }
+    }
 });
 
 watch(templatesPaging, async () => {
@@ -294,7 +311,8 @@ async function listTemplates() {
             icon: '',
             description: '',
             created: '',
-            updated: ''
+            updated: '',
+            keywords: [],
         }, ...res.data.items];
 
         if (!selectedTemplate.value) selectedTemplate.value = 'default';
@@ -337,7 +355,7 @@ async function createMission() {
 
         if (mission.value.passwordProtected) body.password = mission.value.password;
 
-        if (selectedTemplate.value !== 'default') {
+        if (selectedTemplate.value && selectedTemplate.value !== 'default') {
             if (!body.keywords) body.keywords = [];
             body.keywords.push(`template:${selectedTemplate.value}`);
         }
@@ -348,16 +366,14 @@ async function createMission() {
 
         if (res.error) throw new Error(res.error.message);
 
-        const missionOverlay = await Overlay.create({
+        await OverlayManager.createLoaded({
             name: res.data.name,
-            url: `/mission/${encodeURIComponent(res.data.name)}`,
+            url: `/mission/${encodeURIComponent(res.data.guid)}`,
             type: 'geojson',
             mode: 'mission',
             token: res.data.token,
             mode_id: res.data.guid,
         })
-
-        mapStore.overlays.push(missionOverlay);
 
         await mapStore.loadMission(res.data.guid);
 

@@ -19,7 +19,7 @@
                     <div class='col-12 d-flex align-items-center user-select-none'>
                         <div v-text='selected.name' />
                         <div class='ms-auto btn-list'>
-                            <IconTrash
+                            <IconX
                                 v-tooltip='"Remove Tile"'
                                 :size='32'
                                 stroke='1'
@@ -46,14 +46,14 @@
                         v-else-if='list.total === 0'
                         :create='false'
                         :compact='true'
-                        label='Tasks'
+                        label='No Tasks'
                     />
                     <template
                         v-for='task in list.items'
                         v-else
                     >
                         <div
-                            class='hover px-2 py-2 cursor-pointer rounded user-select-none d-flex align-items-center'
+                            class='cloudtak-hover px-2 py-2 cursor-pointer rounded user-select-none d-flex align-items-center'
                             @click='select(task)'
                         >
                             <div v-text='task.name.replace(/^public\//, "").replace(/\.pmtiles$/, "")' />
@@ -62,7 +62,7 @@
                 </template>
             </div>
             <div
-                v-if='!loading.main && !loading.task && list.total > paging.limit && !selected.id'
+                v-if='!loading.main && !loading.task && list.total > paging.limit && !selected?.id'
                 class='card-footer d-flex'
             >
                 <div class='ms-auto'>
@@ -78,11 +78,13 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
-import { std, stdurl } from '/src/std.ts';
+import { Preferences } from '@capacitor/preferences';
+import { server, std, stdurl } from '../../std.ts';
+import type { APIList } from '../../types.ts';
 import {
-    IconTrash,
+    IconX,
 } from '@tabler/icons-vue';
 import {
     TablerLoading,
@@ -91,19 +93,31 @@ import {
     TablerNone,
 } from '@tak-ps/vue-tabler';
 
-const emit = defineEmits([
-    'select'
-]);
+interface TileDetail {
+    name: string;
+    url?: string;
+    [key: string]: unknown;
+}
 
-const loading = ref({
+const emit = defineEmits<{
+    (e: 'select', tile: TileDetail | undefined): void;
+}>();
+
+const props = withDefaults(defineProps<{
+    url?: string;
+}>(), {
+    url: undefined,
+});
+
+const loading = ref<Record<string, boolean>>({
     main: true,
     modal: true,
     list: true,
 });
 
-const config = ref();
+const config = ref<{ url: string }>();
 
-const selected = ref();
+const selected = ref<TileDetail>();
 
 const paging = ref({
     filter: '',
@@ -111,7 +125,7 @@ const paging = ref({
     page: 0
 });
 
-const list = ref({
+const list = ref<APIList<TileDetail>>({
     total: 0,
     items: []
 });
@@ -130,41 +144,79 @@ watch(paging.value, async () => {
     await listTiles();
 });
 
+watch(() => props.url, async () => {
+    await fetchSelected();
+});
+
 onMounted(async () => {
     await listTiles();
+    await fetchSelected();
+
     loading.value.main = false;
 });
 
-async function select(tile) {
+async function ensureConfig() {
+    if (config.value) return config.value;
+
+    const { data, error } = await server.GET('/api/config/tiles');
+    if (error) throw new Error(error.message);
+
+    config.value = data;
+    return config.value;
+}
+
+async function fetchSelected() {
+    if (props.url && !selected.value) {
+        try {
+            // If the URL contains tiles.map.cotak.gov we can assume it is a public tile
+            // and we can extract the name from the path
+            const u = new URL(props.url);
+            const match = u.pathname.match(/\/tiles\/public\/([a-zA-Z0-9._-]+)/);
+
+            if (match && match[1]) {
+                const name = match[1];
+                const configValue = await ensureConfig();
+                const url = stdurl(new URL(configValue.url + `/tiles/public/${name}`));
+                const { value: token } = await Preferences.get({ key: 'token' });
+                if (token) url.searchParams.set('token', token);
+                selected.value = await std(url) as TileDetail;
+                selected.value.url = url.toString();
+            }
+        } catch (err) {
+            console.error('Failed to parse URL for Public Tile', err);
+        }
+    }
+}
+
+async function select(tile: TileDetail) {
     loading.value.tiles = true;
 
-    if (!config.value) {
-        config.value = await std('/api/config/tiles');
-    }
+    const configValue = await ensureConfig();
 
     const name = tile.name.replace(/^public\//, "").replace(/\.pmtiles$/, '');
 
-    const url = stdurl(new URL(config.value.url + `/tiles/public/${name}`));
-    url.searchParams.append('token', localStorage.token);
+    const url = stdurl(new URL(configValue.url + `/tiles/public/${name}`));
+    const { value: token } = await Preferences.get({ key: 'token' });
+    if (token) url.searchParams.set('token', token);
 
-    const detail = await std(url);
+    const detail = await std(url) as TileDetail;
+    detail.url = url.toString();
     selected.value = detail;
 
     loading.value.tiles = false;
 }
 
 async function listTiles() {
-    if (!config.value) {
-        config.value = await std('/api/config/tiles');
-    }
+    const configValue = await ensureConfig();
 
     loading.value.list = true;
-    const url = stdurl(new URL(config.value.url + '/tiles/public'));
-    url.searchParams.append('token', localStorage.token);
-    url.searchParams.append('filter', paging.value.filter);
-    url.searchParams.append('limit', paging.value.limit);
-    url.searchParams.append('page', paging.value.page);
-    list.value = await std(url);
+    const url = stdurl(new URL(configValue.url + '/tiles/public'));
+    const { value: token } = await Preferences.get({ key: 'token' });
+    if (token) url.searchParams.set('token', token);
+    url.searchParams.set('filter', paging.value.filter);
+    url.searchParams.set('limit', String(paging.value.limit));
+    url.searchParams.set('page', String(paging.value.page));
+    list.value = await std(url) as APIList<TileDetail>;
 
     loading.value.list = false;
 }

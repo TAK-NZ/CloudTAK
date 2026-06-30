@@ -31,7 +31,7 @@
             />
             <TablerNone
                 v-else-if='!history.features.length'
-                label='Features'
+                label='No Features'
                 :create='false'
             />
             <template v-else>
@@ -40,7 +40,7 @@
                     key='fit'
                 >
                     <div
-                        class='row hover px-2 py-2 cursor-pointer user-select-none'
+                        class='row cloudtak-hover px-2 py-2 cursor-pointer user-select-none'
                         @click='opened.has(fit) ? opened.delete(fit) : opened.add(fit)'
                     >
                         <div
@@ -74,11 +74,11 @@
 </template>
 
 <script setup lang='ts'>
-import { ref } from 'vue';
-import type { FeatureCollection } from '../../../../src/types.ts';
+import { ref, shallowRef } from 'vue';
+import type { paths } from '@cloudtak/api-types';
 import CopyField from '../util/CopyField.vue';
 import timeDiff from '../../../timediff.ts';
-import { std, stdurl } from '../../../../src/std.ts';
+import { server } from '../../../../src/std.ts';
 import {
     TablerNone,
     TablerInput,
@@ -90,12 +90,14 @@ import {
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
 
+type DebuggerHistory = paths['/api/marti/cot/{:uid}/all']['get']['responses']['200']['content']['application/json'];
+
 const error = ref<Error | undefined>();
 const loading = ref(false);
 
 const uid = ref('');
 const opened = ref<Set<number>>(new Set());
-const history = ref<FeatureCollection>({
+const history = shallowRef<DebuggerHistory>({
     type: 'FeatureCollection',
     features: []
 });
@@ -106,9 +108,20 @@ async function fetchHistory() {
     opened.value.clear();
 
     try {
-        const url = stdurl(`/api/marti/cot/${uid.value}/all`);
-        url.searchParams.append('track', String(false));
-        history.value = await std(url) as FeatureCollection;
+        const { data, error: apiError } = await server.GET('/api/marti/cot/{:uid}/all', {
+            params: {
+                path: {
+                    ':uid': uid.value
+                },
+                query: {
+                    track: false
+                }
+            }
+        });
+
+        if (apiError || !data) throw new Error(String(apiError || 'No data'));
+
+        history.value = data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err))
     }

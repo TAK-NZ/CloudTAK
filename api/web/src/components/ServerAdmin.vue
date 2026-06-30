@@ -78,6 +78,27 @@
                                                     class='mx-3'
                                                 >CloudTAK Settings</span>
                                             </span>
+                                            <span
+                                                tabindex='0'
+                                                role='menuitem'
+                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
+                                                :class='{
+                                                    "active": String(route.name).startsWith("admin-health"),
+                                                    "cursor-pointer": !String(route.name).startsWith("admin-health")
+                                                }'
+                                                @keyup.enter='router.push(`/admin/health`)'
+                                                @click='router.push(`/admin/health`)'
+                                            >
+                                                <IconHeartbeat
+                                                    v-tooltip='nest ? "Health" : false'
+                                                    :size='32'
+                                                    stroke='1'
+                                                />
+                                                <span
+                                                    v-if='!nest'
+                                                    class='mx-3'
+                                                >Health</span>
+                                            </span>
                                         </div>
                                         <h4
                                             v-if='!nest'
@@ -133,6 +154,27 @@
                                                 role='menuitem'
                                                 class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
                                                 :class='{
+                                                    "active": String(route.name).startsWith("admin-public"),
+                                                    "cursor-pointer": !String(route.name).startsWith("admin-public")
+                                                }'
+                                                @keyup.enter='router.push(`/admin/public`)'
+                                                @click='router.push(`/admin/public`)'
+                                            >
+                                                <IconCloud
+                                                    v-tooltip='nest ? "Hosted Tilesets" : false'
+                                                    :size='32'
+                                                    stroke='1'
+                                                />
+                                                <span
+                                                    v-if='!nest'
+                                                    class='mx-3'
+                                                >Hosted Tilesets</span>
+                                            </span>
+                                            <span
+                                                tabindex='0'
+                                                role='menuitem'
+                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
+                                                :class='{
                                                     "active": String(route.name).includes("admin-overlays"),
                                                     "cursor-pointer": !String(route.name).includes("admin-overlays")
                                                 }'
@@ -148,27 +190,6 @@
                                                     v-if='!nest'
                                                     class='mx-3'
                                                 >Basemaps &amp; Overlays</span>
-                                            </span>
-                                            <span
-                                                tabindex='0'
-                                                role='menuitem'
-                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
-                                                :class='{
-                                                    "active": String(route.name).startsWith("admin-palette"),
-                                                    "cursor-pointer": !String(route.name).startsWith("admin-palette")
-                                                }'
-                                                @keyup.enter='router.push(`/admin/palette`)'
-                                                @click='router.push(`/admin/palette`)'
-                                            >
-                                                <IconBrush
-                                                    v-tooltip='nest ? "Draw Palette" : false'
-                                                    :size='32'
-                                                    stroke='1'
-                                                />
-                                                <span
-                                                    v-if='!nest'
-                                                    class='mx-3'
-                                                >Draw Palette</span>
                                             </span>
                                             <span
                                                 tabindex='0'
@@ -253,14 +274,14 @@
                                                 @click='router.push(`/admin/tasks`)'
                                             >
                                                 <IconBrandDocker
-                                                    v-tooltip='nest ? "ETL Task Runners" : false'
+                                                    v-tooltip='nest ? "Integrations" : false'
                                                     :size='32'
                                                     stroke='1'
                                                 />
                                                 <span
                                                     v-if='!nest'
                                                     class='mx-3'
-                                                >ETL Task Runners</span>
+                                                >Integrations</span>
                                             </span>
                                             <span
                                                 tabindex='0'
@@ -317,6 +338,27 @@
                                                 role='menuitem'
                                                 class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
                                                 :class='{
+                                                    "active": String(route.name).includes("admin-geofence"),
+                                                    "cursor-pointer": !String(route.name).includes("admin-geofence")
+                                                }'
+                                                @keyup.enter='router.push(`/admin/geofence`)'
+                                                @click='router.push(`/admin/geofence`)'
+                                            >
+                                                <IconMapPin
+                                                    v-tooltip='nest ? "Geofence Server" : false'
+                                                    :size='32'
+                                                    stroke='1'
+                                                />
+                                                <span
+                                                    v-if='!nest'
+                                                    class='mx-3'
+                                                >Geofence Server</span>
+                                            </span>
+                                            <span
+                                                tabindex='0'
+                                                role='menuitem'
+                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
+                                                :class='{
                                                     "active": String(route.name).includes("admin-export"),
                                                     "cursor-pointer": !String(route.name).includes("admin-export")
                                                 }'
@@ -367,20 +409,22 @@
 import { onMounted, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { Profile } from '../types.ts';
-import { std } from '../std.ts';
+import { server } from '../std.ts';
 import PageFooter from './PageFooter.vue';
 import {
     TablerAlert,
     TablerLoading,
 } from '@tak-ps/vue-tabler'
 import {
-    IconBrush,
+    IconCloud,
     IconNetwork,
     IconVideo,
     IconUsers,
     IconFileImport,
+    IconMapPin,
     IconSettings,
     IconServer,
+    IconHeartbeat,
     IconDatabase,
     IconDatabaseExport,
     IconBrandDocker,
@@ -402,7 +446,8 @@ const nest = computed(() => {
 });
 
 onMounted(async () => {
-    const profile = await std('/api/profile') as Profile;
-    isAdmin.value = profile.system_admin;
+    const res = await server.GET('/api/profile');
+    if (res.error) throw new Error(res.error.message);
+    isAdmin.value = (res.data as Profile).system_admin;
 });
 </script>

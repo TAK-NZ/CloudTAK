@@ -44,7 +44,7 @@
                                     <div class='col-md-12'>
                                         <GroupSelect
                                             v-model='data.mission_groups'
-                                            :connection='route.params.connectionid'
+                                            :connection='Number(route.params.connectionid)'
                                         />
                                     </div>
                                     <div class='col-md-12'>
@@ -115,10 +115,10 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { std, stdurl } from '../../std.ts';
+import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
 import {
     TablerBreadCrumb,
@@ -130,18 +130,30 @@ import {
 } from '@tak-ps/vue-tabler';
 import GroupSelect from '../util/GroupSelect.vue';
 
+interface DataForm {
+    id?: number;
+    name: string;
+    mission_sync: boolean;
+    mission_groups: string[];
+    mission_role: string;
+    mission_diff: boolean;
+    description: string;
+    connection?: number;
+    [key: string]: unknown;
+}
+
 const route = useRoute();
 const router = useRouter();
 const loading = ref({
     data: true,
 });
 
-const errors = ref({
+const errors = ref<Record<string, string>>({
     name: '',
     description: '',
 });
 
-const data = ref({
+const data = ref<DataForm>({
     name: '',
     mission_sync: true,
     mission_groups: [],
@@ -166,20 +178,35 @@ onMounted(async () => {
 
 async function fetch() {
     loading.value.data = true;
-    data.value = await std(`/api/connection/${route.params.connectionid}/data/${route.params.dataid}`);
+    const res = await server.GET('/api/connection/{:connectionid}/data/{:dataid}', {
+        params: {
+            path: {
+                ':connectionid': Number(route.params.connectionid),
+                ':dataid': Number(route.params.dataid)
+            }
+        }
+    });
+    if (res.error) throw new Error(res.error.message);
+    data.value = res.data as DataForm;
     loading.value.data = false;
 }
 
 async function deleteData() {
-    await std(`/api/connection/${route.params.connectionid}/data/${route.params.dataid}`, {
-        method: 'DELETE'
+    const res = await server.DELETE('/api/connection/{:connectionid}/data/{:dataid}', {
+        params: {
+            path: {
+                ':connectionid': Number(route.params.connectionid),
+                ':dataid': Number(route.params.dataid)
+            }
+        }
     });
+    if (res.error) throw new Error(res.error.message);
 
     router.push(`/connection/${route.params.connectionid}/data`);
 }
 
 async function create() {
-    for (const field of ['name', 'description']) {
+    for (const field of ['name', 'description'] as const) {
         errors.value[field] = !data.value[field] ? 'Cannot be empty' : '';
     }
     for (const e in errors.value) if (errors.value[e]) return;
@@ -187,23 +214,35 @@ async function create() {
     loading.value.data = true;
 
     try {
-        let url, method;
         const body = JSON.parse(JSON.stringify(data.value));
 
-        if (route.params.dataid) {
-            url = stdurl(`/api/connection/${route.params.connectionid}/data/${route.params.dataid}`);
-            method = 'PATCH'
-        } else {
-            url = stdurl(`/api/connection/${route.params.connectionid}/data`);
-            method = 'POST'
-            body.connection = parseInt(route.params.connectionid);
-        }
+        const res = route.params.dataid
+            ? await server.PATCH('/api/connection/{:connectionid}/data/{:dataid}', {
+                params: {
+                    path: {
+                        ':connectionid': Number(route.params.connectionid),
+                        ':dataid': Number(route.params.dataid)
+                    }
+                },
+                body
+            })
+            : await server.POST('/api/connection/{:connectionid}/data', {
+                params: {
+                    path: {
+                        ':connectionid': Number(route.params.connectionid)
+                    }
+                },
+                body: {
+                    ...body,
+                    connection: parseInt(String(route.params.connectionid))
+                }
+            });
 
-        const create = await std(url, { method, body });
+        if (res.error) throw new Error(res.error.message);
 
         loading.value.data = false;
 
-        router.push(`/connection/${route.params.connectionid}/data/${create.id}`);
+        router.push(`/connection/${route.params.connectionid}/data/${res.data.id}`);
     } catch (err) {
         loading.value.data = false;
         throw err;

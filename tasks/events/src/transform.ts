@@ -3,19 +3,24 @@ import readline from 'node:readline';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import type { Message, LocalMessage, Asset } from './types.ts';
-import s3client from './s3.ts'
+import s3client from './s3.ts';
 import { Upload } from '@aws-sdk/lib-storage';
 import path from 'node:path';
 import cp from 'node:child_process';
 
 import Tippecanoe from './tippecanoe.ts';
+import { countFeatures } from './utils.ts';
+import { isPMTiles } from './sniff.ts';
 
 // Formats
 import KML from './transforms/kml.ts';
 import Translate from './transforms/translate.ts';
 import GeoJSON from './transforms/geojson.ts';
+import MBTiles from './transforms/mbtiles.ts';
+import { createImportResult } from './api.ts';
+import { fetch } from '@tak-ps/node-safeurl';
 
-const FORMATS = [KML, Translate, GeoJSON];
+const FORMATS = [KML, Translate, GeoJSON, MBTiles];
 const formats = new Map();
 
 // TODO load all conversion files from a directory
@@ -35,7 +40,7 @@ export default class DataTransform {
     constructor(
         msg: Message,
         local: LocalMessage,
-        asset: Asset
+        asset: Asset,
     ) {
         this.msg = msg;
         this.local = local;
@@ -53,7 +58,7 @@ export default class DataTransform {
 
         const conversion = await convert.convert();
 
-        const artifacts: Array<{ ext: string }> = this.asset.artifacts.map(a => ({ ext: a.ext }));
+        const artifacts: Array<{ ext: string }> = this.asset.artifacts.map((a: { ext: string }) => ({ ext: a.ext }));
 
         if (conversion.icons && conversion.icons.size > 0) {
             console.error('ok - Creating Iconset');
@@ -61,6 +66,7 @@ export default class DataTransform {
             const iconset = randomUUID();
 
             const iconsetRes = await fetch(new URL(`/api/iconset`, this.msg.api), {
+                safeUrlAllow: [this.msg.api],
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -71,17 +77,22 @@ export default class DataTransform {
                     version: 1,
                     name: `${this.msg.job.name} Icons`,
                     internal: true,
-                    scope: 'user'
+                    scope: 'user',
 
-                })
-            })
+                }),
+            });
 
-            // Map of original icon name to new icon name if name is incompatible
             const iconNameMap = new Map<string, string>();
 
             if (!iconsetRes.ok) {
                 console.error(`err - Failed to create iconset: ${await iconsetRes.text()}`);
             } else {
+                await createImportResult(this.msg, {
+                    name: `${this.msg.job.name} Icons`,
+                    type: 'Iconset',
+                    type_id: iconset,
+                });
+
                 for (const icon of conversion.icons) {
                     const url = new URL(`/api/iconset/${iconset}/icon`, this.msg.api);
                     url.searchParams.append('regen', 'false');
@@ -103,6 +114,7 @@ export default class DataTransform {
                     }
 
                     const iconRes = await fetch(url, {
+                        safeUrlAllow: [this.msg.api],
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -110,9 +122,9 @@ export default class DataTransform {
                         },
                         body: JSON.stringify({
                             name: icon.name,
-                            data: icon.data
-                        })
-                    })
+                            data: icon.data,
+                        }),
+                    });
 
                     if (!iconRes.ok) {
                         console.error(`err - Failed to upload icon: ${await iconRes.text()}`);
@@ -120,10 +132,11 @@ export default class DataTransform {
                 }
 
                 const regen = await fetch(new URL(`/api/iconset/${iconset}/regen`, this.msg.api), {
+                    safeUrlAllow: [this.msg.api],
                     method: 'POST',
                     headers: {
                         Authorization: `Bearer ${jwt.sign({ access: 'user', email: this.msg.job.username }, this.msg.secret)}`,
-                    }
+                    },
                 });
 
                 if (!regen.ok) {
@@ -131,12 +144,13 @@ export default class DataTransform {
                 }
 
                 const res = await fetch(new URL(`/api/profile/asset/${this.asset.id}`, this.msg.api), {
+                    safeUrlAllow: [this.msg.api],
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${jwt.sign({ access: 'user', email: this.msg.job.username }, this.msg.secret)}`,
                     },
-                    body: JSON.stringify({ iconset })
+                    body: JSON.stringify({ iconset }),
                 });
 
                 if (!res.ok) {
@@ -155,7 +169,7 @@ export default class DataTransform {
 
                 const rl = readline.createInterface({
                     input: readStream,
-                    crlfDelay: Infinity
+                    crlfDelay: Infinity,
                 });
 
                 for await (const line of rl) {
@@ -187,19 +201,20 @@ export default class DataTransform {
                 params: {
                     Bucket: this.msg.bucket,
                     Key: `profile/${this.msg.job.username}/${this.asset.id}.geojsonld`,
-                    Body: fs.createReadStream(conversion.asset)
-                }
+                    Body: fs.createReadStream(conversion.asset),
+                },
             });
             await geouploader.done();
 
             artifacts.push({ ext: '.geojsonld' });
             const res = await fetch(new URL(`/api/profile/asset/${this.asset.id}`, this.msg.api), {
+                safeUrlAllow: [this.msg.api],
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${jwt.sign({ access: 'user', email: this.msg.job.username }, this.msg.secret)}`,
                 },
-                body: JSON.stringify({ artifacts })
+                body: JSON.stringify({ artifacts }),
             });
 
             if (!res.ok) {
@@ -210,54 +225,69 @@ export default class DataTransform {
 
             const tp = new Tippecanoe();
 
+            // Check for zero features before tiling
+            const featureCount = await countFeatures(conversion.asset);
+            if (featureCount === 0) {
+                throw new Error(`No features found in ${conversion.asset}. Cannot create tileset.`);
+            }
+            console.log(`Found ${featureCount} features to tile`);
+
             console.log(`ok - tiling ${conversion.asset}`);
             await tp.tile(
                 fs.createReadStream(conversion.asset),
                 path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles'), {
                     std: true,
-                    quiet: false,
+                    quiet: true,
                     name: this.msg.job.name,
                     description: 'Automatically Converted by @tak-ps/etl',
                     layer: 'out',
                     force: true,
                     limit: {
                         features: false,
-                        size: false
+                        size: false,
                     },
                     zoom: {
                         min: 0,
                         base: 6,
                         max: 14,
-                    }
-                }
+                    },
+                },
             );
         } else {
             console.log(`ok - converting ${conversion.asset}`);
-            const pmout = cp.execFileSync('pmtiles', ['convert', conversion.asset, path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles')]);
+            const pmout = cp.execFileSync('pmtiles', ['convert', conversion.asset, path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles')], { maxBuffer: 100 * 1024 * 1024 });
             console.log(String(pmout));
 
             console.log(`ok - converted: ${path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles')}`);
         }
+
+        // Validate PMTiles format before uploading
+        const pmtilesPath = path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles');
+        if (!await isPMTiles(pmtilesPath)) {
+            throw new Error(`Invalid PMTiles file: ${pmtilesPath}. The file does not have a valid PMTiles magic number.`);
+        }
+        console.log(`Validated PMTiles format for ${pmtilesPath}`);
 
         const pmuploader = new Upload({
             client: s3,
             params: {
                 Bucket: this.msg.bucket,
                 Key: `profile/${this.msg.job.username}/${this.asset.id}.pmtiles`,
-                Body: fs.createReadStream(path.resolve(this.local.tmpdir, path.parse(conversion.asset).name + '.pmtiles'))
-            }
+                Body: fs.createReadStream(pmtilesPath),
+            },
         });
 
         await pmuploader.done();
 
         artifacts.push({ ext: '.pmtiles' });
         const res = await fetch(new URL(`/api/profile/asset/${this.asset.id}`, this.msg.api), {
+            safeUrlAllow: [this.msg.api],
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${jwt.sign({ access: 'user', email: this.msg.job.username }, this.msg.secret)}`,
             },
-            body: JSON.stringify({ artifacts })
+            body: JSON.stringify({ artifacts }),
         });
 
         if (!res.ok) {

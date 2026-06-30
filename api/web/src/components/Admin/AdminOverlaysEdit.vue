@@ -12,7 +12,7 @@
             </TablerIconButton>
             <h1 class='card-title'>
                 <span
-                    v-if='route.params.overlay === "new"'
+                    v-if='isNew'
                     class='mx-2'
                 >New Overlay</span>
                 <span
@@ -26,235 +26,253 @@
             class='px-2'
         >
             <TablerLoading v-if='loading' />
-            <div
-                v-else
-                class='row g-2'
-            >
-                <div class='col-12'>
-                    <TablerInput
-                        v-model='overlay.name'
-                        label='Name'
-                    >
-                        <TablerToggle
-                            v-model='overlay.sharing_enabled'
-                            label='Enable Sharing'
-                        />
-                    </TablerInput>
-                </div>
-                <div class='col-12'>
-                    <label class='mx-2 my-1'>Ownership</label>
-                    <div class='border rounded'>
-                        <UserSelect
-                            v-model='overlay.username'
-                        />
+            <template v-else>
+                <div class='row g-2'>
+                    <div class='col-12'>
+                        <label class='mx-2 my-1'>Ownership</label>
+                        <div class='border rounded'>
+                            <UserSelect
+                                v-model='username'
+                            />
+                        </div>
                     </div>
                 </div>
-                <div
-                    class='px-2 py-2 round btn-group w-100'
-                    role='group'
-                >
-                    <input
-                        id='entry-manual'
-                        type='radio'
-                        class='btn-check'
-                        autocomplete='off'
-                        :checked='mode === "manual"'
-                        @click='mode = "manual"'
-                    >
-                    <label
-                        for='entry-manual'
-                        type='button'
-                        class='btn btn-sm'
-                    ><IconTerminal
-                        v-tooltip='"Manual Entry"'
-                        class='me-2'
-                        :size='32'
-                        stroke='1'
-                    />Manual Entry</label>
 
-                    <input
-                        id='entry-public'
-                        type='radio'
-                        class='btn-check'
-                        autocomplete='off'
-                        :checked='mode === "public"'
-                        @click='mode = "public"'
-                    >
+                <BasemapTypeSelector
+                    v-if='showTypeSelector'
+                    :is-system-admin='true'
+                    class='mt-3'
+                    @select='setBasemapType'
+                />
+                <component
+                    :is='activeSelectorComponent'
+                    v-else-if='activeSelectorComponent'
+                    v-model:editing='editing'
+                    :basemap-id='basemapId'
+                    :vector-layers='vectorLayers'
+                    :errors='errors'
+                    :scope='scope'
+                    :warn-sharing='warnSharing'
+                    :is-system-admin='true'
+                    :url='tilejsonUrl'
+                    :upload-url='uploadUrl'
+                    @change-type='resetBasemapType'
+                    @update:scope='scope = $event'
+                    @update:warn-sharing='warnSharing = $event'
+                    @update:url='tilejsonUrl = $event'
+                    @fetch='fetchTileJSON'
+                    @done='processImport($event)'
+                />
 
-                    <label
-                        for='entry-public'
-                        type='button'
-                        class='btn btn-sm'
-                    ><IconList
-                        v-tooltip='"Public Tilesets"'
-                        class='me-2'
-                        :size='32'
-                        stroke='1'
-                    />Public Tilesets</label>
-                </div>
-
-                <template v-if='mode === "public"'>
-                    <PublicTilesSelect
-                        @select='publicTileSelect($event)'
-                    />
+                <template v-if='showStylesAndFooter'>
+                    <div class='row g-2 mt-2'>
+                        <div class='col-12'>
+                            <StyleContainer
+                                v-model='editing.styles'
+                                :advanced='true'
+                            />
+                        </div>
+                        <div class='col-12 d-flex py-2'>
+                            <TablerDelete
+                                v-if='basemapId'
+                                @delete='deleteOverlay'
+                            />
+                            <div class='ms-auto'>
+                                <TablerButton
+                                    class='btn-primary'
+                                    @click='saveOverlay'
+                                >
+                                    Submit
+                                </TablerButton>
+                            </div>
+                        </div>
+                    </div>
                 </template>
-
-                <div class='col-12'>
-                    <TablerInput
-                        v-model='overlay.url'
-                        :disabled='mode !== "manual"'
-                        label='Data URL'
-                    >
-                        <TablerToggle
-                            v-model='overlay.overlay'
-                            label='Overlay'
-                        />
-                    </TablerInput>
-                </div>
-
-                <div class='col-12 col-md-3'>
-                    <TablerInput
-                        v-model='overlay.minzoom'
-                        :disabled='mode !== "manual"'
-                        type='number'
-                        label='Minzoom'
-                    />
-                </div>
-                <div class='col-12 col-md-3'>
-                    <TablerInput
-                        v-model='overlay.maxzoom'
-                        :disabled='mode !== "manual"'
-                        type='number'
-                        label='Maxzoom'
-                    />
-                </div>
-                <div class='col-12 col-md-6'>
-                    <TablerInput
-                        v-model='overlay.frequency'
-                        label='Update Frequency (Seconds)'
-                    />
-                </div>
-                <div class='col-12 col-md-6'>
-                    <TablerInput
-                        v-model='overlay.bounds'
-                        :disabled='mode !== "manual"'
-                        label='Bounds'
-                    />
-                </div>
-                <div class='col-12 col-md-6'>
-                    <TablerInput
-                        v-model='overlay.center'
-                        :disabled='mode !== "manual"'
-                        label='Center'
-                    />
-                </div>
-                <div class='col-12 col-md-6'>
-                    <TablerEnum
-                        v-model='overlay.type'
-                        label='Type'
-                        :options='["vector", "raster", "raster-dem"]'
-                    />
-                </div>
-                <div class='col-12 col-md-6'>
-                    <TablerEnum
-                        v-model='overlay.format'
-                        label='Overlay Format'
-                        :default='formats[0]'
-                        :options='formats'
-                    />
-                </div>
-
-                <div class='col-12'>
-                    <StyleContainer
-                        v-model='overlay.styles'
-                        :advanced='true'
-                    />
-                </div>
-                <div class='col-12 d-flex py-2'>
-                    <TablerDelete
-                        v-if='overlay.id'
-                        @delete='deleteOverlay'
-                    />
-                    <div class='ms-auto'>
-                        <TablerButton
-                            class='btn-primary'
-                            @click='saveOverlay'
-                        >
-                            Submit
-                        </TablerButton>
-                    </div>
-                </div>
-            </div>
+            </template>
         </div>
     </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { std, stdurl } from '../../std.ts';
+<script setup lang='ts'>
+import { ref, computed, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { server, stdurl } from '../../std.ts';
 import StyleContainer from '../ETL/Styling/Style.vue';
 import UserSelect from '../util/UserSelect.vue';
-import PublicTilesSelect from '../util/PublicTilesSelect.vue';
+import BasemapTypeSelector from '../CloudTAK/Menu/Basemaps/TypeSelector.vue';
+import TypeSelectorFeatureServer from '../CloudTAK/Menu/Basemaps/TypeSelectorFeatureServer.vue';
+import TypeSelectorImageServer from '../CloudTAK/Menu/Basemaps/TypeSelectorImageServer.vue';
+import TypeSelectorMapServer from '../CloudTAK/Menu/Basemaps/TypeSelectorMapServer.vue';
+import TypeSelectorZxy_Tilejson from '../CloudTAK/Menu/Basemaps/TypeSelectorZxy_Tilejson.vue';
+import TypeSelectorZxy_Upload from '../CloudTAK/Menu/Basemaps/TypeSelectorZxy_Upload.vue';
+import TypeSelectorZxy from '../CloudTAK/Menu/Basemaps/TypeSelectorZxy.vue';
+import TypeSelectorHosted from '../CloudTAK/Menu/Basemaps/TypeSelectorHosted.vue';
+import { BasemapTypeConfig, inferBasemapType, normalizeEditing } from '../CloudTAK/Menu/Basemaps/types.ts';
+import type { BasemapImport, BasemapImportRequest, BasemapSourceType, EditingBasemap, VectorLayerDescriptor } from '../CloudTAK/Menu/Basemaps/types.ts';
 import {
-    IconTerminal,
-    IconList,
-    IconCircleArrowLeft
+    IconCircleArrowLeft,
 } from '@tabler/icons-vue';
 import {
-    TablerEnum,
-    TablerInput,
     TablerLoading,
-    TablerToggle,
     TablerButton,
     TablerDelete,
-    TablerIconButton
+    TablerIconButton,
 } from '@tak-ps/vue-tabler';
 
 const route = useRoute();
 const router = useRouter();
 
+const isNew = computed(() => route.params.overlay === 'new');
+const basemapId = computed(() => isNew.value ? undefined : Number(route.params.overlay));
+
 const loading = ref(true);
-const mode = ref('manual');
-const overlay = ref({
+const warnSharing = ref(false);
+const username = ref('');
+const tilejsonUrl = ref('');
+
+const selectedBasemapType = ref<BasemapSourceType | null>(null);
+const vectorLayers = ref<VectorLayerDescriptor[]>([]);
+
+const errors = ref<Record<'name' | 'url', string>>({
+    name: '',
+    url: '',
+});
+
+const scope = ref<'user' | 'server'>('server');
+
+const editing = ref<EditingBasemap>({
     name: '',
     url: '',
     type: 'vector',
-    overlay: true,
-    styles: [],
     minzoom: 0,
     maxzoom: 16,
-    frequency: 0,
+    tilesize: 256,
+    attribution: '',
     sharing_enabled: true,
-    sharing_token: null,
-    bounds: '-180, -90, 180, 90',
-    center: '0, 0',
+    format: 'mvt',
+    bounds: [-180, -90, 180, 90],
+    center: [0, 0],
+    collection: '',
+    title: 'callsign',
+    overlay: true,
+    hidden: false,
+    frequency: null,
+    snapping_enabled: false,
+    snapping_layer: '',
+    styles: [],
+    tilejson: '',
+    encoding: null,
 });
 
-const formats = computed(() => {
-    if (overlay.value.type === 'vector') {
-        return [ "mvt" ];
-    } else {
-        return [ "jpeg", "png" ];
+const showTypeSelector = computed(() => {
+    return isNew.value && !selectedBasemapType.value;
+});
+
+const showStylesAndFooter = computed(() => {
+    return !loading.value
+        && !showTypeSelector.value
+        && !!selectedBasemapType.value
+        && selectedBasemapType.value !== 'upload'
+        && selectedBasemapType.value !== 'tilejson'
+        && selectedBasemapType.value !== 'hosted'
+        && (basemapId.value || editing.value.url);
+});
+
+const activeSelectorComponent = computed(() => {
+    switch (selectedBasemapType.value) {
+    case 'zxy': return TypeSelectorZxy;
+    case 'imageserver': return TypeSelectorImageServer;
+    case 'mapserver': return TypeSelectorMapServer;
+    case 'featureserver': return TypeSelectorFeatureServer;
+    case 'tilejson': return TypeSelectorZxy_Tilejson;
+    case 'upload': return TypeSelectorZxy_Upload;
+    case 'hosted': return TypeSelectorHosted;
+    default: return null;
     }
 });
 
+const uploadUrl = computed(() => stdurl('/api/basemap'));
+
 onMounted(async () => {
-    if (route.params.overlay !== 'new') {
+    if (!isNew.value) {
         await fetchOverlay();
     } else {
         loading.value = false;
     }
 });
 
-async function deleteOverlay() {
+function setBasemapType(type: string): void {
+    selectedBasemapType.value = type as BasemapSourceType;
+    tilejsonUrl.value = '';
+    vectorLayers.value = [];
+
+    if (selectedBasemapType.value === 'tilejson' || selectedBasemapType.value === 'upload') {
+        return;
+    }
+
+    const inferred = inferBasemapType(editing.value.url);
+    if (basemapId.value && inferred === selectedBasemapType.value) return;
+
+    Object.assign(editing.value, BasemapTypeConfig[selectedBasemapType.value].defaults);
+    editing.value.url = '';
+}
+
+function resetBasemapType(): void {
+    selectedBasemapType.value = null;
+    tilejsonUrl.value = '';
+    vectorLayers.value = [];
+}
+
+async function fetchTileJSON(): Promise<void> {
+    loading.value = true;
     try {
-        loading.value = true;
+        const importType = selectedBasemapType.value;
+        const isArcGISImport = importType === 'featureserver'
+            || importType === 'mapserver'
+            || importType === 'imageserver';
 
-        await std(`/api/basemap/${overlay.value.id}`, {
-            method: 'DELETE'
+        const putRes = await server.PUT('/api/basemap', isArcGISImport
+            ? {
+                headers: { 'Content-Type': 'application/json' },
+                body: {
+                    type: importType,
+                    url: tilejsonUrl.value,
+                } satisfies BasemapImportRequest,
+            }
+            : {
+                headers: { 'Content-Type': 'text/plain' },
+                body: tilejsonUrl.value,
+            });
+        if (putRes.error) throw new Error(putRes.error.message);
+        const data = putRes.data as BasemapImport;
+
+        editing.value = normalizeEditing(data);
+        vectorLayers.value = Array.isArray(data.vector_layers)
+            ? data.vector_layers as VectorLayerDescriptor[]
+            : [];
+        selectedBasemapType.value = inferBasemapType(editing.value.url) ?? 'zxy';
+        loading.value = false;
+    } catch (err) {
+        loading.value = false;
+        throw err;
+    }
+}
+
+function processImport(body: unknown): void {
+    editing.value = normalizeEditing(body as BasemapImport);
+    vectorLayers.value = Array.isArray((body as BasemapImport).vector_layers)
+        ? (body as BasemapImport).vector_layers as VectorLayerDescriptor[]
+        : [];
+    selectedBasemapType.value = inferBasemapType(editing.value.url) ?? 'zxy';
+}
+
+async function deleteOverlay(): Promise<void> {
+    loading.value = true;
+    try {
+        const res = await server.DELETE('/api/basemap/{:basemapid}', {
+            params: { path: { ':basemapid': basemapId.value! } },
         });
-
+        if (res.error) throw new Error(res.error.message);
         router.push('/admin/overlay');
     } catch (err) {
         loading.value = false;
@@ -262,66 +280,90 @@ async function deleteOverlay() {
     }
 }
 
-function publicTileSelect(tilejson) {
-    if (tilejson) {
-        if (!overlay.value.name) {
-            overlay.value.name = tilejson.name.replace(/^public\//, "").replace(/\.pmtiles$/, "");
-        }
+async function saveOverlay(): Promise<void> {
+    errors.value.name = editing.value.name ? '' : 'Cannot be empty';
+    errors.value.url = editing.value.url ? '' : 'Cannot be empty';
 
-        overlay.value.url = tilejson.tiles[0].replace(/\?.*$/, '');
-        overlay.value.minzoom = tilejson.minzoom;
-        overlay.value.maxzoom = tilejson.maxzoom;
-        overlay.value.bounds = tilejson.bounds.join(',');
-        overlay.value.center = tilejson.center.slice(0, 2).join(',');
-    } else {
-        overlay.value.url = '';
-    }
-}
-
-async function saveOverlay() {
-    let body = JSON.parse(JSON.stringify(overlay.value));
-
-    body.bounds = body.bounds.split(',').map((b) => {
-        return Number(b);
-    })
-
-    body.center = body.center.split(',').map((b) => {
-        return Number(b);
-    })
-
-    if (body.username) {
-        body.scope = 'user'
-    } else {
-        body.scope = 'server'
-    }
-
-    if (body.frequency) {
-        body.frequency = Number(body.frequency);
-    } else {
-        body.frequency = null;
-    }
+    if (errors.value.name || errors.value.url) return;
 
     loading.value = true;
-
     try {
-        if (route.params.overlay === 'new') {
-            const url = stdurl(`/api/basemap`);
-            if (body.username) url.searchParams.append('impersonate', body.username);
-            const ov = await std(url, { method: 'POST', body });
-            ov.bounds = ov.bounds.join(',');
-            ov.center = ov.center.join(',');
+        const body: Omit<Partial<EditingBasemap>, 'tilesize' | 'collection' | 'attribution' | 'bounds' | 'center' | 'frequency' | 'snapping_layer'> & {
+            bounds?: number[];
+            center?: number[];
+            tilesize?: number | null;
+            collection?: string | null;
+            attribution?: string | null;
+            frequency?: number | null;
+            snapping_layer?: string | null;
+        } = {
+            ...editing.value,
+        };
 
-            overlay.value = ov;
+        if (!body.bounds?.length) delete body.bounds;
+        if (!body.center?.length) delete body.center;
 
-            router.push(`/admin/overlay/${overlay.value.id}`);
+        if (!body.tilesize && body.tilesize !== 0) body.tilesize = null;
+        if (!body.collection || body.collection.trim().length === 0) body.collection = null;
+        if (!body.attribution || body.attribution.trim().length === 0) body.attribution = null;
+        if (body.encoding === null) delete body.encoding;
+
+        if (editing.value.type !== 'vector' || !editing.value.title || editing.value.title.trim().length === 0) {
+            delete body.title;
+        }
+
+        if (body.frequency) {
+            body.frequency = Number(body.frequency);
         } else {
-            const url = stdurl(`/api/basemap/${overlay.value.id}`);
-            if (body.username) url.searchParams.append('impersonate', body.username);
-            const ov = await std(url, { method: 'PATCH', body });
-            ov.bounds = ov.bounds.join(',');
-            ov.center = ov.center.join(',');
+            body.frequency = null;
+        }
 
-            overlay.value = ov;
+        if (!body.snapping_enabled) {
+            body.snapping_layer = null;
+        }
+
+        // Convert null to undefined for API compatibility
+        const apiBody = {
+            ...body,
+            tilesize: body.tilesize ?? undefined,
+            snapping_layer: body.snapping_layer ?? undefined,
+            encoding: body.encoding ?? undefined,
+        };
+
+        if (basemapId.value) {
+            const res = await server.PATCH('/api/basemap/{:basemapid}', {
+                params: {
+                    path: { ':basemapid': basemapId.value },
+                    ...(username.value ? { query: { impersonate: username.value } } : {}),
+                },
+                body: {
+                    scope: scope.value,
+                    protocol: selectedBasemapType.value as 'zxy' | 'mapserver' | 'imageserver' | 'featureserver' | 'hosted',
+                    ...apiBody,
+                },
+            });
+            if (res.error) throw new Error(res.error.message);
+        } else {
+            const res = await server.POST('/api/basemap', {
+                params: {
+                    ...(username.value ? { query: { impersonate: username.value } } : {}),
+                },
+                body: {
+                    scope: scope.value,
+                    protocol: selectedBasemapType.value as 'zxy' | 'mapserver' | 'imageserver' | 'featureserver' | 'hosted',
+                    ...apiBody,
+                    name: apiBody.name || '',
+                    url: apiBody.url || '',
+                    overlay: apiBody.overlay ?? false,
+                    hidden: apiBody.hidden ?? false,
+                    tilesize: apiBody.tilesize ?? 256,
+                    sharing_enabled: apiBody.sharing_enabled ?? true,
+                    snapping_enabled: apiBody.snapping_enabled ?? false,
+                },
+            });
+            if (res.error) throw new Error(res.error.message);
+
+            router.push(`/admin/overlay/${res.data.id}`);
         }
 
         loading.value = false;
@@ -331,25 +373,35 @@ async function saveOverlay() {
     }
 }
 
-async function fetchOverlay() {
+async function fetchOverlay(): Promise<void> {
     loading.value = true;
-    const url = stdurl(`/api/basemap/${route.params.overlay}`);
-    const res = await std(url);
 
-    if (!res.bounds) {
-        res.bounds = '-180, -90, 180, 90';
-    } else {
-        res.bounds = res.bounds.join(',');
+    const overlayRes = await server.GET('/api/basemap/{:basemapid}', {
+        params: { path: { ':basemapid': Number(route.params.overlay) } },
+    });
+    if (overlayRes.error) throw new Error(overlayRes.error.message);
+    const overlayData = overlayRes.data;
+    if (typeof overlayData === 'string') throw new Error('Unexpected response');
+
+    username.value = overlayData.username ?? '';
+    scope.value = overlayData.username ? 'user' : 'server';
+
+    editing.value = normalizeEditing(overlayData as unknown as BasemapImport);
+    selectedBasemapType.value = inferBasemapType(editing.value.url)
+        ?? (overlayData.protocol as BasemapSourceType)
+        ?? 'zxy';
+
+    vectorLayers.value = [];
+    if (editing.value.type === 'vector') {
+        const tilesRes = await server.GET('/api/basemap/{:basemapid}/tiles', {
+            params: { path: { ':basemapid': Number(route.params.overlay) } },
+        });
+        if (tilesRes.error) throw new Error(tilesRes.error.message);
+        vectorLayers.value = Array.isArray(tilesRes.data.vector_layers)
+            ? tilesRes.data.vector_layers as VectorLayerDescriptor[]
+            : [];
     }
 
-    if (!res.center) {
-        res.center = '0, 0';
-    } else {
-        res.center = res.center.join(',');
-    }
-
-
-    overlay.value = res;
     loading.value = false;
 }
 </script>

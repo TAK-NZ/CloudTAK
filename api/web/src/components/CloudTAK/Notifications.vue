@@ -1,14 +1,12 @@
 <template>
     <div
-        class='card'
         style='
-            width: 400px;
-            max-width: 90vw;
+            min-width: 400px;
             max-height: 50vh;
         '
     >
-        <div class='card-header d-flex align-items-center'>
-            <h3 class='card-title'>
+        <div class='d-flex align-items-center px-3 py-2 border-bottom'>
+            <h3 class='m-0 fw-bold'>
                 Notifications
             </h3>
             <div class='ms-auto btn-list'>
@@ -41,7 +39,7 @@
             <div
                 v-for='type in availableTypes'
                 :key='type'
-                class='d-flex flex-column align-items-center justify-content-center p-2 rounded cursor-pointer border'
+                class='d-flex flex-column align-items-center justify-content-center p-2 rounded cursor-pointer border cloudtak-hover'
                 :class='selectedTypes.includes(type) ? "border-primary" : "border-transparent"'
                 style='width: 60px; height: 60px;'
                 @click.stop.prevent='toggleType(type)'
@@ -70,17 +68,17 @@
         </div>
         <TablerNone
             v-if='!filteredList || filteredList.length === 0'
-            label='Notifications'
+            label='No Notifications'
             :create='false'
         />
         <div
             v-else
-            class='overflow-auto list-group list-group-flush list-group-hoverable'
+            class='overflow-auto list-group list-group-flush'
         >
             <div
                 v-for='n in filteredList'
                 :key='n.id'
-                class='list-group-item cursor-pointer'
+                class='list-group-item cursor-pointer cloudtak-hover'
                 data-toggle='collapse'
                 @click='router.push(n.url)'
             >
@@ -90,7 +88,7 @@
                             :type='n.type'
                         />
                     </div>
-                    <div style='min-width: 0; flex: 1;'>
+                    <div class='text-truncate'>
                         <div
                             class='text-body d-block'
                             v-text='n.name'
@@ -120,13 +118,6 @@
             </div>
         </div>
     </div>
-
-    <NotificationToast
-        v-for='n in filteredListToast'
-        :id='n.id'
-        :key='n.id'
-        @close='TAKNotification.update(n.id, { toast: false })'
-    />
 </template>
 
 <script setup lang='ts'>
@@ -135,8 +126,8 @@ import { ref, computed } from 'vue';
 import { liveQuery } from 'dexie';
 import { useRouter } from 'vue-router';
 import { useObservable } from '@vueuse/rxjs';
-import TAKNotification, { NotificationType } from '../../base/notification.ts';
-import NotificationToast from './util/NotificationToast.vue';
+import TAKNotification_, { NotificationType } from '../../base/notification.ts';
+const TAKNotification = TAKNotification_;
 import NotificationIcon from './util/NotificationIcon.vue';
 import timeDiff from '../../timediff.ts';
 import {
@@ -178,13 +169,6 @@ const filteredList = computed(() => {
         if (!selectedTypes.value.includes(n.type)) return false;
         return n.name.toLowerCase().includes(paging.value.filter.toLowerCase())
             || n.body.toLowerCase().includes(paging.value.filter.toLowerCase());
-    })
-});
-
-const filteredListToast = computed(() => {
-    if (!list.value) return [];
-    return list.value.filter((n) => {
-        return n.toast && !n.read;
     })
 });
 

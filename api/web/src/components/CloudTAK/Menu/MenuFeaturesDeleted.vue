@@ -16,7 +16,7 @@
 
                 <template #dropdown>
                     <div
-                        class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                        class='cursor-pointer col-12 cloudtak-hover d-flex align-items-center px-2 py-2'
                         @click.stop.prevent='download("geojson")'
                     >
                         <IconFile
@@ -26,7 +26,7 @@
                         <span class='mx-2'>GeoJSON</span>
                     </div>
                     <div
-                        class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                        class='cursor-pointer col-12 cloudtak-hover d-flex align-items-center px-2 py-2'
                         @click.stop.prevent='download("kml")'
                     >
                         <IconFile
@@ -44,12 +44,32 @@
             />
         </template>
         <template #default>
-            <div class='mx-2 my-2'>
-                <TablerInput
+            <div class='my-2'>
+                <SearchSortFilter
                     v-model='query.filter'
-                    icon='search'
-                    placeholder='Search'
-                />
+                    v-model:sort='sort'
+                    :sort-options='sortOptions'
+                >
+                    <template #sort-icon>
+                        <template v-if='sort'>
+                            <component
+                                :is='sortTypeIcon'
+                                :size='20'
+                                stroke='1'
+                            />
+                            <component
+                                :is='sortDirectionIcon'
+                                :size='20'
+                                stroke='1'
+                            />
+                        </template>
+                        <IconArrowsSort
+                            v-else
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                </SearchSortFilter>
             </div>
             <TablerLoading
                 v-if='loading'
@@ -57,9 +77,9 @@
                 desc='Loading Deleted Features'
             />
             <TablerNone
-                v-else-if='filteredList.length === 0'
+                v-else-if='list.features.length === 0'
                 :create='false'
-                label='Archived Features'
+                label='No Archived Features'
             />
             <template v-else>
                 <GenericSelect
@@ -67,12 +87,14 @@
                     role='menu'
                     :disabled='false'
                     :hover='false'
-                    :items='filteredList'
+                    :sticky-controls='true'
+                    :items='list.features'
                 >
                     <template #buttons='{disabled}'>
                         <TablerIconButton
+                            title='Restore Features'
                             :disabled='disabled'
-                            @click='restoreFeatures'
+                            @click.stop='restoreFeatures'
                         >
                             <IconRestore
                                 :size='32'
@@ -91,31 +113,48 @@
                         />
                     </template>
                 </GenericSelect>
+                <div class='d-flex justify-content-center mt-2'>
+                    <TablerPager
+                        :page='query.page'
+                        :total='total'
+                        :limit='query.limit'
+                        @page='query.page = $event'
+                    />
+                </div>
             </template>
         </template>
     </MenuTemplate>
 </template>
 
 <script setup lang='ts'>
-import { ref, onMounted, computed, useTemplateRef } from 'vue';
+import { ref, onMounted, onBeforeUnmount, watch, computed, useTemplateRef } from 'vue';
+import { Preferences } from '@capacitor/preferences';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import FeatureRow from '../util/FeatureRow.vue';
 import GenericSelect from '../util/GenericSelect.vue';
 import {
     TablerNone,
-    TablerInput,
     TablerLoading,
     TablerDropdown,
     TablerIconButton,
-    TablerRefreshButton
+    TablerRefreshButton,
+    TablerPager,
 } from '@tak-ps/vue-tabler';
 import { std, server } from '../../../std.ts';
+import { WorkerMessageType } from '../../../base/events.ts';
+import type { WorkerMessage } from '../../../base/events.ts';
 import type { ComponentExposed } from 'vue-component-type-helpers'
 import type { FeatureCollection } from '../../../types.ts';
 import {
     IconFile,
     IconRestore,
     IconDownload,
+    IconLetterCase,
+    IconClock,
+    IconArrowUp,
+    IconArrowDown,
+    IconArrowsSort,
 } from '@tabler/icons-vue';
 import { useMapStore } from '../../../stores/map.ts';
 
@@ -126,28 +165,58 @@ const list = ref<FeatureCollection>({
     features: []
 });
 
+const total = ref(0);
+
 const query = ref({
     filter: '',
     page: 0,
     deleted: true,
     download: false,
-    limit: 100
+    limit: 25
 })
 
 const loading = ref(true);
 const select = useTemplateRef<ComponentExposed<typeof GenericSelect>>('select');
 
-const filteredList = computed(() => {
-    if (query.value.filter === '') return list.value.features;
+const sort = ref('');
+const sortOptions = ['Newest → Oldest', 'Oldest → Newest', 'A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => (sort.value === 'A → Z' || sort.value === 'Z → A') ? IconLetterCase : IconClock);
+const sortDirectionIcon = computed(() => (sort.value === 'Newest → Oldest' || sort.value === 'Z → A') ? IconArrowDown : IconArrowUp);
 
-    return list.value.features.filter((feature) => {
-        return feature.properties.callsign.toLowerCase().includes(query.value.filter.toLowerCase())
-    });
+let filterTimer: ReturnType<typeof setTimeout> | null = null;
+watch(() => query.value.filter, () => {
+    if (filterTimer) clearTimeout(filterTimer);
+    filterTimer = setTimeout(async () => {
+        query.value.page = 0;
+        await refresh();
+    }, 300);
+});
+
+watch(() => query.value.page, async () => {
+    await refresh();
+});
+
+watch(sort, async () => {
+    query.value.page = 0;
+    await refresh();
 });
 
 onMounted(async () => {
+    channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+        const msg = event.data;
+        if (msg?.type === WorkerMessageType.Feature_Archived_Removed) {
+            await refresh();
+        }
+    };
+
     await refresh();
 });
+
+onBeforeUnmount(() => {
+    channel.close();
+});
+
+const channel = new BroadcastChannel('cloudtak');
 
 async function refresh() {
     loading.value = true;
@@ -156,11 +225,12 @@ async function refresh() {
         const res = await server.GET('/api/profile/feature', {
             params: {
                 query: {
-                    sort: 'id',
-                    order: 'desc',
+                    sort: (sort.value === 'A → Z' || sort.value === 'Z → A') ? 'path' : 'id',
+                    order: (sort.value === 'Newest → Oldest' || sort.value === 'Z → A') ? 'asc' : 'desc',
                     page: query.value.page,
                     download: query.value.download,
                     deleted: query.value.deleted,
+                    filter: query.value.filter || undefined,
                     format: 'geojson',
                     limit: query.value.limit
                 }
@@ -169,6 +239,7 @@ async function refresh() {
 
         if (res.error) throw new Error(res.error.message);
 
+        total.value = res.data.total;
         list.value.features = res.data.items.map((feat) => {
             return {
                 id: feat.id,
@@ -210,7 +281,8 @@ async function restoreFeatures(): Promise<void> {
 }
 
 async function download(format: string): Promise<void> {
-    await std(`/api/profile/feature?format=${format}&download=true&token=${localStorage.token}&deleted=true`, {
+    const { value: token } = await Preferences.get({ key: 'token' });
+    await std(`/api/profile/feature?format=${format}&download=true&deleted=true${token ? `&token=${encodeURIComponent(token)}` : ''}`, {
         download: true
     });
 }

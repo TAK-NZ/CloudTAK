@@ -1,5 +1,6 @@
-import { db } from './database.ts';
-import { std, stdurl } from '../std.ts';
+import { db } from '../database.ts';
+import type { DBSubscriptionLog } from '../database.ts';
+import { server, downloadUrl } from '../std.ts';
 import type {
     MissionLog,
     MissionLogList
@@ -34,15 +35,24 @@ export default class SubscriptionLog {
     }
 
     async refresh(): Promise<void> {
-        const url = stdurl('/api/marti/missions/' + encodeURIComponent(this.guid) + '/log');
-
-        const list = await std(url, {
-            method: 'GET',
-            token: this.token,
+        const { data, error } = await server.GET('/api/marti/missions/{:name}/log', {
+            params: { path: { ':name': this.guid }, query: { format: 'json' as const, download: false } },
             headers: this.headers()
-        }) as MissionLogList;
+        });
+
+        if (error || !data) throw new Error('Failed to fetch mission log');
+
+        const list = data as unknown as MissionLogList;
 
         await db.transaction('rw', db.subscription_log, async () => {
+            const readLogs = new Set(
+                await db.subscription_log
+                    .where('mission')
+                    .equals(this.guid)
+                    .filter(l => !!l.read)
+                    .primaryKeys()
+            );
+
             await db.subscription_log
                 .where('mission')
                 .equals(this.guid)
@@ -59,7 +69,8 @@ export default class SubscriptionLog {
                     servertime: log.servertime,
                     creatorUid: log.creatorUid,
                     contentHashes: log.contentHashes,
-                    keywords: log.keywords
+                    keywords: log.keywords,
+                    read: readLogs.has(log.id)
                 });
             }
         });
@@ -68,9 +79,9 @@ export default class SubscriptionLog {
     async list(
         opts?: {
             filter?: string,
-            refresh: false,
+            refresh?: boolean,
         }
-    ): Promise<Array<MissionLog>> {
+    ): Promise<Array<DBSubscriptionLog>> {
         if (opts?.refresh) {
             await this.refresh();
         }
@@ -87,6 +98,13 @@ export default class SubscriptionLog {
         return logs;
     }
 
+    async read(): Promise<void> {
+        await db.subscription_log
+            .where('mission')
+            .equals(this.guid)
+            .modify({ read: true });
+    }
+
     async create(
         body: {
             dtg?: string;
@@ -95,16 +113,15 @@ export default class SubscriptionLog {
             keywords?: Array<string>;
         }
     ): Promise<MissionLog> {
-        const url = stdurl('/api/marti/missions/' + encodeURIComponent(this.guid) + '/log');
+        const { data, error } = await server.POST('/api/marti/missions/{:name}/log', {
+            params: { path: { ':name': this.guid } },
+            headers: this.headers(),
+            body: body
+        });
 
-        const log = await std(url, {
-            method: 'POST',
-            body: body,
-            token: this.token,
-            headers: this.headers()
-        }) as {
-            data: MissionLog
-        };
+        if (error || !data) throw new Error('Failed to create mission log');
+
+        const log = data as unknown as { data: MissionLog };
 
         await db.subscription_log.put({
             id: log.data.id,
@@ -116,7 +133,8 @@ export default class SubscriptionLog {
             servertime: log.data.servertime,
             creatorUid: log.data.creatorUid,
             contentHashes: log.data.contentHashes,
-            keywords: log.data.keywords
+            keywords: log.data.keywords,
+            read: true
         });
 
         return log.data;
@@ -125,22 +143,21 @@ export default class SubscriptionLog {
     async update(
         logid: string,
         body: {
-            dtg?: string;
+            dtg: string;
             content: string;
             contentHashes?: Array<string>;
             keywords?: Array<string>;
         },
     ): Promise<MissionLog> {
-        const url = stdurl('/api/marti/missions/' + encodeURIComponent(this.guid) + '/log/' + encodeURIComponent(logid));
+        const { data, error } = await server.PATCH('/api/marti/missions/{:name}/log/{:logid}', {
+            params: { path: { ':name': this.guid, ':logid': logid } },
+            headers: this.headers(),
+            body: body
+        });
 
-        const log = await std(url, {
-            method: 'PATCH',
-            body: body,
-            token: this.token,
-            headers: this.headers()
-        }) as {
-            data: MissionLog
-        };
+        if (error || !data) throw new Error('Failed to update mission log');
+
+        const log = data as unknown as { data: MissionLog };
 
         await db.subscription_log.put({
             id: log.data.id,
@@ -152,7 +169,8 @@ export default class SubscriptionLog {
             content: log.data.content || '',
             creatorUid: log.data.creatorUid,
             contentHashes: log.data.contentHashes,
-            keywords: log.data.keywords
+            keywords: log.data.keywords,
+            read: true
         });
 
         return log.data;
@@ -161,14 +179,21 @@ export default class SubscriptionLog {
     async delete(
         logid: string,
     ): Promise<void> {
-        const url = stdurl('/api/marti/missions/' + encodeURIComponent(this.guid) + '/log/' + encodeURIComponent(logid));
-
-        await std(url, {
-            method: 'DELETE',
-            token: this.token,
+        await server.DELETE('/api/marti/missions/{:name}/log/{:log}', {
+            params: { path: { ':name': this.guid, ':log': logid } },
             headers: this.headers()
         });
 
         await db.subscription_log.delete(logid);
+    }
+
+    async download(format: string): Promise<void> {
+        await downloadUrl(
+            `/api/marti/missions/${encodeURIComponent(this.guid)}/log?download=true&format=${encodeURIComponent(format)}`,
+            {
+                filename: `mission-logs.${format}`,
+                token: true
+            }
+        );
     }
 }

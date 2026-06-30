@@ -4,7 +4,7 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -13,13 +13,13 @@ test('GET: api/profile/video', async () => {
         const res = await flight.fetch('/api/profile/video', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             total: 0,
-            items: []
+            items: [],
         });
     } catch (err) {
         assert.ifError(err);

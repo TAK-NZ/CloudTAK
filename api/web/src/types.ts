@@ -1,4 +1,4 @@
-import type { paths } from './derived-types.js';
+import type { paths } from '@cloudtak/api-types';
 import type { Origin } from './base/cot.ts'
 import type { Geometry } from 'geojson';
 
@@ -36,8 +36,15 @@ export type Subscription = paths["/api/marti/subscription/{:clientuid}"]["get"][
 
 export type Group = paths["/api/marti/group"]["get"]["responses"]["200"]["content"]["application/json"]["data"][0]
 
+export type GroupChannel = Omit<Group, 'direction'> & {
+    direction: string[];
+}
+
 export type User = paths["/api/user/{:username}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type UserList = paths["/api/user"]["get"]["responses"]["200"]["content"]["application/json"];
+
+export type ErrorReport = paths["/api/error/{:errorid}"]["get"]["responses"]["200"]["content"]["application/json"];
+export type ErrorReportList = paths["/api/error"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type Contact = paths["/api/marti/api/contacts/all"]["get"]["responses"]["200"]["content"]["application/json"][0];
 export type ContactList = paths["/api/marti/api/contacts/all"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -52,6 +59,7 @@ export type VideoConnectionList = paths["/api/marti/video"]["get"]["responses"][
 export type Mission = paths["/api/marti/missions/{:name}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type Mission_Create = paths["/api/marti/mission"]["post"]["requestBody"]["content"]["application/json"]
 export type MissionList = paths["/api/marti/mission"]["get"]["responses"]["200"]["content"]["application/json"];
+export type MissionInvite = paths["/api/marti/mission"]["get"]["responses"]["200"]["content"]["application/json"]["invites"][0];
 
 export type MissionRole = paths["/api/marti/missions/{:name}/role"]["get"]["responses"]["200"]["content"]["application/json"];
 
@@ -64,16 +72,14 @@ export type MissionLayer_Update = paths["/api/marti/missions/{:name}/layer/{:uid
 export type MissionLayerList = paths["/api/marti/missions/{:name}/layer"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export type MissionChanges = paths["/api/marti/missions/{:name}/changes"]["get"]["responses"]["200"]["content"]["application/json"];
+export type MissionChange = MissionChanges["data"][0];
 
 export type MissionSubscriptions = paths["/api/marti/missions/{:name}/subscriptions/roles"]["get"]["responses"]["200"]["content"]["application/json"]["data"];
 
 export type Server_Update = paths["/api/server"]["patch"]["requestBody"]["content"]["application/json"]
 export type Server = paths["/api/server"]["get"]["responses"]["200"]["content"]["application/json"]
 
-export type MapConfig = paths["/api/config/map"]["get"]["responses"]["200"]["content"]["application/json"]
-
 export type Login = paths["/api/login"]["get"]["responses"]["200"]["content"]["application/json"]
-export type LoginConfig = paths["/api/config/login"]["get"]["responses"]["200"]["content"]["application/json"]
 export type Login_Create = paths["/api/login"]["post"]["requestBody"]["content"]["application/json"]
 export type Login_CreateRes = paths["/api/login"]["post"]["responses"]["200"]["content"]["application/json"]
 
@@ -87,18 +93,40 @@ export type ServerAdminVideoList = paths["/api/server/video"]["get"]["responses"
 
 export type Iconset = paths["/api/iconset/{:iconset}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type IconsetList = paths["/api/iconset"]["get"]["responses"]["200"]["content"]["application/json"]
+export type Icon = paths["/api/iconset/{:iconset}/icon/{:icon}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type IconList = paths["/api/icon"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type AttachmentList = paths["/api/attachment"]["get"]["responses"]["200"]["content"]["application/json"]
 export type Attachment = paths["/api/attachment"]["get"]["responses"]["200"]["content"]["application/json"]["items"][0]
-
-export type ConfigGroups = paths["/api/config/group"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type TileJSON = paths["/api/basemap/{:basemapid}/tiles"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type Basemap = paths["/api/basemap/{:basemapid}"]["patch"]["responses"]["200"]["content"]["application/json"]
 export type BasemapList = paths["/api/basemap"]["get"]["responses"]["200"]["content"]["application/json"]
 
-export type Palette = paths["/api/palette/{:palette}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type PaletteFeature = {
+    uuid: string;
+    created: string;
+    updated: string;
+    name: string;
+    palette: string;
+    type: string;
+    style: Record<string, unknown>;
+}
+
+export type Palette = {
+    uuid: string;
+    created: string;
+    updated: string;
+    name: string;
+    template: string;
+    features: Array<PaletteFeature>;
+}
+
+export type PaletteList = {
+    total: number;
+    items: Array<Palette>;
+}
 
 export type Chat = {
     chatroom: string;
@@ -124,11 +152,10 @@ export type APIProfileChat = {
     message: string;
 }
 
-export type PaletteList = paths["/api/palette"]["get"]["responses"]["200"]["content"]["application/json"]
-export type PaletteFeature = paths["/api/palette/{:palette}/feature/{:feature}"]["get"]["responses"]["200"]["content"]["application/json"]
-
 export type MissionTemplate = paths["/api/template/mission/{:mission}"]["get"]["responses"]["200"]["content"]["application/json"]
 export type MissionTemplateList = paths["/api/template/mission"]["get"]["responses"]["200"]["content"]["application/json"]
+export type MissionTemplateLog = paths["/api/template/mission/{:mission}/log/{:log}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type MissionTemplateLogList = paths["/api/template/mission/{:mission}/log"]["get"]["responses"]["200"]["content"]["application/json"]
 
 export type Profile = paths["/api/profile"]["get"]["responses"]["200"]["content"]["application/json"]
 export type Profile_Update = paths["/api/profile"]["patch"]["requestBody"]["content"]["application/json"]
@@ -178,7 +205,19 @@ export type ProfileOverlayList = paths["/api/profile/overlay"]["get"]["responses
 export type ProfileOverlay_Create = paths["/api/profile/overlay"]["post"]["requestBody"]["content"]["application/json"]
 export type ProfileOverlay_Update = paths["/api/profile/overlay/{:overlay}"]["patch"]["requestBody"]["content"]["application/json"]
 
+export type ProfileTokenList = paths["/api/profile/token"]["get"]["responses"]["200"]["content"]["application/json"]
+export type ProfileToken = ProfileTokenList["items"][0]
+
+export type ProfilePagingList = paths["/api/profile/paging"]["get"]["responses"]["200"]["content"]["application/json"]
+export type ProfilePaging = ProfilePagingList["items"][0]
+export type ProfilePaging_Create = paths["/api/profile/paging"]["post"]["requestBody"]["content"]["application/json"]
+
 export type SearchReverse = paths["/api/search/reverse/{:longitude}/{:latitude}"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseSun = paths["/api/search/reverse/{:longitude}/{:latitude}/sun"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseMagnetic = paths["/api/search/reverse/{:longitude}/{:latitude}/magnetic"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseWeather = paths["/api/search/reverse/{:longitude}/{:latitude}/weather"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseReverse = paths["/api/search/reverse/{:longitude}/{:latitude}/reverse"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseElevation = paths["/api/search/reverse/{:longitude}/{:latitude}/elevation"]["get"]["responses"]["200"]["content"]["application/json"]
 
 // Below are CloudTAK ETL Specific Data Types
 
@@ -222,4 +261,27 @@ export type ETLRawTaskList = {
 }
 
 export type ETLTaskVersions = paths["/api/task/raw/{:task}"]["get"]["responses"]["200"]["content"]["application/json"]
+
+export type AdminLayerUpdate = {
+    id: number;
+    name: string;
+    task_prefix: string;
+    current_version: string;
+    latest_version: string | null;
+    has_update: boolean;
+    has_stack: boolean;
+    template: boolean;
+    connection: number | null;
+    parent_name: string | null;
+}
+
+export type AdminLayerUpdateList = {
+    total: number;
+    items: AdminLayerUpdate[];
+}
+
+export type Config = paths["/api/config"]["get"]["responses"]["200"]["content"]["application/json"];
+export type ConfigLogin = paths["/api/config/login"]["get"]["responses"]["200"]["content"]["application/json"]
+export type PasskeyList = paths['/api/login/passkey']['get']['responses']['200']['content']['application/json'];
+export type Passkey = PasskeyList['items'][0];
 

@@ -20,12 +20,8 @@
             />
         </template>
         <template #default>
-            <div class='mx-2 my-2'>
-                <TablerInput
-                    v-model='query.filter'
-                    icon='search'
-                    placeholder='Search'
-                />
+            <div class='my-2'>
+                <SearchSortFilter v-model='query.filter' />
             </div>
             <TablerLoading
                 v-if='loading'
@@ -35,10 +31,10 @@
             <TablerNone
                 v-else-if='routes.size === 0'
                 :create='false'
-                label='Routes'
+                label='No Routes'
             />
             <template v-else>
-                <div class='col-12 d-flex flex-column gap-2 p-3'>
+                <div class='col-12 d-flex flex-column gap-2 py-3'>
                     <StandardItem
                         v-for='cot of routes.values()'
                         :key='cot.id'
@@ -51,7 +47,7 @@
                         >
                             <IconRoute
                                 :size='24'
-                                :color='cot.properties["stroke"] || "#ffffff"'
+                                :color='cot.properties["stroke"] || "currentColor"'
                                 stroke='1'
                             />
                         </div>
@@ -87,10 +83,10 @@ import { useRouter } from 'vue-router';
 import COT from '../../../base/cot.ts';
 import { server } from '../../../std.ts';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import StandardItem from '../util/StandardItem.vue';
 import {
     TablerNone,
-    TablerInput,
     TablerDelete,
     TablerLoading,
     TablerIconButton,

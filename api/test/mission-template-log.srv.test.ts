@@ -4,7 +4,7 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -18,13 +18,13 @@ test('POST: /template/mission - create parent template', async () => {
         const res = await flight.fetch('/api/template/mission', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'Parent Template',
                 description: 'Parent template for logs',
-                icon: validIcon
-            }
+                icon: validIcon,
+            },
         }, true);
 
         templateId = res.body.id;
@@ -38,13 +38,13 @@ test('GET: /template/mission/:mission/log - empty', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log`, {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             total: 0,
-            items: []
+            items: [],
         });
     } catch (err) {
         assert.ifError(err);
@@ -56,30 +56,32 @@ test('POST: /template/mission/:mission/log - create', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log`, {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'Test Log',
                 description: 'A test mission template log',
                 icon: validIcon,
+                keywords: ['log-tag1'],
                 schema: {
                     type: 'object',
                     properties: {
-                        field1: { type: 'string' }
-                    }
-                }
-            }
+                        field1: { type: 'string' },
+                    },
+                },
+            },
         }, true);
 
         assert.ok(res.body.id, 'returned an id');
         assert.equal(res.body.name, 'Test Log');
         assert.equal(res.body.description, 'A test mission template log');
         assert.equal(res.body.icon, validIcon);
+        assert.deepEqual(res.body.keywords, ['log-tag1']);
         assert.deepEqual(res.body.schema, {
             type: 'object',
             properties: {
-                field1: { type: 'string' }
-            }
+                field1: { type: 'string' },
+            },
         });
         assert.ok(res.body.created, 'returned a created date');
         assert.ok(res.body.updated, 'returned an updated date');
@@ -95,14 +97,15 @@ test('GET: /template/mission/:mission/log - list', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log`, {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.total, 1);
         assert.equal(res.body.items.length, 1);
         assert.equal(res.body.items[0].id, logId);
         assert.equal(res.body.items[0].name, 'Test Log');
+        assert.deepEqual(res.body.items[0].keywords, ['log-tag1']);
     } catch (err) {
         assert.ifError(err);
     }
@@ -113,19 +116,20 @@ test('GET: /template/mission/:mission/log/:log - get', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log/${logId}`, {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.id, logId);
         assert.equal(res.body.name, 'Test Log');
         assert.equal(res.body.description, 'A test mission template log');
         assert.equal(res.body.icon, validIcon);
+        assert.deepEqual(res.body.keywords, ['log-tag1']);
         assert.deepEqual(res.body.schema, {
             type: 'object',
             properties: {
-                field1: { type: 'string' }
-            }
+                field1: { type: 'string' },
+            },
         });
     } catch (err) {
         assert.ifError(err);
@@ -137,29 +141,31 @@ test('PATCH: /template/mission/:mission/log/:log - update', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log/${logId}`, {
             method: 'PATCH',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'Updated Log',
                 description: 'An updated description',
+                keywords: ['log-tag2'],
                 schema: {
                     type: 'object',
                     properties: {
-                        field1: { type: 'number' }
-                    }
-                }
-            }
+                        field1: { type: 'number' },
+                    },
+                },
+            },
         }, true);
 
         assert.equal(res.body.id, logId);
         assert.equal(res.body.name, 'Updated Log');
         assert.equal(res.body.description, 'An updated description');
         assert.equal(res.body.icon, validIcon);
+        assert.deepEqual(res.body.keywords, ['log-tag2']);
         assert.deepEqual(res.body.schema, {
             type: 'object',
             properties: {
-                field1: { type: 'number' }
-            }
+                field1: { type: 'number' },
+            },
         });
     } catch (err) {
         assert.ifError(err);
@@ -171,8 +177,8 @@ test('DELETE: /template/mission/:mission/log/:log - delete', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log/${logId}`, {
             method: 'DELETE',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.status, 200);
@@ -187,8 +193,8 @@ test('GET: /template/mission/:mission/log/:log - not found', async () => {
         const res = await flight.fetch(`/api/template/mission/${templateId}/log/${logId}`, {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, false);
 
         assert.equal(res.status, 404);
@@ -202,8 +208,8 @@ test('DELETE: /template/mission/:mission - delete parent template', async () => 
         const res = await flight.fetch(`/api/template/mission/${templateId}`, {
             method: 'DELETE',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.status, 200);

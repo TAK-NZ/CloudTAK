@@ -2,7 +2,7 @@
     <MenuTemplate name='Channels'>
         <template #buttons>
             <TablerIconButton
-                v-if='!loading && mapStore.hasNoChannels'
+                v-if='channels.length && mapStore.hasNoChannels'
                 title='All Channels On'
                 @click='setAllStatus(true)'
             >
@@ -12,7 +12,7 @@
                 />
             </TablerIconButton>
             <TablerIconButton
-                v-if='!loading && !mapStore.hasNoChannels'
+                v-if='channels.length && !mapStore.hasNoChannels'
                 title='All Channels Off'
                 @click='setAllStatus(false)'
             >
@@ -23,20 +23,31 @@
             </TablerIconButton>
 
             <TablerRefreshButton
-                :loading='loading'
+                :loading='syncing'
                 @click='refresh'
             />
         </template>
         <template #default>
-            <div
-                v-if='!loading'
-                class='col-12 px-2 pb-2 pt-2'
-            >
-                <TablerInput
+            <div class='my-2'>
+                <SearchSortFilter
                     v-model='paging.filter'
-                    icon='search'
+                    v-model:sort='sort'
+                    :sort-options='sortOptions'
                     placeholder='Filter'
-                />
+                >
+                    <template #sort-icon>
+                        <component
+                            :is='sortTypeIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                        <component
+                            :is='sortDirectionIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                </SearchSortFilter>
             </div>
 
             <EmptyInfo
@@ -44,18 +55,13 @@
                 :button='false'
             />
 
-            <TablerLoading v-if='loading' />
-            <TablerAlert
-                v-else-if='error'
-                :err='error'
-            />
             <TablerNone
-                v-else-if='!Object.keys(processChannels).length'
+                v-if='!Object.keys(processChannels).length'
                 :create='false'
             />
             <div
                 v-else
-                class='col-12 d-flex flex-column gap-2 p-3'
+                class='col-12 d-flex flex-column gap-2 py-3'
             >
                 <StandardItem
                     v-for='ch in processChannels'
@@ -111,16 +117,18 @@
 
 <script setup lang='ts'>
 import { ref, computed, onMounted } from 'vue';
-import type { Group } from '../../../../src/types.ts';
+import type { Ref } from 'vue';
+import { from } from 'rxjs';
+import { useObservable } from '@vueuse/rxjs';
+import type { GroupChannel } from '../../../../src/types.ts';
+import GroupManager from '../../../base/group.ts';
 import {
     TablerNone,
     TablerIconButton,
     TablerRefreshButton,
-    TablerInput,
-    TablerAlert,
-    TablerLoading
 } from '@tak-ps/vue-tabler';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import StandardItem from '../util/StandardItem.vue';
 import EmptyInfo from '../util/EmptyInfo.vue';
 import {
@@ -130,37 +138,41 @@ import {
     IconEyeX,
     IconEyePlus,
     IconEyeOff,
+    IconLetterCase,
+    IconArrowUp,
+    IconArrowDown,
 } from '@tabler/icons-vue';
 import { useMapStore } from '../../../stores/map.ts';
 const mapStore = useMapStore();
 
-const error = ref<Error | undefined>();
-const loading = ref(true);
+const syncing = ref(false);
 const paging = ref({
     filter: ''
 });
 
-const channels = ref<Array<Group>>([]);
+const sort = ref('A → Z');
+const sortOptions = ['A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => IconLetterCase);
+const sortDirectionIcon = computed(() => sort.value === 'A → Z' ? IconArrowUp : IconArrowDown);
+
+const channels = useObservable(
+    from(GroupManager.live()),
+    { initialValue: [] }
+) as Ref<GroupChannel[]>;
 
 onMounted(async () => {
     await refresh();
 });
 
-const processChannels = computed<Record<string, Group>>(() => {
-    const filteredChannels: Record<string, Group> = {};
+const processChannels = computed<Record<string, GroupChannel>>(() => {
+    const filteredChannels: Record<string, GroupChannel> = {};
 
     JSON.parse(JSON.stringify(channels.value))
-        .sort((a: Group, b: Group) => {
-            return (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0);
-        }).forEach((channel: Group) => {
-            if (filteredChannels[channel.name]) {
-                // @ts-expect-error Type as an array eventually
-                filteredChannels[channel.name].direction.push(channel.direction);
-            } else {
-                // @ts-expect-error Type as an array eventually
-                channel.direction = [channel.direction];
-                filteredChannels[channel.name] = channel;
-            }
+        .sort((a: GroupChannel, b: GroupChannel) => {
+            const cmp = a.name.localeCompare(b.name);
+            return sort.value === 'Z → A' ? -cmp : cmp;
+        }).forEach((channel: GroupChannel) => {
+            filteredChannels[channel.name] = channel;
         })
 
     for (const key of Object.keys(filteredChannels)) {
@@ -173,34 +185,32 @@ const processChannels = computed<Record<string, Group>>(() => {
 });
 
 async function refresh() {
-    loading.value = true;
-
+    syncing.value = true;
     try {
-        channels.value = await mapStore.worker.profile.loadChannels();
-    } catch (err) {
-        error.value = err instanceof Error ? err : new Error(String(err));
+        await GroupManager.sync();
+    } finally {
+        syncing.value = false;
     }
-
-    loading.value = false;
 }
 
 async function setAllStatus(active=true) {
     // Updating the API takes a perceptable amount of time so
     // we update the UI state to provide immediate feedback
-    channels.value.forEach((ch) => {
-        ch.active = active;
-    })
+    const updates = channels.value.map((ch) => {
+        const char = JSON.parse(JSON.stringify(ch));
+        char.active = active;
+        return char;
+    });
 
-    channels.value = await mapStore.worker.profile.setAllChannels(active);
+    await GroupManager.put(updates);
+
+    await mapStore.worker.profile.setAllChannels(active);
 }
 
-async function setStatus(channel: Group, active=false) {
-    channels.value.forEach((ch) => {
-        if (ch.name === channel.name) {
-            ch.active = active;
-        }
-    })
+async function setStatus(channel: GroupChannel, active=false) {
+    const update: GroupChannel = { ...channel, active };
+    await GroupManager.put(update);
 
-    channels.value = await mapStore.worker.profile.setChannel(channel.name, active);
+    await mapStore.worker.profile.setChannel(channel.name, active);
 }
 </script>

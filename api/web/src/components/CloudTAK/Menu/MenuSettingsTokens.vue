@@ -20,7 +20,7 @@
             />
         </template>
         <template #default>
-            <div class='col-12 d-flex flex-column gap-2 p-3'>
+            <div class='col-12 d-flex flex-column gap-2 py-3'>
                 <StandardItem
                     v-for='t in tokens.items'
                     :key='t.id'
@@ -48,11 +48,12 @@
     />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import MenuTemplate from '../util/MenuTemplate.vue';
 import StandardItem from '../util/StandardItem.vue';
-import { std } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import type { ProfileToken, ProfileTokenList } from '../../../types.ts';
 import TokenModal from './Settings/TokenModal.vue';
 import {
     TablerIconButton,
@@ -63,9 +64,9 @@ import {
     IconRobot,
 } from '@tabler/icons-vue';
 
-const loading = ref(true);
-const token = ref(false);
-const tokens = ref({
+const loading = ref<boolean>(true);
+const token = ref<ProfileToken | Record<string, never> | false>(false);
+const tokens = ref<ProfileTokenList>({
     total: 0,
     items: []
 });
@@ -74,10 +75,14 @@ onMounted(async () => {
     await fetch();
 });
 
-async function fetch() {
+async function fetch(): Promise<void> {
     token.value = false;
     loading.value = true;
-    tokens.value = await std('/api/profile/token');
+    const { data, error } = await server.GET('/api/profile/token', {
+        params: { query: { limit: 100, page: 0, order: 'asc', sort: 'created', filter: '' } }
+    });
+    if (error) throw new Error(String(error));
+    tokens.value = data;
     loading.value = false;
 }
 </script>

@@ -1,5 +1,5 @@
-import { db, NotificationType } from './database.ts'
-import type { DBNotification } from './database.ts';
+import { db, NotificationType } from '../database.ts'
+import type { DBNotification } from '../database.ts';
 import { v4 as randomUUID } from 'uuid';
 
 export { NotificationType };
@@ -145,6 +145,15 @@ export default class TAKNotification {
 
     async delete(): Promise<void> {
         await db.notification.delete(this.id);
+    }
+
+    static async existsByUrl(url: string): Promise<boolean> {
+        const count = await db.notification.where('url').equals(url).count();
+        return count > 0;
+    }
+
+    static async countByType(type: NotificationType): Promise<number> {
+        return await db.notification.where('type').equals(type).count();
     }
 
     static async count(): Promise<number> {

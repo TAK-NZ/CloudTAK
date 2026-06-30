@@ -2,7 +2,7 @@ import AWSLambda from '@aws-sdk/client-lambda';
 import Schedule from './schedule.js';
 import LayerModel from './models/Layer.js';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type * as pgtypes from './schema.js'
+import type * as pgtypes from './schema.js';
 
 const lambda = new AWSLambda.LambdaClient({ region: process.env.AWS_REGION });
 
@@ -67,8 +67,8 @@ export default class EventsPool {
                         FunctionName: `${this.stackName}-layer-${layerid}`,
                         InvocationType: 'Event',
                         Payload: Buffer.from(JSON.stringify({
-                            type: 'default'
-                        }))
+                            type: 'default',
+                        })),
                     }));
                 } catch (err) {
                     console.error(err);
@@ -90,4 +90,3 @@ export default class EventsPool {
         }
     }
 }
-

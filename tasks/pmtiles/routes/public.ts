@@ -1,0 +1,271 @@
+import { ListObjectsV2Command, ListObjectsV2CommandInput } from '@aws-sdk/client-s3';
+import Err from '@openaddresses/batch-error';
+import Schema from '@openaddresses/batch-schema';
+import { Type } from '@sinclair/typebox';
+import { FileTiles, TileJSON, QueryResponse, FeaturesResponse } from '../lib/tiles.js';
+import getElevationProfile, {
+    ElevationEncodingType,
+    ElevationProfileType,
+    LineStringGeometryType,
+} from '../lib/elevation.js';
+import auth from '../lib/auth.js';
+import s3client from '../lib/s3.js';
+
+export default async function router(schema: Schema) {
+    schema.get('/tiles/public', {
+        name: 'Get Sources',
+        group: 'PublicTiles',
+        description: 'Return a list of public tile sources',
+        query: Type.Object({
+            token: Type.String(),
+        }),
+        res: Type.Object({
+            total: Type.Integer(),
+            items: Type.Array(Type.Object({
+                name: Type.String(),
+                hash: Type.String(),
+                updated: Type.String(),
+                size: Type.Integer(),
+            })),
+        }),
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const client = s3client();
+
+            const Contents = [];
+
+            let s3res;
+            do {
+                const req: ListObjectsV2CommandInput = {
+                    Bucket: process.env.ASSET_BUCKET,
+                    Prefix: 'public/',
+                };
+
+                if (s3res && s3res.NextContinuationToken) {
+                    req.ContinuationToken = s3res.NextContinuationToken;
+                }
+
+                s3res = await client.send(new ListObjectsV2Command(req));
+
+                Contents.push(...((s3res.Contents || []).filter((Content) => {
+                    return (Content.Key || '').endsWith('.pmtiles');
+                }) || []));
+            } while (s3res.NextContinuationToken);
+
+            res.json({
+                total: Contents.length,
+                items: Contents
+                    .filter((Content) => {
+                        return Content.ETag && Content.Key;
+                    })
+                    .map((Content) => {
+                        return {
+                            name: (Content.Key || ''),
+                            hash: JSON.parse(Content.ETag || '""'),
+                            updated: Content.LastModified ? Content.LastModified.toISOString() : new Date().toISOString(),
+                            size: Content.Size || 0,
+                        };
+                    }),
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.get('/tiles/public/:name', {
+        name: 'Get TileJSON',
+        group: 'PublicTiles',
+        description: 'Return TileJSON for a given file',
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        query: Type.Object({
+            token: Type.String(),
+        }),
+        res: TileJSON,
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+            res.json(await file.tilejson(req.query.token));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.get('/tiles/public/:name/query', {
+        name: 'Query',
+        group: 'PublicTiles',
+        description: 'Return features for a given query',
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        query: Type.Object({
+            token: Type.String(),
+            query: Type.String(),
+            zoom: Type.Optional(Type.Integer()),
+            limit: Type.Integer({ default: 1 }),
+        }),
+        res: QueryResponse,
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+            res.json(await file.query(req.query.query, {
+                limit: req.query.limit,
+                zoom: req.query.zoom,
+            }));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.get('/tiles/public/:name/tiles/:z/:x/:y/features', {
+        name: 'Get Features',
+        group: 'PublicTiles',
+        description: 'Return features for a given zxy',
+        query: Type.Object({
+            token: Type.String(),
+            layer: Type.Optional(Type.String()),
+            type: Type.Optional(Type.String()),
+            multi: Type.Optional(Type.Boolean({ default: true })),
+        }),
+        params: Type.Object({
+            name: Type.String(),
+            z: Type.Integer(),
+            x: Type.Integer(),
+            y: Type.Integer(),
+        }),
+        res: FeaturesResponse,
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+
+            res.json(await file.features(req.params.z, req.params.x, req.params.y, {
+                layer: req.query.layer,
+                type: req.query.type,
+                multi: req.query.multi,
+            }));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.get('/tiles/public/:name/features', {
+        name: 'Get Features by BBOX',
+        group: 'PublicTiles',
+        description: 'Return features for a given bbox',
+        query: Type.Object({
+            token: Type.String(),
+            layer: Type.Optional(Type.String()),
+            type: Type.Optional(Type.String()),
+            multi: Type.Optional(Type.Boolean({ default: true })),
+            zoom: Type.Optional(Type.Integer()),
+            bbox: Type.String({ description: 'BBOX in format "minX,minY,maxX,maxY"' }),
+        }),
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        res: FeaturesResponse,
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+
+            const bbox = req.query.bbox.split(',').map(b => Number(b));
+            if (bbox.length !== 4 || bbox.some(b => isNaN(b))) throw new Err(400, null, 'Invalid BBOX');
+
+            res.json(await file.featuresByBounds(bbox, {
+                layer: req.query.layer,
+                zoom: req.query.zoom,
+                type: req.query.type,
+                multi: req.query.multi,
+            }));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.post('/tiles/public/:name/elevation', {
+        name: 'Get Elevation Profile',
+        group: 'PublicTiles',
+        description: 'Return sampled elevation values for a LineString against a public raster-dem PMTiles source',
+        query: Type.Object({
+            token: Type.String(),
+        }),
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        body: Type.Object({
+            geometry: LineStringGeometryType,
+            samples: Type.Integer({
+                minimum: 2,
+                default: 100,
+                description: 'Number of elevation samples to take along the line',
+            }),
+            zoom: Type.Optional(Type.Integer({ minimum: 0 })),
+            encoding: ElevationEncodingType,
+        }),
+        res: ElevationProfileType,
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+            const source = await file.rasterTileSource(req.query.token);
+
+            if (source.format === 'mvt') {
+                throw new Err(400, null, 'Elevation profiles require raster-dem tiles');
+            }
+
+            if (req.body.zoom !== undefined && req.body.zoom > source.maxzoom) {
+                throw new Err(400, null, 'Above Layer MaxZoom');
+            }
+
+            if (req.body.zoom !== undefined && req.body.zoom < source.minzoom) {
+                throw new Err(400, null, 'Below Layer MinZoom');
+            }
+
+            res.json(await getElevationProfile(source.tileurl, req.body.geometry, {
+                zoom: req.body.zoom ?? source.maxzoom,
+                encoding: req.body.encoding,
+                targetSamples: req.body.samples ?? 100,
+            }));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    schema.get('/tiles/public/:name/tiles/:z/:x/:y.:ext', {
+        name: 'Get Tile',
+        group: 'PublicTiles',
+        description: 'Return tile for a given zxy',
+        query: Type.Object({
+            token: Type.String(),
+        }),
+        params: Type.Object({
+            name: Type.String(),
+            z: Type.Integer(),
+            x: Type.Integer(),
+            y: Type.Integer(),
+            ext: Type.String(),
+        }),
+    }, async (req, res) => {
+        try {
+            auth(req.query.token);
+
+            const file = new FileTiles(`public/${req.params.name}`);
+
+            await file.tile(res, req.params.z, req.params.x, req.params.y, req.params.ext);
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+}

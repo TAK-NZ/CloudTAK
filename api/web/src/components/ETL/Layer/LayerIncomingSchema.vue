@@ -12,13 +12,13 @@
             :err='new Error("Layer failed to return an incoming input schema on the Capabilities object")'
         />
         <TablerAlert
-            v-else-if='!props.capabilities.incoming.schema.output || props.capabilities.incoming.schema.outputError'
+            v-else-if='!props.capabilities.incoming?.schema?.output || props.capabilities.incoming?.schema?.outputError'
             title='Missing Output Schema'
-            :err='new Error(props.capabilities.incoming.schema.outputError.message) || new Error("Layer failed to return an output schema on the Capabilities object")'
+            :err='new Error(props.capabilities.incoming?.schema?.outputError?.message || "Layer failed to return an output schema on the Capabilities object")'
         />
         <TablerNone
-            v-else-if='!schema.length'
-            label='Schema'
+            v-else-if='!hasProperties'
+            label='No Schema'
             :create='false'
         />
         <div
@@ -35,104 +35,55 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr
-                        v-for='field in schema'
-                        :key='field.name'
-                    >
-                        <td>
-                            <div class='d-flex align-items-center'>
-                                <span class='mx-3'>
-                                    <template v-if='field.type === "string"'>
-                                        <IconAlphabetLatin
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                    </template>
-                                    <template v-else-if='field.type === "number"'>
-                                        <IconDecimal
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                    </template>
-                                    <template v-else-if='field.type === "integer"'>
-                                        <IconSort09
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                    </template>
-                                    <template v-else>
-                                        <IconBinary
-                                            :size='32'
-                                            stroke='1'
-                                        />
-                                    </template>
-                                </span>
-                                <span v-text='field.name' />
-                            </div>
-                        </td>
-                        <td v-text='field.type' />
-                        <td v-text='field.format' />
-                        <td>
-                            <span
-                                v-if='field.required'
-                                style='height: 20px;'
-                                class='badge mx-1 mb-1 bg-red text-white'
-                            >Required</span>
-                        </td>
-                    </tr>
+                    <SchemaRows
+                        :properties='((props.capabilities.incoming?.schema?.output as Record<string, unknown>)?.properties ?? {}) as Record<string, Record<string, unknown>>'
+                        :required='(props.capabilities.incoming?.schema?.output as Record<string, unknown>)?.required as string[] ?? []'
+                        :depth='0'
+                        parent-path=''
+                        :expanded='expanded'
+                        @toggle='toggleExpand'
+                    />
                 </tbody>
             </table>
         </div>
     </div>
 </template>
 
-<script setup>
-import { ref, watch, onMounted} from 'vue';
+<script setup lang='ts'>
+import { ref, computed } from 'vue';
+import type { ETLLayer, ETLLayerTaskCapabilities } from '../../../types.ts';
 import {
     TablerNone,
     TablerAlert
 } from '@tak-ps/vue-tabler';
-import {
-    IconAlphabetLatin,
-    IconSort09,
-    IconDecimal,
-    IconBinary,
-} from '@tabler/icons-vue'
+import SchemaRows from './utils/SchemaRows.vue';
 
-const props = defineProps({
-    layer: {
-        type: Object,
-        required: true
-    },
-    capabilities: {
-        type: Object,
-        required: true
-    }
+const props = defineProps<{
+    layer: ETLLayer;
+    capabilities: ETLLayerTaskCapabilities;
+}>();
+
+const expanded = ref(new Set<string>());
+
+const hasProperties = computed(() => {
+    const incoming = props.capabilities?.incoming;
+    if (!incoming) return false;
+    const output = incoming.schema.output as Record<string, unknown> | undefined;
+    return output?.properties
+        && Object.keys(output.properties as Record<string, unknown>).length > 0;
 });
 
-const schema = ref([]);
-
-watch(props.capabilities, () => {
-    processCapabilities();
-})
-
-onMounted(() => {
-    processCapabilities();
-});
-
-function processCapabilities() {
-    schema.value.splice(0, schema.value.length);
-    if (!props.capabilities) return;
-
-    if (props.capabilities.incoming.schema.output) {
-    console.error(props.capabilities.incoming.schema.output);
-        for (const name in props.capabilities.incoming.schema.output.properties) {
-            schema.value.push({
-                name,
-                required: props.capabilities.incoming.schema.output.required.includes(name),
-                ...props.capabilities.incoming.schema.output.properties[name]
-            });
+function toggleExpand(path: string) {
+    const next = new Set(expanded.value);
+    if (next.has(path)) {
+        for (const p of next) {
+            if (p === path || p.startsWith(path + '.')) {
+                next.delete(p);
+            }
         }
+    } else {
+        next.add(path);
     }
+    expanded.value = next;
 }
 </script>

@@ -7,9 +7,9 @@
             aria-label='Close'
             @click='emit("close")'
         />
-        <div class='modal-header text-white'>
+        <div class='modal-header text-body'>
             <div class='d-flex align-items-center'>
-                <IconReplace
+                <IconAmbulance
                     :size='28'
                     stroke='1'
                 />
@@ -24,11 +24,11 @@
             </div>
         </div>
 
-        <div class='modal-body text-white'>
+        <div class='modal-body text-body'>
             <TablerLoading v-if='loading' />
             <EmptyInfo
                 v-else-if='!missions.length'
-                type='Data Syncs'
+                type='Missions'
             />
             <template v-else>
                 <div
@@ -39,7 +39,7 @@
                 >
                     <div v-for='mission in missions'>
                         <div
-                            class='col-12 cursor-pointer hover py-2 rounded'
+                            class='col-12 cursor-pointer cloudtak-hover py-2 rounded'
                             @click='selected.has(mission) ? selected.delete(mission) : selected.add(mission)'
                         >
                             <div class='d-flex align-items-center'>
@@ -50,7 +50,7 @@
                                         stroke='1'
                                         style='margin-left: 16px;'
                                     />
-                                    <IconReplace
+                                    <IconAmbulance
                                         v-else
                                         :size='32'
                                         stroke='1'
@@ -109,7 +109,7 @@ import {
 } from '@tak-ps/vue-tabler';
 import {
     IconCheck,
-    IconReplace,
+    IconAmbulance,
     IconShare2
 } from '@tabler/icons-vue';
 import type { Feature } from '../../../types.ts';

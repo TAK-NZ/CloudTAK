@@ -1,17 +1,23 @@
 import Modeler, { Pool } from '@openaddresses/batch-generic';
 import Data from './models/Data.js';
+import Import from './models/Import.js';
 import Layer from './models/Layer.js';
 import Basemap from './models/Basemap.js';
 import MissionTemplate from './models/MissionTemplate.js';
+import MissionTemplateLog from './models/MissionTemplateLog.js';
 import Palette from './models/Palette.js';
 import Setting from './models/Setting.js';
 import ProfileChat from './models/ProfileChat.js';
+import ProfileConfig from './models/ProfileConfig.js';
+import ProfilePasskey from './models/ProfilePasskey.js';
+import ProfileFile from './models/ProfileFile.js';
 import Icon from './models/Icon.js';
 import * as pgtypes from './schema.js';
 
 export default class Models {
     Basemap: Basemap;
-    Import: Modeler<typeof pgtypes.Import>;
+    Import: Import;
+    ImportResult: Modeler<typeof pgtypes.ImportResult>;
     Data: Data;
     Server: Modeler<typeof pgtypes.Server>;
 
@@ -25,15 +31,19 @@ export default class Models {
     PaletteFeature: Modeler<typeof pgtypes.PaletteFeature>;
 
     MissionTemplate: MissionTemplate;
-    MissionTemplateLog: Modeler<typeof pgtypes.MissionTemplateLog>;
+    MissionTemplateLog: MissionTemplateLog;
 
     Profile: Modeler<typeof pgtypes.Profile>;
+    ProfileConfig: ProfileConfig;
     ProfileChat: ProfileChat;
     ProfileToken: Modeler<typeof pgtypes.ProfileToken>;
     ProfileInterest: Modeler<typeof pgtypes.ProfileInterest>;
     ProfileFeature: Modeler<typeof pgtypes.ProfileFeature>;
     ProfileOverlay: Modeler<typeof pgtypes.ProfileOverlay>;
-    ProfileFile: Modeler<typeof pgtypes.ProfileFile>;
+    ProfileFile: ProfileFile;
+    ProfilePaging: Modeler<typeof pgtypes.ProfilePaging>;
+    ProfileSession: Modeler<typeof pgtypes.ProfileSession>;
+    ProfilePasskey: ProfilePasskey;
     ProfileVideo: Modeler<typeof pgtypes.ProfileVideo>;
 
     VideoLease: Modeler<typeof pgtypes.VideoLease>;
@@ -62,17 +72,22 @@ export default class Models {
         this.PaletteFeature = new Modeler(pg, pgtypes.PaletteFeature);
 
         this.MissionTemplate = new MissionTemplate(pg);
-        this.MissionTemplateLog = new Modeler(pg, pgtypes.MissionTemplateLog);
+        this.MissionTemplateLog = new MissionTemplateLog(pg);
 
         this.Profile = new Modeler(pg, pgtypes.Profile);
+        this.ProfileConfig = new ProfileConfig(pg);
         this.ProfileToken = new Modeler(pg, pgtypes.ProfileToken);
-        this.ProfileFile = new Modeler(pg, pgtypes.ProfileFile);
+        this.ProfileFile = new ProfileFile(pg);
         this.ProfileInterest = new Modeler(pg, pgtypes.ProfileInterest);
         this.ProfileFeature = new Modeler(pg, pgtypes.ProfileFeature);
         this.ProfileOverlay = new Modeler(pg, pgtypes.ProfileOverlay);
         this.ProfileVideo = new Modeler(pg, pgtypes.ProfileVideo);
+        this.ProfilePaging = new Modeler(pg, pgtypes.ProfilePaging);
+        this.ProfileSession = new Modeler(pg, pgtypes.ProfileSession);
+        this.ProfilePasskey = new ProfilePasskey(pg);
         this.Basemap = new Basemap(pg);
-        this.Import = new Modeler(pg, pgtypes.Import);
+        this.Import = new Import(pg);
+        this.ImportResult = new Modeler(pg, pgtypes.ImportResult);
         this.VideoLease = new Modeler(pg, pgtypes.VideoLease);
         this.Connection = new Modeler(pg, pgtypes.Connection);
         this.ConnectionToken = new Modeler(pg, pgtypes.ConnectionToken);

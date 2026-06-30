@@ -1,4 +1,6 @@
 export enum WorkerMessageType {
+    Atlas_Ready = 'cloudtak:atlas:ready',
+
     Map_FlyTo = 'cloudtak:map:flyto',
     Map_FitBounds = 'cloudtak:map:fitbounds',
     Map_Projection = 'cloudtak:map:projection',
@@ -19,14 +21,16 @@ export enum WorkerMessageType {
     Channels_None = 'channels:none',
     Channels_List = 'channels:list',
 
-    Contact_Change = 'contact:change',
-
     Connection_Open = 'connection:open',
     Connection_Close = 'connection:close',
 
-    Session_Logout = 'session:logout',
-
     Mission_Change_Feature = 'mission:change:feature',
+    Mission_Invite = 'mission:invite',
+
+    Channel_Change = 'channel:change',
+
+    Feature_Update = 'cloudtak:feature:update',
+    Profile_Update = 'cloudtak:profile:update',
 }
 
 export type WorkerMessage = {

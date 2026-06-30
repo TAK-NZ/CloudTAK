@@ -1,5 +1,6 @@
-<script setup>
-import { std, stdurl } from '/src/std.ts';
+<script setup lang='ts'>
+import { server } from '../../../../std.ts';
+import type { ETLTaskVersions } from '../../../../types.ts';
 import {
     TablerMarkdown,
     TablerLoading,
@@ -11,17 +12,26 @@ import {
 } from '@tak-ps/vue-tabler';
 import { ref, reactive, watch, onMounted } from 'vue';
 
-defineProps({
-    task: {
-        type: String,
-        default: ''
-    }
+interface TaskItem {
+    id: number;
+    name: string;
+    prefix: string;
+    readme?: string | null;
+    [key: string]: unknown;
+}
+
+type TaskSort = 'id' | 'prefix' | 'favorite' | 'created' | 'updated' | 'name' | 'logo' | 'repo' | 'readme' | 'enableRLS';
+
+withDefaults(defineProps<{
+    task?: string;
+}>(), {
+    task: '',
 });
 
-const emit = defineEmits([
-    'task',
-    'close'
-]);
+const emit = defineEmits<{
+    (e: 'task', value: string): void;
+    (e: 'close'): void;
+}>();
 
 const loading = reactive({
     version: false,
@@ -29,19 +39,21 @@ const loading = reactive({
     task: false,
 });
 
-const current = ref(null);
+const current = ref<TaskItem | null>(null);
 const version = ref('');
-const versions = ref([]);
+const versions = ref<string[]>([]);
 
 const paging = reactive({
     filter: '',
     limit: 10,
+    sort: 'name' as TaskSort,
+    order: 'asc' as 'asc' | 'desc',
     page: 0
 });
 
-const list = reactive({
+const list = reactive<{ total: number; items: TaskItem[] }>({
     total: 0,
-    items: {}
+    items: []
 });
 
 async function fetchTask() {
@@ -49,16 +61,34 @@ async function fetchTask() {
         versions.value = [];
     } else {
         loading.task = true;
-        const task = await std(`/api/task/raw/${current.value.prefix}`);
-        versions.value = task.versions;
+        const taskRes = await server.GET('/api/task/raw/{:task}', {
+            params: {
+                path: {
+                    ':task': current.value.prefix
+                }
+            }
+        });
+
+        if (taskRes.error) throw new Error(taskRes.error.message);
+
+        versions.value = (taskRes.data as ETLTaskVersions).versions.map((v) => v.version);
 
         if (versions.value.length) {
             version.value = versions.value[0];
         }
 
         if (current.value.readme) {
-            const readme = await std(`/api/task/${current.value.id}/readme`);
-            current.value.readme = readme.body;
+            const readmeRes = await server.GET('/api/task/{:task}/readme', {
+                params: {
+                    path: {
+                        ':task': current.value.id
+                    }
+                }
+            });
+
+            if (readmeRes.error) throw new Error(readmeRes.error.message);
+
+            current.value.readme = readmeRes.data.body;
         }
     }
     loading.task = false;
@@ -66,15 +96,22 @@ async function fetchTask() {
 
 async function fetchTasks() {
     loading.tasks = true;
-    const url = stdurl('/api/task');
+    const res = await server.GET('/api/task', {
+        params: {
+            query: {
+                filter: paging.filter,
+                limit: paging.limit,
+                page: paging.page,
+                sort: paging.sort,
+                order: paging.order,
+            }
+        }
+    });
 
-    url.searchParams.append('filter', paging.filter);
-    url.searchParams.append('limit', paging.limit);
-    url.searchParams.append('page', paging.page);
+    if (res.error) throw new Error(res.error.message);
 
-    const res = await std(url);
-    list.total = res.total;
-    list.items = res.items;
+    list.total = res.data.total;
+    list.items = res.data.items as TaskItem[];
 
 
     if (list.total && list.items.length) {

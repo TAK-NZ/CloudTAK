@@ -4,181 +4,209 @@
         :zindex='0'
         :back='false'
         :border='false'
+        :standalone='false'
     >
         <div class='container-fluid px-2 px-sm-3'>
             <div class='row gy-3 gx-0 gx-lg-3'>
                 <div class='col-12'>
-                    <div class='card h-100 bg-dark text-white border border-light-subtle shadow-sm'>
-                        <div class='card-body d-flex flex-column gap-4'>
-                            <div class='d-flex align-items-center gap-3'>
-                                <div class='rounded-circle bg-primary-subtle text-primary-emphasis p-1 d-flex align-items-center justify-content-center'>
-                                    <IconBroadcast
-                                        :size='32'
-                                        stroke='1'
-                                    />
-                                </div>
-                                <div class='flex-grow-1'>
-                                    <p class='text-uppercase text-white-50 small mb-1'>
-                                        Mission
-                                    </p>
-                                    <h2
-                                        class='h4 mb-0 text-truncate'
-                                        style='max-width: calc(100% - 48px);'
-                                        v-text='props.subscription.name'
-                                    />
-                                </div>
+                    <TablerBorder
+                        class='cloudtak-bg text-white'
+                        gap='lg'
+                    >
+                        <div class='d-flex align-items-center gap-3'>
+                            <div class='rounded-circle bg-primary-subtle text-primary-emphasis p-1 d-flex align-items-center justify-content-center'>
+                                <img
+                                    v-if='missionTemplate && missionTemplate.icon'
+                                    :src='String(stdurl(missionTemplate.icon))'
+                                    width='32'
+                                    height='32'
+                                    :title='missionTemplate.name'
+                                >
+                                <IconBroadcast
+                                    v-else
+                                    :size='32'
+                                    stroke='1'
+                                />
                             </div>
-
-                            <div class='row gy-3 gx-0 gx-sm-3'>
-                                <div class='col-12 col-lg-6'>
-                                    <small class='text-uppercase text-white-50 d-block'>Created</small>
-                                    <p class='text-white fw-semibold p-0 mb-0'>
-                                        {{ props.subscription.meta.createTime.replace(/T/, " ").replace(/:[0-9]+\..*/, "") + " UTC" }}
-                                    </p>
-                                </div>
-                                <div class='col-12 col-lg-6'>
-                                    <small class='text-uppercase text-white-50 d-block'>Subscribers</small>
-                                    <TablerLoading
-                                        v-if='loading.users'
-                                        :inline='true'
-                                    />
-                                    <p
-                                        v-else
-                                        class='text-white fw-semibold p-0 mb-0'
-                                        v-text='subscriptions.length + " Users"'
-                                    />
-                                </div>
-                                <div class='col-12'>
-                                    <small class='text-uppercase text-white-50 d-block mb-1'>Contents</small>
-                                    <p
-                                        class='text-white fw-semibold mb-0'
-                                        v-text='(Array.isArray(props.subscription.meta.contents) ? props.subscription.meta.contents.length : 0) + " Files"'
-                                    />
-                                </div>
-                                <div class='col-12'>
-                                    <small class='text-uppercase text-white-50 d-block mb-1'>Groups (Channels)</small>
-                                    <div
-                                        v-if='props.subscription.meta.groups && props.subscription.meta.groups.length'
-                                        class='d-flex flex-wrap gap-2'
-                                    >
-                                        <span
-                                            v-for='group of props.subscription.meta.groups'
-                                            :key='group'
-                                            class='badge rounded-pill text-bg-secondary text-uppercase fw-semibold'
-                                            v-text='group'
-                                        />
-                                    </div>
-                                    <p
-                                        v-else
-                                        class='text-white-50 mb-0'
-                                    >
-                                        None
-                                    </p>
-                                </div>
-                                <div class='col-12'>
-                                    <small class='text-uppercase text-white-50 d-block mb-2'>Keywords</small>
-                                    <Keywords :keywords='props.subscription.meta.keywords' />
-                                    <p
-                                        v-if='!props.subscription.meta.keywords.length'
-                                        class='text-white-50 mb-0'
-                                    >
-                                        None
-                                    </p>
-                                </div>
-                                <div class='col-12'>
-                                    <small class='text-uppercase text-white-50 d-block mb-1'>Description</small>
-                                    <CopyField
-                                        :model-value='props.subscription.meta.description'
-                                        :edit='props.subscription.subscribed && props.subscription.role.permissions.includes("MISSION_WRITE")'
-                                        :rows='5'
-                                        @submit='updateDescription($event)'
-                                    >
-                                        <span
-                                            v-if='!props.subscription.meta.description'
-                                            class='text-white-50 fst-italic'
-                                        >No Feed Description</span>
-                                    </CopyField>
-                                </div>
+                            <div class='flex-grow-1'>
+                                <p class='text-uppercase text-white-50 small mb-1'>
+                                    Mission
+                                </p>
+                                <h2
+                                    class='h4 mb-0 text-truncate'
+                                    style='max-width: calc(100% - 48px);'
+                                    v-text='props.subscription.name'
+                                />
                             </div>
                         </div>
-                    </div>
+
+                        <div class='row gy-3 gx-0 gx-sm-3'>
+                            <div class='col-12 col-lg-6'>
+                                <small class='text-uppercase text-white-50 d-block'>Created</small>
+                                <p class='text-white fw-semibold p-0 mb-0'>
+                                    {{ props.subscription.meta.createTime.replace(/T/, " ").replace(/:[0-9]+\..*/, "") + " UTC" }}
+                                </p>
+                            </div>
+                            <div class='col-12 col-lg-6'>
+                                <small class='text-uppercase text-white-50 d-block'>Subscribers</small>
+                                <TablerLoading
+                                    v-if='loading.users'
+                                    :inline='true'
+                                />
+                                <p
+                                    v-else-if='isOffline'
+                                    class='text-white fw-semibold p-0 mb-0'
+                                >
+                                    —
+                                </p>
+                                <p
+                                    v-else
+                                    class='text-white fw-semibold p-0 mb-0'
+                                    v-text='subscriptions.length + " Users"'
+                                />
+                            </div>
+                            <div class='col-12'>
+                                <small class='text-uppercase text-white-50 d-block mb-1'>Contents</small>
+                                <p
+                                    class='text-white fw-semibold mb-0'
+                                    v-text='(Array.isArray(props.subscription.meta.contents) ? props.subscription.meta.contents.length : 0) + " Files"'
+                                />
+                            </div>
+                            <InlineGroupSelect
+                                v-model='groupDraft'
+                                :value='groupList'
+                                :editing='editingGroups'
+                                :editable='canEditGroups'
+                                :saving='savingGroups'
+                                border-class='mission-editable-border'
+                                label='Groups (Channels)'
+                                badge-text-color='#6b7280'
+                                @edit='startEditingGroups'
+                                @cancel='cancelEditingGroups'
+                                @save='saveGroups'
+                            />
+                            <InlineKeywords
+                                v-model='keywordDraft'
+                                :value='keywords'
+                                :editing='editingKeywords'
+                                :editable='canEditMission'
+                                :saving='savingKeywords'
+                                border-class='mission-editable-border'
+                                label='Keywords'
+                                placeholder='No keywords provided'
+                                input-placeholder='Add keywords'
+                                tone='accent'
+                                @edit='startEditingKeywords'
+                                @cancel='cancelEditingKeywords'
+                                @save='saveKeywords'
+                            />
+                            <div class='col-12'>
+                                <small class='text-uppercase text-white-50 d-block mb-1'>Description</small>
+                                <CopyField
+                                    :model-value='props.subscription.meta.description'
+                                    :edit='props.subscription.subscribed && props.subscription.role.permissions.includes("MISSION_WRITE")'
+                                    :rows='5'
+                                    @submit='updateDescription($event)'
+                                >
+                                    <span
+                                        v-if='!props.subscription.meta.description'
+                                        class='text-white-50 fst-italic'
+                                    >No Feed Description</span>
+                                </CopyField>
+                            </div>
+                        </div>
+                    </TablerBorder>
                 </div>
 
                 <div class='col-12'>
-                    <div class='card h-100 bg-dark text-white border border-light-subtle shadow-sm'>
-                        <div class='card-body d-flex flex-column gap-3'>
-                            <p class='text-uppercase text-white-50 small mb-1'>
+                    <TablerBorder class='cloudtak-bg text-white'>
+                        <template #label>
+                            <p class='text-uppercase text-white-50 small mb-0'>
                                 Quick Actions
                             </p>
+                        </template>
 
-                            <TablerLoading
-                                v-if='loading.subscribe'
-                                :inline='true'
-                                desc='Updating Subscription...'
-                            />
-                            <template v-else>
-                                <button
-                                    v-if='props.subscription.subscribed === false'
-                                    class='btn btn-success w-100 d-flex align-items-center justify-content-center gap-2'
-                                    @click='subscribe(true)'
-                                >
-                                    <IconPlus
-                                        :size='20'
-                                        stroke='1'
-                                    />
-                                    <span>Subscribe</span>
-                                </button>
-                                <template v-else>
-                                    <button
-                                        class='btn btn-danger w-100 d-flex align-items-center justify-content-center gap-2'
-                                        @click='subscribe(false)'
-                                    >
-                                        <IconMinus
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                        <span>Unsubscribe</span>
-                                    </button>
-
-                                    <button
-                                        v-if='!mapStore.mission || mapStore.mission.meta.guid !== props.subscription.meta.guid'
-                                        :disabled='!props.subscription.role.permissions.includes("MISSION_WRITE")'
-                                        class='btn btn-success w-100 d-flex align-items-center justify-content-center gap-2'
-                                        @click='mapStore.makeActiveMission(props.subscription)'
-                                    >
-                                        <IconCheck
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                        <span>Make Active</span>
-                                    </button>
-                                    <button
-                                        v-else
-                                        class='btn btn-secondary w-100 d-flex align-items-center justify-content-center gap-2'
-                                        :disabled='!props.subscription.role.permissions.includes("MISSION_WRITE")'
-                                        @click='mapStore.makeActiveMission()'
-                                    >
-                                        <IconX
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                        <span>Deactivate</span>
-                                    </button>
-                                </template>
-                            </template>
-
+                        <TablerLoading
+                            v-if='loading.subscribe'
+                            :inline='true'
+                            desc='Updating Subscription...'
+                        />
+                        <template v-else>
                             <button
-                                class='btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2'
-                                @click='showQR = true'
+                                v-if='props.subscription.subscribed === false'
+                                class='btn btn-success w-100 d-flex align-items-center justify-content-center gap-2'
+                                @click='subscribe(true)'
                             >
-                                <IconQrcode
+                                <IconPlus
                                     :size='20'
                                     stroke='1'
                                 />
-                                <span>Invite QR Code</span>
+                                <span>Subscribe</span>
                             </button>
-                        </div>
-                    </div>
+                            <template v-else>
+                                <button
+                                    class='btn btn-danger w-100 d-flex align-items-center justify-content-center gap-2'
+                                    @click='subscribe(false)'
+                                >
+                                    <IconMinus
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                    <span>Unsubscribe</span>
+                                </button>
+
+                                <button
+                                    v-if='!mapStore.mission || mapStore.mission.meta.guid !== props.subscription.meta.guid'
+                                    :disabled='!props.subscription.role.permissions.includes("MISSION_WRITE")'
+                                    class='btn btn-success w-100 d-flex align-items-center justify-content-center gap-2'
+                                    @click='mapStore.makeActiveMission(props.subscription)'
+                                >
+                                    <IconCheck
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                    <span>Make Active</span>
+                                </button>
+                                <button
+                                    v-else
+                                    class='btn btn-secondary w-100 d-flex align-items-center justify-content-center gap-2'
+                                    :disabled='!props.subscription.role.permissions.includes("MISSION_WRITE")'
+                                    @click='mapStore.makeActiveMission()'
+                                >
+                                    <IconX
+                                        :size='20'
+                                        stroke='1'
+                                    />
+                                    <span>Deactivate</span>
+                                </button>
+                            </template>
+                        </template>
+
+                        <button
+                            class='btn w-100 d-flex align-items-center justify-content-center gap-2 invite-qr-btn'
+                            @click='showQR = true'
+                        >
+                            <IconQrcode
+                                :size='20'
+                                stroke='1'
+                            />
+                            <span>Invite QR Code</span>
+                        </button>
+                    </TablerBorder>
+                </div>
+
+                <div class='col-12'>
+                    <TablerBorder class='cloudtak-bg text-white'>
+                        <template #label>
+                            <p class='text-uppercase text-white-50 small mb-0'>
+                                Child Missions
+                            </p>
+                        </template>
+                        <TablerNone
+                            :compact='true'
+                            :create='false'
+                        />
+                    </TablerBorder>
                 </div>
             </div>
         </div>
@@ -195,7 +223,7 @@
             aria-label='Close'
             @click='showQR = false'
         />
-        <div class='modal-header text-white'>
+        <div class='modal-header invite-qr-header'>
             <div class='d-flex align-items-center'>
                 <IconQrcode
                     :size='28'
@@ -207,13 +235,12 @@
                 />
             </div>
         </div>
-        <div class='modal-body'>
-            <div class='col-12'>
+        <div class='modal-body invite-qr-body'>
+            <div class='col-12 text-center'>
                 <img
                     :src='missionQRURL'
-                    style='
-                        filter: invert(100%);
-                    '
+                    class='invite-qr-image img-fluid'
+                    :style='appStore.resolvedTheme === "dark" ? { filter: "invert(1)" } : undefined'
                 >
             </div>
         </div>
@@ -222,46 +249,163 @@
 
 <script setup lang='ts'>
 import { ref, onMounted, computed } from 'vue';
+import { Preferences } from '@capacitor/preferences';
 import type { MissionSubscriptions } from '../../../../types.ts';
+import { useRoute, useRouter } from 'vue-router';
 import { stdurl } from '../../../../std.ts'
 import Subscription from '../../../../base/subscription.ts';
-import Keywords from '../../util/Keywords.vue';
+import MissionTemplate from '../../../../base/mission-template.ts';
 import CopyField from '../../util/CopyField.vue';
+import InlineGroupSelect from '../../util/InlineGroupSelect.vue';
+import InlineKeywords from '../../util/InlineKeywords.vue';
 import {
     IconQrcode,
     IconBroadcast,
     IconPlus,
     IconMinus,
     IconCheck,
-    IconX
+    IconX,
 } from '@tabler/icons-vue';
 import {
+    TablerBorder,
     TablerLoading,
     TablerModal,
+    TablerNone,
 } from '@tak-ps/vue-tabler';
 import MenuTemplate from '../../util/MenuTemplate.vue';
-import Overlay from '../../../../base/overlay.ts';
+import OverlayManager from '../../../../base/overlay.ts';
 import { useMapStore } from '../../../../stores/map.ts';
+import { useDeviceStore } from '../../../../stores/device.ts';
+import { useAppStore } from '../../../../stores/app.ts';
 const mapStore = useMapStore();
+const deviceStore = useDeviceStore();
+const appStore = useAppStore();
+const isOffline = computed(() => !deviceStore.network.isOnline);
 
 const emit = defineEmits(['refresh']);
 
 const props = defineProps<{
     subscription: Subscription
 }>();
+const token = ref<string | null>(null);
 
 const missionQRURL = computed(() => {
-    return String(stdurl(`/api/marti/missions/${props.subscription.guid}/qr?token=${localStorage.token}`));
+    return String(stdurl(`/api/marti/missions/${props.subscription.guid}/qr${token.value ? `?token=${encodeURIComponent(token.value)}` : ''}`));
 });
 
-const showQR = ref(false);
+const keywords = computed(() => {
+    if (!Array.isArray(props.subscription.meta.keywords)) return [];
+    return props.subscription.meta.keywords
+        .map((keyword) => typeof keyword === 'string' ? keyword.trim() : '')
+        .filter((keyword): keyword is string => keyword.length > 0)
+        .filter((keyword) => !keyword.startsWith('template:'));
+});
 
-const subscriptions = ref<MissionSubscriptions>([])
+const canEditMission = computed(() => {
+    return props.subscription.subscribed && props.subscription.role.permissions.includes('MISSION_WRITE');
+});
+
+const canEditGroups = computed(() => {
+    return props.subscription.role.type === 'MISSION_OWNER';
+});
+
+const groupList = computed<string[]>(() => {
+    const groups = props.subscription.meta.groups;
+    if (!groups) return [];
+    return Array.isArray(groups) ? groups : [groups];
+});
+
+const editingKeywords = ref(false);
+const savingKeywords = ref(false);
+const keywordDraft = ref<string[]>([...keywords.value]);
+
+const editingGroups = ref(false);
+const savingGroups = ref(false);
+const groupDraft = ref<string[]>([...groupList.value]);
+
+function startEditingGroups(): void {
+    if (!canEditGroups.value) return;
+    editingGroups.value = true;
+}
+
+function cancelEditingGroups(): void {
+    editingGroups.value = false;
+}
+
+async function saveGroups(nextGroups: string[]): Promise<void> {
+    try {
+        savingGroups.value = true;
+        groupDraft.value = [...nextGroups];
+        await props.subscription.update({
+            groups: nextGroups
+        });
+        editingGroups.value = false;
+    } catch (err) {
+        console.error(err);
+    } finally {
+        savingGroups.value = false;
+    }
+}
+
+function startEditingKeywords(): void {
+    if (!canEditMission.value) return;
+    editingKeywords.value = true;
+}
+
+function cancelEditingKeywords(): void {
+    editingKeywords.value = false;
+}
+
+async function saveKeywords(nextKeywords: string[]): Promise<void> {
+    try {
+        savingKeywords.value = true;
+        keywordDraft.value = [...nextKeywords];
+        // Preserve any non-user keywords (eg template:*) that the Keywords component filters out
+        const preserved = (props.subscription.meta.keywords || []).filter((keyword) => {
+            return typeof keyword === 'string' && keyword.startsWith('template:');
+        });
+        await props.subscription.update({
+            keywords: [...preserved, ...nextKeywords]
+        });
+        editingKeywords.value = false;
+    } catch (err) {
+        console.error(err);
+    } finally {
+        savingKeywords.value = false;
+    }
+}
+
+const showQR = ref(false);
+const route = useRoute();
+const router = useRouter();
+
+const subscriptions = ref<MissionSubscriptions>([]);
+const missionTemplate = ref<MissionTemplate>();
 
 onMounted(async () => {
+    token.value = (await Preferences.get({ key: 'token' })).value;
+
     loading.value.users = true;
     await fetchSubscriptions();
     loading.value.users = false;
+
+    if (props.subscription.templateid) {
+        try {
+            missionTemplate.value = await MissionTemplate.load(props.subscription.templateid);
+        } catch (err) {
+            console.error('Failed to load mission template', err);
+        }
+    }
+
+    if (route.query.subscribe === 'true') {
+        await subscribe(true);
+        router.replace({
+            query: {
+                ...route.query,
+                subscribe: undefined
+            }
+        });
+    }
 });
 
 const loading = ref({
@@ -270,6 +414,7 @@ const loading = ref({
 });
 
 async function fetchSubscriptions() {
+    if (isOffline.value) return;
     loading.value.users = true;
     subscriptions.value = await props.subscription.subscriptions();
     loading.value.users = false;
@@ -285,10 +430,10 @@ async function updateDescription(description: string) {
 
 async function subscribe(subscribe: boolean) {
     loading.value.subscribe = true;
-    const overlay = mapStore.getOverlayByMode('mission', props.subscription.guid);
+    const overlay = OverlayManager.loadedByMode('mission', props.subscription.guid);
 
     if (subscribe === true && !overlay) {
-        const missionOverlay = await Overlay.create({
+        await OverlayManager.createLoaded({
             name: props.subscription.name,
             url: `/mission/${encodeURIComponent(props.subscription.guid)}`,
             type: 'geojson',
@@ -297,22 +442,71 @@ async function subscribe(subscribe: boolean) {
             mode_id: props.subscription.guid,
         })
 
-        mapStore.overlays.push(missionOverlay);
         await mapStore.loadMission(props.subscription.guid);
 
         emit('refresh');
     } else if (subscribe === false && overlay) {
         if (mapStore.mission && mapStore.mission.meta.guid === props.subscription.meta.guid) {
-            mapStore.makeActiveMission();
+            await mapStore.makeActiveMission();
         }
 
-        await mapStore.removeOverlay(overlay);
+        await OverlayManager.deleteLoaded(overlay);
 
         emit('refresh');
     }
 
     await props.subscription.update({ subscribed: subscribe });
 
+    if (!subscribe && props.subscription.meta.passwordProtected) {
+        await router.push({ name: 'home-menu-missions' });
+    }
+
     loading.value.subscribe = false;
 }
 </script>
+
+<style scoped>
+.mission-editable-border:deep(.tabler-border__tools) {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease-in-out;
+}
+
+.mission-editable-border:hover:deep(.tabler-border__tools),
+.mission-editable-border:focus-within:deep(.tabler-border__tools) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.invite-qr-header {
+    color: var(--tblr-body-color);
+}
+
+.invite-qr-body {
+    display: flex;
+    justify-content: center;
+}
+
+.invite-qr-image {
+    max-width: min(100%, 420px);
+    height: auto;
+}
+
+:global(html[data-bs-theme='dark']) .invite-qr-btn {
+    --bs-btn-color: rgba(255, 255, 255, 0.92);
+    --bs-btn-border-color: rgba(255, 255, 255, 0.35);
+    --bs-btn-hover-color: #182433;
+    --bs-btn-hover-bg: rgba(255, 255, 255, 0.92);
+    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.92);
+}
+
+:global(html[data-bs-theme='light']) .invite-qr-btn {
+    --bs-btn-color: var(--tblr-body-color);
+    --bs-btn-border-color: var(--tblr-border-color);
+    --bs-btn-hover-color: var(--tblr-bg-surface);
+    --bs-btn-hover-bg: var(--tblr-primary);
+    --bs-btn-hover-border-color: var(--tblr-primary);
+}
+
+
+</style>

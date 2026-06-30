@@ -29,7 +29,7 @@
             <TablerNone
                 v-else-if='!Object.keys(processChannels).length'
                 :create='false'
-                label='Channels'
+                label='No Channels'
             />
             <div
                 v-else
@@ -101,10 +101,12 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute } from 'vue-router';
-import { std, stdurl } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import GroupManager from '../../../base/group.ts';
+import type { Group, GroupChannel } from '../../../types.ts';
 import {
     IconEye,
     IconEyeOff,
@@ -121,27 +123,33 @@ import {
 
 const route = useRoute();
 
-const error = ref();
+const error = ref<Error>();
 const loading = ref(true);
-const rawChannels = ref([]);
+const rawChannels = ref<Group[]>([]);
 
 const paging = ref({
     filter: ''
 })
 
-const processChannels = computed(() => {
-    const channels = {};
+function isGroup(value: unknown): value is Group {
+    return !!value
+        && typeof value === 'object'
+        && 'name' in value
+        && typeof value.name === 'string'
+        && 'direction' in value
+        && typeof value.direction === 'string';
+}
 
-    JSON.parse(JSON.stringify(rawChannels.value)).sort((a, b) => {
+const processChannels = computed(() => {
+    const merged = GroupManager.merge(rawChannels.value);
+
+    const channels: Record<string, GroupChannel> = {};
+
+    merged.sort((a, b) => {
         return (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0);
     }).forEach((channel) => {
         if (channel.name.toLowerCase().includes(paging.value.filter.toLowerCase())) {
-            if (channels[channel.name]) {
-                channels[channel.name].direction.push(channel.direction);
-            } else {
-                channel.direction = [channel.direction];
-                channels[channel.name] = channel;
-            }
+            channels[channel.name] = channel;
         }
     });
 
@@ -157,7 +165,22 @@ async function fetch() {
     error.value = undefined;
 
     try {
-        rawChannels.value = (await std(`/api/connection/${route.params.connectionid}/channel`)).data;
+        const { data, error: reqError } = await server.GET('/api/connection/{:connectionid}/channel', {
+            params: {
+                path: {
+                    ':connectionid': Number(route.params.connectionid)
+                }
+            }
+        });
+
+        if (reqError) throw new Error(reqError.message);
+
+        const channels = data?.data;
+        if (!Array.isArray(channels) || !channels.every(isGroup)) {
+            throw new Error('Malformed channel response');
+        }
+
+        rawChannels.value = channels;
         loading.value = false;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
@@ -165,17 +188,21 @@ async function fetch() {
     }
 }
 
-async function setStatus(channel, active=false) {
+async function setStatus(channel: GroupChannel, active = false) {
     rawChannels.value = rawChannels.value.map((ch) => {
         if (ch.name === channel.name) ch.active = active;
         return ch;
     });
 
-    const url = stdurl('/api/marti/group');
-    url.searchParams.append('connection', route.params.connectionid);
-    await std(url, {
-        method: 'PUT',
+    const { error: reqError } = await server.PUT('/api/marti/group', {
+        params: {
+            query: {
+                connection: Number(route.params.connectionid)
+            }
+        },
         body: rawChannels.value
     });
+
+    if (reqError) throw new Error(reqError.message);
 }
 </script>

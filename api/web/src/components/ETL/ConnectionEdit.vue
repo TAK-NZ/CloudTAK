@@ -63,48 +63,32 @@
                                         </div>
 
                                         <div class='col-md-12'>
-                                            <div
-                                                class='px-2 py-2 round btn-group w-100'
-                                                role='group'
+                                            <TablerPillGroup
+                                                :model-value='connection.readonly ? "external" : "cloud"'
+                                                :options='[
+                                                    { value: "cloud", label: "Cloud Integration" },
+                                                    { value: "external", label: "External Integration" }
+                                                ]'
+                                                :disabled='!!route.params.connectionid'
+                                                name='connection-readonly'
+                                                @update:model-value='(v: string) => { connection.readonly = v === "external" }'
                                             >
-                                                <input
-                                                    id='connection-readonly-false'
-                                                    type='radio'
-                                                    class='btn-check'
-                                                    autocomplete='off'
-                                                    :disabled='route.params.connectionid'
-                                                    :checked='!connection.readonly'
-                                                    @click='connection.readonly = false'
-                                                >
-                                                <label
-                                                    for='connection-readonly-false'
-                                                    type='button'
-                                                    class='btn btn-sm'
-                                                ><IconCloud
-                                                    v-tooltip='"Cloud Integration"'
-                                                    :size='32'
-                                                    stroke='1'
-                                                /><span class='mx-2'>Cloud Integration</span></label>
-
-                                                <input
-                                                    id='connection-readonly-true'
-                                                    type='radio'
-                                                    class='btn-check'
-                                                    autocomplete='off'
-                                                    :disabled='route.params.connectionid'
-                                                    :checked='connection.readonly'
-                                                    @click='connection.readonly = true'
-                                                >
-                                                <label
-                                                    for='connection-readonly-true'
-                                                    type='button'
-                                                    class='btn btn-sm'
-                                                ><IconDrone
-                                                    v-tooltip='"External Integration"'
-                                                    :size='32'
-                                                    stroke='1'
-                                                /><span class='mx-2'>External Integration</span></label>
-                                            </div>
+                                                <template #option='{ option }'>
+                                                    <IconCloud
+                                                        v-if='option.value === "cloud"'
+                                                        v-tooltip='"Cloud Integration"'
+                                                        :size='32'
+                                                        stroke='1'
+                                                    />
+                                                    <IconDrone
+                                                        v-if='option.value === "external"'
+                                                        v-tooltip='"External Integration"'
+                                                        :size='32'
+                                                        stroke='1'
+                                                    />
+                                                    <span class='mx-2'>{{ option.label }}</span>
+                                                </template>
+                                            </TablerPillGroup>
                                         </div>
                                         <div class='col-md-12'>
                                             <TablerInput
@@ -159,72 +143,14 @@
                                             </template>
                                             <template v-else-if='!route.params.connectionid || regen'>
                                                 <div class='col-12 pb-2'>
-                                                    <div
-                                                        class='btn-group w-100'
-                                                        role='group'
-                                                    >
-                                                        <template v-if='!agencyDisabled'>
-                                                            <input
-                                                                id='creation'
-                                                                type='radio'
-                                                                class='btn-check'
-                                                                name='cert-type'
-                                                                autocomplete='off'
-                                                                :checked='type === "creation"'
-                                                                @click='type = "creation"'
-                                                            >
-                                                            <label
-                                                                for='creation'
-                                                                type='button'
-                                                                class='btn'
-                                                            >Machine User Creation</label>
-                                                        </template>
-
-                                                        <input
-                                                            id='login'
-                                                            type='radio'
-                                                            class='btn-check'
-                                                            name='cert-type'
-                                                            autocomplete='off'
-                                                            :checked='type === "login"'
-                                                            @click='type = "login"'
-                                                        >
-                                                        <label
-                                                            for='login'
-                                                            type='button'
-                                                            class='btn'
-                                                        >User Login</label>
-
-                                                        <input
-                                                            id='p12'
-                                                            type='radio'
-                                                            class='btn-check'
-                                                            name='cert-type'
-                                                            autocomplete='off'
-                                                            :checked='type === "p12"'
-                                                            @click='type = "p12"'
-                                                        >
-                                                        <label
-                                                            for='p12'
-                                                            type='button'
-                                                            class='btn'
-                                                        >P12 Certificate Upload</label>
-
-                                                        <input
-                                                            id='raw'
-                                                            type='radio'
-                                                            class='btn-check'
-                                                            name='cert-type'
-                                                            autocomplete='off'
-                                                            :checked='type === "raw"'
-                                                            @click='type = "raw"'
-                                                        >
-                                                        <label
-                                                            for='raw'
-                                                            type='button'
-                                                            class='btn'
-                                                        >Raw Certificate</label>
-                                                    </div>
+                                                    <TablerPillGroup
+                                                        v-model='type'
+                                                        :options='certTypeOptions'
+                                                        :rounded='false'
+                                                        size='default'
+                                                        padding=''
+                                                        name='cert-type'
+                                                    />
                                                 </div>
                                                 <template v-if='type === "raw"'>
                                                     <CertificateRaw
@@ -309,10 +235,10 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { std } from '../../std.ts';
+import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
 import AgencySelect from './Connection/AgencySelect.vue';
 import CertificateP12 from './Connection/CertificateP12.vue';
@@ -331,29 +257,65 @@ import {
     TablerIconButton,
     TablerBreadCrumb,
     TablerDelete,
-    TablerInput
+    TablerInput,
+    TablerPillGroup
 } from '@tak-ps/vue-tabler';
+
+interface ConnectionForm {
+    id?: number;
+    status?: string;
+    certificate?: { subject: string; validFrom: string; validTo: string };
+    created?: string;
+    updated?: string;
+    username?: string | null;
+    name: string;
+    agency: number | null;
+    readonly: boolean;
+    description: string;
+    enabled: boolean;
+    integrationId?: number;
+    auth: {
+        ca: string[];
+        cert: string;
+        key: string;
+    };
+    [key: string]: unknown;
+}
 
 const router = useRouter();
 const route = useRoute();
 
 const loading = ref(true);
 const regen = ref(false);
+const err = ref<Error | undefined>();
 const type = ref('creation');
 const modal = ref({
     upload: false,
 })
 
-const errors = ref({
+const errors = ref<Record<string, string>>({
     name: '',
     description: '',
 });
 
 const agencyDisabled = ref(false);
 
-const connection = ref({
+const certTypeOptions = computed(() => {
+    const opts: { value: string; label: string }[] = [];
+    if (!agencyDisabled.value) {
+        opts.push({ value: 'creation', label: 'Machine User Creation' });
+    }
+    opts.push(
+        { value: 'login', label: 'User Login' },
+        { value: 'p12', label: 'P12 Certificate Upload' },
+        { value: 'raw', label: 'Raw Certificate' }
+    );
+    return opts;
+});
+
+const connection = ref<ConnectionForm>({
     name: '',
-    agency: undefined,
+    agency: null,
     readonly: false,
     description: '',
     enabled: true,
@@ -391,28 +353,41 @@ function disableAgency() {
 
 async function fetch() {
     loading.value = true;
-    connection.value = await std(`/api/connection/${route.params.connectionid}`);
-    connection.value.auth = {
-        ca: [],
-        cert: '',
-        key: ''
-    }
+    const res = await server.GET('/api/connection/{:connectionid}', {
+        params: {
+            path: {
+                ':connectionid': Number(route.params.connectionid)
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+
+    connection.value = {
+        ...res.data,
+        agency: res.data.agency ?? null,
+        auth: {
+            ca: [],
+            cert: '',
+            key: ''
+        }
+    } as ConnectionForm;
     loading.value = false;
 }
 
-function integrationAttachment(integration) {
+function integrationAttachment(integration?: number) {
     connection.value.integrationId = integration;
 }
 
-function certificateAttachment(certs) {
+function certificateAttachment(certs: { ca?: string[]; cert: string; key: string }) {
     modal.value.upload = false;
-    connection.value.auth.ca = certs.ca;
+    connection.value.auth.ca = certs.ca || [];
     connection.value.auth.cert = certs.cert;
     connection.value.auth.key = certs.key;
 }
 
 async function create() {
-    for (const field of ['name', 'description']) {
+    for (const field of ['name', 'description'] as const) {
         if (!connection.value[field]) errors.value[field] = 'Cannot be empty';
         else errors.value[field] = '';
     }
@@ -422,27 +397,54 @@ async function create() {
     }
 
     if (route.params.connectionid) {
-        const body = JSON.parse(JSON.stringify(connection.value));
-        if (!regen.value) delete body.auth;
+        const res = await server.PATCH('/api/connection/{:connectionid}', {
+            params: {
+                path: {
+                    ':connectionid': Number(route.params.connectionid)
+                }
+            },
+            body: {
+                name: connection.value.name,
+                description: connection.value.description,
+                enabled: connection.value.enabled,
+                agency: connection.value.agency,
+                ...(regen.value ? { auth: connection.value.auth } : {})
+            }
+        });
 
-        const create = await std(`/api/connection/${route.params.connectionid}`, {
-            method: 'PATCH',
-            body: body
-        });
-        router.push(`/connection/${create.id}`);
+        if (res.error) throw new Error(res.error.message);
+
+        router.push(`/connection/${res.data.id}`);
     } else {
-        const create = await std('/api/connection', {
-            method: 'POST',
-            body: connection.value
+        const res = await server.POST('/api/connection', {
+            body: {
+                name: connection.value.name,
+                description: connection.value.description,
+                readonly: connection.value.readonly,
+                enabled: connection.value.enabled,
+                agency: connection.value.agency,
+                ...(connection.value.integrationId !== undefined ? { integrationId: connection.value.integrationId } : {}),
+                auth: connection.value.auth
+            }
         });
-        router.push(`/connection/${create.id}`);
+
+        if (res.error) throw new Error(res.error.message);
+
+        router.push(`/connection/${res.data.id}`);
     }
 }
 
 async function del() {
-    await std(`/api/connection/${route.params.connectionid}`, {
-        method: 'DELETE'
+    const res = await server.DELETE('/api/connection/{:connectionid}', {
+        params: {
+            path: {
+                ':connectionid': Number(route.params.connectionid)
+            }
+        }
     });
+
+    if (res.error) throw new Error(res.error.message);
+
     router.push('/connection');
 }
 </script>

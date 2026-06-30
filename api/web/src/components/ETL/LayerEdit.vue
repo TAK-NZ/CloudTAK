@@ -34,6 +34,16 @@
                                     <div class='d-flex'>
                                         <div class='btn-list'>
                                             <div class='d-flex'>
+                                                <span class='px-2'>Protected</span>
+                                                <label class='form-check form-switch'>
+                                                    <input
+                                                        v-model='layer.protected'
+                                                        class='form-check-input'
+                                                        type='checkbox'
+                                                    >
+                                                </label>
+                                            </div>
+                                            <div class='d-flex'>
                                                 <span class='px-2'>Logging</span>
                                                 <label class='form-check form-switch'>
                                                     <input
@@ -76,48 +86,33 @@
                                     </div>
                                     <template v-if='!route.params.layerid'>
                                         <div class='col-12'>
-                                            <div
-                                                class='btn-group w-100'
-                                                role='group'
+                                            <TablerPillGroup
+                                                v-model='type'
+                                                :options='[
+                                                    { value: "template", label: "Templated Creation" },
+                                                    { value: "manual", label: "Manual Creation" }
+                                                ]'
+                                                :rounded='false'
+                                                size='default'
+                                                padding=''
+                                                name='creation-type'
                                             >
-                                                <input
-                                                    id='template'
-                                                    type='radio'
-                                                    class='btn-check'
-                                                    name='creation-type'
-                                                    autocomplete='off'
-                                                    :checked='type === "template"'
-                                                    @click='type = "template"'
-                                                >
-                                                <label
-                                                    for='template'
-                                                    type='button'
-                                                    class='btn'
-                                                ><IconTemplate
-                                                    class='me-2'
-                                                    :size='20'
-                                                    :stoke='1'
-                                                /> Templated Creation</label>
-
-                                                <input
-                                                    id='manual'
-                                                    type='radio'
-                                                    class='btn-check'
-                                                    name='creation-type'
-                                                    autocomplete='off'
-                                                    :checked='type === "manual"'
-                                                    @click='type = "manual"'
-                                                >
-                                                <label
-                                                    for='manual'
-                                                    type='button'
-                                                    class='btn'
-                                                ><IconPencil
-                                                    class='me-2'
-                                                    :size='20'
-                                                    :stoke='1'
-                                                /> Manual Creation</label>
-                                            </div>
+                                                <template #option='{ option }'>
+                                                    <IconTemplate
+                                                        v-if='option.value === "template"'
+                                                        class='me-2'
+                                                        :size='20'
+                                                        stroke='1'
+                                                    />
+                                                    <IconPencil
+                                                        v-if='option.value === "manual"'
+                                                        class='me-2'
+                                                        :size='20'
+                                                        stroke='1'
+                                                    />
+                                                    {{ option.label }}
+                                                </template>
+                                            </TablerPillGroup>
                                         </div>
 
                                         <template v-if='type === "template"'>
@@ -159,10 +154,11 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { std, stdurl } from '../../std.ts';
+import { server } from '../../std.ts';
+import type { ETLLayer } from '../../types.ts';
 import PageFooter from '../PageFooter.vue';
 import LayerTemplateSelect from '../util/LayerTemplateSelect.vue';
 import LayerTaskSelect from '../util/LayerTaskSelect.vue';
@@ -170,12 +166,23 @@ import {
     TablerBreadCrumb,
     TablerDelete,
     TablerInput,
-    TablerLoading
+    TablerLoading,
+    TablerPillGroup
 } from '@tak-ps/vue-tabler';
 import {
     IconTemplate,
     IconPencil,
 } from '@tabler/icons-vue';
+
+interface LayerForm {
+    name: string;
+    description: string;
+    task: string;
+    enabled: boolean;
+    logging: boolean;
+    protected: boolean;
+    [key: string]: unknown;
+}
 
 const route = useRoute();
 const router = useRouter();
@@ -185,20 +192,21 @@ const loading = ref({
     layer: true
 });
 
-const errors = ref({
+const errors = ref<Record<string, string>>({
     name: '',
     task: '',
     description: '',
 })
 
-const template = ref(null);
+const template = ref<{ id?: number; [key: string]: unknown } | undefined>();
 
-const layer = ref({
+const layer = ref<LayerForm>({
     name: '',
     description: '',
     task: '',
     enabled: true,
     logging: false,
+    protected: false,
 })
 
 onMounted(async () => {
@@ -211,20 +219,39 @@ onMounted(async () => {
 
 async function fetch() {
     loading.value.layer = true;
-    layer.value = await std(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}`);
+    const res = await server.GET('/api/connection/{:connectionid}/layer/{:layerid}', {
+        params: {
+            query: {
+                alarms: true,
+                download: false
+            },
+            path: {
+                ':connectionid': Number(route.params.connectionid),
+                ':layerid': Number(route.params.layerid)
+            }
+        }
+    });
+    if (res.error) throw new Error(res.error.message);
+    layer.value = res.data as LayerForm;
     loading.value.layer = false;
 }
 
 async function deleteLayer() {
-    await std(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}`, {
-        method: 'DELETE'
+    const res = await server.DELETE('/api/connection/{:connectionid}/layer/{:layerid}', {
+        params: {
+            path: {
+                ':connectionid': Number(route.params.connectionid),
+                ':layerid': Number(route.params.layerid)
+            }
+        }
     });
+    if (res.error) throw new Error(res.error.message);
 
     router.push(`/connection/${route.params.connectionid}/layer`);
 }
 
 async function create() {
-    let fields =  ['name', 'description']
+    const fields = ['name', 'description'];
 
     if (type.value === "manual") fields.push('task');
 
@@ -235,26 +262,29 @@ async function create() {
 
     loading.value.layer = true;
 
-    let savedLayer;
+    let savedLayer: ETLLayer;
 
     try {
-        let url;
         if (route.params.layerid) {
-            url = stdurl(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}`);
-            savedLayer = await std(url, {
-                method: 'PATCH',
+            const res = await server.PATCH('/api/connection/{:connectionid}/layer/{:layerid}', {
+                params: {
+                    query: { alarms: true },
+                    path: {
+                        ':connectionid': Number(route.params.connectionid),
+                        ':layerid': Number(route.params.layerid)
+                    }
+                },
                 body: {
                     name: layer.value.name,
                     description: layer.value.description,
                     enabled: layer.value.enabled,
                     logging: layer.value.logging,
+                    protected: layer.value.protected,
                 }
             });
+            if (res.error) throw new Error(res.error.message);
+            savedLayer = res.data as ETLLayer;
         } else {
-            url = stdurl(`/api/connection/${route.params.connectionid}/layer`);
-
-            savedLayer = JSON.parse(JSON.stringify(layer.value));
-
             let body = JSON.parse(JSON.stringify(layer.value));
             if (type.value === "template" && template.value) {
                 // These should be overwritten
@@ -262,7 +292,17 @@ async function create() {
                 body = { ...template.value, ...body };
             }
 
-            savedLayer = await std(url, { method: 'POST', body });
+            const res = await server.POST('/api/connection/{:connectionid}/layer', {
+                params: {
+                    query: { alarms: true },
+                    path: {
+                        ':connectionid': Number(route.params.connectionid)
+                    }
+                },
+                body
+            });
+            if (res.error) throw new Error(res.error.message);
+            savedLayer = res.data as ETLLayer;
         }
 
         loading.value.layer = false;

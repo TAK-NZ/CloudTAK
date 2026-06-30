@@ -30,37 +30,37 @@ export default class ArcGISConfigService {
 
     async updateConfig(newConfig: ArcGISConfig): Promise<void> {
         this.config = newConfig;
-        
+
         // Save to database
         if (newConfig.authMethod === 'oauth2') {
             await this.appConfig.models.Setting.generate({
                 key: 'agol::auth_method',
-                value: 'oauth2'
+                value: 'oauth2',
             }, { upsert: GenerateUpsert.UPDATE });
-            
+
             if (newConfig.clientId) {
                 await this.appConfig.models.Setting.generate({
                     key: 'agol::client_id',
-                    value: newConfig.clientId
+                    value: newConfig.clientId,
                 }, { upsert: GenerateUpsert.UPDATE });
             }
-            
+
             if (newConfig.clientSecret) {
                 await this.appConfig.models.Setting.generate({
                     key: 'agol::client_secret',
-                    value: newConfig.clientSecret
+                    value: newConfig.clientSecret,
                 }, { upsert: GenerateUpsert.UPDATE });
             }
         } else {
             await this.appConfig.models.Setting.generate({
                 key: 'agol::auth_method',
-                value: 'legacy'
+                value: 'legacy',
             }, { upsert: GenerateUpsert.UPDATE });
-            
+
             if (newConfig.legacyToken) {
                 await this.appConfig.models.Setting.generate({
                     key: 'agol::token',
-                    value: newConfig.legacyToken
+                    value: newConfig.legacyToken,
                 }, { upsert: GenerateUpsert.UPDATE });
             }
         }
@@ -68,23 +68,23 @@ export default class ArcGISConfigService {
 
     private async loadConfig(): Promise<ArcGISConfig> {
         try {
-            const authMethod = await this.appConfig.models.Setting.typed<string>('agol::auth_method', 'oauth2');
-            
-            if (authMethod.value === 'oauth2') {
-                const clientId = await this.appConfig.models.Setting.typed<string>('agol::client_id', '');
-                const clientSecret = await this.appConfig.models.Setting.typed<string>('agol::client_secret', '');
-                
+            const settings = await this.appConfig.models.Setting.typedMany({
+                'agol::auth_method': 'oauth2',
+                'agol::client_id': '',
+                'agol::client_secret': '',
+                'agol::token': '',
+            });
+
+            if (settings['agol::auth_method'] === 'oauth2') {
                 return {
                     authMethod: 'oauth2',
-                    clientId: clientId.value || undefined,
-                    clientSecret: clientSecret.value || undefined
+                    clientId: settings['agol::client_id'] || undefined,
+                    clientSecret: settings['agol::client_secret'] || undefined,
                 };
             } else {
-                const legacyToken = await this.appConfig.models.Setting.typed<string>('agol::token', '');
-                
                 return {
                     authMethod: 'legacy',
-                    legacyToken: legacyToken.value || undefined
+                    legacyToken: settings['agol::token'] || undefined,
                 };
             }
         } catch {
@@ -92,7 +92,7 @@ export default class ArcGISConfigService {
             return {
                 authMethod: 'oauth2',
                 clientId: undefined,
-                clientSecret: undefined
+                clientSecret: undefined,
             };
         }
     }

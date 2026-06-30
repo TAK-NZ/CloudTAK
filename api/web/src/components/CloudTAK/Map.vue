@@ -2,7 +2,11 @@
     <div
         class='d-flex position-relative'
         style='height: calc(100vh) !important;'
-        data-bs-theme='dark'
+        :style='{
+            "--map-side-offset": `${mapSideOffset}px`,
+            "--map-compact-menu-size": "60px",
+            "--map-bottom-bar-size": "50px"
+        }'
         data-bs-theme-base='neutral'
         data-bs-theme-primary='blue'
     >
@@ -34,17 +38,9 @@
                 @done='mapStore.toImport = []'
             />
 
-            <div
-                v-if='mode === "SetLocation"'
-                class='position-absolute bottom-0 text-white bg-dark rounded-top'
-                style='
-                    z-index: 1;
-                    left: calc(50% - 250px);
-                    width: 500px;
-                '
-            >
+            <GenericBottomPane v-if='mode === "SetLocation"'>
                 <div
-                    class='card user-select-none'
+                    class='card user-select-none text-white cloudtak-bg rounded-top'
                 >
                     <div class='card-header'>
                         <div class='col-8'>
@@ -57,7 +53,7 @@
                         <div class='col-4 d-flex align-items-center'>
                             <div class='ms-auto btn-list'>
                                 <button
-                                    class='btn btn-sm btn-outline-light'
+                                    class='btn btn-sm use-gps-btn'
                                     @click='exitManualMode'
                                 >
                                     <IconLocation
@@ -79,81 +75,18 @@
                         </div>
                     </div>
                 </div>
-            </div>
-            <div
-                class='position-absolute bottom-0 begin-0 text-white'
-                style='
-                    z-index: 1;
-                    width: 250px;
-                    height: 40px;
-                    background-color: rgba(0, 0, 0, 0.5);
-                '
-                :style='{
-                    "border-radius": mapStore.selected.size ? "0px" : "0px 6px 0px 0px"
-                }'
-            >
-                <div
-                    class='d-flex align-items-center'
-                    style='height: 40px'
-                >
-                    <div
-                        class='hover-button h-100 d-flex align-items-center'
-                        style='width: 40px;'
-                    >
-                        <TablerIconButton
-                            v-if='mapStore.location === LocationState.Live'
-                            :title='locationTooltip'
-                            :hover='false'
-                            @click='setLocation'
-                        >
-                            <IconLocation
-                                style='margin: 5px 8px'
-                                :size='20'
-                                stroke='1'
-                                :color='locationColor'
-                            />
-                        </TablerIconButton>
-                        <TablerIconButton
-                            v-else-if='mapStore.location === LocationState.Preset'
-                            :title='locationTooltip'
-                            :hover='false'
-                            @click='setLocation'
-                        >
-                            <IconLocationPin
-                                title='Manual Location - Click to enable GPS'
-                                style='margin: 5px 8px'
-                                :size='20'
-                                stroke='1'
-                            />
-                        </TablerIconButton>
-                        <TablerIconButton
-                            v-else
-                            title='Set Your Location Button'
-                            :hover='false'
-                            @click='setLocation'
-                        >
-                            <IconLocationOff
-                                title='Set Your Location Button (No Location currently set)'
-                                style='margin: 5px 8px'
-                                :size='20'
-                                stroke='1'
-                            />
-                        </TablerIconButton>
-                    </div>
-                    <div
-                        v-tooltip='"Zoom To Location"'
-                        style='line-height: 40px; width: calc(100% - 40px);'
-                        class='h-100 cursor-pointer text-center px-2 text-truncate subheader text-white hover-button user-select-none'
-                        @click='toLocation'
-                        v-text='mapStore.callsign'
-                    />
-                </div>
-            </div>
+            </GenericBottomPane>
+            <BottomBar
+                :mode='mode'
+                :mouse-coord='mouseCoord'
+                @set-location='setLocation'
+                @to-location='toLocation'
+            />
             <div
                 v-if='mapStore.selected.size'
-                class='position-absolute begin-0 text-white bg-dark'
+                class='position-absolute begin-0 text-white cloudtak-bg'
                 style='
-                    bottom: 40px;
+                    bottom: var(--map-bottom-bar-size, 50px);
                     width: 250px;
                 '
             >
@@ -164,165 +97,143 @@
                 v-if='mode === "Default"'
                 class='position-absolute top-0 beginning-0 text-white'
             >
-                <div
-                    style='
-                        z-index: 1;
-                        height: 40px;
-                        max-width: 400px;
-                        background-color: rgba(0, 0, 0, 0.5);
-                        border-radius: 0px 0px 6px 0px;
-                    '
-                >
-                    <template v-if='!mapStore.mission'>
-                        <div
-                            class='hover-button d-flex align-items-center user-select-none cursor-pointer'
-                            @click='router.push("/menu/missions")'
-                        >
-                            <IconMap
-                                :size='32'
-                                stroke='1'
-                                style='margin: 3px 3px'
-                            />
-                            <div class='me-3'>
-                                No Mission
-                            </div>
-                        </div>
-                    </template>
-                    <template v-else>
-                        <div class='d-flex align-items-center user-select-none'>
-                            <IconReplace
-                                :size='32'
-                                stroke='1'
-                                style='margin: 3px 3px'
-                            />
-
-                            <a
-                                class='me-3 text-truncate cursor-pointer text-white'
-                                @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}`)'
-                                v-text='mapStore.mission.meta.name'
-                            />
-                        </div>
-                    </template>
-                </div>
-                <div
-                    class='border'
-                    style='
-                        z-index: 1;
-                        width: 40px;
-                        background-color: rgba(0, 0, 0, 0.2);
-                        border-radius: 0px 0px 6px 0px;
-                    '
-                >
-                    <div>
+                <ActiveMission />
+            </div>
+            <div
+                v-if='mode === "Default"'
+                class='position-absolute'
+                style='
+                    top: 70px;
+                    left: 8px;
+                '
+            >
+                <div class='cloudtak-ctrl-group'>
+                    <div
+                        v-tooltip='"Search"'
+                        role='button'
+                        tabindex='0'
+                        title='Search Button'
+                        class='cloudtak-ctrl-btn'
+                        @click='searchBoxShown = !searchBoxShown'
+                    >
                         <IconSearch
-                            v-tooltip='"Search"'
-                            tabindex='0'
-                            title='Search Button'
-                            :size='32'
+                            :size='24'
                             stroke='2'
-                            :color='searchBoxShown ? "#1E90FF" : "#ffffff"'
-                            style='margin: 3px 2px'
-                            class='cursor-pointer hover-button'
-                            @click='searchBoxShown = !searchBoxShown'
+                            :color='searchBoxShown ? "#1E90FF" : undefined'
                         />
                     </div>
 
                     <div
-                        v-if='mapStore.bearing !== 0'
-                        style='margin: 3px 3px'
-                        class='cursor-pointer hover-button'
-                        @click='mapStore.map.setBearing(0)'
+                        role='button'
+                        tabindex='0'
+                        class='cloudtak-ctrl-btn'
+                        @click='toggleCompass'
                     >
-                        <IconCircleArrowUp
-                            v-tooltip='"Snap to North"'
-                            tabindex='0'
-                            :alt='`Map Rotated to ${humanBearing}`'
-                            :transform='`rotate(${360 - mapStore.bearing})`'
-                            :size='32'
+                        <IconCompass
+                            v-if='mapStore.userOrientationMode'
+                            v-tooltip='"Orient North"'
+                            :size='24'
                             stroke='2'
+                            color='#1E90FF'
                         />
-                        <div
-                            v-if='mapStore.bearing !== 0'
-                            class='text-center'
-                            v-text='humanBearing'
-                        />
+                        <template v-else>
+                            <IconCircleArrowUp
+                                v-tooltip='"Snap to North"'
+                                :alt='`Map Rotated to ${humanBearing}`'
+                                :transform='`rotate(${360 - mapStore.bearing})`'
+                                :size='24'
+                                stroke='2'
+                            />
+                            <div
+                                v-if='mapStore.bearing !== 0'
+                                class='text-center cloudtak-ctrl-label'
+                                v-text='humanBearing'
+                            />
+                        </template>
                     </div>
+
                     <div
                         v-if='mapStore.pitch !== 0'
-                        style='margin: 3px 3px'
-                        class='cursor-pointer hover-button'
+                        role='button'
+                        tabindex='0'
+                        class='cloudtak-ctrl-btn'
                         @click='mapStore.map.setPitch(0)'
                     >
                         <IconAngle
                             v-tooltip='"Snap Flat"'
-                            tabindex='0'
                             :alt='`Map Pitch to ${humanPitch}`'
-                            :size='32'
+                            :size='24'
                             stroke='2'
                         />
                         <div
-                            v-if='mapStore.pitch !== 0'
-                            class='text-center'
+                            class='text-center cloudtak-ctrl-label'
                             v-text='humanPitch'
                         />
                     </div>
-                    <div
-                        v-if='displayZoom'
-                    >
-                        <IconPlus
+
+                    <template v-if='displayZoom'>
+                        <div
                             v-tooltip='"Zoom In"'
                             role='button'
                             tabindex='0'
                             title='Zoom In Button'
-                            :size='32'
-                            stroke='2'
-                            class='cursor-pointer hover-button'
-                            style='margin: 3px 3px'
+                            class='cloudtak-ctrl-btn'
                             @click='mapStore.map.setZoom(mapStore.map.getZoom() + 1);'
-                        />
-                        <IconMinus
+                        >
+                            <IconPlus
+                                :size='24'
+                                stroke='2'
+                            />
+                        </div>
+                        <div
                             v-tooltip='"Zoom Out"'
                             role='button'
                             tabindex='0'
                             title='Zoom Out Button'
-                            :size='32'
-                            stroke='2'
-                            class='cursor-pointer hover-button'
-                            style='margin: 3px 3px'
+                            class='cloudtak-ctrl-btn'
                             @click='mapStore.map.setZoom(mapStore.map.getZoom() - 1);'
-                        />
-                    </div>
+                        >
+                            <IconMinus
+                                :size='24'
+                                stroke='2'
+                            />
+                        </div>
+                    </template>
 
-                    <IconMountain
-                        v-if='mapStore.hasTerrain'
-                        v-tooltip='mapStore.isTerrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
+                    <div
+                        v-if='hasTerrain'
+                        v-tooltip='mapStore.terrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
                         role='button'
                         tabindex='0'
                         title='3D Terrain'
-                        :size='32'
-                        stroke='2'
-                        class='cursor-pointer hover-button'
-                        :color='mapStore.isTerrainEnabled ? "#1E90FF" : "#FFFFFF"'
-                        style='margin: 3px 3px'
-                        @click='mapStore.isTerrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
-                    />
+                        class='cloudtak-ctrl-btn'
+                        @click='mapStore.terrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
+                    >
+                        <IconMountain
+                            :size='24'
+                            stroke='2'
+                            :color='mapStore.terrainEnabled ? "#1E90FF" : undefined'
+                        />
+                    </div>
 
-                    <IconLockAccess
+                    <div
                         v-if='
                             (mapStore.radial.cot && mapStore.locked.length >= 2)
                                 || (!mapStore.radial.cot && mapStore.locked.length >= 1)
                         '
                         v-tooltip='"Map is locked to marker - Click to Unlock"'
                         title='Map is locked to marker - Click to Unlock'
-                        class='cursor-pointer hover-button'
                         role='button'
                         tabindex='0'
-                        color='red'
-                        :size='32'
-                        stroke='2'
-                        style='margin: 3px 3px'
+                        class='cloudtak-ctrl-btn'
                         @click='mapStore.locked.splice(0, mapStore.locked.length)'
-                    />
+                    >
+                        <IconLockAccess
+                            color='red'
+                            :size='24'
+                            stroke='2'
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -351,24 +262,34 @@
 
             <div
                 v-if='mapStore.isLoaded && mode === "Default"'
-                class='d-flex position-absolute top-0 text-white py-2'
+                class='d-flex position-absolute top-0 text-white'
                 style='
-                    z-index: 2;
+                    z-index: 5;
                     width: 120px;
-                    right: 60px;
+                    height: 60px;
+                    right: var(--map-compact-menu-size, 60px);
                     padding-left: 10px;
                     background-color: rgba(0, 0, 0, 0.5);
                     border-radius: 0px 0px 0px 6px;
+                    padding-top: 8px;
                 '
             >
                 <TablerDropdown>
                     <TablerIconButton
                         id='map-notifications'
                         title='Notifications Icon'
-                        class='hover-button'
+                        class='cloudtak-hover'
+                        :class='{ "alert-pulse": alertNotifications }'
                         :hover='false'
                     >
+                        <IconAlertTriangle
+                            v-if='alertNotifications'
+                            :size='40'
+                            stroke='1'
+                            class='text-danger'
+                        />
                         <IconBell
+                            v-else
                             :size='40'
                             stroke='1'
                         />
@@ -392,13 +313,19 @@
 
             <div
                 v-if='mode === "Default"'
-                class='position-absolute top-0 end-0 text-white py-2'
-                style='z-index: 1; width: 60px; background-color: rgba(0, 0, 0, 0.5);'
+                class='position-absolute top-0 end-0 text-white'
+                style='
+                    z-index: 1;
+                    width: var(--map-compact-menu-size, 60px);
+                    height: 60px;
+                    background-color: rgba(0, 0, 0, 0.5);
+                    padding-top: 8px;
+                '
             >
                 <TablerIconButton
                     v-if='noMenuShown'
                     title='Open Menu'
-                    class='mx-2 hover-button'
+                    class='mx-2 cloudtak-hover'
                     :hover='false'
                     @click='router.push("/menu")'
                 >
@@ -432,6 +359,19 @@
                 :compact='noMenuShown'
             />
 
+            <div
+                v-if='mapStore.isLoaded && isMobileDetected && mode === "Default"'
+                class='position-absolute'
+                style='
+                    z-index: 4;
+                    bottom: var(--map-bottom-bar-size, 50px);
+                    right: 0;
+                    padding: 8px;
+                '
+            >
+                <ServerStatus :size='38' />
+            </div>
+
             <MultipleSelect
                 v-if='mapStore.select.feats.length'
                 @selected='selectFeat($event)'
@@ -443,28 +383,22 @@
                 @click='handleRadial($event)'
             />
 
-            <CloudTAKFeatView
-                v-if='feat && mode === "Default" && route.name === "home"'
-                :key='feat.id'
-                :feat='feat'
-            />
-
             <template
                 v-for='float in floatStore.panes.values()'
                 :key='float.uid'
             >
-                <FloatingVideo
-                    v-if='float.type === PaneType.VIDEO'
-                    :title='float.name || "Video Stream"'
-                    :uid='float.uid'
-                    @close='floatStore.panes.delete(float.uid)'
-                />
-                <FloatingAttachment
-                    v-if='float.type === PaneType.ATTACHMENT'
+                <component
+                    :is='float.component'
                     :uid='float.uid'
                     @close='floatStore.panes.delete(float.uid)'
                 />
             </template>
+
+            <BufferInput
+                v-if='bufferCotId'
+                :cot-id='bufferCotId'
+                @close='bufferCotId = null'
+            />
 
             <template v-if='upload.shown'>
                 <TablerModal>
@@ -475,55 +409,63 @@
                         aria-label='Close'
                         @click='upload.shown = false'
                     />
-                    <div class='modal-body text-white'>
-                        <UploadImport
-                            :dragging='upload.dragging'
-                            :cancel-button='false'
-                            @close='upload.shown = false'
+                    <div class='modal-body text-body'>
+                        <Upload
+                            :url='stdurl("/api/import")'
+                            method='PUT'
+                            :cancel='false'
+                            @cancel='upload.shown = false'
                             @done='fileUpload($event)'
                         />
                     </div>
                 </TablerModal>
             </template>
+
+            <MissionInviteModal
+                v-if='inviteMission'
+                :mission='inviteMission'
+                @close='inviteMission = undefined'
+            />
         </template>
     </div>
 </template>
 
 <script setup lang='ts'>
-import GeoJSONInput from './GeoJSONInput.vue';
+import GeoJSONInput from './Inputs/GeoJSONInput.vue';
+import BufferInput from './Inputs/BufferInput.vue';
 import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, useTemplateRef } from 'vue';
+import BottomBar from './BottomBar/BottomBar.vue';
 import {useRoute, useRouter } from 'vue-router';
-import FloatingVideo from './util/FloatingVideo.vue';
-import FloatingAttachment from './util/FloatingAttachment.vue';
+import ActiveMission from './ActiveMission.vue';
 import DrawOverlay from './util/DrawOverlay.vue';
 import WarnChannels from './util/WarnChannels.vue';
 import Notifications from './Notifications.vue';
 import SearchBox from './util/SearchBox.vue';
 import WarnConfiguration from './util/WarnConfiguration.vue';
 import DrawTools from './DrawTools.vue';
+import GenericBottomPane from './GenericBottomPane.vue';
 import type { MapGeoJSONFeature, LngLatLike, MapMouseEvent } from 'maplibre-gl';
 import type { Feature } from '../../types.ts';
-import CloudTAKFeatView from './FeatView.vue';
 import {
-    IconSearch,
-    IconLocationOff,
-    IconLocationPin,
-    IconLocation,
-    IconMenu2,
-    IconPlus,
-    IconMinus,
-    IconLockAccess,
-    IconReplace,
-    IconMap,
-    IconX,
-    IconBell,
-    IconAngle,
     IconCircleArrowUp,
+    IconAlertTriangle,
+    IconLocationPin,
+    IconLockAccess,
+    IconLocation,
     IconMountain,
+    IconCompass,
+    IconSearch,
+    IconMinus,
+    IconMenu2,
+    IconAngle,
+    IconPlus,
+    IconBell,
+    IconX,
 } from '@tabler/icons-vue';
 import SelectFeats from './util/SelectFeats.vue';
 import MultipleSelect from './util/MultipleSelect.vue';
 import MainMenu from './MainMenu.vue';
+import ServerStatus from './ServerStatus.vue';
 import { from } from 'rxjs';
 import { useObservable } from '@vueuse/rxjs';
 import {
@@ -531,19 +473,37 @@ import {
     TablerDropdown,
     TablerModal,
 } from '@tak-ps/vue-tabler';
-import { LocationState } from '../../base/events.ts';
-import TAKNotification from '../../base/notification.ts';
+import { LocationState, WorkerMessageType } from '../../base/events.ts';
+import type { WorkerMessage } from '../../base/events.ts';
+import TAKNotification, { NotificationType } from '../../base/notification.ts';
+import { v4 as randomUUID } from 'uuid';
+import { lineString as turfLineString, point as turfPoint } from '@turf/helpers';
+import nearestPointOnLine from '@turf/nearest-point-on-line';
+import lineSplit from '@turf/line-split';
 import COT from '../../base/cot.ts';
 import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
 import { useMapStore } from '../../stores/map.ts';
+import { useAppStore } from '../../stores/app.ts';
 import { DrawToolMode } from '../../stores/modules/draw.ts';
-import { useFloatStore, PaneType } from '../../stores/float.ts';
+import { useFloatStore } from '../../stores/float.ts';
 import { liveQuery } from 'dexie';
-import UploadImport from './util/UploadImport.vue'
+import Upload from '../util/Upload.vue';
+import { stdurl } from '../../std.ts';
+import ProfileConfig from '../../base/profile.ts';
+import Config from '../../base/config.ts';
+import { cutOverlayFeature } from './util/featureCut.ts';
+import MissionInviteModal from './Menu/Mission/MissionInviteModal.vue';
+
 const mapStore = useMapStore();
+const appStore = useAppStore();
 const floatStore = useFloatStore();
+
+const hasTerrain = ref<boolean>(false);
+Config.list(['map::terrain'], { defaults: { 'map::terrain': null } }).then((cfg) => {
+    hasTerrain.value = cfg['map::terrain'] !== null && cfg['map::terrain'] !== undefined;
+}).catch(() => { /* non-fatal */ });
 const router = useRouter();
 const route = useRoute();
 
@@ -554,7 +514,7 @@ const locationClickHandler = ref<((e: MapMouseEvent) => void) | null>(null);
 const height = ref<number>(window.innerHeight);
 const width = ref<number>(window.innerWidth);
 
-mapStore.isMobileDetected = detectMobile();
+appStore.isMobileDetected = detectMobile();
 
 // Show a popup if no channels are selected on load
 const warnChannels = ref<boolean>(false)
@@ -563,21 +523,36 @@ const warnChannels = ref<boolean>(false)
 const warnConfiguration = ref<boolean>(false);
 
 const searchBoxShown = ref(false);
-const feat = ref()        // Show the Feat Viewer sidebar
 
 const upload = ref({
     shown: false,
     dragging: false
 })
 
-// Interval for pushing GeoJSON Map Updates (CoT)
-const timer = ref<ReturnType<typeof setInterval> | undefined>()
+const bufferCotId = ref<string | null>(null)
+
+const inviteMission = ref<{
+    name: string;
+    guid: string;
+    token: string;
+    authorUid: string;
+    tool: string;
+    type: string;
+} | undefined>();
+
+let inviteChannel: BroadcastChannel | undefined;
 
 const loading = ref(true)
 
 const notifications = useObservable<number>(
     from(liveQuery(async () => {
         return await TAKNotification.count()
+    }))
+);
+
+const alertNotifications = useObservable<number>(
+    from(liveQuery(async () => {
+        return await TAKNotification.countByType(NotificationType.Alert)
     }))
 );
 
@@ -595,12 +570,12 @@ const isMobileDetected = computed(() => {
 });
 
 watch(isMobileDetected, () => {
-    mapStore.isMobileDetected = isMobileDetected.value;
+    appStore.isMobileDetected = isMobileDetected.value;
 });
 
 const displayZoom = computed(() => {
     if (mapStore.zoom === 'conditional') {
-        return isMobileDetected;
+        return !isMobileDetected.value;
     } else {
         return mapStore.zoom === 'always' ? true : false;
     }
@@ -619,64 +594,33 @@ const humanPitch = computed(() => {
     return Math.round(mapStore.pitch) + '°'
 })
 
-// Reactive location accuracy
-const locationAccuracy = ref<number | undefined>(undefined);
-
-// Watch for location updates and get accuracy
-watch(() => mapStore.location, async () => {
-    if (mapStore.location === LocationState.Live && !mapStore.manualLocationMode) {
-        try {
-            const location = await mapStore.worker.profile.location;
-            locationAccuracy.value = location.accuracy;
-        } catch {
-            locationAccuracy.value = undefined;
-        }
+const toggleCompass = () => {
+    if (mapStore.userOrientationMode) {
+        mapStore.userOrientationMode = false;
+        mapStore.map.setBearing(0);
+    } else if (mapStore.bearing !== 0) {
+        mapStore.map.setBearing(0);
     } else {
-        locationAccuracy.value = undefined;
+        // Was at bearing 0, now enable user orientation mode
+        mapStore.userOrientationMode = true;
     }
-}, { immediate: true });
-
-const locationColor = computed(() => {
-    if (mapStore.location !== LocationState.Live || !locationAccuracy.value) return '#ffffff';
-
-    const accuracy = locationAccuracy.value;
-    // Color-code based on accuracy ranges
-    if (accuracy <= 50) return '#22c55e';      // Green - high accuracy
-    if (accuracy <= 200) return '#eab308';     // Yellow - medium accuracy
-    return '#ef4444';                          // Red - low accuracy
-})
-
-const locationTooltip = computed(() => {
-    if (mode.value === 'SetLocation') {
-        return 'Click on map to set location';
-    }
-
-    if (mapStore.location === LocationState.Preset) {
-        return 'Manual Location - Click to adjust or switch to GPS';
-    }
-
-    if (mapStore.location === LocationState.Live && locationAccuracy.value) {
-        const accuracy = locationAccuracy.value;
-        // Convert to user's preferred distance unit
-        if (mapStore.distanceUnit === 'mile') {
-            const accuracyFt = Math.round(accuracy * 3.28084);
-            return `Live Location (±${accuracyFt}ft) - Click to set manually`;
-        } else {
-            return `Live Location (±${Math.round(accuracy)}m) - Click to set manually`;
-        }
-    }
-
-    return 'Set Your Location - Click to enable GPS or set manually';
-})
+}
 
 const mapRef = useTemplateRef<HTMLElement>('map');
 
+const mouseCoord = ref<{ lat: number; lng: number } | null>(null);
+
 const noMenuShown = computed<boolean>(() => {
-    return !feat.value
-        && (!route.name || !String(route.name).startsWith('home-menu'))
+    return (!route.name || !String(route.name).startsWith('home-menu'))
 });
 
+const mapSideOffset = computed(() => {
+    if (isMobileDetected.value) return 0;
 
+    // `toastOffset.x` includes a 10px buffer for notification toasts.
+    // Remove that padding so right-side map controls align flush with the visible menu edge.
+    return Math.max(mapStore.toastOffset.x - 10, 0);
+});
 
 onMounted(async () => {
     // ensure uncaught errors in the stack are captured into vue context
@@ -691,7 +635,19 @@ onMounted(async () => {
         width.value = window.innerWidth;
     });
 
-    await mountMap();
+    if (!mapRef.value) throw new Error('Map Element could not be found - Please refresh the page and try again');
+    await mapStore.init(mapRef.value);
+
+    mapStore.map.on('mousemove', (e) => {
+        mouseCoord.value = {
+            lat: e.lngLat.lat,
+            lng: e.lngLat.lng,
+        };
+    });
+
+    mapStore.map.on('mouseleave' as Parameters<typeof mapStore.map.on>[0], () => {
+        mouseCoord.value = null;
+    });
 
     // TODO these are no longer reactive, does it matter?
     warnChannels.value = await mapStore.worker.profile.hasNoChannels();
@@ -729,19 +685,19 @@ onMounted(async () => {
             }
         }
     });
+
+    inviteChannel = new BroadcastChannel('cloudtak');
+    inviteChannel.onmessage = (event: MessageEvent<WorkerMessage>) => {
+        const msg = event.data;
+        if (msg && msg.type === WorkerMessageType.Mission_Invite) {
+            inviteMission.value = msg.body;
+        }
+    };
 });
 
 onBeforeUnmount(() => {
-    if (timer.value) {
-        window.clearInterval(timer.value);
-    }
-
-    // Clean up GPS watch
-    if (mapStore.gpsWatchId !== null) {
-        navigator.geolocation.clearWatch(mapStore.gpsWatchId);
-    }
-
-    mapStore.destroy();
+    inviteChannel?.close();
+    void mapStore.destroy();
 });
 
 function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
@@ -750,14 +706,13 @@ function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
     if (selectedFeat instanceof COT) {
         router.push(`/cot/${selectedFeat.properties.id}`);
     } else {
-        router.push(`/`);
-        feat.value = selectedFeat;
+        mapStore.viewedFeature = selectedFeat;
+        router.push(`/menu/feature`);
     }
 }
 
 function closeAllMenu() {
-    feat.value = false;
-    router.push("/");
+    router.push('/');
 }
 
 function closeRadial() {
@@ -830,24 +785,25 @@ async function exitManualMode() {
     mapStore.location = LocationState.Loading;
 
     // Remove current location dot from map by removing user's CoT
-    const userUid = `ANDROID-CloudTAK-${(await mapStore.worker.profile.load()).username}`;
+    const username = await ProfileConfig.get('username');
+    const userUid = `ANDROID-CloudTAK-${username ? username.value : 'unknown'}`;
     await mapStore.worker.db.remove(userUid);
 
     // Clear manual location and wait for it to complete
     await mapStore.worker.profile.update({ tak_loc: null });
 
     // Restart GPS watch to ensure fresh GPS acquisition
-    mapStore.startGPSWatch();
+    void mapStore.startLocationWatch();
 
     await mapStore.refresh();
 }
 
 
 
-function fileUpload(event: string) {
+function fileUpload(event: unknown) {
     upload.value.shown = false;
-    const imp = JSON.parse(event) as { id: string };
-    router.push(`/menu/imports/${imp.id}`)
+    const imp = event as { imports: Array<{ uid: string }> };
+    router.push(`/menu/imports/${imp.imports[0].uid}`)
 }
 
 async function handleRadial(event: string): Promise<void> {
@@ -888,6 +844,9 @@ async function handleRadial(event: string): Promise<void> {
     } else if (event === 'feat:view') {
         selectFeat(mapStore.radial.cot as MapGeoJSONFeature);
         closeRadial()
+    } else if (event === 'feat:cut') {
+        await cutOverlayFeature(mapStore, mapStore.radial.cot as MapGeoJSONFeature);
+        closeRadial()
     } else if (event === 'context:new') {
         const feat = toRaw(mapStore.radial.cot as Feature) as Feature;
 
@@ -901,56 +860,222 @@ async function handleRadial(event: string): Promise<void> {
         // @ts-expect-error Figure out geometry.coordinates type
         router.push(`/query/${encodeURIComponent(mapStore.radial.cot.geometry.coordinates.join(','))}`);
         closeRadial()
+    } else if (event === 'cot:geometry-buffer') {
+        bufferCotId.value = mapStore.radial.cot.properties.id || String(mapStore.radial.cot.id);
+        closeRadial();
+    } else if (event === 'cot:geometry-split') {
+        const cotFeat = await mapStore.worker.db.get(
+            mapStore.radial.cot.properties.id || String(mapStore.radial.cot.id),
+            { mission: true }
+        );
+
+        if (!cotFeat) throw new Error('Cannot find COT to split');
+        if (cotFeat.geometry.type !== 'LineString') throw new Error('Can only split LineString geometries');
+
+        const line = turfLineString(cotFeat.geometry.coordinates as [number, number][]);
+        const click = turfPoint([mapStore.radial.lngLat!.lng, mapStore.radial.lngLat!.lat]);
+
+        // Snap click to the nearest point exactly on the line, then split there
+        const snapped = nearestPointOnLine(line, click);
+        const split = lineSplit(line, snapped);
+
+        if (split.features.length < 2) {
+            closeRadial();
+            throw new Error('Cannot split: click point is too close to a line endpoint');
+        }
+
+        const coordsA = split.features[0].geometry.coordinates as [number, number][];
+        const coordsB = split.features[1].geometry.coordinates as [number, number][];
+
+        const now = new Date();
+        const idA = randomUUID();
+        const idB = randomUUID();
+
+        const baseProps = { ...cotFeat.properties };
+
+        const featA: Feature = {
+            id: idA,
+            type: 'Feature',
+            path: cotFeat.path || '/',
+            properties: {
+                ...baseProps,
+                id: idA,
+                callsign: `${cotFeat.properties.callsign} (1)`,
+                time: now.toISOString(),
+                start: now.toISOString(),
+            },
+            geometry: { type: 'LineString', coordinates: coordsA }
+        };
+
+        const featB: Feature = {
+            id: idB,
+            type: 'Feature',
+            path: cotFeat.path || '/',
+            properties: {
+                ...baseProps,
+                id: idB,
+                callsign: `${cotFeat.properties.callsign} (2)`,
+                time: now.toISOString(),
+                start: now.toISOString(),
+            },
+            geometry: { type: 'LineString', coordinates: coordsB }
+        };
+
+        closeRadial();
+        await mapStore.worker.db.remove(String(cotFeat.id), { mission: true });
+        await mapStore.worker.db.add(featA, { authored: true });
+        await mapStore.worker.db.add(featB, { authored: true });
+        await mapStore.refresh();
     } else {
         closeRadial()
         throw new Error(`Unimplemented Radial Action: ${event}`);
     }
 }
 
-async function mountMap(): Promise<void> {
-    if (!mapRef.value) throw new Error('Map Element could not be found - Please refresh the page and try again');
-    await mapStore.init(mapRef.value);
-
-    return new Promise((resolve) => {
-        mapStore.map.once('idle', async () => {
-            const profile = await mapStore.worker.profile.load();
-
-            if (profile.display_projection === 'globe') {
-                mapStore.map.setProjection({ type: "globe" });
-            }
-
-            await mapStore.icons.updateImages();
-
-            await mapStore.initOverlays();
-
-            timer.value = setInterval(async () => {
-                if (!mapStore.map) return;
-                await mapStore.refresh();
-            }, 500);
-
-            return resolve();
-        });
-    });
-}
 </script>
 
 <style>
-/* Map scale control positioning */
+@keyframes alert-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.alert-pulse {
+    animation: alert-pulse 1.2s ease-in-out infinite;
+}
+
+.cloudtak-ctrl-group {
+    display: flex;
+    flex-direction: column;
+    width: 40px;
+    overflow: hidden;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+html[data-bs-theme='dark'] .cloudtak-ctrl-group {
+    background-color: rgba(40, 53, 71, 0.95);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+html[data-bs-theme='light'] .cloudtak-ctrl-group {
+    background-color: rgba(255, 255, 255, 0.95);
+    color: var(--tblr-body-color);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.cloudtak-ctrl-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 7px 0;
+    cursor: pointer;
+    color: inherit;
+    transition: background-color 0.15s ease;
+}
+
+.cloudtak-ctrl-btn:focus-visible {
+    outline: none;
+}
+
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:not(:first-child) {
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:not(:first-child) {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:hover,
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:focus-visible,
+html[data-bs-theme='dark'] .cloudtak-ctrl-btn:focus-within {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:hover,
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-visible,
+html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.cloudtak-ctrl-label {
+    font-size: 11px;
+    line-height: 1;
+    margin-top: 2px;
+}
+
+.maplibregl-ctrl-scale {
+    background-color: transparent !important;
+    color: #ffffff;
+    text-align: center;
+    text-shadow: 1px 0 0 black, -1px 0 0 black, 0 1px 0 black, 0 -1px 0 black;
+    border-bottom: 1px solid #fff;
+    border-left: 1px solid #fff;
+    border-right: 1px solid #fff;
+    margin: 0;
+}
+
+.maplibregl-ctrl-scale::before {
+    background-color: transparent !important;
+    border-bottom: 1px solid #000;
+    border-left: 1px solid #000;
+    border-right: 1px solid #000;
+    content: "";
+    display: block;
+    position: absolute;
+    top: 0px;
+    left: 1px;
+    right: 1px;
+    bottom: 1px;
+}
+
 .maplibregl-ctrl-bottom-left {
-    bottom: 15px;
-    right: 65px;
-    left: auto !important;
-    z-index: 1 !important;
+    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
+    left: 8px;
+    right: auto;
+    margin: 0;
+    z-index: 3 !important;
+    pointer-events: none;
 }
 
 .maplibregl-ctrl-bottom-right {
-    bottom: 0;
-    right: 60px;
-    z-index: 1 !important;
+    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
+    right: calc(var(--map-side-offset, 0px) + 8px);
+    left: auto;
+    z-index: 3 !important;
     color: black !important;
 }
 
 .maplibregl-ctrl-attrib a {
     color: black !important;
+}
+
+html[data-bs-theme='dark'] .use-gps-btn {
+    --bs-btn-color: rgba(255, 255, 255, 0.92);
+    --bs-btn-border-color: rgba(255, 255, 255, 0.35);
+    --bs-btn-hover-color: #182433;
+    --bs-btn-hover-bg: rgba(255, 255, 255, 0.92);
+    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.92);
+}
+
+html[data-bs-theme='light'] .use-gps-btn {
+    --bs-btn-color: var(--tblr-body-color);
+    --bs-btn-border-color: var(--tblr-border-color);
+    --bs-btn-hover-color: var(--tblr-bg-surface);
+    --bs-btn-hover-bg: var(--tblr-primary);
+    --bs-btn-hover-border-color: var(--tblr-primary);
+}
+
+@media (max-width: 600px) {
+    .maplibregl-ctrl-bottom-left {
+        left: 4px;
+    }
+
+    .maplibregl-ctrl-bottom-right {
+        right: 58px;
+    }
 }
 </style>

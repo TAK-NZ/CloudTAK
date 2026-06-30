@@ -1,31 +1,17 @@
 import { createApp } from 'vue'
-import { version } from '../../../package.json'
 import * as VueRouter from 'vue-router'
 import { createPinia } from 'pinia'
-
-if (!import.meta.env.DEV && 'serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register(`/sw.js?v=${version}&build=${import.meta.env.HASH}`).then((registration) => {
-            console.log('ServiceWorker registration successful with scope: ', registration.scope);
-        }, (err) => {
-            console.log('ServiceWorker registration failed: ', err);
-        });
-
-        let refreshing = false;
-
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-            if (!refreshing) {
-                window.location.reload()
-                refreshing = true
-            }
-        })
-    });
-}
+import { version } from '../../../package.json'
+import { initServiceWorker } from '../../base/service-worker.ts';
+import { initGlobalErrorReporting, vueErrorHandler } from '../../lib/reporting/index.ts';
 
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
-import App from '../../App.vue'
+import App from '../../App.vue';
+
+initServiceWorker(version);
+initGlobalErrorReporting();
 
 const router = VueRouter.createRouter({
     history: VueRouter.createWebHistory(),
@@ -44,6 +30,10 @@ const router = VueRouter.createRouter({
                 path: 'layer',
                 name: 'admin-layers',
                 component: () => import('../../components/Admin/AdminLayers.vue')
+            },{
+                path: 'layer/updates',
+                name: 'admin-layer-updates',
+                component: () => import('../../components/Admin/AdminLayerUpdates.vue')
             },{
                 path: 'layer/new',
                 name: 'admin-layer-new',
@@ -75,6 +65,10 @@ const router = VueRouter.createRouter({
                 path: 'overlay/:overlay',
                 name: 'admin-overlays-edit',
                 component: () => import('../../components/Admin/AdminOverlaysEdit.vue')
+            },{
+                path: 'public',
+                name: 'admin-public',
+                component: () => import('../../components/Admin/AdminPublicTiles.vue')
             },{
                 path: 'data',
                 name: 'admin-data',
@@ -108,36 +102,21 @@ const router = VueRouter.createRouter({
                 name: 'admin-mission-template-log',
                 component: () => import('../../components/Admin/AdminMissionTemplateLog.vue')
             },{
-                path: 'palette',
-                name: 'admin-palettes',
-                component: () => import('../../components/Admin/AdminPalettes.vue')
-            },{
-                path: 'palette/:palette',
-                name: 'admin-palette',
+                path: 'template/:template/palette/:palette',
+                name: 'admin-mission-template-palette',
                 component: () => import('../../components/Admin/AdminPalette.vue')
             },{
-                path: 'palette/:palette/feature/:feature',
-                name: 'admin-palette-feature',
+                path: 'template/:template/palette/:palette/feature/:feature',
+                name: 'admin-mission-template-palette-feature',
                 component: () => import('../../components/Admin/AdminPaletteFeature.vue')
             },{
                 path: 'tasks',
                 name: 'admin-tasks',
-                component: () => import('../../components/Admin/AdminTasks.vue'),
-                children: [{
-                    path: '',
-                    name: 'admin-tasks-default',
-                    redirect: () => {
-                        return { name: 'admin-tasks-registered' };
-                    }
-                },{
-                    path: 'registered',
-                    name: 'admin-tasks-registered',
-                    component: () => import('../../components/Admin/Tasks/AdminTasks.vue')
-                },{
-                    path: 'raw',
-                    name: 'admin-tasks-raw',
-                    component: () => import('../../components/Admin/Tasks/AdminRawTasks.vue')
-                }]
+                component: () => import('../../components/Admin/Tasks/AdminTasks.vue')
+            },{
+                path: 'tasks/:task',
+                name: 'admin-task',
+                component: () => import('../../components/Admin/Tasks/AdminTask.vue')
             },{
                 path: 'server',
                 name: 'admin-server',
@@ -174,6 +153,14 @@ const router = VueRouter.createRouter({
                 name: 'admin-config',
                 component: () => import('../../components/Admin/AdminConfig.vue')
             },{
+                path: 'geofence',
+                name: 'admin-geofence',
+                component: () => import('../../components/Admin/AdminGeofence.vue')
+            },{
+                path: 'health',
+                name: 'admin-health',
+                component: () => import('../../components/Admin/AdminHealth.vue')
+            },{
                 path: 'export',
                 name: 'admin-export',
                 component: () => import('../../components/Admin/AdminExport.vue')
@@ -200,6 +187,8 @@ router.onError((error, to) => {
 
 const app = createApp(App);
 const pinia = createPinia()
+
+app.config.errorHandler = vueErrorHandler;
 
 app.use(router);
 app.use(pinia);

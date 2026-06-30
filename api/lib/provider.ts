@@ -1,7 +1,6 @@
 import Config from './config.js';
 import { InferSelectModel } from 'drizzle-orm';
 import Err from '@openaddresses/batch-error';
-import moment from 'moment';
 import type { Profile } from './schema.js';
 import { X509Certificate } from 'crypto';
 import { TAKAPI, APIAuthPassword, APIAuthCertificate } from '@tak-ps/node-tak';
@@ -10,35 +9,35 @@ import ProfileControl from './control/profile.js';
 export enum AuthProviderAccess {
     ADMIN = 'admin',
     AGENCY = 'agency',
-    USER = 'user'
+    USER = 'user',
 }
 
 export default class AuthProvider {
     config: Config;
-    profile: ProfileControl;
+    profileControl: ProfileControl;
 
     constructor(config: Config) {
         this.config = config;
-        this.profile = new ProfileControl(config);
+        this.profileControl = new ProfileControl(config);
     }
 
     async login(username: string, password: string): Promise<string> {
-        const auth = new APIAuthPassword(username, password)
+        const auth = new APIAuthPassword(username, password);
         const api = await TAKAPI.init(new URL(this.config.server.webtak), auth);
 
-        const contents = await api.OAuth.parse(auth.jwt)
+        const contents = await api.OAuth.parse(auth.jwt);
 
         let profile;
         try {
             profile = await this.config.models.Profile.from(username);
         } catch (err) {
             if (err instanceof Error && err.message.includes('Item Not Found')) {
-                profile = await this.profile.generate({
+                profile = await this.profileControl.generate({
                     username: username,
-                    auth: await api.Credentials.generate()
+                    auth: await api.Credentials.generate(),
                 });
             } else {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), err instanceof Error ? err.message : String(err))
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), err instanceof Error ? err.message : String(err));
             }
         }
 
@@ -49,16 +48,16 @@ export default class AuthProvider {
 
     async valid(
         profile: InferSelectModel<typeof Profile>,
-        password?: string
+        password?: string,
     ): Promise<InferSelectModel<typeof Profile>> {
         let validTo;
 
         try {
             const cert = new X509Certificate(profile.auth.cert);
 
-            validTo = cert.validTo
-            // The validTo date looks like: 'Mar  6 20:38:58 2025 GMT'
-            if (moment(validTo, "MMM DD hh:mm:ss YYYY").isBefore(moment().add(7, 'days'))) {
+            validTo = cert.validTo;
+            const certExpiry = new Date(validTo);
+            if (Number.isNaN(certExpiry.getTime()) || certExpiry.getTime() < Date.now() + (7 * 24 * 60 * 60 * 1000)) {
                 throw new Error('Expired Certificate has expired or is about to');
             }
         } catch (err) {
@@ -67,7 +66,7 @@ export default class AuthProvider {
             if (password) {
                 const api = await TAKAPI.init(new URL(this.config.server.webtak), new APIAuthPassword(profile.username, password));
                 profile = await this.config.models.Profile.commit(profile.username, {
-                    auth: await api.Credentials.generate()
+                    auth: await api.Credentials.generate(),
                 });
             } else {
                 throw new Err(401, null, 'Certificate is expired');
@@ -86,7 +85,7 @@ export default class AuthProvider {
                 if (password) {
                     const api = await TAKAPI.init(new URL(this.config.server.webtak), new APIAuthPassword(profile.username, password));
                     profile = await this.config.models.Profile.commit(profile.username, {
-                        auth: await api.Credentials.generate()
+                        auth: await api.Credentials.generate(),
                     });
                 } else {
                     throw new Err(401, err instanceof Error ? err : new Error(String(err)), 'Certificate is Revoked');
@@ -98,5 +97,4 @@ export default class AuthProvider {
 
         return profile;
     }
-
 }

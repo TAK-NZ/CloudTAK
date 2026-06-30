@@ -4,24 +4,24 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
-const time = new Date('2025-03-04T22:54:15.447Z').toISOString()
+const time = new Date('2025-03-04T22:54:15.447Z').toISOString();
 
 test('GET: api/profile/interest', async () => {
     try {
         const res = await flight.fetch('/api/profile/interest', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             total: 0,
-            items: []
+            items: [],
         });
     } catch (err) {
         assert.ifError(err);
@@ -33,12 +33,12 @@ test('POST: api/profile/interest', async () => {
         const res = await flight.fetch('/api/profile/interest', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'Test AOI',
-                bounds: [ -180, -90, 180, 90 ]
-            }
+                bounds: [-180, -90, 180, 90],
+            },
         }, true);
 
         res.body.created = time;
@@ -52,8 +52,8 @@ test('POST: api/profile/interest', async () => {
             updated: time,
             bounds: {
                 type: 'Polygon',
-                coordinates: [[[-180, -90 ], [ 180, -90 ], [ 180, 90 ], [ -180, 90 ], [ -180, -90 ] ] ]
-            }
+                coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]],
+            },
         });
     } catch (err) {
         assert.ifError(err);
@@ -65,8 +65,8 @@ test('GET: api/profile/interest', async () => {
         const res = await flight.fetch('/api/profile/interest', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         res.body.items[0].created = time;
@@ -82,9 +82,9 @@ test('GET: api/profile/interest', async () => {
                 updated: time,
                 bounds: {
                     type: 'Polygon',
-                    coordinates: [[[-180, -90 ], [ 180, -90 ], [ 180, 90 ], [ -180, 90 ], [ -180, -90 ] ] ]
-                }
-            }]
+                    coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]],
+                },
+            }],
         });
     } catch (err) {
         assert.ifError(err);
@@ -96,11 +96,11 @@ test('PATCH: api/profile/interest/1', async () => {
         const res = await flight.fetch('/api/profile/interest/1', {
             method: 'PATCH',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'Test AOI Renamed',
-            }
+            },
         }, true);
 
         res.body.created = time;
@@ -114,8 +114,8 @@ test('PATCH: api/profile/interest/1', async () => {
             updated: time,
             bounds: {
                 type: 'Polygon',
-                coordinates: [[[-180, -90 ], [ 180, -90 ], [ 180, 90 ], [ -180, 90 ], [ -180, -90 ] ] ]
-            }
+                coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]],
+            },
         });
     } catch (err) {
         assert.ifError(err);
@@ -127,8 +127,8 @@ test('GET: api/profile/interest', async () => {
         const res = await flight.fetch('/api/profile/interest', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         res.body.items[0].created = time;
@@ -144,9 +144,9 @@ test('GET: api/profile/interest', async () => {
                 updated: time,
                 bounds: {
                     type: 'Polygon',
-                    coordinates: [[[-180, -90 ], [ 180, -90 ], [ 180, 90 ], [ -180, 90 ], [ -180, -90 ] ] ]
-                }
-            }]
+                    coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]],
+                },
+            }],
         });
     } catch (err) {
         assert.ifError(err);
@@ -158,13 +158,13 @@ test('DELETE: api/profile/interest/1', async () => {
         const res = await flight.fetch('/api/profile/interest/1', {
             method: 'DELETE',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             status: 200,
-            message: 'Interest Area Deleted'
+            message: 'Interest Area Deleted',
         });
     } catch (err) {
         assert.ifError(err);
@@ -176,13 +176,13 @@ test('GET: api/profile/interest', async () => {
         const res = await flight.fetch('/api/profile/interest', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             total: 0,
-            items: []
+            items: [],
         });
     } catch (err) {
         assert.ifError(err);

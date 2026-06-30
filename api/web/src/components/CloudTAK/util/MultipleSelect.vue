@@ -1,14 +1,14 @@
 <template>
     <div
         ref='selectMenu'
-        class='bg-dark rounded p-2'
+        class='cloudtak-bg rounded p-2'
         style='
             width: 200px;
         '
     >
         <div
             v-for='feat in mapStore.select.feats'
-            :key='feat.properties.id'
+            :key='feat.properties.id || feat.id'
             role='menuitem'
             tabindex='0'
             class='col-12 text-white'
@@ -27,7 +27,7 @@
 import { ref, onMounted, onUnmounted, watch, markRaw } from 'vue';
 import Feature from './FeatureRow.vue'
 import { useMapStore } from '../../../stores/map.ts';
-import mapgl from 'maplibre-gl';
+import * as mapgl from 'maplibre-gl';
 
 const emit = defineEmits([ 'selected' ]);
 
@@ -38,6 +38,7 @@ onMounted(() => {
     if (!selectMenu.value) return;
 
     if (!mapStore.select.popup) {
+        // @ts-expect-error mapgl.Popup causes deep UnwrapRef instantiation in Pinia reactive stores
         mapStore.select.popup = markRaw(new mapgl.Popup({
             closeButton: false,
             closeOnClick: false,

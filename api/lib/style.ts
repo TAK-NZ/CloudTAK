@@ -1,4 +1,4 @@
-import { Type, Static } from '@sinclair/typebox'
+import { Type, Static } from '@sinclair/typebox';
 import jsonata from 'jsonata';
 import type { Feature } from '@tak-ps/node-cot';
 import handlebars from 'handlebars';
@@ -7,9 +7,9 @@ import sanitizer from 'sanitize-html';
 
 handlebars.registerHelper('fallback', (...params: Array<unknown>) => {
     params.pop(); // Contains Config stuff from handlebars
-    const found = params.find(el => !!el)
+    const found = params.find(el => !!el);
     return found;
-})
+});
 
 handlebars.registerHelper('slice', (text: string, start: number, end?: number) => {
     if (text && !isNaN(Number(start)) && !isNaN(Number(end))) {
@@ -47,7 +47,7 @@ handlebars.registerHelper('htmlstrip', (text: string) => {
             }
 
             return text;
-        }
+        },
     }).trim();
 });
 
@@ -68,96 +68,117 @@ handlebars.registerHelper('round', (number: number, decimals: number = 2) => {
 interface validateStyleGeometry {
     'marker-color'?: string;
     'marker-opacity'?: string;
-    id?: string;
-    type?: string;
-    remarks?: string;
-    rotate?: boolean;
-    minzoom?: number | string;
-    maxzoom?: number | string;
-    stale?: number | string;
-    callsign?: string;
-    links?: Static<typeof StyleLink>[],
-    icon?: string;
-    stroke?: string;
+    'id'?: string;
+    'type'?: string;
+    'remarks'?: string;
+    'phone'?: string;
+    'rotate'?: boolean;
+    'minzoom'?: number | string;
+    'maxzoom'?: number | string;
+    'stale'?: number | string;
+    'callsign'?: string;
+    'links'?: Static<typeof StyleLink>[];
+    'icon'?: string;
+    'stroke'?: string;
     'stroke-style'?: string;
     'stroke-opacity'?: string;
     'stroke-width'?: string;
-    fill?: string;
+    'fill'?: string;
     'fill-opacity'?: string;
 };
 
 export const StyleLink = Type.Object({
     remarks: Type.String(),
-    url: Type.String()
+    url: Type.String(),
+});
+
+export const StyleMartiDest = Type.Object({
+    group: Type.Optional(Type.String({ description: 'TAK Server channel (group) name to route this CoT to' })),
+    mission: Type.Optional(Type.String({ description: 'TAK Server Data Sync (mission) name to route this CoT to' })),
+    uid: Type.Optional(Type.String({ description: 'Individual client UID to route this CoT to' })),
+    callsign: Type.Optional(Type.String({ description: 'Individual client callsign to route this CoT to' })),
+});
+
+export const StyleMarti = Type.Object({
+    archive: Type.Optional(Type.Boolean({ description: 'Whether the CoT should be archived by the TAK Server' })),
+    dest: Type.Optional(Type.Array(StyleMartiDest, { description: 'One or more routing destinations (channels, data syncs, or individual clients)' })),
 });
 
 export const StylePoint = Type.Object({
     'marker-color': Type.Optional(Type.String()),
     'marker-opacity': Type.Optional(Type.String()),
-    id: Type.Optional(Type.String()),
-    type: Type.Optional(Type.String()),
-    remarks: Type.Optional(Type.String()),
-    stale: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    rotate: Type.Optional(Type.Boolean({
-        default: true
+    'id': Type.Optional(Type.String()),
+    'type': Type.Optional(Type.String()),
+    'remarks': Type.Optional(Type.String()),
+    'phone': Type.Optional(Type.String()),
+    'stale': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'rotate': Type.Optional(Type.Boolean({
+        default: true,
     })),
-    minzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    maxzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    callsign: Type.Optional(Type.String()),
-    links: Type.Optional(Type.Array(StyleLink)),
-    icon: Type.Optional(Type.String())
+    'minzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'maxzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'callsign': Type.Optional(Type.String()),
+    'links': Type.Optional(Type.Array(StyleLink)),
+    'icon': Type.Optional(Type.String()),
+    'marti': Type.Optional(StyleMarti),
 });
 
 export const StyleLine = Type.Object({
-    stroke: Type.Optional(Type.String()),
+    'stroke': Type.Optional(Type.String()),
     'stroke-style': Type.Optional(Type.String()),
     'stroke-opacity': Type.Optional(Type.String()),
     'stroke-width': Type.Optional(Type.String()),
-    id: Type.Optional(Type.String()),
-    remarks: Type.Optional(Type.String()),
-    stale: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    minzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    maxzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    callsign: Type.Optional(Type.String()),
-    links: Type.Optional(Type.Array(StyleLink)),
+    'id': Type.Optional(Type.String()),
+    'remarks': Type.Optional(Type.String()),
+    'phone': Type.Optional(Type.String()),
+    'stale': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'minzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'maxzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'callsign': Type.Optional(Type.String()),
+    'links': Type.Optional(Type.Array(StyleLink)),
+    'marti': Type.Optional(StyleMarti),
 });
 
 export const StylePolygon = Type.Object({
-    stroke: Type.Optional(Type.String()),
+    'stroke': Type.Optional(Type.String()),
     'stroke-style': Type.Optional(Type.String()),
     'stroke-opacity': Type.Optional(Type.String()),
     'stroke-width': Type.Optional(Type.String()),
-    fill: Type.Optional(Type.String()),
+    'fill': Type.Optional(Type.String()),
     'fill-opacity': Type.Optional(Type.String()),
-    id: Type.Optional(Type.String()),
-    remarks: Type.Optional(Type.String()),
-    callsign: Type.Optional(Type.String()),
-    stale: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    minzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    maxzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
-    links: Type.Optional(Type.Array(StyleLink)),
+    'id': Type.Optional(Type.String()),
+    'remarks': Type.Optional(Type.String()),
+    'phone': Type.Optional(Type.String()),
+    'callsign': Type.Optional(Type.String()),
+    'stale': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'minzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'maxzoom': Type.Optional(Type.Union([Type.Number(), Type.String()])),
+    'links': Type.Optional(Type.Array(StyleLink)),
+    'marti': Type.Optional(StyleMarti),
 });
 
 export const StyleSingle = Type.Object({
     id: Type.Optional(Type.String()),
     remarks: Type.Optional(Type.String()),
+    phone: Type.Optional(Type.String()),
     callsign: Type.Optional(Type.String()),
     stale: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     minzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     maxzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     links: Type.Optional(Type.Array(StyleLink)),
+    marti: Type.Optional(StyleMarti),
     line: Type.Optional(StyleLine),
     point: Type.Optional(StylePoint),
-    polygon: Type.Optional(StylePolygon)
-})
+    polygon: Type.Optional(StylePolygon),
+});
 
 export const StyleSingleContainer = Type.Object({
     query: Type.String(),
 
     delete: Type.Optional(Type.Boolean()),
 
-    styles: Type.Optional(StyleSingle)
-})
+    styles: Type.Optional(StyleSingle),
+});
 
 export const StyleContainer = Type.Object({
     line: Type.Optional(StyleLine),
@@ -165,13 +186,15 @@ export const StyleContainer = Type.Object({
     polygon: Type.Optional(StylePolygon),
     id: Type.Optional(Type.String()),
     remarks: Type.Optional(Type.String()),
+    phone: Type.Optional(Type.String()),
     callsign: Type.Optional(Type.String()),
     stale: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     minzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     maxzoom: Type.Optional(Type.Union([Type.Number(), Type.String()])),
     links: Type.Optional(Type.Array(StyleLink)),
-    queries: Type.Optional(Type.Array(StyleSingleContainer))
-})
+    marti: Type.Optional(StyleMarti),
+    queries: Type.Optional(Type.Array(StyleSingleContainer)),
+});
 
 export interface StyleInterface {
     enabled_styles: boolean;
@@ -228,7 +251,7 @@ export default class Style {
             try {
                 handlebars.compile(style.id)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid ID Template: ${style.id}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid ID Template: ${style.id}`);
             }
         }
 
@@ -236,14 +259,21 @@ export default class Style {
             try {
                 handlebars.compile(style.callsign)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Callsign Template: ${style.callsign}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Callsign Template: ${style.callsign}`);
             }
         }
         if (style.remarks) {
             try {
                 handlebars.compile(style.remarks)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Remarks Template: ${style.remarks}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Remarks Template: ${style.remarks}`);
+            }
+        }
+        if (style.phone) {
+            try {
+                handlebars.compile(style.phone)({});
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Phone Template: ${style.phone}`);
             }
         }
 
@@ -267,7 +297,7 @@ export default class Style {
             try {
                 handlebars.compile(style.id)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) ID Template: ${style.id}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) ID Template: ${style.id}`);
             }
         }
 
@@ -275,7 +305,7 @@ export default class Style {
             try {
                 handlebars.compile(style.type)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Type Template: ${style.type}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Type Template: ${style.type}`);
             }
         }
 
@@ -283,7 +313,7 @@ export default class Style {
             try {
                 handlebars.compile(style.callsign)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Callsign Template: ${style.callsign}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Callsign Template: ${style.callsign}`);
             }
         }
 
@@ -291,7 +321,15 @@ export default class Style {
             try {
                 handlebars.compile(style.remarks)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Remarks Template: ${style.remarks}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Remarks Template: ${style.remarks}`);
+            }
+        }
+
+        if (style.phone) {
+            try {
+                handlebars.compile(style.phone)({});
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid (${type}) Phone Template: ${style.phone}`);
             }
         }
     }
@@ -307,7 +345,7 @@ export default class Style {
             try {
                 handlebars.compile(minzoom)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid MinZoom: ${minzoom}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid MinZoom: ${minzoom}`);
             }
         }
 
@@ -321,7 +359,7 @@ export default class Style {
             try {
                 handlebars.compile(maxzoom)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid MaxZoom: ${minzoom}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid MaxZoom: ${minzoom}`);
             }
         }
 
@@ -330,7 +368,6 @@ export default class Style {
                 throw new Err(400, null, `Invalid zoom levels: minzoom ${minzoom} greater than maxzoom ${maxzoom}`);
             }
         }
-
     };
 
     static #validateLinks(links: Array<Static<typeof StyleLink>>): void {
@@ -338,13 +375,13 @@ export default class Style {
             try {
                 handlebars.compile(link.url)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Link URL: ${link.url}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Link URL: ${link.url}`);
             }
 
             try {
                 handlebars.compile(link.remarks)({});
             } catch (err) {
-                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Link Remarks: ${link.remarks}`)
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid Link Remarks: ${link.remarks}`);
             }
         }
     }
@@ -352,11 +389,11 @@ export default class Style {
     /**
      * Compile and run a template or use a cached template for performance
      */
-    compile(template: string, props: { [x: string]: unknown; }) {
+    compile(template: string, props: { [x: string]: unknown }) {
         let t = this.templates.get(template);
 
         if (!t) {
-            t = handlebars.compile(template)
+            t = handlebars.compile(template, { noEscape: true });
             this.templates.set(template, t);
         }
 
@@ -370,7 +407,7 @@ export default class Style {
      * @returns             GeoJSON Feature
      */
     async feat(
-        feature: Static<typeof Feature.InputFeature>
+        feature: Static<typeof Feature.InputFeature>,
     ): Promise<null | Static<typeof Feature.InputFeature>> {
         try {
             if (!feature.properties) feature.properties = {};
@@ -382,6 +419,10 @@ export default class Style {
             if (this.style.styles.id) feature.id = this.compile(this.style.styles.id, feature.properties.metadata);
             if (this.style.styles.callsign) feature.properties.callsign = this.compile(this.style.styles.callsign, feature.properties.metadata);
             if (this.style.styles.remarks) feature.properties.remarks = this.compile(this.style.styles.remarks, feature.properties.metadata);
+            if (this.style.styles.phone) {
+                if (!feature.properties.contact) feature.properties.contact = {};
+                feature.properties.contact.phone = this.compile(this.style.styles.phone, feature.properties.metadata);
+            }
 
             if (this.style.styles.maxzoom !== undefined) feature.properties.maxzoom = this.#numberTemplateString(feature, this.style.styles.maxzoom, feature.properties.maxzoom);
             if (this.style.styles.minzoom !== undefined) feature.properties.minzoom = this.#numberTemplateString(feature, this.style.styles.minzoom, feature.properties.minzoom);
@@ -398,6 +439,10 @@ export default class Style {
 
             if (this.style.styles.links) {
                 this.#links(this.style.styles.links, feature);
+            }
+
+            if (this.style.styles.marti) {
+                this.#applyMarti(this.style.styles.marti, feature);
             }
 
             this.#by_geom(this.style.styles, feature);
@@ -417,6 +462,10 @@ export default class Style {
                             if (q.styles.id) feature.id = this.compile(q.styles.id, feature.properties.metadata);
                             if (q.styles.callsign) feature.properties.callsign = this.compile(q.styles.callsign, feature.properties.metadata);
                             if (q.styles.remarks) feature.properties.remarks = this.compile(q.styles.remarks, feature.properties.metadata);
+                            if (q.styles.phone) {
+                                if (!feature.properties.contact) feature.properties.contact = {};
+                                feature.properties.contact.phone = this.compile(q.styles.phone, feature.properties.metadata);
+                            }
                             if (q.styles.links) this.#links(q.styles.links, feature);
 
                             if (q.styles.maxzoom !== undefined) feature.properties.maxzoom = this.#numberTemplateString(feature, q.styles.maxzoom, feature.properties.maxzoom);
@@ -432,11 +481,14 @@ export default class Style {
                                 feature.properties.stale = q.styles.stale * 1000;
                             }
 
+                            if (q.styles.marti) {
+                                this.#applyMarti(q.styles.marti, feature);
+                            }
+
                             this.#by_geom(q.styles, feature);
                         }
                     }
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                } catch (err) {
+                } catch {
                     // Ignore queries that result in invalid output - this is explicitly allowed
                 }
             }
@@ -451,10 +503,25 @@ export default class Style {
         }
     }
 
+    #applyMarti(
+        marti: Static<typeof StyleMarti>,
+        feature: Static<typeof Feature.InputFeature>,
+    ): void {
+        if (!feature.properties) feature.properties = {};
+
+        if (marti.archive !== undefined) {
+            feature.properties.marti_archive = marti.archive;
+        }
+
+        if (marti.dest !== undefined && marti.dest.length > 0) {
+            feature.properties.dest = marti.dest;
+        }
+    }
+
     #numberTemplateString(
         feature: Static<typeof Feature.InputFeature>,
         value: string | number,
-        existing: number | undefined
+        existing: number | undefined,
     ): number | undefined {
         if (typeof value === 'string') {
             if (!isNaN(Number(value))) {
@@ -484,7 +551,7 @@ export default class Style {
                 mime: 'text/html',
                 url: this.compile(link.url, feature.properties.metadata),
                 remarks: this.compile(link.remarks, feature.properties.metadata),
-            })
+            });
         }
     }
 
@@ -496,6 +563,10 @@ export default class Style {
             if (style.point.id) feature.id = this.compile(style.point.id, feature.properties.metadata);
             if (style.point.type) feature.properties.type = this.compile(style.point.type, feature.properties.metadata);
             if (style.point.remarks) feature.properties.remarks = this.compile(style.point.remarks, feature.properties.metadata);
+            if (style.point.phone) {
+                if (!feature.properties.contact) feature.properties.contact = {};
+                feature.properties.contact.phone = this.compile(style.point.phone, feature.properties.metadata);
+            }
             if (style.point.callsign) feature.properties.callsign = this.compile(style.point.callsign, feature.properties.metadata);
             if (style.point.links) this.#links(style.point.links, feature);
 
@@ -516,9 +587,14 @@ export default class Style {
             if (style.point['marker-opacity']) feature.properties['marker-opacity'] = Number(style.point['marker-opacity']);
             if (style.point.rotate !== undefined) feature.properties.rotate = style.point.rotate;
             if (style.point.icon) feature.properties.icon = style.point.icon;
+            if (style.point.marti) this.#applyMarti(style.point.marti, feature);
         } else if (feature.geometry.type === 'LineString' && style.line) {
             if (style.line.id) feature.id = this.compile(style.line.id, feature.properties.metadata);
             if (style.line.remarks) feature.properties.remarks = this.compile(style.line.remarks, feature.properties.metadata);
+            if (style.line.phone) {
+                feature.properties.contact = feature.properties.contact || {};
+                feature.properties.contact.phone = this.compile(style.line.phone, feature.properties.metadata);
+            }
             if (style.line.callsign) feature.properties.callsign = this.compile(style.line.callsign, feature.properties.metadata);
             if (style.line.links) this.#links(style.line.links, feature);
 
@@ -539,9 +615,14 @@ export default class Style {
             if (style.line['stroke-style']) feature.properties['stroke-style'] = style.line['stroke-style'];
             if (style.line['stroke-opacity']) feature.properties['stroke-opacity'] = Number(style.line['stroke-opacity']);
             if (style.line['stroke-width']) feature.properties['stroke-width'] = Number(style.line['stroke-width']);
+            if (style.line.marti) this.#applyMarti(style.line.marti, feature);
         } else if (feature.geometry.type === 'Polygon' && style.polygon) {
             if (style.polygon.id) feature.id = this.compile(style.polygon.id, feature.properties.metadata);
             if (style.polygon.remarks) feature.properties.remarks = this.compile(style.polygon.remarks, feature.properties.metadata);
+            if (style.polygon.phone) {
+                feature.properties.contact = feature.properties.contact || {};
+                feature.properties.contact.phone = this.compile(style.polygon.phone, feature.properties.metadata);
+            }
             if (style.polygon.callsign) feature.properties.callsign = this.compile(style.polygon.callsign, feature.properties.metadata);
             if (style.polygon.links) this.#links(style.polygon.links, feature);
 
@@ -565,6 +646,20 @@ export default class Style {
 
             if (style.polygon.fill) feature.properties.fill = style.polygon.fill;
             if (style.polygon['fill-opacity']) feature.properties['fill-opacity'] = Number(style.polygon['fill-opacity']);
+            if (style.polygon.marti) this.#applyMarti(style.polygon.marti, feature);
         }
     }
+}
+
+export function validateTemplate(template: string, label = 'Title'): void {
+    try {
+        handlebars.compile(template)({});
+    } catch (err) {
+        throw new Err(400, err instanceof Error ? err : new Error(String(err)), `Invalid ${label} Template: ${template}`);
+    }
+}
+
+export function renderTemplate(template: string, properties: Record<string, unknown>): string | null {
+    const result = handlebars.compile(template)(properties);
+    return result.trim() || null;
 }

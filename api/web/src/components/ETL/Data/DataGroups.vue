@@ -7,7 +7,7 @@
         </div>
         <TablerNone
             v-if='!data.mission_groups.length'
-            label='Channels'
+            label='No Channels'
             :create='false'
         />
         <div
@@ -31,15 +31,14 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import {
     TablerNone,
 } from '@tak-ps/vue-tabler';
 
-defineProps({
+defineProps<{
     data: {
-        type: Object,
-        required: true
-    }
-});
+        mission_groups: string[];
+    };
+}>();
 </script>

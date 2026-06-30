@@ -1,8 +1,8 @@
 import spritesmith from 'spritesmith';
-import path from 'node:path'
+import path from 'node:path';
 import Vinyl from 'vinyl';
 import Err from '@openaddresses/batch-error';
-import { promisify } from 'node:util'
+import { promisify } from 'node:util';
 import { Static } from '@sinclair/typebox';
 import Config from './config.js';
 import { IconResponse } from './types.js';
@@ -12,28 +12,28 @@ import Sharp from 'sharp';
 const SpriteSmith = promisify(spritesmith.run);
 
 type SpriteConfig = {
-    name?: string;
+    name?: keyof Static<typeof IconResponse>;
 };
 
 const SUPPORTED_EXT = [
     '.svg',
-    '.png'
+    '.png',
 ];
 
 const SUPPORTED_MIME = [
     'image/png',
     'image/svg+xml',
-]
+];
 
 export default class SpriteBuilder {
     static async validate(
         icon: {
             name?: string;
             data?: string;
-        }
+        },
     ): Promise<void> {
         if (icon.name) {
-            const name = path.parse(icon.name)
+            const name = path.parse(icon.name);
 
             if (!SUPPORTED_EXT.includes(name.ext.toLowerCase())) {
                 throw new Error('Icon file extension is not supported');
@@ -56,7 +56,7 @@ export default class SpriteBuilder {
             }
 
             try {
-                const img = Buffer.from(icon.data.split(',')[1] , 'base64');
+                const img = Buffer.from(icon.data.split(',')[1], 'base64');
 
                 await Sharp(img)
                     .metadata();
@@ -81,14 +81,15 @@ export default class SpriteBuilder {
             limit: 1000,
             where: sql`
                 (${iconset}::TEXT IS NULL OR ${iconset}::TEXT = iconset)
-            `
-        })
+            `,
+        });
 
         const sprites = await this.from_icons(icons.items, spriteConfig);
 
         await config.models.Iconset.commit(iconset, {
+            updated: new Date(),
             spritesheet_data: sprites.image.toString('base64'),
-            spritesheet_json: JSON.stringify(sprites.json)
+            spritesheet_json: sprites.json,
         });
 
         return sprites;
@@ -113,21 +114,20 @@ export default class SpriteBuilder {
                         r: 0,
                         g: 0,
                         b: 0,
-                        alpha: 0
-                    }
+                        alpha: 0,
+                    },
                 })
                 .png()
                 .toBuffer();
 
-            // @ts-expect-error Deal with indexing issue on icon
-            let iconPath = spriteConfig.name ? icon[spriteConfig.name] : icon.path.replace(/.*?\//, '');
-            
+            let iconPath = spriteConfig.name ? String(icon[spriteConfig.name]) : icon.path.replace(/.*?\//, '');
+
             // Ensure path ends with .png extension
             if (!iconPath.endsWith('.png')) {
                 iconPath = iconPath + '.png';
             }
 
-            src.push(new Vinyl({ path: iconPath, contents }))
+            src.push(new Vinyl({ path: iconPath, contents }));
         }
 
         const doc = await SpriteSmith({ src });
@@ -136,13 +136,13 @@ export default class SpriteBuilder {
         for (const key in doc.coordinates) {
             coords[key.replace(/\.png$/, '')] = {
                 ...doc.coordinates[key],
-                pixelRatio: 1
-            }
+                pixelRatio: 1,
+            };
         }
 
         return {
             json: coords,
-            image: doc.image
-        }
+            image: doc.image,
+        };
     }
 }

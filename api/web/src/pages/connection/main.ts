@@ -1,11 +1,17 @@
 import { createApp } from 'vue'
 import * as VueRouter from 'vue-router'
 import { createPinia } from 'pinia'
+import { version } from '../../../package.json'
+import { initServiceWorker } from '../../base/service-worker.ts';
+import { initGlobalErrorReporting, vueErrorHandler } from '../../lib/reporting/index.ts';
 
 import 'floating-vue/dist/style.css'
 import FloatingVue from 'floating-vue'
 
 import App from '../../App.vue'
+
+initServiceWorker(version);
+initGlobalErrorReporting();
 
 const router = VueRouter.createRouter({
     history: VueRouter.createWebHistory(),
@@ -16,7 +22,7 @@ const router = VueRouter.createRouter({
         {
             path: '/connection/:connectionid/layer/:layerid',
             name: 'layer',
-            component: () => import('../../components/ETL/Layer.vue'),
+            component: () => import('../../components/ETL/ConnectionLayer.vue'),
             children: [{
                 path: '',
                 name: `layer-default`,
@@ -121,6 +127,10 @@ const router = VueRouter.createRouter({
                 name: 'connection-videos',
                 component: () => import('../../components/ETL/Connection/ConnectionVideos.vue')
             },{
+                path: 'features',
+                name: 'connection-features',
+                component: () => import('../../components/ETL/Connection/ConnectionFeatures.vue')
+            },{
                 path: 'tokens',
                 name: 'connection-tokens',
                 component: () => import('../../components/ETL/Connection/ConnectionTokens.vue')
@@ -150,6 +160,8 @@ router.onError((error, to) => {
 
 const app = createApp(App);
 const pinia = createPinia()
+
+app.config.errorHandler = vueErrorHandler;
 
 app.use(router);
 app.use(pinia);

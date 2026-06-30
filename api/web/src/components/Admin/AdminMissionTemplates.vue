@@ -53,7 +53,7 @@
             />
             <div
                 v-else
-                class='table-responsive'
+                class='table-responsive pb-5'
             >
                 <table class='table card-table table-hover table-vcenter datatable'>
                     <TableHeader
@@ -74,7 +74,26 @@
                                 <template v-if='h.display'>
                                     <td>
                                         <div class='d-flex align-items-center'>
-                                            <span v-text='template[h.name]' />
+                                            <div
+                                                v-if='h.name === "icon"'
+                                                class='d-flex justify-content-center align-items-center'
+                                                style='width: 32px; height: 32px;'
+                                            >
+                                                <img
+                                                    v-if='template.icon'
+                                                    :src='template.icon'
+                                                    style='max-width: 100%; max-height: 100%; object-fit: contain;'
+                                                    alt='Template Icon'
+                                                >
+                                            </div>
+                                            <Keywords
+                                                v-else-if='h.name === "keywords"'
+                                                :keywords='template.keywords || []'
+                                            />
+                                            <span
+                                                v-else
+                                                v-text='template[h.name]'
+                                            />
                                         </div>
                                     </td>
                                 </template>
@@ -100,10 +119,11 @@
 <script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { std, stdurl, stdclick } from '../../../src/std.ts';
-import type { MissionTemplateList, MissionTemplate } from '../../../src/types.ts';
+import { server, stdclick } from '../../../src/std.ts';
+import type { MissionTemplateList } from '../../../src/types.ts';
 import TableHeader from '../util/TableHeader.vue'
 import TableFooter from '../util/TableFooter.vue'
+import Keywords from '../CloudTAK/util/Keywords.vue'
 import {
     TablerNone,
     TablerInput,
@@ -116,7 +136,7 @@ import {
     IconRefresh,
 } from '@tabler/icons-vue'
 
-type Header = { name: keyof MissionTemplate, display: boolean };
+type Header = { name: keyof MissionTemplateList['items'][0], display: boolean };
 
 const router = useRouter();
 
@@ -147,15 +167,28 @@ onMounted(async () => {
 });
 
 async function listMissionTemplateSchema() {
-    const schema = await std('/api/schema?method=GET&url=/template/mission');
+    const list = await server.GET('/api/schema', {
+        params: {
+            query: {
+                method: 'GET',
+                url: '/template/mission'
+            }
+        }
+    });
 
-    const defaults: Array<keyof MissionTemplate> = ['name'];
+    if (list.error) {
+        error.value = new Error(list.error.message);
+        return;
+    }
+    if (!list.data) return;
+
+    const defaults: Array<keyof MissionTemplateList['items'][0]> = ['icon', 'name', 'keywords'];
     header.value = defaults.map((h) => {
         return { name: h, display: true };
     });
 
     // @ts-expect-error Worth trying to type at some point maybe but not now
-    header.value.push(...schema.query.properties.sort.enum.map((h) => {
+    header.value.push(...list.data.query.properties.sort.enum.map((h) => {
         return {
             name: h,
             display: false
@@ -173,13 +206,19 @@ async function fetchList() {
     error.value = undefined;
 
     try {
-        const url = stdurl('/api/template/mission');
-
-        url.searchParams.append('filter', paging.value.filter);
-        url.searchParams.append('limit', String(paging.value.limit));
-        url.searchParams.append('page', String(paging.value.page));
-        url.searchParams.append('sort', paging.value.sort);
-        list.value = await std(url) as MissionTemplateList;
+        const res = await server.GET('/api/template/mission', {
+            params: {
+                query: {
+                    filter: paging.value.filter,
+                    limit: paging.value.limit,
+                    page: paging.value.page,
+                    sort: paging.value.sort as 'name',
+                    order: paging.value.order as 'asc' | 'desc'
+                }
+            }
+        });
+        if (res.error) error.value = new Error(res.error.message);
+        else if (res.data) list.value = res.data;
      } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
      } finally {

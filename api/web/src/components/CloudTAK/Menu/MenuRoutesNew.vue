@@ -13,7 +13,7 @@
                 :err='error'
             />
             <template v-else>
-                <div class='mx-2 my-2'>
+                <div class='my-2'>
                     <TablerEnum
                         v-if='config.providers.length'
                         v-model='routePlan.provider'
@@ -21,24 +21,27 @@
                         :options='config.providers.map(p => p.name)'
                     />
                 </div>
-                <div class='mx-2 my-2'>
+                <div class='my-2'>
                     <SearchBox
                         label='Start Location'
                         placeholder='Start Location'
                         :autofocus='true'
+                        :location-picker='true'
                         @select='routePlan.start = $event || null'
                     />
                 </div>
-                <div class='mx-2 my-2'>
+                <div class='my-2'>
                     <SearchBox
                         label='End Location'
                         placeholder='End Location'
                         :autofocus='false'
+                        :location-picker='true'
+                        :initial-value='endInitialValue'
                         @select='routePlan.end = $event || null'
                     />
                 </div>
 
-                <div class='mx-2 my-2'>
+                <div class='my-2'>
                     <TablerEnum
                         v-if='modes.length > 0'
                         v-model='routePlan.travelMode'
@@ -46,7 +49,7 @@
                         :options='modes.map(m => m.name)'
                     />
                 </div>
-                <div class='mx-2 my-3'>
+                <div class='my-3'>
                     <button
                         :disabled='!routePlan.start || !routePlan.end'
                         class='btn btn-primary w-100'
@@ -62,7 +65,7 @@
 
 <script setup lang='ts'>
 import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import SearchBox from '../util/SearchBox.vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import {
@@ -70,12 +73,23 @@ import {
     TablerAlert,
     TablerLoading,
 } from '@tak-ps/vue-tabler';
-import { std, stdurl, server } from '../../../std.ts';
+import { server } from '../../../std.ts';
 import { useMapStore } from '../../../stores/map.ts';
-import type { Search, FeatureCollection } from '../../../types.ts';
+import type { Search } from '../../../types.ts';
 
 const router = useRouter();
+const route = useRoute();
 const mapStore = useMapStore();
+
+const endInitialValue = computed<string>(() => {
+    if (!route.query.end) return '';
+    const parts = String(route.query.end).split(',').map(Number);
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        const [lng, lat] = parts;
+        return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+    return '';
+});
 
 const loading = ref(true);
 
@@ -114,6 +128,17 @@ const modes = computed(() => {
 
 onMounted(async () => {
     await settings();
+
+    if (route.query.end) {
+        const parts = String(route.query.end).split(',').map(Number);
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            const [lng, lat] = parts;
+            routePlan.value.end = {
+                name: `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+                coordinates: [lng, lat]
+            };
+        }
+    }
 });
 
 async function settings() {
@@ -144,16 +169,14 @@ async function generateRoute(): Promise<void> {
     loading.value = true;
 
     try {
-        const url = stdurl('/api/search/route');
-        url.searchParams.set('start', routePlan.value.start.coordinates.join(','));
-        url.searchParams.set('end', routePlan.value.end.coordinates.join(','));
-        url.searchParams.set('callsign', routePlan.value.start.name + ' to ' + routePlan.value.end.name);
-        
+        let provider: string | undefined = undefined;
+        let travelMode: string | undefined = undefined;
+
         // Convert Human Name => ID
         if (config.value) {
             for (const p of config.value.providers) {
                 if (p.name === routePlan.value.provider) {
-                    url.searchParams.set('provider', p.id);
+                    provider = p.id;
                     break;
                 }
             }
@@ -163,18 +186,33 @@ async function generateRoute(): Promise<void> {
         if (routePlan.value.travelMode) {
             for (const m of modes.value) {
                 if (m.name === routePlan.value.travelMode) {
-                    url.searchParams.set('travelMode', m.id);
+                    travelMode = m.id;
                     break;
                 }
             }
         }
 
-        const route = await std(url) as FeatureCollection;
+        const { data: route, error: reqErr } = await server.GET('/api/search/route', {
+            params: {
+                query: {
+                    start: routePlan.value.start.coordinates.join(','),
+                    end: routePlan.value.end.coordinates.join(','),
+                    callsign: routePlan.value.start.name + ' to ' + routePlan.value.end.name,
+                    provider,
+                    travelMode,
+                }
+            }
+        });
 
-        if (route.features.length > 0) {
+        if (reqErr) throw new Error(String(reqErr));
+
+        if (route && route.features.length > 0) {
+            // @ts-expect-error Feature types are slightly incompatible
             const cot = await mapStore.worker.db.add(route.features[0], {
                 authored: true
             });
+
+            if (!cot) throw new Error('Failed to add route');
 
             cot.flyTo();
 

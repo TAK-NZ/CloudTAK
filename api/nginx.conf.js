@@ -17,16 +17,13 @@ if (url.hostname === 'localhost') {
 
     const csp = {
         'default-src': [`'self'`],
-        'img-src': [`'self'`, 'data:'],
+        'img-src': [`'self'`, 'data:', 'blob:'],
         'media-src': [`'self'`, 'blob:'],
         'font-src': [`'self'`, 'data:'],
         'worker-src': [`'self'`, 'blob:'],
         'style-src-elem': [`'self'`, `'unsafe-inline'`],
         'style-src-attr': [`'unsafe-inline'`],
-        'connect-src': [`'self'`],
-        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
-        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
-        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
+        'connect-src': [`'self'`]
     }
 
     cspstr = `add_header 'Content-Security-Policy' "`
@@ -82,16 +79,12 @@ http {
 
     access_log  /var/log/nginx/access.log  main;
 
-    # Increase buffer sizes for ALB OIDC cookies
-    large_client_header_buffers 4 32k;
-    client_header_buffer_size 32k;
-
     server {
         listen 5000;
         listen [::]:5000;
         absolute_redirect off;
 
-        client_max_body_size 512M;
+        client_max_body_size 5G;
 
         server_tokens off;
 
@@ -200,6 +193,9 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header Host $host;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_read_timeout 600s;
+            proxy_send_timeout 600s;
+            client_body_timeout 600s;
         }
 
     }

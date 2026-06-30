@@ -1,10 +1,45 @@
 import type { App } from 'vue';
+import type { Component } from 'vue';
+import { markRaw, defineAsyncComponent } from 'vue';
 import type { Router, RouteRecordRaw } from 'vue-router';
 import type { Pinia } from 'pinia';
 import { useMapStore } from './src/stores/map.ts';
+import { useFloatStore } from './src/stores/float.ts';
 import type { MenuItemConfig } from './src/stores/modules/menu.ts';
+import type { BottomBarItemConfig } from './src/stores/modules/bottombar.ts';
+import { db, type DBFeature } from './src/database.ts';
+import { liveQuery } from 'dexie';
+import { from, type Observable } from 'rxjs';
+import * as mapgl from 'maplibre-gl';
+
+const FloatingGeneric = defineAsyncComponent(() => import('./src/components/CloudTAK/util/FloatingGeneric.vue'));
 
 export type { MenuItemConfig };
+export type { BottomBarItemConfig };
+export type { DBFeature };
+
+/**
+ * Configuration stored with a floating pane created by the plugin API
+ */
+export type FloatingPaneConfig = Record<string, unknown> & {
+    _component: Component;
+    _actions?: Component;
+    _props: Record<string, unknown>;
+}
+
+/**
+ * Public representation of a floating pane managed through the plugin API
+ */
+export interface FloatingPane {
+    uid: string;
+    name?: string;
+    component: Component;
+    config: FloatingPaneConfig;
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+}
 
 export interface PluginInstance {
     /**
@@ -122,4 +157,178 @@ export class PluginAPI {
             }
         }
     }
-};
+
+    /**
+     * Map Accessors
+     */
+    get map(): mapgl.Map {
+        const mapStore = useMapStore(this.pinia);
+        return mapStore.map;
+    }
+
+    /**
+     * Manage Features
+     */
+    get feature() {
+        return {
+            /**
+             * List features from the local database
+             * @param opts Filter options
+             */
+            list: (opts: {
+                filter?: (feature: DBFeature) => boolean;
+            } = {}): Promise<DBFeature[]> => {
+                if (opts.filter) {
+                    return db.feature.filter(opts.filter).toArray();
+                }
+                return db.feature.toArray();
+            },
+
+            /**
+             * Stream features from the local database
+             * @param opts Filter options
+             */
+            stream: (opts: {
+                filter?: (feature: DBFeature) => boolean;
+            } = {}): Observable<DBFeature[]> => {
+                return from(liveQuery(() => {
+                    if (opts.filter) {
+                        return db.feature.filter(opts.filter).toArray();
+                    }
+                    return db.feature.toArray();
+                })) as Observable<DBFeature[]>;
+            }
+        }
+    }
+
+    /**
+     * Manage Breadcrumb Trails
+     */
+    get breadcrumb() {
+        const mapStore = useMapStore(this.pinia);
+        return {
+            /**
+             * Manage live breadcrumb trail recording
+             */
+            live: {
+                /**
+                 * Enable live breadcrumb trail recording for a given CoT UID
+                 * @param uid The CoT UID to start recording
+                 */
+                add: (uid: string): Promise<void> => {
+                    return mapStore.worker.db.breadcrumb.set(uid, true);
+                },
+                /**
+                 * Disable live breadcrumb trail recording for a given CoT UID
+                 * @param uid The CoT UID to stop recording
+                 */
+                remove: (uid: string): Promise<void> => {
+                    return mapStore.worker.db.breadcrumb.set(uid, false);
+                },
+                /**
+                 * Returns all CoT UIDs that currently have live breadcrumb recording enabled
+                 */
+                list: (): Promise<string[]> => {
+                    return mapStore.worker.db.breadcrumb.listEnabled();
+                },
+            }
+        }
+    }
+
+    /**
+     * Manage Floating Panes on top of the Map View
+     */
+    get float() {
+        const floatStore = useFloatStore(this.pinia);
+        return {
+            /**
+             * Add a new floating pane
+             * @param opts Floating pane configuration
+             */
+            add: (opts: {
+                uid: string,
+                name?: string,
+                component: Component,
+                actions?: Component,
+                props?: Record<string, unknown>,
+                height?: number,
+                width?: number,
+                x?: number,
+                y?: number,
+            }): FloatingPane => {
+                const config: FloatingPaneConfig = {
+                    _component: markRaw(opts.component),
+                    _actions: opts.actions ? markRaw(opts.actions) : undefined,
+                    _props: opts.props ? markRaw(opts.props) : {},
+                };
+
+                const pane = floatStore.add({
+                    uid: opts.uid,
+                    name: opts.name,
+                    component: FloatingGeneric,
+                    config,
+                    height: opts.height,
+                    width: opts.width,
+                    x: opts.x,
+                    y: opts.y,
+                });
+
+                return {
+                    uid: pane.uid,
+                    name: pane.name,
+                    component: pane.component,
+                    config,
+                    height: pane.height,
+                    width: pane.width,
+                    x: pane.x,
+                    y: pane.y,
+                };
+            },
+            /**
+             * Remove a floating pane
+             * @param uid The unique identifier of the pane to remove
+             */
+            remove: (uid: string) => {
+                floatStore.delete(uid);
+            },
+            /**
+             * Check if a floating pane exists
+             * @param uid The unique identifier to check
+             */
+            has: (uid: string): boolean => {
+                return floatStore.panes.has(uid);
+            }
+        }
+    }
+
+    /**
+     * Manage the Map Status Bar
+     */
+    get bottomBar() {
+        const mapStore = useMapStore(this.pinia);
+        return {
+            /**
+             * Add a component to the centre of the bottom status bar
+             * @param item The bottom bar item configuration
+             */
+            add: (item: BottomBarItemConfig) => {
+                try {
+                    mapStore.bottomBar.addItem(item);
+                } catch (err) {
+                    console.warn('Failed to add bottom bar item, map not loaded?', err);
+                }
+            },
+            /**
+             * Remove a previously registered bottom bar component by key
+             * @param key The key of the item to remove
+             */
+            remove: (key: string) => {
+                try {
+                    mapStore.bottomBar.removeItem(key);
+                } catch (err) {
+                    // Ignore error if bottomBar is not loaded
+                }
+            }
+        }
+    }
+}

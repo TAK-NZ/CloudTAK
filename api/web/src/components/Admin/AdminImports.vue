@@ -14,12 +14,20 @@
         </div>
         <div style='min-height: 20vh; margin-bottom: 61px'>
             <div class='row col-12 mx-1 my-2'>
-                <div class='col-md-12'>
+                <div class='col-md-9 col-lg-9'>
                     <TablerInput
                         v-model='paging.filter'
                         icon='search'
                         label='Name Filter'
                         placeholder='Filter...'
+                    />
+                </div>
+                <div class='col-md-3 col-lg-3'>
+                    <TablerEnum
+                        v-model='paging.status'
+                        label='Status'
+                        :options='statusOptions'
+                        default='All Statuses'
                     />
                 </div>
             </div>
@@ -39,7 +47,7 @@
             />
             <div
                 v-else
-                class='table-responsive'
+                class='table-responsive pb-5'
             >
                 <table class='table card-table table-hover table-vcenter datatable'>
                     <TableHeader
@@ -81,6 +89,16 @@
                                                 <div class='col-2 d-flex'>
                                                     <div class='ms-auto btn-list'>
                                                         <TablerIconButton
+                                                            v-if='imp.status === "Fail"'
+                                                            title='Retry Import'
+                                                            @click.stop='retryImport(imp.id)'
+                                                        >
+                                                            <IconRestore
+                                                                :size='32'
+                                                                stroke='1'
+                                                            />
+                                                        </TablerIconButton>
+                                                        <TablerIconButton
                                                             title='Download File'
                                                             @click='downloadImport(imp.id)'
                                                         >
@@ -119,7 +137,8 @@
 
 <script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
-import { std, stdurl, server } from '../../std.ts';
+import { stdurl, server, downloadUrl } from '../../std.ts';
+import type { paths } from '@cloudtak/api-types';
 import type { Import, ImportList } from '../../types.ts';
 import StatusDot from '../util/StatusDot.vue';
 import TableHeader from '../util/TableHeader.vue'
@@ -127,12 +146,14 @@ import TableFooter from '../util/TableFooter.vue'
 import {
     TablerNone,
     TablerInput,
+    TablerEnum,
     TablerAlert,
     TablerIconButton,
     TablerRefreshButton,
     TablerLoading
 } from '@tak-ps/vue-tabler';
 import {
+    IconRestore,
     IconDownload
 } from '@tabler/icons-vue';
 
@@ -144,11 +165,21 @@ const header = ref<Array<Header>>([]);
 
 const paging = ref({
     filter: '',
+    status: 'All',
     sort: 'created',
     order: 'desc',
     limit: 100,
     page: 0
 });
+
+const statusOptions = [
+    'All',
+    'Empty',
+    'Pending',
+    'Running',
+    'Success',
+    'Fail'
+];
 
 const list = ref<ImportList>({
     total: 0,
@@ -165,7 +196,21 @@ onMounted(async () => {
 });
 
 async function listImportSchema() {
-    const schema = await std('/api/schema?method=GET&url=/import');
+    const list = await server.GET('/api/schema', {
+        params: {
+            query: {
+                method: 'GET',
+                url: '/import'
+            }
+        }
+    });
+
+    if (list.error) {
+        error.value = new Error(list.error.message);
+        return;
+    }
+
+    if (!list.data) return;
 
     const defaults: Array<keyof Import> = ['username', 'name'];
     header.value = defaults.map((h) => {
@@ -173,7 +218,7 @@ async function listImportSchema() {
     });
 
     // @ts-expect-error Worth trying to type at some point maybe but not now
-    header.value.push(...schema.query.properties.sort.enum.map((h) => {
+    header.value.push(...list.data.query.properties.sort.enum.map((h) => {
         return {
             name: h,
             display: false
@@ -186,37 +231,56 @@ async function listImportSchema() {
     }));
 }
 
+async function retryImport(id: string) {
+    try {
+        const res = await server.POST('/api/import/{:import}/retry', {
+            params: { path: { ':import': id } },
+        });
+        if (res.error) throw new Error(res.error.message);
+        await fetchList();
+    } catch (err) {
+        error.value = err instanceof Error ? err : new Error(String(err));
+    }
+}
+
 async function downloadImport(id: string) {
-    const url = stdurl(`/api/import/${id}/raw`)
-    url.searchParams.append('token', localStorage.token);
-    url.searchParams.append('download', String(true));
-    await std(url, {
-        download: true
-    })
+    const url = stdurl(`/api/import/${id}/raw`);
+    url.searchParams.set('download', 'true');
+    await downloadUrl(url, { token: true });
 }
 
 async function fetchList() {
     loading.value = true;
+    error.value = undefined;
 
-    const res = await server.GET('/api/import', {
-        params: {
-            query: {
-                impersonate: true,
-                filter: paging.value.filter,
-                // @ts-expect-error - Sort should be string list, not string
-                sort: paging.value.sort,
-                // @ts-expect-error - Order should be string list, not string
-                order: paging.value.order,
-                limit: paging.value.limit,
-                page: paging.value.page,
-            }
+    try {
+        const params: paths['/api/import']['get']['parameters']['query'] = {
+            impersonate: true,
+            filter: paging.value.filter,
+            sort: paging.value.sort as paths['/api/import']['get']['parameters']['query']['sort'],
+            order: paging.value.order as "asc" | "desc",
+            limit: paging.value.limit,
+            page: paging.value.page,
+        };
+
+        // Only add status filter if it's not 'All'
+        if (paging.value.status && paging.value.status !== 'All') {
+            params.status = paging.value.status as paths['/api/import']['get']['parameters']['query']['status'];
         }
-    });
 
-    if (res.error) throw new Error(res.error.message);
+        const res = await server.GET('/api/import', {
+            params: {
+                query: params
+            }
+        });
 
-    list.value = res.data;
+        if (res.error) throw new Error(res.error.message);
 
-    loading.value = false;
+        list.value = res.data;
+    } catch (err) {
+        error.value = err instanceof Error ? err : new Error(String(err));
+    } finally {
+        loading.value = false;
+    }
 }
 </script>

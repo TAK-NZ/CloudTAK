@@ -1,26 +1,27 @@
 <template>
     <div>
-        <span
+        <TablerBadge
             v-if='connection.agency'
-            class='badge border text-white cursor-pointer'
-            :class='{
-                "bg-blue": !muted,
-                "bg-blue-lt": muted
-            }'
+            class='cursor-pointer'
+            background-color='rgba(59, 130, 246, 0.15)'
+            border-color='rgba(59, 130, 246, 0.3)'
+            text-color='#2563eb'
+            hover-background-color='rgba(59, 130, 246, 0.25)'
+            hover-border-color='rgba(59, 130, 246, 0.5)'
             style='height: 20px'
             @click='info.shown = true'
-            v-text='`Agency`'
-        />
-        <span
+        >
+            Agency
+        </TablerBadge>
+        <TablerBadge
             v-else
-            class='badge border text-white'
-            :class='{
-                "bg-red": !muted,
-                "bg-red-lt": muted
-            }'
+            background-color='rgba(239, 68, 68, 0.15)'
+            border-color='rgba(239, 68, 68, 0.3)'
+            text-color='#dc2626'
             style='height: 20px'
-            v-text='`Admin`'
-        />
+        >
+            Admin
+        </TablerBadge>
 
         <TablerModal v-if='info.shown'>
             <div class='modal-status bg-yellow' />
@@ -51,7 +52,7 @@
                             </div>
                             <div
                                 class='datagrid-content'
-                                v-text='agency.description || "No Description"'
+                                v-text='"No Description"'
                             />
                         </div>
                     </div>
@@ -72,15 +73,15 @@
 <script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import {
+    TablerBadge,
     TablerModal,
     TablerLoading
 } from '@tak-ps/vue-tabler';
 import type { ETLConnection, ETLAgency } from '../../../types.ts';
-import { std } from '../../../std.ts';
+import { server } from '../../../std.ts';
 
 const props = defineProps<{
     connection: ETLConnection,
-    muted?: boolean
 }>()
 
 const info = ref({ shown: false });
@@ -97,6 +98,21 @@ onMounted(async () => {
 });
 
 async function fetch() {
-    agency.value = await std(`/api/agency/${props.connection.agency}`) as ETLAgency;
+    if (!props.connection.agency) {
+        agency.value = undefined;
+        return;
+    }
+
+    const res = await server.GET('/api/agency/{:agencyid}', {
+        params: {
+            path: {
+                ':agencyid': props.connection.agency,
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+
+    agency.value = res.data as ETLAgency;
 }
 </script>

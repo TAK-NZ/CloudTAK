@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue';
+import { ref, computed, toRaw } from 'vue';
 import type { Component, Ref, ComputedRef } from "vue";
 import {
     IconBug,
@@ -18,8 +18,12 @@ import {
     IconBoxMultiple,
     IconFileImport,
     IconAffiliate,
+    IconHistory,
 } from '@tabler/icons-vue';
+import ProfileConfig from '../../base/profile.ts';
+import ContactManager from '../../base/contact.ts';
 import Chatroom from '../../base/chatroom.ts';
+import type { Profile } from '../../types.ts';
 
 export type MenuItemConfig = {
     key: string;
@@ -30,6 +34,7 @@ export type MenuItemConfig = {
     description?: string;
     icon: Component;
     badge?: string;
+    visibility?: string;
     requiresSystemAdmin?: boolean;
     requiresAgencyAdmin?: boolean;
 };
@@ -47,6 +52,7 @@ export default class MenuManager {
     isSystemAdmin: Ref<boolean>;
     isAgencyAdmin: Ref<boolean>;
     pluginMenuItems: Ref<MenuItemConfig[]>;
+    preferenceOrder: Ref<Profile['menu_order']>;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(mapStore: any) {
@@ -57,17 +63,33 @@ export default class MenuManager {
         this.isSystemAdmin = ref(false);
         this.isAgencyAdmin = ref(false);
         this.pluginMenuItems = ref([]);
+        this.preferenceOrder = ref([]);
 
         const storedLayoutPref = typeof window !== 'undefined' ? localStorage.getItem('cloudtak-menu-layout') : null;
         this.preferredLayout = ref<'list' | 'tiles'>(storedLayoutPref === 'tiles' ? 'tiles' : 'list');
     }
 
     async init() {
-        this.isSystemAdmin.value = await this.mapStore.worker.profile.isSystemAdmin();
-        this.isAgencyAdmin.value = await this.mapStore.worker.profile.isAgencyAdmin();
-        await this.updateContactsCount();
+        const isSystemAdmin = await ProfileConfig.get('system_admin');
+        this.isSystemAdmin.value = isSystemAdmin?.value ?? false;
 
-        Chatroom.liveUnreadCount().subscribe((count: number) => {
+        const isAgencyAdmin = await ProfileConfig.get('agency_admin');
+        this.isAgencyAdmin.value = (isAgencyAdmin?.value && isAgencyAdmin.value.length > 0) || false;
+
+        try {
+            const menuOrder = await ProfileConfig.get('menu_order');
+            if (menuOrder && menuOrder.value) {
+                this.preferenceOrder.value = menuOrder.value;
+            }
+        } catch (e) {
+            console.error('Failed to load menu order', e);
+        }
+
+        ContactManager.liveCount().subscribe((count) => {
+            this.onlineContactsCount.value = count;
+        });
+
+        Chatroom.liveUnreadCount().subscribe((count) => {
             this.unreadChatsCount.value = count;
         });
     }
@@ -200,14 +222,22 @@ export default class MenuManager {
             },
             {
                 key: 'server',
-                label: 'Server',
+                label: 'Admin',
                 route: '/admin',
                 routeExternal: true,
-                tooltip: 'Server Settings (Admin)',
-                description: 'Configure CloudTAK server settings.',
+                tooltip: 'Admin',
+                description: 'Manage CloudTAK administration and server settings.',
                 icon: IconServerCog,
                 badge: 'A',
                 requiresSystemAdmin: true,
+            },
+            {
+                key: 'history',
+                label: 'History',
+                route: '/menu/history',
+                tooltip: 'History',
+                description: 'Breadcrumb trails and track history',
+                icon: IconHistory,
             },
             {
                 key: 'settings',
@@ -222,18 +252,39 @@ export default class MenuManager {
 
     get items(): ComputedRef<MenuItemConfig[]> {
         return computed(() => {
-            return [...this.baseMenuItems, ...this.pluginMenuItems.value].filter((item) => {
+            let combined = [...this.baseMenuItems, ...this.pluginMenuItems.value].filter((item) => {
                 if (item.requiresSystemAdmin && !this.isSystemAdmin.value) return false;
                 if (item.requiresAgencyAdmin && !(this.isAgencyAdmin.value || this.isSystemAdmin.value)) return false;
                 return true;
-            }).map((item) => {
+            });
+
+            if (this.preferenceOrder.value.length > 0) {
+                const ordered: MenuItemConfig[] = [];
+                const map = new Map(combined.map(i => [i.key, i]));
+
+                for (const pref of this.preferenceOrder.value) {
+                    if (map.has(pref.key)) {
+                        ordered.push({ ...map.get(pref.key)!, visibility: pref.visibility ?? 'full' });
+                        map.delete(pref.key);
+                    }
+                }
+
+                for (const item of map.values()) {
+                    ordered.push({ ...item, visibility: 'full' });
+                }
+                combined = ordered;
+            } else {
+                combined = combined.map(item => ({ ...item, visibility: 'full' }));
+            }
+
+            return combined.map((item) => {
                 if (item.key === 'chats' && this.unreadChatsCount?.value > 0) {
                     return {
                         ...item,
                         badge: this.unreadChatsCount.value > 99 ? '99+' : String(this.unreadChatsCount.value)
                     }
                 }
-                if (item.key === 'contacts' && this.onlineContactsCount.value > 0) {
+                if (item.key === 'contacts' && this.onlineContactsCount?.value > 0) {
                     return {
                         ...item,
                         badge: this.onlineContactsCount.value > 99 ? '99+' : String(this.onlineContactsCount.value)
@@ -244,7 +295,7 @@ export default class MenuManager {
         });
     }
 
-    get filtered(): ComputedRef<MenuItemConfig[]> {
+    get filteredItems(): ComputedRef<MenuItemConfig[]> {
         return computed(() => {
             const term = this.filter.value.trim().toLowerCase();
             if (!term) return this.items.value;
@@ -271,24 +322,42 @@ export default class MenuManager {
         }
     }
 
-    async updateContactsCount() {
-        const team = await this.mapStore.worker.team.load();
-        const self = await this.mapStore.worker.profile.uid();
-        let count = 0;
-        for (const contact of team.values()) {
-            if (contact.uid === self) continue;
-            if (await this.mapStore.worker.db.has(contact.uid)) {
-                count++;
-            }
-        }
-        this.onlineContactsCount.value = count;
-    }
-
     addMenuItem(item: MenuItemConfig) {
         this.pluginMenuItems.value.push(item);
     }
 
     removeMenuItem(key: string) {
         this.pluginMenuItems.value = this.pluginMenuItems.value.filter(i => i.key !== key);
+    }
+
+    async setOrder(keys: string[]) {
+        const orderMap = new Map(this.preferenceOrder.value.map(p => [p.key, p]));
+        const newOrder = keys.map(k => {
+            const existing = orderMap.get(k);
+            return existing ? { ...toRaw(existing) } : { key: k, visibility: 'full' as const };
+        });
+
+        this.preferenceOrder.value = newOrder;
+        const config = new ProfileConfig('menu_order', newOrder);
+        await config.commit(newOrder);
+    }
+
+    async setVisibility(key: string, visible: "full" | "partial" | "hidden") {
+        const index = this.preferenceOrder.value.findIndex(p => p.key === key);
+        if (index !== -1) {
+            this.preferenceOrder.value[index].visibility = visible;
+        } else {
+            // Need to reconstruct the full order to save it properly
+            // We can iterate the current items (which are ordered as per UI) and update the target key
+            const currentItems = this.items.value;
+            this.preferenceOrder.value = currentItems.map(item => ({
+                key: item.key,
+                visibility: (item.key === key ? visible : (item.visibility || 'full')) as "full" | "partial" | "hidden"
+            }));
+        }
+
+        const rawOrder = this.preferenceOrder.value.map(p => toRaw(p));
+        const config = new ProfileConfig('menu_order', rawOrder);
+        await config.commit(rawOrder);
     }
 }

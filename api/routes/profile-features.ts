@@ -1,4 +1,4 @@
-import { Type, Static } from '@sinclair/typebox'
+import { Type, Static } from '@sinclair/typebox';
 import { CoTParser } from '@tak-ps/node-cot';
 import tokml from 'tokml';
 import { coordEach } from '@turf/meta';
@@ -8,8 +8,9 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import { ProfileFeature } from '../lib/schema.js';
-import { StandardResponse, FeatureResponse, GeoJSONFeatureCollection, GeoJSONFeature } from '../lib/types.js'
-import { ExportFeatureFormat } from '../lib/enums.js'
+import { StandardResponse, FeatureResponse, GeoJSONFeatureCollection, GeoJSONFeature } from '../lib/types.js';
+import { ExportFeatureFormat } from '../lib/enums.js';
+import { enabledGeofence } from '../lib/control/feature.js';
 import { sql } from 'drizzle-orm';
 import * as Default from '../lib/limits.js';
 
@@ -22,29 +23,32 @@ export default async function router(schema: Schema, config: Config) {
         `,
         query: Type.Object({
             format: Type.Enum(ExportFeatureFormat, {
-                default: ExportFeatureFormat.GEOJSON
+                default: ExportFeatureFormat.GEOJSON,
             }),
             deleted: Type.Boolean({
                 default: false,
-                description: 'Return Deleted Features'
+                description: 'Return Deleted Features',
             }),
             download: Type.Boolean({
                 default: false,
-                description: 'Set Content-Disposition to download the file'
+                description: 'Set Content-Disposition to download the file',
             }),
+            filter: Type.Optional(Type.String({
+                description: 'Filter features by callsign (case-insensitive)',
+            })),
             token: Type.Optional(Type.String()),
             limit: Type.Integer({ default: 1000 }),
             sort: Type.String({
                 default: 'id',
-                enum: Object.keys(ProfileFeature)
+                enum: Object.keys(ProfileFeature),
             }),
             page: Default.Page,
-            order: Default.Order
+            order: Default.Order,
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(FeatureResponse)
-        })
+            items: Type.Array(FeatureResponse),
+        }),
 
     }, async (req, res) => {
         try {
@@ -58,7 +62,8 @@ export default async function router(schema: Schema, config: Config) {
                 where: sql`
                     username = ${user.email}
                     AND deleted = ${req.query.deleted}
-                `
+                    ${req.query.filter ? sql`AND properties->>'callsign' ILIKE ${'%' + req.query.filter + '%'}` : sql``}
+                `,
             });
 
             if (!req.query.download) {
@@ -73,10 +78,10 @@ export default async function router(schema: Schema, config: Config) {
                             path: feat.path,
                             type: 'Feature',
                             properties: feat.properties,
-                            geometry: feat.geometry
-                        } as Static<typeof FeatureResponse>
-                    })
-                })
+                            geometry: feat.geometry,
+                        } as Static<typeof FeatureResponse>;
+                    }),
+                });
             } else {
                 const filename = `${user.email}-export-${new Date().toISOString()}`;
 
@@ -90,10 +95,10 @@ export default async function router(schema: Schema, config: Config) {
                             path: feat.path,
                             type: 'Feature',
                             properties: feat.properties,
-                            geometry: feat.geometry
-                        } as Static<typeof GeoJSONFeature>
-                    })
-                }
+                            geometry: feat.geometry,
+                        } as Static<typeof GeoJSONFeature>;
+                    }),
+                };
 
                 if (req.query.format === ExportFeatureFormat.GEOJSON) {
                     res.set('Content-Type', 'application/geo+json');
@@ -110,7 +115,7 @@ export default async function router(schema: Schema, config: Config) {
                         documentDescription: 'Exported from CloudTAK',
                         simplestyle: true,
                         name: 'callsign',
-                        description: 'remarks'
+                        description: 'remarks',
                     }));
 
                     res.set('Content-Length', String(Buffer.byteLength(output)));
@@ -121,7 +126,7 @@ export default async function router(schema: Schema, config: Config) {
                 }
             }
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -133,10 +138,10 @@ export default async function router(schema: Schema, config: Config) {
             path: Type.Optional(Type.String()),
             permanent: Type.Boolean({
                 default: false,
-                description: 'Permanently delete features instead of archiving them'
-            })
+                description: 'Permanently delete features instead of archiving them',
+            }),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -159,12 +164,13 @@ export default async function router(schema: Schema, config: Config) {
                             starts_with(path, ${req.query.path})
                             AND username = ${user.email}
                         `, {
-                            deleted: true
+                            deleted: true,
+                            properties: sql`jsonb_set(${ProfileFeature.properties}, '{time}', to_jsonb(${new Date().toISOString()}::text))`,
                         });
                     } catch (err) {
                         // Ignore features not found
                         if (!(err instanceof Error) || !('status' in err) || ('status' in err && err.status !== 404)) {
-                            throw err
+                            throw err;
                         }
                     }
                 } else {
@@ -172,11 +178,12 @@ export default async function router(schema: Schema, config: Config) {
                         await config.models.ProfileFeature.commit(sql`
                             username = ${user.email}
                         `, {
-                            deleted: true
+                            deleted: true,
+                            properties: sql`jsonb_set(${ProfileFeature.properties}, '{time}', to_jsonb(${new Date().toISOString()}::text))`,
                         });
                     } catch (err) {
                         if (!(err instanceof Error) || !('status' in err) || ('status' in err && err.status !== 404)) {
-                            throw err
+                            throw err;
                         }
                     }
                 }
@@ -184,10 +191,10 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 status: 200,
-                message: 'Features Deleted'
+                message: 'Features Deleted',
             });
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -203,8 +210,8 @@ export default async function router(schema: Schema, config: Config) {
                 description: `
                     Broadcast featues as CoTs to connected WebSocket clients
                     Used primarily by the Events Task for importing DataPackage CoTs
-                `
-            })
+                `,
+            }),
         }),
         body: FeatureResponse,
         res: FeatureResponse,
@@ -214,8 +221,8 @@ export default async function router(schema: Schema, config: Config) {
 
             coordEach(req.body.geometry, (coords) => {
                 if (coords.length === 2) coords.push(0);
-                return coords
-            })
+                return coords;
+            });
 
             // Saving to database implies archived
             req.body.properties.archived = true;
@@ -227,25 +234,26 @@ export default async function router(schema: Schema, config: Config) {
                     path: req.body.path,
                     deleted: false, // Putting a feature implies not deleted
                     username: user.email,
+                    enabled_geofence: enabledGeofence(req.body.properties),
                     properties: req.body.properties,
-                    geometry: req.body.geometry
+                    geometry: req.body.geometry,
                 }, {
                     upsert: GenerateUpsert.UPDATE,
-                    upsertTarget: [ ProfileFeature.username, ProfileFeature.id ]
-                }))
+                    upsertTarget: [ProfileFeature.username, ProfileFeature.id],
+                })),
             } as Static<typeof FeatureResponse>;
 
             if (req.query.broadcast) {
-                const sockets = config.wsClients.get(user.email) || []
+                const sockets = config.wsClients.get(user.email) || [];
                 for (const socket of sockets) {
                     if (!socket.client) continue;
-                    config.conns.cots(socket.client.config, [await CoTParser.from_geojson(feat)])
+                    config.conns.cots(socket.client.config, [await CoTParser.from_geojson(feat)]);
                 }
             }
 
-            res.json(feat)
+            res.json(feat);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -258,13 +266,13 @@ export default async function router(schema: Schema, config: Config) {
         query: Type.Object({
             permanent: Type.Boolean({
                 default: false,
-                description: 'Permanently delete features instead of archiving them'
-            })
+                description: 'Permanently delete features instead of archiving them',
+            }),
         }),
         params: Type.Object({
-            id: Type.String()
+            id: Type.String(),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -277,16 +285,17 @@ export default async function router(schema: Schema, config: Config) {
                 await config.models.ProfileFeature.commit(sql`
                     id = ${req.params.id} AND username = ${user.email}
                 `, {
-                    deleted: true
+                    deleted: true,
+                    properties: sql`jsonb_set(${ProfileFeature.properties}, '{time}', to_jsonb(${new Date().toISOString()}::text))`,
                 });
             }
 
             res.json({
                 status: 200,
-                message: 'Feature Deleted'
+                message: 'Feature Deleted',
             });
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -297,9 +306,9 @@ export default async function router(schema: Schema, config: Config) {
             Get a feature
         `,
         params: Type.Object({
-            id: Type.String()
+            id: Type.String(),
         }),
-        res: FeatureResponse
+        res: FeatureResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -313,10 +322,10 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 type: 'Feature',
-                ...feat
-            } as Static<typeof FeatureResponse>)
+                ...feat,
+            } as Static<typeof FeatureResponse>);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 }

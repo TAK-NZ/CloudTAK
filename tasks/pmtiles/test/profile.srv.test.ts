@@ -18,9 +18,9 @@ function getAddress(): string {
 
 test('Setup', async () => {
     try {
-        const mod = await import('../src/index.js');
+        const mod = await import('../index.js');
         app = mod.app;
-        
+
         server = http.createServer(app);
         await new Promise<void>((resolve) => {
             server.listen(0, () => {
@@ -71,7 +71,7 @@ test('GET /tiles/profile/:username/:file - Success (Auth passes, S3 fails)', asy
     try {
         const token = jwt.sign({ email: 'user@example.com', access: 'profile' }, process.env.SigningSecret!);
         const res = await fetch(`${getAddress()}/tiles/profile/user@example.com/map?token=${token}`);
-        
+
         // We expect a 500 or similar because S3 is not mocked and will fail
         // But getting past 401 means auth worked
         assert.notEqual(res.status, 401, 'Should not be 401');

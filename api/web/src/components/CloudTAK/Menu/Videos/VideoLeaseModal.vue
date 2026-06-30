@@ -159,50 +159,32 @@
                             </div>
                             <div
                                 v-else
-                                class='p-1 round btn-group w-100'
-                                role='group'
+                                class='col-12'
                             >
-                                <input
-                                    id='read-user'
-                                    type='radio'
-                                    class='btn-check'
-                                    autocomplete='off'
-                                    :checked='mode === "read"'
-                                    @click='mode = "read"'
+                                <TablerPillGroup
+                                    v-model='mode'
+                                    :options='[
+                                        { value: "read", label: "Read User" },
+                                        { value: "publish", label: "Write User" }
+                                    ]'
+                                    padding='p-1'
                                 >
-                                <label
-                                    for='read-user'
-                                    type='button'
-                                    class='btn btn-sm'
-                                >
-                                    <IconBook2
-                                        v-tooltip='"Read User"'
-                                        :size='24'
-                                        stroke='1'
-                                    />
-                                    <span class='mx-2'>Read User</span>
-                                </label>
-
-                                <input
-                                    id='publish-user'
-                                    type='radio'
-                                    class='btn-check'
-                                    autocomplete='off'
-                                    :checked='mode === "publish"'
-                                    @click='mode = "publish"'
-                                >
-                                <label
-                                    for='publish-user'
-                                    type='button'
-                                    class='btn btn-sm'
-                                >
-                                    <IconPencil
-                                        v-tooltip='"Write User"'
-                                        :size='24'
-                                        stroke='1'
-                                    />
-                                    <span class='mx-2'>Write User</span>
-                                </label>
+                                    <template #option='{ option }'>
+                                        <IconBook2
+                                            v-if='option.value === "read"'
+                                            v-tooltip='"Read User"'
+                                            :size='24'
+                                            stroke='1'
+                                        />
+                                        <IconPencil
+                                            v-else
+                                            v-tooltip='"Write User"'
+                                            :size='24'
+                                            stroke='1'
+                                        />
+                                        <span class='mx-2'>{{ option.label }}</span>
+                                    </template>
+                                </TablerPillGroup>
                             </div>
                         </div>
                     </div>
@@ -345,46 +327,31 @@
                 class='modal-body row g-2'
             >
                 <div class='col-12'>
-                    <div
-                        class='p-1 round btn-group w-100'
-                        role='group'
+                    <TablerPillGroup
+                        :model-value='typeof editLease.proxy === "string" ? "proxy" : "host"'
+                        :options='[
+                            { value: "host", label: "Hosted Stream URL" },
+                            { value: "proxy", label: "External Stream URL" }
+                        ]'
+                        padding='p-1'
+                        @update:model-value='(v: string) => editLease.proxy = v === "proxy" ? "" : null'
                     >
-                        <input
-                            id='lease-host'
-                            type='radio'
-                            class='btn-check'
-                            autocomplete='off'
-                            :checked='typeof editLease.proxy !== "string"'
-                            @click='editLease.proxy = null'
-                        >
-                        <label
-                            for='lease-host'
-                            type='button'
-                            class='btn btn-sm'
-                        ><IconDrone
-                            v-tooltip='"Provide a stream URL to push data to"'
-                            :size='24'
-                            stroke='1'
-                        /><span class='ms-2'>Hosted Stream URL</span></label>
-
-                        <input
-                            id='lease-proxy'
-                            type='radio'
-                            class='btn-check'
-                            autocomplete='off'
-                            :checked='typeof editLease.proxy === "string"'
-                            @click='editLease.proxy = ""'
-                        >
-                        <label
-                            for='lease-proxy'
-                            type='button'
-                            class='btn btn-sm'
-                        ><IconServer
-                            v-tooltip='"Pull from existing external Stream URL"'
-                            :size='24'
-                            stroke='1'
-                        /><span class='ms-2'>External Stream URL</span></label>
-                    </div>
+                        <template #option='{ option }'>
+                            <IconDrone
+                                v-if='option.value === "host"'
+                                v-tooltip='"Provide a stream URL to push data to"'
+                                :size='24'
+                                stroke='1'
+                            />
+                            <IconServer
+                                v-else
+                                v-tooltip='"Pull from existing external Stream URL"'
+                                :size='24'
+                                stroke='1'
+                            />
+                            <span class='ms-2'>{{ option.label }}</span>
+                        </template>
+                    </TablerPillGroup>
                 </div>
                 <div class='col-12 col-md-8'>
                     <TablerInput
@@ -472,7 +439,7 @@
                         description='Create a seperate Read/Write user to ensure unauthorized users cannot publish to a stream'
                     />
                 </div>
-                <div class='col-12 col-md-6'>
+                <div class='col-12'>
                     <TablerToggle
                         v-model='editLease.share'
                         description='By default only the user that created a Lease can manage it. If you are operating as part of an agency, turn on Lease Sharing to allow all users in your Channel to manage the lease'
@@ -546,11 +513,12 @@
 </template>
 
 <script setup lang='ts'>
-import { std } from '../../../../std.ts';
+import { server } from '../../../../std.ts';
 import { validateURL } from '../../../../base/validators.ts';
 import CopyField from '../../util/CopyField.vue';
 import { ref, onMounted } from 'vue';
-import type { VideoLease, VideoLeaseResponse, VideoLeaseProtocols, VideoLeaseMetadata } from '../../../../types.ts';
+import type { paths } from '@cloudtak/api-types';
+import type { VideoLease, VideoLeaseProtocols } from '../../../../types.ts';
 import VideoLeaseSourceType from '../../util/VideoLeaseSourceType.vue'
 import GroupSelect from '../../../util/GroupSelect.vue';
 import {
@@ -573,7 +541,8 @@ import {
     TablerModal,
     TablerInput,
     TablerEnum,
-    TablerDelete
+    TablerDelete,
+    TablerPillGroup
 } from '@tak-ps/vue-tabler'
 
 const props = withDefaults(defineProps<{
@@ -596,6 +565,10 @@ const channels = ref<string[]>([]);
 
 const durations = ref<Array<string>>(["16 Hours", "12 Hours", "6 Hours", "1 Hour"]);
 
+type VideoLeaseCreateBody = paths['/api/video/lease']['post']['requestBody']['content']['application/json'];
+type VideoLeaseUpdateBody = paths['/api/video/lease/{:lease}']['patch']['requestBody']['content']['application/json'];
+type VideoLeaseSourceTypeValue = NonNullable<VideoLeaseCreateBody['source_type']>;
+
 const editLease = ref<{
     id?: number
     name: string
@@ -604,7 +577,7 @@ const editLease = ref<{
     publish: boolean
     share: boolean
     channel: string | null
-    source_type: string
+    source_type: VideoLeaseSourceTypeValue
     source_model: string
     proxy?: string | null
     expiration?: string | null
@@ -651,18 +624,35 @@ function expired(expiration?: string | null) {
     return +new Date(expiration) < +new Date();
 }
 
+function leaseDurationSeconds(): number {
+    if (editLease.value.duration === 'Permanent') return 0;
+
+    return parseInt(editLease.value.duration.split(' ')[0]) * 60 * 60;
+}
+
+function leaseProxy(): string | undefined {
+    if (typeof editLease.value.proxy !== 'string') return undefined;
+
+    return editLease.value.proxy;
+}
+
 async function fetchLease() {
     loading.value = true;
 
     disabled.value = true;
 
-    const res = await std(`/api/video/lease/${editLease.value.id}`, {
-        method: 'GET',
-    }) as VideoLeaseResponse;
+    const res = await server.GET('/api/video/lease/{:lease}', {
+        params: {
+            path: {
+                ':lease': editLease.value.id as number
+            }
+        }
+    });
+    if (res.error) throw new Error(res.error.message);
 
     editLease.value = {
-        ...res,
-        duration: res.expiration ? '16 Hours' : 'Permanent'
+        ...res.data,
+        duration: res.data.expiration ? '16 Hours' : 'Permanent'
     }
 
     if (editLease.value.stream_user && editLease.value.read_user) {
@@ -677,11 +667,16 @@ async function fetchLease() {
         channels.value = [];
     }
 
-    const resMetadata = await std(`/api/video/lease/${editLease.value.id}/metadata`, {
-        method: 'GET',
-    }) as VideoLeaseMetadata;
+    const resMetadata = await server.GET('/api/video/lease/{:lease}/metadata', {
+        params: {
+            path: {
+                ':lease': editLease.value.id as number
+            }
+        }
+    });
+    if (resMetadata.error) throw new Error(resMetadata.error.message);
 
-    protocols.value = resMetadata.protocols;
+    protocols.value = resMetadata.data.protocols;
 
     disabled.value = true;
     loading.value = false;
@@ -691,9 +686,14 @@ async function deleteLease() {
     try {
         loading.value = true;
 
-        await std(`/api/video/lease/${editLease.value.id}`, {
-            method: 'DELETE',
+        const res = await server.DELETE('/api/video/lease/{:lease}', {
+            params: {
+                path: {
+                    ':lease': editLease.value.id as number
+                }
+            }
         });
+        if (res.error) throw new Error(res.error.message);
 
         loading.value = false;
 
@@ -709,39 +709,50 @@ async function saveLease() {
         loading.value = true;
 
         if (editLease.value.id) {
-            await std(`/api/video/lease/${editLease.value.id}`, {
-                method: 'PATCH',
-                body: {
-                    name: editLease.value.name,
-                    secure: secure.value,
-                    proxy: editLease.value.proxy,
-                    channel: channels.value.length ? channels.value[0] : null,
-                    duration: editLease.value.duration === 'Permanent' ? undefined : parseInt(editLease.value.duration.split(' ')[0]) * 60 * 60,
-                    permanent: editLease.value.duration === 'Permanent' ? true : false,
-                    recording: editLease.value.recording,
-                    publish: editLease.value.publish,
-                    share: editLease.value.share,
-                    source_type: editLease.value.source_type,
-                    source_model: editLease.value.source_model,
-                }
+            const body: VideoLeaseUpdateBody = {
+                name: editLease.value.name,
+                secure: secure.value,
+                proxy: leaseProxy(),
+                channel: channels.value.length ? channels.value[0] : null,
+                duration: leaseDurationSeconds(),
+                permanent: editLease.value.duration === 'Permanent',
+                recording: editLease.value.recording,
+                publish: editLease.value.publish,
+                share: editLease.value.share,
+                source_type: editLease.value.source_type,
+                source_model: editLease.value.source_model,
+            };
+
+            const res = await server.PATCH('/api/video/lease/{:lease}', {
+                params: {
+                    path: {
+                        ':lease': editLease.value.id
+                    }
+                },
+                body
             });
+            if (res.error) throw new Error(res.error.message);
         } else {
-            editLease.value.id = ((await std('/api/video/lease', {
-                method: 'POST',
-                body: {
-                    name: editLease.value.name,
-                    secure: secure.value,
-                    channel: channels.value.length ? channels.value[0] : null,
-                    proxy: editLease.value.proxy,
-                    duration: editLease.value.duration === 'Permanent' ? undefined : parseInt(editLease.value.duration.split(' ')[0]) * 60 * 60,
-                    permanent: editLease.value.duration === 'Permanent' ? true : false,
-                    recording: editLease.value.recording,
-                    publish: editLease.value.publish,
-                    share: editLease.value.share,
-                    source_type: editLease.value.source_type,
-                    source_model: editLease.value.source_model,
-                }
-            })) as VideoLeaseResponse).id;
+            const body: VideoLeaseCreateBody = {
+                name: editLease.value.name,
+                ephemeral: false,
+                secure: secure.value,
+                channel: channels.value.length ? channels.value[0] : null,
+                proxy: leaseProxy(),
+                duration: leaseDurationSeconds(),
+                permanent: editLease.value.duration === 'Permanent',
+                recording: editLease.value.recording,
+                publish: editLease.value.publish,
+                share: editLease.value.share,
+                source_type: editLease.value.source_type,
+                source_model: editLease.value.source_model,
+            };
+
+            const res = await server.POST('/api/video/lease', {
+                body
+            });
+            if (res.error) throw new Error(res.error.message);
+            editLease.value.id = res.data.id;
         }
 
         await fetchLease();

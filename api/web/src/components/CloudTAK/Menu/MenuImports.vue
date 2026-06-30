@@ -19,24 +19,42 @@
         <template #default>
             <div
                 v-if='upload'
-                class='py-2 px-4'
+                class='py-2'
             >
                 <Upload
                     :url='stdurl(`/api/import`)'
-                    :headers='uploadHeaders()'
                     method='PUT'
                     @cancel='upload = false'
                     @done='uploadComplete($event)'
                 />
             </div>
 
-            <div class='col-12 px-2 py-2'>
-                <TablerInput
-                    v-model='paging.filter'
-                    icon='search'
-                    placeholder='Filter'
-                />
-            </div>
+            <SearchSortFilter
+                v-model='paging.filter'
+                v-model:sort='sort'
+                :sort-options='sortOptions'
+                placeholder='Filter'
+            >
+                <template #sort-icon>
+                    <template v-if='sort'>
+                        <component
+                            :is='sortTypeIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                        <component
+                            :is='sortDirectionIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                    <IconArrowsSort
+                        v-else
+                        :size='20'
+                        stroke='1'
+                    />
+                </template>
+            </SearchSortFilter>
 
             <TablerLoading v-if='loading' />
             <TablerAlert
@@ -46,14 +64,14 @@
             />
             <TablerNone
                 v-else-if='!list.items.length'
-                label='Imports'
+                label='No Imports'
                 :create='false'
             />
             <template v-else>
                 <div
                     v-for='imported in list.items'
                     :key='imported.id'
-                    class='col-12 px-2 py-1'
+                    class='col-12 py-1'
                 >
                     <StandardItem
                         class='d-flex align-items-center py-2 px-3'
@@ -69,7 +87,7 @@
                             v-tooltip='`${imported.source} Import`'
                             class='col-auto mx-2'
                         >
-                            <IconReplace
+                            <IconAmbulance
                                 v-if='imported.source === "Mission"'
                                 :size='32'
                                 stroke='0.5'
@@ -101,7 +119,7 @@
                 </div>
             </template>
 
-            <div class='px-2 py-2 d-flex'>
+            <div class='py-2 d-flex'>
                 <div class='ms-auto'>
                     <TablerPager
                         v-if='list.total > paging.limit'
@@ -117,13 +135,12 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import type { ImportList } from '../../../../src/types.ts';
-import { std, stdurl } from '../../../../src/std.ts';
+import { server, stdurl } from '../../../../src/std.ts';
 import {
     TablerNone,
-    TablerInput,
     TablerAlert,
     TablerIconButton,
     TablerRefreshButton,
@@ -133,10 +150,16 @@ import {
 import {
     IconUpload,
     IconFile,
-    IconReplace,
+    IconAmbulance,
     IconPackages,
+    IconLetterCase,
+    IconClock,
+    IconArrowUp,
+    IconArrowDown,
+    IconArrowsSort,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import StandardItem from '../util/StandardItem.vue';
 import Status from '../../util/StatusDot.vue';
 import timeDiff from '../../../timediff.ts';
@@ -153,6 +176,11 @@ const paging = ref({
     page: 0
 });
 
+const sort = ref('Newest → Oldest');
+const sortOptions = ['Newest → Oldest', 'Oldest → Newest', 'A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => (sort.value === 'A → Z' || sort.value === 'Z → A') ? IconLetterCase : IconClock);
+const sortDirectionIcon = computed(() => (sort.value === 'Oldest → Newest' || sort.value === 'A → Z') ? IconArrowUp : IconArrowDown);
+
 const list = ref<ImportList>({
     total: 0,
     items: []
@@ -162,15 +190,13 @@ watch(paging.value, async function() {
     await fetchList()
 });
 
-onMounted(async () => {
+watch(sort, async () => {
     await fetchList();
 });
 
-function uploadHeaders() {
-    return {
-        Authorization: `Bearer ${localStorage.token}`
-    };
-}
+onMounted(async () => {
+    await fetchList();
+});
 
 function uploadComplete(event: unknown) {
     upload.value = false;
@@ -183,13 +209,19 @@ async function fetchList() {
     error.value = undefined;
 
     try {
-        const url = stdurl('/api/import');
-        url.searchParams.append('order', 'desc');
-        url.searchParams.append('page', String(paging.value.page));
-        url.searchParams.append('limit', String(paging.value.limit));
-        url.searchParams.append('filter', paging.value.filter);
-        url.searchParams.append('sort', 'created');
-        list.value = await std(url) as ImportList;
+        const res = await server.GET('/api/import', {
+            params: {
+                query: {
+                    order: (sort.value === 'Oldest → Newest' || sort.value === 'A → Z') ? 'asc' : 'desc',
+                    page: paging.value.page,
+                    limit: paging.value.limit,
+                    filter: paging.value.filter,
+                    sort: (sort.value === 'A → Z' || sort.value === 'Z → A') ? 'name' : 'created',
+                }
+            }
+        });
+        if (res.error) throw new Error(res.error.message);
+        list.value = res.data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err))
     }

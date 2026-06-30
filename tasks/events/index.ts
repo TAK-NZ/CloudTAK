@@ -2,7 +2,10 @@ import os from 'node:os';
 import type { Import, ImportList } from './src/types.js';
 import EventEmitter from 'node:events';
 import { Worker } from 'node:worker_threads';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import jwt from 'jsonwebtoken';
+import { fetch } from '@tak-ps/node-safeurl';
 
 export default class WorkerPool extends EventEmitter {
     interval: NodeJS.Timer;
@@ -16,15 +19,15 @@ export default class WorkerPool extends EventEmitter {
 
     maxWorkers: number;
     workers: Set<{
-        worker: Worker,
-        job: Import
+        worker: Worker;
+        job: Import;
     }>;
 
     constructor(opts: {
-        api: string
-        secret: string,
-        bucket: string,
-        interval: number
+        api: string;
+        secret: string;
+        bucket: string;
+        interval: number;
 
         maxWorkers?: number;
     }) {
@@ -50,12 +53,15 @@ export default class WorkerPool extends EventEmitter {
                 const jobs = await this.poll(this.maxWorkers - this.workers.size);
 
                 for (let job of jobs) {
-                    job = await this.lock(job.id)
+                    job = await this.lock(job.id);
 
                     this.emit('job', job);
 
-                    const worker = new Worker(new URL('./src/comms.ts', import.meta.url))
-                    const locked = { job, worker }
+                    const worker = new Worker(new URL('./src/comms.ts', import.meta.url));
+                    worker.on('error', (err) => {
+                        console.error(`Worker Thread Error (Import ${job.id}):`, err);
+                    });
+                    const locked = { job, worker };
 
                     worker.on('message', async (message) => {
                         try {
@@ -67,12 +73,11 @@ export default class WorkerPool extends EventEmitter {
                             } else {
                                 console.error(`Import: ${job.id} -`, message);
                             }
-
                         } catch (err) {
                             console.error(`Import ${job.id} - failed to handle Job Finalization`, err);
                         }
 
-                        worker.terminate()
+                        worker.terminate();
 
                         this.workers.delete(locked);
                     });
@@ -83,7 +88,7 @@ export default class WorkerPool extends EventEmitter {
                         job: job,
                         api: this.api,
                         bucket: this.bucket,
-                        secret: this.secret
+                        secret: this.secret,
                     });
                 }
             } catch (err) {
@@ -94,14 +99,15 @@ export default class WorkerPool extends EventEmitter {
 
     async success(importid: number): Promise<boolean> {
         const res = await fetch(new URL(`/api/import/${importid}`, this.api), {
+            safeUrlAllow: [this.api],
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer etl.${jwt.sign({ access: 'import', id: importid, internal: true }, this.secret)}`,
             },
             body: JSON.stringify({
-                status: 'Success'
-            })
+                status: 'Success',
+            }),
         });
 
         if (!res.ok) throw new Error(await res.text());
@@ -111,14 +117,15 @@ export default class WorkerPool extends EventEmitter {
 
     async lock(importid: number): Promise<Import> {
         const res = await fetch(new URL(`/api/import/${importid}`, this.api), {
+            safeUrlAllow: [this.api],
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer etl.${jwt.sign({ access: 'import', id: importid, internal: true }, this.secret)}`,
             },
             body: JSON.stringify({
-                status: 'Running'
-            })
+                status: 'Running',
+            }),
         });
 
         if (!res.ok) throw new Error(await res.text());
@@ -128,9 +135,10 @@ export default class WorkerPool extends EventEmitter {
 
     async error(
         importid: number,
-        error: string
+        error: string,
     ): Promise<boolean> {
         const res = await fetch(new URL(`/api/import/${importid}`, this.api), {
+            safeUrlAllow: [this.api],
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -138,8 +146,8 @@ export default class WorkerPool extends EventEmitter {
             },
             body: JSON.stringify({
                 status: 'Fail',
-                error: error
-            })
+                error: error,
+            }),
         });
 
         if (!res.ok) throw new Error(await res.text());
@@ -161,9 +169,10 @@ export default class WorkerPool extends EventEmitter {
         url.searchParams.set('status', 'Pending');
 
         const res = await fetch(url, {
+            safeUrlAllow: [this.api],
             method: 'GET',
             headers: {
-                'Authorization': `Bearer etl.${jwt.sign({ access: 'import', internal: true }, this.secret)}`,
+                Authorization: `Bearer etl.${jwt.sign({ access: 'import', internal: true }, this.secret)}`,
             },
         });
 
@@ -184,13 +193,17 @@ export default class WorkerPool extends EventEmitter {
                     return new Promise<void>((resolve) => {
                         worker.on('exit', () => resolve());
                         worker.terminate();
-                    })
-                })
-            );
+                    });
+                }),
+        );
     }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = process.argv[1]
+    ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+    : false;
+
+if (isMainModule) {
     if (!process.env.SigningSecret) throw new Error('SigningSecret environment variable is required');
     if (!process.env.ASSET_BUCKET) throw new Error('ASSET_BUCKET environment variable is required');
 
@@ -198,6 +211,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         api: process.env.API_URL || 'http://localhost:5001',
         secret: process.env.SigningSecret,
         bucket: process.env.ASSET_BUCKET,
-        interval: 1000
+        interval: 1000,
     });
 }

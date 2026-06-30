@@ -7,24 +7,24 @@ import type { Profile, Connection, Layer } from './schema.js';
 
 export enum ResourceCreationScope {
     SERVER = 'server',
-    USER = 'user'
+    USER = 'user',
 }
 
 export enum AuthUserAccess {
     ADMIN = 'admin',
     AGENCY = 'agency',
-    USER = 'user'
+    USER = 'user',
 }
 
 function castUserAccessEnum(str: string): AuthUserAccess | undefined {
-  const value = AuthUserAccess[str.toUpperCase() as keyof typeof AuthUserAccess];
-  return value;
+    const value = AuthUserAccess[str.toUpperCase() as keyof typeof AuthUserAccess];
+    return value;
 }
 
 export type AuthResourceAccepted = {
     access: AuthResourceAccess;
     id?: string | number | undefined;
-}
+};
 
 export enum AuthResourceAccess {
     DATA = 'data',
@@ -38,12 +38,12 @@ export enum AuthResourceAccess {
     MEDIA = 'media',
 
     // Becomes AuthUser
-    PROFILE = 'profile'
+    PROFILE = 'profile',
 }
 
 function castResourceAccessEnum(str: string): AuthResourceAccess | undefined {
-  const value = AuthResourceAccess[str.toUpperCase() as keyof typeof AuthResourceAccess];
-  return value;
+    const value = AuthResourceAccess[str.toUpperCase() as keyof typeof AuthResourceAccess];
+    return value;
 }
 
 export class AuthResource {
@@ -56,7 +56,7 @@ export class AuthResource {
         token: string,
         access: AuthResourceAccess,
         id: number | string | undefined,
-        internal: boolean
+        internal: boolean,
     ) {
         this.token = token;
         this.internal = internal;
@@ -68,17 +68,21 @@ export class AuthResource {
 export class AuthUser {
     access: AuthUserAccess;
     email: string;
+    token: string;
+    session?: string;
 
     // Username of admin doing the impersonating - if this value is populated the calling user is guarenteed to be an admin
     impersonate?: string;
 
-    constructor(access: AuthUserAccess, email: string) {
+    constructor(access: AuthUserAccess, email: string, token: string, session?: string) {
         this.access = access;
         this.email = email;
+        this.token = token;
+        this.session = session;
     }
 
     is_admin(): boolean {
-        return this.access === AuthUserAccess.ADMIN
+        return this.access === AuthUserAccess.ADMIN;
     }
 
     is_user(): boolean {
@@ -158,7 +162,7 @@ export default class Auth {
         layer?: InferSelectModel<typeof Layer>;
         profile?: InferSelectModel<typeof Profile>;
     }> {
-        const auth = await this.is_auth(config, req, opts)
+        const auth = await this.is_auth(config, req, opts);
 
         const connection = await config.models.Connection.from(connectionid);
 
@@ -182,6 +186,7 @@ export default class Auth {
 
             if (auth_resource.access === AuthResourceAccess.LAYER) {
                 const layer = await config.models.Layer.from(auth_resource.id);
+                if (layer.connection !== connectionid) throw new Err(401, null, 'Layer does not belong to this Connection');
                 return { auth, connection, layer };
             } else {
                 return { auth, connection };
@@ -223,17 +228,17 @@ export default class Auth {
     static async impersonate(
         config: Config,
         req: Request<any, any, any, any>,
-        impersonate: string
+        impersonate: string,
     ): Promise<AuthUser> {
         const adminUser = await this.as_user(config, req, { admin: true });
 
         const imp = await config.models.Profile.from(impersonate);
 
-        let access = AuthUserAccess.USER
+        let access = AuthUserAccess.USER;
         if (imp.agency_admin) access = AuthUserAccess.AGENCY;
         if (imp.system_admin) access = AuthUserAccess.ADMIN;
 
-        const resolved = new AuthUser(access, impersonate);
+        const resolved = new AuthUser(access, impersonate, adminUser.token);
         resolved.impersonate = adminUser.email;
         return resolved;
     }
@@ -273,15 +278,15 @@ async function auth_request(
     config: Config,
     req: Request<any, any, any, any>,
     opts?: {
-        token: boolean
-    }
+        token: boolean;
+    },
 ): Promise<AuthResource | AuthUser> {
     try {
         if (req.headers && req.header('authorization')) {
             const authorization = (req.header('authorization') || '').split(' ');
 
             if (authorization[0].toLowerCase() !== 'bearer') {
-                throw new Err(401, null, 'Only "Bearer" authorization header is allowed')
+                throw new Err(401, null, 'Only "Bearer" authorization header is allowed');
             }
 
             if (!authorization[1]) {
@@ -298,13 +303,13 @@ async function auth_request(
         ) {
             return await tokenParser(config, req.query.token, config.SigningSecret);
         } else {
-            throw new Err(401, null, 'No Auth Present')
+            throw new Err(401, null, 'No Auth Present');
         }
     } catch (err) {
         if (err instanceof Error && err.name === 'PublicError') {
             throw err;
         } else {
-            throw new Err(401, new Error(String(err)), 'Invalid Token')
+            throw new Err(401, new Error(String(err)), 'Invalid Token');
         }
     }
 }
@@ -312,7 +317,7 @@ async function auth_request(
 export async function tokenParser(
     config: Config,
     token: string,
-    secret: string
+    secret: string,
 ): Promise<AuthUser | AuthResource> {
     if (token.startsWith('etl.')) {
         token = token.replace(/^etl\./, '');
@@ -329,11 +334,11 @@ export async function tokenParser(
             const profile = await config.models.Profile.from(decoded.id);
 
             if (profile.system_admin) {
-                return new AuthUser(AuthUserAccess.ADMIN, profile.username);
+                return new AuthUser(AuthUserAccess.ADMIN, profile.username, `etl.${token}`);
             } else if (profile.agency_admin.length) {
-                return new AuthUser(AuthUserAccess.AGENCY, profile.username);
+                return new AuthUser(AuthUserAccess.AGENCY, profile.username, `etl.${token}`);
             } else {
-                return new AuthUser(AuthUserAccess.USER, profile.username);
+                return new AuthUser(AuthUserAccess.USER, profile.username, `etl.${token}`);
             }
         } else {
             return new AuthResource(`etl.${token}`, access, decoded.id, decoded.internal);
@@ -347,205 +352,8 @@ export async function tokenParser(
         const access = castUserAccessEnum(decoded.access);
         if (!access) throw new Err(400, null, 'Invalid User Access Value');
 
-        const auth: {
-            access: AuthUserAccess;
-            email: string;
-        } = {
-            email: decoded.email,
-            access
-        };
+        const session = typeof decoded.s === 'string' ? decoded.s : undefined;
 
-        return new AuthUser(auth.access, auth.email);
+        return new AuthUser(access, decoded.email, token, session);
     }
 }
-
-import { createPublicKey, createVerify, KeyObject } from 'crypto';
-import axios from 'axios';
-
-// Cache for ALB public keys (in-memory cache)
-const albPublicKeys = new Map<string, string>();
-
-// Fetch ALB public key for JWT verification
-async function getAlbPublicKey(region: string, keyId: string): Promise<string> {
-    const cacheKey = `${region}:${keyId}`;
-    
-    if (albPublicKeys.has(cacheKey)) {
-        return albPublicKeys.get(cacheKey)!;
-    }
-    
-    const url = `https://public-keys.auth.elb.${region}.amazonaws.com/${keyId}`;
-    const response = await axios.get(url, { timeout: 5000 });
-    
-    if (!response.data) {
-        throw new Error('Failed to fetch ALB public key');
-    }
-    
-    albPublicKeys.set(cacheKey, response.data);
-    return response.data;
-}
-
-// Verify JWT signature using ALB public key
-function verifyJwtSignature(token: string, publicKeyPem: string): boolean {
-    const [headerB64, payloadB64, signatureB64] = token.split('.');
-    
-    if (!headerB64 || !payloadB64 || !signatureB64) {
-        throw new Error('Invalid JWT format');
-    }
-    
-    try {
-        const message = `${headerB64}.${payloadB64}`;
-        // Convert base64url to base64
-        const signatureBase64 = signatureB64.replace(/-/g, '+').replace(/_/g, '/');
-        const signature = Buffer.from(signatureBase64, 'base64');
-        
-        // Create public key object
-        const publicKey: KeyObject = createPublicKey({
-            key: publicKeyPem,
-            format: 'pem'
-        });
-        
-        // Create verifier for ECDSA with SHA-256
-        const verify = createVerify('SHA256');
-        verify.update(message);
-        verify.end();
-        
-        // Try verification with ieee-p1363 encoding (ALB uses this for ES256)
-        try {
-            const isValid = verify.verify(
-                { key: publicKey, dsaEncoding: 'ieee-p1363' },
-                signature
-            );
-            
-            if (isValid) {
-                return true;
-            }
-        } catch (err) {
-            console.error('ieee-p1363 verification failed, trying DER:', err);
-        }
-        
-        // Fallback: try with default DER encoding
-        const verify2 = createVerify('SHA256');
-        verify2.update(message);
-        verify2.end();
-        
-        const isValid = verify2.verify(publicKey, signature);
-        
-        if (!isValid) {
-            console.error('JWT signature verification failed with both encodings');
-            console.error('Signature length:', signature.length, 'bytes');
-        }
-        
-        return isValid;
-    } catch (err) {
-        console.error('Error during JWT signature verification:', err);
-        throw err;
-    }
-}
-
-// OIDC authentication parser for ALB OIDC headers with full security validation
-export async function oidcParser(req: Request): Promise<{ user: AuthUser }> {
-    // 1. Check if OIDC is enabled
-    if (!process.env.ALB_OIDC_ENABLED || process.env.ALB_OIDC_ENABLED !== 'true') {
-        throw new Err(404, null, 'OIDC authentication not enabled');
-    }
-    
-    // 2. Validate OIDC data header exists
-    const oidcData = req.headers['x-amzn-oidc-data'];
-    if (!oidcData || typeof oidcData !== 'string') {
-        throw new Err(401, null, 'No OIDC data');
-    }
-    
-    // 3. Validate access token header exists (ensures request came through ALB)
-    const accessToken = req.headers['x-amzn-oidc-accesstoken'];
-    if (!accessToken) {
-        throw new Err(401, null, 'No OIDC access token - request may not have come through ALB');
-    }
-    
-    // 4. Extract and validate JWT header
-    const [headerB64] = oidcData.split('.');
-    if (!headerB64) {
-        throw new Err(401, null, 'Invalid JWT format');
-    }
-    
-    const header = JSON.parse(Buffer.from(headerB64, 'base64').toString());
-    const keyId = header.kid;
-    const alg = header.alg;
-    
-    if (!keyId) {
-        throw new Err(401, null, 'No key ID in JWT header');
-    }
-    
-    if (alg !== 'ES256') {
-        throw new Err(401, null, `Invalid JWT algorithm: ${alg}. Expected ES256`);
-    }
-    
-    // 5. Get ALB public key and verify signature
-    const region = process.env.AWS_REGION || 'us-west-2';
-    let publicKeyPem: string;
-    
-    try {
-        publicKeyPem = await getAlbPublicKey(region, keyId);
-    } catch (err) {
-        throw new Err(401, err instanceof Error ? err : new Error(String(err)), 'Failed to fetch ALB public key');
-    }
-    
-    let isValid: boolean;
-    try {
-        isValid = verifyJwtSignature(oidcData, publicKeyPem);
-    } catch (err) {
-        throw new Err(401, err instanceof Error ? err : new Error(String(err)), 'JWT signature verification failed');
-    }
-    
-    if (!isValid) {
-        throw new Err(401, null, 'Invalid JWT signature');
-    }
-    
-    // 6. Decode and validate payload
-    const payload = JSON.parse(
-        Buffer.from(oidcData.split('.')[1], 'base64').toString()
-    );
-    
-    console.log('OIDC Payload:', JSON.stringify(payload, null, 2));
-    
-    // 7. Validate token expiration
-    if (payload.exp) {
-        const now = Math.floor(Date.now() / 1000);
-        if (payload.exp < now) {
-            throw new Err(401, null, 'OIDC token expired');
-        }
-    }
-    
-    // 8. Validate issuer (if configured)
-    const expectedIssuer = process.env.AUTHENTIK_URL;
-    if (expectedIssuer && payload.iss) {
-        // Normalize URLs for comparison (remove trailing slash)
-        const normalizedExpected = expectedIssuer.replace(/\/$/, '');
-        const normalizedActual = payload.iss.replace(/\/$/, '');
-        
-        // Check if issuer starts with the expected base URL
-        // This allows for application-specific issuer paths like /application/o/cloudtak/
-        if (!normalizedActual.startsWith(normalizedExpected)) {
-            throw new Err(401, null, `Invalid token issuer: ${payload.iss}`);
-        }
-    }
-    
-    // 9. Validate email claim
-    if (!payload.email) {
-        throw new Err(401, null, 'No email in OIDC data');
-    }
-    
-    return {
-        user: new AuthUser(AuthUserAccess.USER, payload.email)
-    };
-}
-
-// Helper to check if OIDC is enabled
-export function isOidcEnabled(): boolean {
-    return process.env.ALB_OIDC_ENABLED === 'true';
-}
-
-// Helper to check if OIDC is forced (only system admins can use local login)
-export function isOidcForced(): boolean {
-    return process.env.OIDC_FORCED === 'true';
-}
-

@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div class='card-header sticky-top bg-dark'>
+        <div class='card-header sticky-top cloudtak-bg'>
             <h3 class='card-title'>
                 Style Overrides
             </h3>
@@ -38,7 +38,7 @@
         </div>
 
         <TablerInlineAlert
-            v-if='!props.capabilities || !props.capabilities.incoming.schema.output'
+            v-if='!props.capabilities || !props.capabilities.incoming?.schema?.output'
             severity='danger'
             class='px-2 my-2'
             title='Data Schema Error'
@@ -60,15 +60,17 @@
         />
         <TablerNone
             v-else-if='!enabled'
-            label='Style Overrides'
+            label='No Style Overrides'
             :create='false'
         />
         <template v-else>
             <div class='card-body'>
                 <StyleSingle
                     v-model='style'
-                    :schema='capabilities.incoming.schema.output || { properties: {} }'
+                    :schema='(capabilities.incoming?.schema?.output ?? { properties: {} }) as Record<string, unknown>'
                     :disabled='disabled'
+                    :disable-marti='!!props.layer.incoming?.data'
+                    :connection='Number(route.params.connectionid)'
                 />
             </div>
 
@@ -115,7 +117,7 @@
             </div>
             <template v-if='query === null && !queries.length'>
                 <TablerNone
-                    label='Queries'
+                    label='No Queries'
                     :create='false'
                     @create='newQuery'
                 />
@@ -133,10 +135,22 @@
                         <div
                             tabindex='0'
                             role='menuitem'
-                            class='cursor-pointer hover list-group-item list-group-item-action'
+                            class='cursor-pointer cloudtak-hover list-group-item list-group-item-action'
                             @click='query = q_idx'
                         >
                             <div class='d-flex'>
+                                <div class='align-self-center me-2'>
+                                    <IconTrash
+                                        v-if='q.delete'
+                                        :size='32'
+                                        stroke='1'
+                                    />
+                                    <IconBrush
+                                        v-else
+                                        :size='32'
+                                        stroke='1'
+                                    />
+                                </div>
                                 <div
                                     class='align-self-center'
                                     v-text='q.query'
@@ -156,79 +170,55 @@
             </template>
             <template v-else-if='query !== null'>
                 <div class='card-body'>
-                    <div class='col-md-12 hover rounded px-2 py-2'>
-                        <TablerInput
+                    <div class='col-md-12 rounded px-2 py-2'>
+                        <QueryInput
                             v-model='queries[query].query'
                             :disabled='disabled'
                             placeholder='JSONata Query'
                             label='JSONata Query'
-                            :error='error_query'
                         />
                     </div>
 
-                    <div
-                        class='px-2 py-2 round btn-group w-100'
-                        role='group'
+                    <TablerPillGroup
+                        :model-value='queries[query].delete ? "delete" : "style"'
+                        :options='[
+                            { value: "style", label: "Style Query" },
+                            { value: "delete", label: "Delete Features" }
+                        ]'
+                        :disabled='disabled'
+                        name='query-type'
+                        @update:model-value='(v: string) => { if (query !== null) queries[query].delete = v === "delete" }'
                     >
-                        <input
-                            id='query-style'
-                            type='radio'
-                            class='btn-check'
-                            autocomplete='off'
-                            :checked='!queries[query].delete'
-                            :disabled='disabled'
-                            @click='queries[query].delete = false'
-                        >
-                        <label
-                            for='query-style'
-                            type='button'
-                            class='btn btn-sm'
-                        >
+                        <template #option='{ option }'>
                             <IconBrush
+                                v-if='option.value === "style"'
                                 :size='32'
                                 stroke='1'
                             />
-                            <span class='mx-2'>Style Query</span>
-                        </label>
-
-                        <input
-                            id='query-delete'
-                            type='radio'
-                            class='btn-check'
-                            autocomplete='off'
-                            :disabled='disabled'
-                            :checked='queries[query].delete'
-                            @click='queries[query].delete = true'
-                        >
-                        <label
-                            for='query-delete'
-                            type='button'
-                            class='btn btn-sm'
-                        >
                             <IconTrash
+                                v-if='option.value === "delete"'
                                 :size='32'
                                 stroke='1'
                             />
-                            <span class='mx-2'>Delete Features</span>
-                        </label>
-                    </div>
+                            <span class='mx-2'>{{ option.label }}</span>
+                        </template>
+                    </TablerPillGroup>
 
                     <template v-if='queries[query].delete'>
-                        <div class='border rounded mx-2 d-flex justify-content-center'>
-                            <div class='mx-2 my-2'>
-                                <IconTrash
-                                    size='24'
-                                    :stroke='1'
-                                />
-                                All features matching this query will not be submitted to the TAK Server
-                            </div>
-                        </div>
+                        <TablerInlineAlert
+                            severity='danger'
+                            class='mx-2 my-2'
+                            title='Delete Features'
+                            description='All features matching this query will not be submitted to the TAK Server'
+                        />
                     </template>
                     <template v-else>
                         <StyleSingle
-                            v-model='queries[query].styles'
-                            :schema='capabilities.incoming.schema.output'
+                            v-model='queries[query!].styles'
+                            :schema='(capabilities.incoming?.schema?.output ?? {}) as Record<string, unknown>'
                             :disabled='disabled'
+                            :disable-marti='!!props.layer.incoming?.data'
+                            :connection='Number(route.params.connectionid)'
                         />
                     </template>
                 </div>
@@ -237,10 +227,12 @@
     </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted } from 'vue';
+<script setup lang='ts'>
+import { ref, onMounted } from 'vue';
+import { openExternalUrl } from '../../../base/capacitor.ts';
 import { useRoute } from 'vue-router'
-import { std } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import type { ETLLayer, ETLLayerTaskCapabilities } from '../../../types.ts';
 import {
     IconX,
     IconPlus,
@@ -250,29 +242,31 @@ import {
     IconBrush,
     IconDeviceFloppy
 } from '@tabler/icons-vue'
-import jsonata from 'jsonata';
 import {
     TablerInlineAlert,
-    TablerInput,
     TablerToggle,
     TablerNone,
     TablerLoading,
-    TablerIconButton
+    TablerIconButton,
+    TablerPillGroup
 } from '@tak-ps/vue-tabler';
 import StyleSingle from './utils/StyleSingle.vue';
+import QueryInput from './utils/QueryInput.vue';
 
-const props = defineProps({
-    layer: {
-        type: Object,
-        required: true
-    },
-    capabilities: {
-        type: Object,
-        required: true
-    }
-});
+interface StyleQuery {
+    query: string;
+    styles: Record<string, unknown>;
+    delete?: boolean;
+}
 
-const emit = defineEmits(['refresh']);
+const props = defineProps<{
+    layer: ETLLayer;
+    capabilities: ETLLayerTaskCapabilities;
+}>();
+
+const emit = defineEmits<{
+    (e: 'refresh'): void;
+}>();
 
 const route = useRoute();
 
@@ -282,27 +276,16 @@ const loading = ref({
     save: false
 });
 
-const enabled = ref(props.layer.incoming.enabled_styles);
+const enabled = ref(props.layer.incoming?.enabled_styles);
 
-const style = ref({
+const style = ref<Record<string, unknown>>({
     callsign: '',
     remarks: '',
     links: [],
 });
 
-const queries = ref([]);
-const query = ref(null);
-
-const error_query = computed(() => {
-    if (!query.value) return '';
-
-    try {
-        jsonata(queries.value[query.value].query)
-        return '';
-    } catch (err) {
-        return err.message;
-    }
-});
+const queries = ref<StyleQuery[]>([]);
+const query = ref<number | null>(null);
 
 onMounted(() => {
     reload();
@@ -310,18 +293,18 @@ onMounted(() => {
 });
 
 function reload() {
-    const clone = JSON.parse(JSON.stringify(props.layer.incoming.styles));
+    const clone = JSON.parse(JSON.stringify(props.layer.incoming?.styles ?? {}));
     queries.value = clone.queries || [];
     delete clone.queries;
 
-    style.value = Object.assign(style.value, JSON.parse(JSON.stringify(props.layer.incoming.styles)));
+    style.value = Object.assign(style.value, JSON.parse(JSON.stringify(props.layer.incoming?.styles ?? {})));
 
     disabled.value = true;
 }
 
-function help(topic) {
+function help(topic: string) {
     if (topic === "query") {
-        window.open('http://docs.jsonata.org/simple', '_blank');
+        void openExternalUrl('http://docs.jsonata.org/simple');
     }
 }
 
@@ -338,8 +321,13 @@ async function saveLayer() {
     loading.value.save = true;
 
     try {
-        await std(`/api/connection/${route.params.connectionid}/layer/${route.params.layerid}/incoming`, {
-            method: 'PATCH',
+        const res = await server.PATCH('/api/connection/{:connectionid}/layer/{:layerid}/incoming', {
+            params: {
+                path: {
+                    ':connectionid': Number(route.params.connectionid),
+                    ':layerid': Number(route.params.layerid)
+                }
+            },
             body: {
                 enabled_styles: enabled.value,
                 styles: {
@@ -348,6 +336,7 @@ async function saveLayer() {
                 }
             }
         });
+        if (res.error) throw new Error(res.error.message);
 
         disabled.value = true;
         loading.value.save = false;

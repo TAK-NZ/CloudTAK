@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth, { AuthResourceAccess, AuthUser } from '../lib/auth.js';
@@ -25,28 +25,28 @@ export default async function router(schema: Schema, config: Config) {
             order: Default.Order,
             sort: Type.String({
                 default: 'created',
-                enum: Object.keys(Data)
+                enum: Object.keys(Data),
             }),
-            filter: Default.Filter
+            filter: Default.Filter,
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(DataListResponse)
-        })
+            items: Type.Array(DataListResponse),
+        }),
     }, async (req, res) => {
         try {
             const profile = await Auth.as_profile(config, req);
 
             let where;
             if (profile.system_admin) {
-                where = sql`name ~* ${req.query.filter}`
+                where = sql`name ~* ${req.query.filter}`;
             } else if (profile.agency_admin && profile.agency_admin.length) {
                 where = and(
                     sql`name ~* ${req.query.filter}`,
-                    inArray(Connection.agency, profile.agency_admin)
+                    inArray(Connection.agency, profile.agency_admin),
                 );
             } else {
-                throw new Err(400, null, 'Insufficient Access')
+                throw new Err(400, null, 'Insufficient Access');
             }
 
             const list = await config.models.Data.list({
@@ -54,7 +54,7 @@ export default async function router(schema: Schema, config: Config) {
                 page: req.query.page,
                 order: req.query.order,
                 sort: req.query.sort,
-                where
+                where,
             });
 
             res.json(list);
@@ -67,27 +67,31 @@ export default async function router(schema: Schema, config: Config) {
         name: 'List Data',
         group: 'Data',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 0 }),
         }),
         description: 'List data',
         query: Type.Object({
             limit: Default.Limit,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({default: 'created', enum: Object.keys(Data)})),
-            filter: Default.Filter
+            sort: Type.Optional(Type.String({ default: 'created', enum: Object.keys(Data) })),
+            filter: Default.Filter,
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(DataListResponse)
-        })
+            items: Type.Array(DataListResponse),
+        }),
     }, async (req, res) => {
         try {
-            const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
-            }, req.params.connectionid);
+            if (req.params.connectionid === 0) {
+                await Auth.as_user(config, req, { admin: true });
+            } else {
+                const { connection } = await Auth.is_connection(config, req, {
+                    resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+                }, req.params.connectionid);
 
-            if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+            }
 
             const list = await config.models.Data.list({
                 limit: req.query.limit,
@@ -97,7 +101,7 @@ export default async function router(schema: Schema, config: Config) {
                 where: sql`
                     name ~* ${req.query.filter}
                     AND connection = ${req.params.connectionid}::BIGINT
-                `
+                `,
             });
 
             res.json(list);
@@ -111,35 +115,42 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Data',
         description: 'Register a new data source',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 0 }),
         }),
         body: Type.Object({
             name: Default.NameField,
             description: Default.DescriptionField,
             mission_diff: Type.Optional(Type.Boolean()),
             mission_sync: Type.Boolean({
-                default: true
+                default: true,
             }),
             mission_groups: Type.Optional(Type.Array(Type.String())),
-            mission_role: Type.Optional(Type.Enum(MissionSubscriberRole))
+            mission_role: Type.Optional(Type.Enum(MissionSubscriberRole)),
         }),
-        res: DataResponse
+        res: DataResponse,
     }, async (req, res) => {
         try {
-            const { connection, auth } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
-            }, req.params.connectionid);
+            let username: string | null = null;
+            if (req.params.connectionid === 0) {
+                const user = await Auth.as_user(config, req, { admin: true });
+                username = user.email;
+            } else {
+                const { connection, auth } = await Auth.is_connection(config, req, {
+                    resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+                }, req.params.connectionid);
 
-            if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                username = auth instanceof AuthUser ? auth.email : null;
+            }
 
             if (req.body.mission_diff && req.body.mission_role !== MissionSubscriberRole.MISSION_READONLY_SUBSCRIBER) {
-                throw new Err(400, null, 'MissionDiff can only be used when role is: MISSION_READONLY_SUBSCRIBER')
+                throw new Err(400, null, 'MissionDiff can only be used when role is: MISSION_READONLY_SUBSCRIBER');
             }
 
             let data = await config.models.Data.generate({
                 ...req.body,
                 connection: req.params.connectionid,
-                username: auth instanceof AuthUser ? auth.email : null
+                username,
             });
 
             try {
@@ -148,19 +159,19 @@ export default async function router(schema: Schema, config: Config) {
                 if (mission) {
                     data = await config.models.Data.commit(data.id, {
                         updated: sql`Now()`,
-                        mission_groups: Array.isArray(mission.groups) ? mission.groups : [mission.groups]
+                        mission_groups: Array.isArray(mission.groups) ? mission.groups : [mission.groups],
                     });
                 }
 
                 res.json({
                     mission_exists: true,
-                    ...data
+                    ...data,
                 });
             } catch (err) {
                 res.json({
                     mission_exists: false,
                     mission_error: err instanceof Error ? err.message : String(err),
-                    ...data
+                    ...data,
                 });
             }
         } catch (err) {
@@ -173,40 +184,44 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Data',
         description: 'Update a data source',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 }),
+            connectionid: Type.Integer({ minimum: 0 }),
             dataid: Type.Integer({ minimum: 1 }),
         }),
         body: Type.Object({
             description: Type.String(),
             mission_diff: Type.Optional(Type.Boolean()),
-            mission_sync: Type.Optional(Type.Boolean())
+            mission_sync: Type.Optional(Type.Boolean()),
         }),
-        res: DataResponse
+        res: DataResponse,
     }, async (req, res) => {
         try {
-            const { connection } = await Auth.is_connection(config, req, {
-                resources: [
-                    { access: AuthResourceAccess.DATA, id: req.params.dataid },
-                    { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }
-                ]
-            }, req.params.connectionid);
+            if (req.params.connectionid === 0) {
+                await Auth.as_user(config, req, { admin: true });
+            } else {
+                const { connection } = await Auth.is_connection(config, req, {
+                    resources: [
+                        { access: AuthResourceAccess.DATA, id: req.params.dataid },
+                        { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid },
+                    ],
+                }, req.params.connectionid);
 
-            if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+            }
 
             if (req.body.mission_diff && await config.models.Layer.augmented_count({
-                where: sql`layers_incoming.data = ${req.params.dataid}`
+                where: sql`layers_incoming.data = ${req.params.dataid}`,
             }) > 1) {
-                throw new Err(400, null, 'MissionDiff can only be enabled with a single layer')
+                throw new Err(400, null, 'MissionDiff can only be enabled with a single layer');
             }
 
             // TODO: Don't allow mission_diff to be turned on if there are non MISSION_READONLY subscribers
 
             let data = await config.models.Data.from(req.params.dataid);
-            if (data.connection !== connection.id) throw new Err(400, null, 'Data Sync does not belong to given Connection');
+            if (data.connection !== req.params.connectionid) throw new Err(400, null, 'Data Sync does not belong to given Connection');
 
             data = await config.models.Data.commit(req.params.dataid, {
                 updated: sql`Now()`,
-                ...req.body
+                ...req.body,
             });
 
             try {
@@ -214,13 +229,13 @@ export default async function router(schema: Schema, config: Config) {
 
                 res.json({
                     mission_exists: true,
-                    ...data
+                    ...data,
                 });
             } catch (err) {
                 res.json({
                     mission_exists: false,
                     mission_error: err instanceof Error ? err.message : String(err),
-                    ...data
+                    ...data,
                 });
             }
         } catch (err) {
@@ -233,36 +248,40 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Data',
         description: 'Get a data source',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 }),
+            connectionid: Type.Integer({ minimum: 0 }),
             dataid: Type.Integer({ minimum: 1 }),
         }),
-        res: DataResponse
+        res: DataResponse,
     }, async (req, res) => {
         try {
-            const { connection } = await Auth.is_connection(config, req, {
-                resources: [
-                    { access: AuthResourceAccess.DATA, id: req.params.dataid },
-                    { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }
-                ]
-            }, req.params.connectionid);
+            if (req.params.connectionid === 0) {
+                await Auth.as_user(config, req, { admin: true });
+            } else {
+                const { connection } = await Auth.is_connection(config, req, {
+                    resources: [
+                        { access: AuthResourceAccess.DATA, id: req.params.dataid },
+                        { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid },
+                    ],
+                }, req.params.connectionid);
 
-            if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+            }
 
             const data = await config.models.Data.from(req.params.dataid);
-            if (data.connection !== connection.id) throw new Err(400, null, 'Data Sync does not belong to given Connection');
+            if (data.connection !== req.params.connectionid) throw new Err(400, null, 'Data Sync does not belong to given Connection');
 
             try {
                 await DataMission.sync(config, data);
 
                 res.json({
                     mission_exists: true,
-                    ...data
+                    ...data,
                 });
             } catch (err) {
                 res.json({
                     mission_exists: false,
                     mission_error: err instanceof Error ? err.message : String(err),
-                    ...data
+                    ...data,
                 });
             }
         } catch (err) {
@@ -275,23 +294,27 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Data',
         description: 'Delete a data source',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 }),
+            connectionid: Type.Integer({ minimum: 0 }),
             dataid: Type.Integer({ minimum: 1 }),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
-            const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
-            }, req.params.connectionid);
+            if (req.params.connectionid === 0) {
+                await Auth.as_user(config, req, { admin: true });
+            } else {
+                const { connection } = await Auth.is_connection(config, req, {
+                    resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+                }, req.params.connectionid);
 
-            if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+                if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
+            }
 
             const data = await config.models.Data.from(req.params.dataid);
-            if (data.connection !== connection.id) throw new Err(400, null, 'Data Sync does not belong to given Connection');
+            if (data.connection !== req.params.connectionid) throw new Err(400, null, 'Data Sync does not belong to given Connection');
 
             if (await config.models.Layer.augmented_count({
-                where: sql`layers_incoming.data = ${req.params.dataid}`
+                where: sql`layers_incoming.data = ${req.params.dataid}`,
             }) > 0) throw new Err(400, null, 'Data has active Layers - Delete layers before deleting Data Sync');
 
             await S3.del(`data-${String(req.params.dataid)}/`, { recurse: true });
@@ -304,14 +327,14 @@ export default async function router(schema: Schema, config: Config) {
 
                 res.json({
                     status: 200,
-                    message: `Data Deleted`
+                    message: `Data Deleted`,
                 });
             } catch (err) {
                 await config.models.Data.delete(req.params.dataid);
 
                 res.json({
                     status: 200,
-                    message: `Data Deleted - But TAK Server had an upstream error. Provide an admin with this error message ${String(err)}`
+                    message: `Data Deleted - But TAK Server had an upstream error. Provide an admin with this error message ${String(err)}`,
                 });
             }
         } catch (err) {

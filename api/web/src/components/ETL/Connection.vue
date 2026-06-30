@@ -122,6 +122,20 @@
                                                 role='menuitem'
                                                 class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
                                                 :class='{
+                                                    "active": route.name === "connection-features",
+                                                    "cursor-pointer": route.name !== "connection-features"
+                                                }'
+                                                @click='router.push(`/connection/${route.params.connectionid}/features`)'
+                                            ><IconMapPin
+                                                :size='32'
+                                                stroke='1'
+                                            /><span class='mx-3'>Features</span></span>
+                                            <span
+                                                v-if='!connection.readonly'
+                                                tabindex='0'
+                                                role='menuitem'
+                                                class='list-group-item list-group-item-action d-flex align-items-center user-select-none'
+                                                :class='{
                                                     "active": route.name === "connection-tokens",
                                                     "cursor-pointer": route.name !== "connection-tokens"
                                                 }'
@@ -153,7 +167,7 @@
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { ETLConnection } from '../../types.ts';
-import { std } from '../../std.ts';
+import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
 import ConnectionCard from './ConnectionCard.vue';
 import {
@@ -162,6 +176,7 @@ import {
     IconVideo,
     IconDatabase,
     IconAffiliate,
+    IconMapPin,
     IconBuildingBroadcastTower,
 } from '@tabler/icons-vue'
 import {
@@ -175,11 +190,6 @@ const router = useRouter();
 const connection = ref<ETLConnection | undefined>();
 
 onMounted(async () => {
-    if (route.params.connectionid === 'template') {
-        router.push('/connection');
-        return;
-    }
-
     await fetch();
 
     if (connection.value && connection.value.readonly) {
@@ -189,6 +199,21 @@ onMounted(async () => {
 
 async function fetch() {
     connection.value = undefined;
-    connection.value = await std(`/api/connection/${route.params.connectionid}`) as ETLConnection;
+
+    if (Number(route.params.connectionid) === 0) {
+        const res = await server.GET('/api/connection/0');
+        if (res.error) throw new Error(res.error.message);
+        connection.value = res.data as ETLConnection;
+    } else {
+        const res = await server.GET('/api/connection/{:connectionid}', {
+            params: {
+                path: {
+                    ':connectionid': Number(route.params.connectionid)
+                }
+            }
+        });
+        if (res.error) throw new Error(res.error.message);
+        connection.value = res.data;
+    }
 }
 </script>

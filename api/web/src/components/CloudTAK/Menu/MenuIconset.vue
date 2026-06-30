@@ -25,13 +25,18 @@
 
             <TablerIconButton
                 title='Download TAK Zip'
-                @click.stop='download'
+                @click.stop='IconsetCache.download(iconset.uid)'
             >
                 <IconDownload
                     :size='32'
                     stroke='1'
                 />
             </TablerIconButton>
+
+            <TablerRefreshButton
+                :loading='loading'
+                @click='syncIconset'
+            />
 
             <TablerDelete
                 v-if='iconset.username || isSystemAdmin'
@@ -41,14 +46,23 @@
         </template>
         <template #default>
             <TablerLoading v-if='loading' />
+            <TablerAlert
+                v-else-if='error'
+                :err='error'
+            />
             <div
                 v-else
                 class='col-lg-12'
             >
+                <TablerAlert
+                    v-if='syncError'
+                    class='mb-3'
+                    :err='syncError'
+                />
                 <CombinedIcons
-                    v-if='!loading'
                     :iconset='iconset.uid'
                     :labels='false'
+                    :refresh-key='refreshKey'
                 />
             </div>
         </template>
@@ -57,19 +71,22 @@
     <IconsetEditModal
         v-if='editIconsetModal'
         :icon='editIconsetModal'
-        @close='refresh'
+        @close='syncIconset'
     />
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { std, stdurl } from '/src/std.ts';
-import CombinedIcons from '../util/Icons.vue'
+import IconsetCache from '../../../base/iconset.ts';
+import CombinedIcons from '../util/Icons.vue';
+import { useMapStore } from '../../../stores/map.ts';
 import {
+    TablerAlert,
     TablerDelete,
     TablerLoading,
     TablerIconButton,
+    TablerRefreshButton,
 } from '@tak-ps/vue-tabler';
 import {
     IconPlus,
@@ -78,51 +95,82 @@ import {
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import IconsetEditModal from './Iconset/EditModal.vue';
-import { useMapStore } from '/src/stores/map.ts';
+import ProfileConfig from '../../../base/profile.ts';
+import type { Iconset } from '../../../types.ts';
 
 const route = useRoute();
 const router = useRouter();
 const mapStore = useMapStore();
 
 const loading = ref(true);
-const editIconsetModal = ref(false);
+const editIconsetModal = ref<Iconset | null>(null);
 const isSystemAdmin = ref(false);
-const iconset = ref({
-    uid: ''
+const error = ref<Error | undefined>(undefined);
+const syncError = ref<Error | undefined>(undefined);
+const refreshKey = ref(0);
+const iconset = ref<Iconset>({
+    uid: '',
+    created: '',
+    updated: '',
+    version: 0,
+    name: '',
+    username: null,
+    username_internal: false,
+    default_group: null,
+    default_friendly: null,
+    default_hostile: null,
+    default_neutral: null,
+    default_unknown: null,
+    skip_resize: false,
 });
 
 onMounted(async () => {
     await refresh();
-    isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();
+    const isSysAdmin = await ProfileConfig.get('system_admin');
+    isSystemAdmin.value = isSysAdmin?.value ?? false;
 });
 
-async function refresh() {
+async function refresh(): Promise<void> {
     loading.value = true;
-    editIconsetModal.value = false;
-    await fetchIconset();
-    loading.value = false;
+    error.value = undefined;
+    editIconsetModal.value = null;
+
+    try {
+        await fetchIconset();
+    } catch (err) {
+        error.value = err instanceof Error ? err : new Error(String(err));
+    } finally {
+        loading.value = false;
+    }
 }
 
-async function download() {
-    await std(`/api/iconset/${iconset.value.uid}?format=zip&download=true&token=${localStorage.token}`, {
-        download: true
-    });
+async function fetchIconset(): Promise<void> {
+    const cached = await IconsetCache.from(String(route.params.iconset));
+    if (!cached) throw new Error('Iconset not available offline. Refresh to sync this iconset.');
+
+    iconset.value = {
+        ...iconset.value,
+        ...cached
+    };
 }
 
-async function fetchIconset() {
+async function syncIconset(): Promise<void> {
     loading.value = true;
-    const url = stdurl(`/api/iconset/${route.params.iconset}`);
-    iconset.value = await std(url);
-    loading.value = false;
+    syncError.value = undefined;
+
+    try {
+        await mapStore.icons.addIconset(String(route.params.iconset), { force: true });
+        refreshKey.value += 1;
+    } catch (err) {
+        syncError.value = err instanceof Error ? err : new Error(String(err));
+    }
+
+    await refresh();
 }
 
-async function deleteIconset() {
+async function deleteIconset(): Promise<void> {
     loading.value = true;
-    const url = stdurl(`/api/iconset/${route.params.iconset}`);
-    iconset.value = await std(url, {
-        method: 'DELETE'
-    });
-
+    await mapStore.icons.deleteIconset(String(route.params.iconset));
     router.push('/menu/iconsets');
 }
 </script>

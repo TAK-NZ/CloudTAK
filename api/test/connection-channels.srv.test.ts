@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import Flight from './flight.js';
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -13,7 +13,7 @@ flight.connection();
 
 test('GET: api/connection/1/channel', async () => {
     try {
-        flight.tak.mockMarti.push(async (request: IncomingMessage, response: ServerResponse) => {
+        flight.tak.mockMarti.unshift(async (request: IncomingMessage, response: ServerResponse) => {
             if (!request.method || !request.url) {
                 return false;
             } else if (request.method === 'GET' && request.url === '/Marti/api/groups/all?useCache=true') {
@@ -28,7 +28,7 @@ test('GET: api/connection/1/channel', async () => {
                         type: 'SYSTEM',
                         bitpos: 187,
                         active: true,
-                        description: 'Description'
+                        description: 'Description',
                     }],
                 }));
                 response.end();
@@ -42,8 +42,8 @@ test('GET: api/connection/1/channel', async () => {
         const res = await flight.fetch('/api/connection/1/channel', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
@@ -56,8 +56,8 @@ test('GET: api/connection/1/channel', async () => {
                 type: 'SYSTEM',
                 bitpos: 187,
                 active: true,
-                description: 'Description'
-            }]
+                description: 'Description',
+            }],
         });
     } catch (err) {
         assert.ifError(err);
@@ -68,7 +68,7 @@ test('GET: api/connection/1/channel', async () => {
 
 test('GET: api/connection/1/channel - Failure', async () => {
     try {
-        flight.tak.mockMarti.push(async (request: IncomingMessage, response: ServerResponse) => {
+        flight.tak.mockMarti.unshift(async (request: IncomingMessage, response: ServerResponse) => {
             if (!request.method || !request.url) {
                 return false;
             } else if (request.method === 'GET' && request.url === '/Marti/api/groups/all?useCache=true') {
@@ -86,8 +86,8 @@ test('GET: api/connection/1/channel - Failure', async () => {
         const res = await flight.fetch('/api/connection/1/channel', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, false);
 
         assert.deepEqual(res.status, 500);

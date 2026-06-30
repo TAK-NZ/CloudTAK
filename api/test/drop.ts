@@ -1,11 +1,9 @@
-import postgres from 'postgres'
+import postgres from 'postgres';
 
 export default async function drop(connstr: string) {
     const client = postgres(connstr, {
-        onnotice: () => {}
+        onnotice: () => {},
     });
-
-    console.log('ok - dropping database');
 
     const pgres = await client`
         SELECT
@@ -21,8 +19,6 @@ export default async function drop(connstr: string) {
     for (const r of pgres) {
         await client.unsafe(r.drop);
     }
-
-    console.log('ok - database dropped');
 
     client.end();
 }

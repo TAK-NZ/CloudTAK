@@ -2,20 +2,23 @@
     <div class='card-header'>
         <ConnectionStatus :connection='connection' />
 
-        <div class='mx-2 d-flex flex-column'>
+        <div
+            class='mx-2 d-flex flex-column'
+            style='min-width: 0; overflow: hidden;'
+        >
             <div
-                class='card-title m-0'
+                class='card-title m-0 text-truncate'
                 :class='{ "cursor-pointer": clickable }'
                 @click='clickable ? router.push(`/connection/${connection.id}`) : null'
                 v-text='connection.name'
             />
         </div>
 
-        <div class='ms-auto d-flex align-items-center btn-list'>
+        <div class='ms-auto d-flex align-items-center flex-shrink-0 flex-nowrap btn-list'>
             <AgencyBadge :connection='connection' />
 
             <TablerIconButton
-                v-if='!connection.readonly'
+                v-if='!connection.readonly && connection.id !== 0'
                 title='Cycle Connection'
                 @click='cycle'
             >
@@ -31,6 +34,7 @@
             />
 
             <TablerIconButton
+                v-if='connection.id !== 0'
                 title='Edit'
                 @click='router.push(`/connection/${connection.id}/edit`)'
             >
@@ -62,18 +66,27 @@
                     Certificate Valid To
                 </div>
                 <div
-                    class='datagrid-content d-flex'
-                    :class='{
-                        "rounded bg-red text-white px-2 py-1": new Date(connection.certificate.validTo) < new Date()
-                    }'
+                    class='datagrid-content d-flex align-items-center gap-2'
                 >
                     <div v-text='connection.certificate.validTo' />
-                    <div
-                        v-if='new Date(connection.certificate.validTo) < new Date()'
+                    <TablerBadge
+                        v-if='certificateStatus === "expired"'
                         class='ms-auto'
+                        background-color='rgba(220, 38, 38, 0.15)'
+                        border-color='rgba(220, 38, 38, 0.35)'
+                        text-color='#b91c1c'
                     >
                         Expired Certificate
-                    </div>
+                    </TablerBadge>
+                    <TablerBadge
+                        v-else-if='certificateStatus'
+                        class='ms-auto'
+                        background-color='rgba(249, 115, 22, 0.15)'
+                        border-color='rgba(249, 115, 22, 0.35)'
+                        text-color='#c2410c'
+                    >
+                        Near Expiry
+                    </TablerBadge>
                 </div>
             </div>
             <div class='datagrid-item'>
@@ -105,14 +118,18 @@
                         </button>
                     </template>
                     <template #dropdown>
-                        <div class='card'>
-                            <div class='card-body row g-2'>
+                        <div
+                            class='py-1'
+                            style='max-width: 300px;'
+                        >
+                            <div class='row g-2 px-3 pt-2 pb-2'>
                                 <div class='col-12'>
                                     <TablerInput
                                         v-model='certificate.truststorePassword'
                                         label='Choose Certificate Password'
                                         type='password'
-                                        autocomplete='off'
+                                        autocomplete='new-password'
+                                        @click.stop
                                     />
                                 </div>
                                 <div class='col-12'>
@@ -143,14 +160,18 @@
                         </button>
                     </template>
                     <template #dropdown>
-                        <div class='card'>
-                            <div class='card-body row g-2'>
+                        <div
+                            class='py-1'
+                            style='max-width: 300px;'
+                        >
+                            <div class='row g-2 px-3 pt-2 pb-2'>
                                 <div class='col-12'>
                                     <TablerInput
                                         v-model='certificate.clientPassword'
                                         label='Choose Certificate Password'
                                         type='password'
-                                        autocomplete='off'
+                                        autocomplete='new-password'
+                                        @click.stop
                                     />
                                 </div>
                                 <div class='col-12'>
@@ -189,11 +210,13 @@
 </template>
 
 <script setup lang='ts'>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { Preferences } from '@capacitor/preferences';
 import { useRouter } from 'vue-router';
+import { openExternalUrl } from '../../base/capacitor.ts';
 import type { ETLConnection } from '../../types';
-import { std, stdurl } from '../../std';
-import timeDiff from '../../timediff';
+import { server, stdurl } from '../../std';
+import timeDiff from '../../timediff.ts';
 import ConnectionStatus from './Connection/StatusDot.vue';
 import AgencyBadge from './Connection/AgencyBadge.vue';
 import InitialAuthor from '../util/InitialAuthor.vue';
@@ -201,6 +224,7 @@ import {
     TablerIconButton,
     TablerRefreshButton,
     TablerMarkdown,
+    TablerBadge,
     TablerDropdown,
     TablerInput
 } from '@tak-ps/vue-tabler';
@@ -221,7 +245,9 @@ const props = withDefaults(defineProps<{
     expanded: false
 });
 
-const emit = defineEmits(['update:connection']);
+const emit = defineEmits<{
+    'update:connection': [connection: ETLConnection];
+}>();
 
 const loading = ref(false);
 
@@ -230,13 +256,37 @@ const certificate = ref({
     clientPassword: ''
 });
 
+const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+
+function certificateExpiryState(validTo?: string | null): 'expired' | 'near-expiry' | null {
+    if (!validTo) return null;
+
+    const expiry = Date.parse(validTo);
+    if (Number.isNaN(expiry)) return null;
+
+    const remaining = expiry - Date.now();
+    if (remaining < 0) return 'expired';
+    if (remaining <= TWO_WEEKS_MS) return 'near-expiry';
+
+    return null;
+}
+
+const certificateStatus = computed(() => certificateExpiryState(props.connection.certificate.validTo));
+
 async function cycle() {
     loading.value = true;
     try {
-        const updated = await std(`/api/connection/${props.connection.id}/refresh`, {
-            method: 'POST'
-        }) as ETLConnection;
-        emit('update:connection', updated);
+        const res = await server.POST('/api/connection/{:connectionid}/refresh', {
+            params: {
+                path: {
+                    ':connectionid': props.connection.id
+                }
+            }
+        });
+
+        if (res.error) throw new Error(res.error.message);
+
+        emit('update:connection', res.data);
     } catch (err) {
         console.error(err);
     }
@@ -246,20 +296,37 @@ async function cycle() {
 async function refresh() {
     loading.value = true;
     try {
-        const updated = await std(`/api/connection/${props.connection.id}`) as ETLConnection;
-        emit('update:connection', updated);
+        let data: ETLConnection;
+        if (props.connection.id === 0) {
+            const res = await server.GET('/api/connection/0');
+            if (res.error) throw new Error(res.error.message);
+            data = res.data as ETLConnection;
+        } else {
+            const res = await server.GET('/api/connection/{:connectionid}', {
+                params: {
+                    path: {
+                        ':connectionid': props.connection.id
+                    }
+                }
+            });
+            if (res.error) throw new Error(res.error.message);
+            data = res.data;
+        }
+
+        emit('update:connection', data);
     } catch (err) {
         console.error(err);
     }
     loading.value = false;
 }
 
-function downloadCertificate(type: 'truststore' | 'client') {
+async function downloadCertificate(type: 'truststore' | 'client') {
     const url = stdurl(`/api/connection/${props.connection.id}/auth`);
     url.searchParams.set('type', type);
     url.searchParams.set('download', 'true');
     url.searchParams.set('password', type === 'truststore' ? certificate.value.truststorePassword : certificate.value.clientPassword);
-    url.searchParams.set('token', localStorage.token);
-    window.open(url, '_blank');
+    const { value: token } = await Preferences.get({ key: 'token' });
+    if (token) url.searchParams.set('token', token);
+    void openExternalUrl(url);
 }
 </script>

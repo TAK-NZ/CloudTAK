@@ -1,11 +1,18 @@
 <template>
     <div class='row g-2'>
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconLicense
-                    :size='20'
-                    stroke='1'
-                /> Global ID</label>
+        <!-- Global Defaults -->
+        <div class='col-12'>
+            <span class='text-muted subheader'>Global Defaults</span>
+        </div>
+
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconLicense
+                        :size='20'
+                        stroke='1'
+                    /> Global ID
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.id'
@@ -14,23 +21,23 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.id'
                 v-model='filters.id'
                 placeholder='Global ID Field'
-                :rows='1'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconBlockquote
-                    :size='20'
-                    stroke='1'
-                /> Global Callsign</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Global Callsign
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.callsign'
@@ -39,23 +46,23 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.callsign'
                 v-model='filters.callsign'
                 placeholder='Global Callsign Field'
-                :rows='1'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconClock
-                    :size='20'
-                    stroke='1'
-                /> Global Stale Value</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconClock
+                        :size='20'
+                        stroke='1'
+                    /> Global Stale
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.stale'
@@ -64,27 +71,28 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.stale'
                 v-model='filters.stale'
                 placeholder='Stale Value (Seconds or ISO Date)'
-                :rows='1'
                 :disabled='disabled'
                 :schema='props.schema'
             />
             <label
                 v-if='enabled.stale && typeof filters.stale === "number"'
+                class='text-muted small'
                 v-text='humanSeconds(filters.stale)'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconEye
-                    :size='20'
-                    stroke='1'
-                /> Global Min Zoom</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconEye
+                        :size='20'
+                        stroke='1'
+                    /> Global Min Zoom
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.minzoom'
@@ -93,23 +101,23 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.minzoom'
                 v-model='filters.minzoom'
-                :rows='1'
                 placeholder='Min Zoom (0-24)'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconEye
-                    :size='20'
-                    stroke='1'
-                /> Global Max Zoom</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconEye
+                        :size='20'
+                        stroke='1'
+                    /> Global Max Zoom
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.maxzoom'
@@ -118,23 +126,23 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.maxzoom'
                 v-model='filters.maxzoom'
-                :rows='1'
                 placeholder='Max Zoom (0-24)'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconBlockquote
-                    :size='20'
-                    stroke='1'
-                /> Global Remarks</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Global Remarks
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.remarks'
@@ -143,21 +151,48 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='enabled.remarks'
                 v-model='filters.remarks'
+                rows=''
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconLink
-                    :size='20'
-                    stroke='1'
-                /> Global Links</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Global Phone
+                </label>
+                <div class='ms-auto'>
+                    <TablerToggle
+                        v-model='enabled.phone'
+                        :disabled='disabled'
+                        label='Enabled'
+                    />
+                </div>
+            </div>
+            <HandleForm
+                v-if='enabled.phone'
+                v-model='filters.phone'
+                placeholder='Global Phone Field'
+                :disabled='disabled'
+                :schema='props.schema'
+            />
+        </div>
+
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconLink
+                        :size='20'
+                        stroke='1'
+                    /> Global Links
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='enabled.links'
@@ -166,7 +201,6 @@
                     />
                 </div>
             </div>
-
             <StyleLinks
                 v-if='enabled.links'
                 v-model='filters.links'
@@ -175,70 +209,84 @@
             />
         </div>
 
-        <div class='d-flex justify-content-center'>
-            <div class='btn-list'>
-                <div
-                    class='btn-group'
-                    role='group'
-                >
-                    <input
-                        v-model='mode'
-                        type='radio'
-                        class='btn-check'
-                        name='geom-toolbar'
-                        value='point'
-                    >
-                    <label
-                        class='btn btn-icon px-3'
-                        @click='mode="point"'
-                    >
-                        <IconPoint
-                            :size='32'
-                            stroke='1'
-                        /> Points
-                    </label>
-                    <input
-                        v-model='mode'
-                        type='radio'
-                        class='btn-check'
-                        name='geom-toolbar'
-                        value='line'
-                    >
-                    <label
-                        class='btn btn-icon px-3'
-                        @click='mode="line"'
-                    >
-                        <IconLine
-                            :size='32'
-                            stroke='1'
-                        /> Lines
-                    </label>
-                    <input
-                        v-model='mode'
-                        type='radio'
-                        class='btn-check'
-                        name='geom-toolbar'
-                        value='polygon'
-                    >
-                    <label
-                        class='btn btn-icon px-3'
-                        @click='mode="polygon"'
-                    >
-                        <IconPolygon
-                            :size='32'
-                            stroke='1'
-                        /> Polygons
-                    </label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconServer
+                        :size='20'
+                        stroke='1'
+                    /> Global Marti
+                </label>
+                <div class='ms-auto'>
+                    <TablerToggle
+                        v-model='enabled.marti'
+                        :disabled='disabled || props.disableMarti'
+                        label='Enabled'
+                    />
                 </div>
             </div>
+            <TablerInlineAlert
+                v-if='props.disableMarti'
+                type='info'
+                class='mt-2'
+                description='Marti routing is unavailable when a Data Sync destination is configured. Use Groups routing via Styles to set routing destinations.'
+            />
+            <StyleMarti
+                v-else-if='enabled.marti'
+                v-model='filters.marti'
+                :disabled='disabled'
+                :connection='props.connection'
+            />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconLicense
-                    :size='20'
-                    stroke='1'
-                /> ID Override</label>
+        <!-- Geometry Overrides -->
+        <div class='col-12 mt-2'>
+            <span class='text-muted subheader'>Geometry Overrides</span>
+        </div>
+
+        <div class='col-12 d-flex justify-content-center'>
+            <TablerPillGroup
+                v-model='mode'
+                :options='[
+                    { value: "point", label: "Points" },
+                    { value: "line", label: "Lines" },
+                    { value: "polygon", label: "Polygons" }
+                ]'
+                :rounded='false'
+                :full-width='false'
+                size='default'
+                padding=''
+                name='geom-toolbar'
+            >
+                <template #option='{ option }'>
+                    <IconPoint
+                        v-if='option.value === "point"'
+                        :size='32'
+                        stroke='1'
+                    />
+                    <IconLine
+                        v-if='option.value === "line"'
+                        :size='32'
+                        stroke='1'
+                    />
+                    <IconPolygon
+                        v-if='option.value === "polygon"'
+                        :size='32'
+                        stroke='1'
+                    />
+                    {{ option.label }}
+                </template>
+            </TablerPillGroup>
+        </div>
+
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconLicense
+                        :size='20'
+                        stroke='1'
+                    /> ID Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.id'
@@ -247,22 +295,24 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='filters[mode].enabled.id'
                 v-model='filters[mode].properties.id'
                 placeholder='ID Override'
+                rows=''
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconBlockquote
-                    :size='20'
-                    stroke='1'
-                /> Callsign Override</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Callsign Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.callsign'
@@ -271,22 +321,24 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='filters[mode].enabled.callsign'
                 v-model='filters[mode].properties.callsign'
                 placeholder='Callsign Override'
+                rows=''
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconClock
-                    :size='20'
-                    stroke='1'
-                /> Stale Value</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconClock
+                        :size='20'
+                        stroke='1'
+                    /> Stale Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.stale'
@@ -295,27 +347,28 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='filters[mode].enabled.stale'
                 v-model='filters[mode].properties.stale'
                 placeholder='Stale Value (Seconds or ISO Date)'
-                :rows='1'
                 :disabled='disabled'
                 :schema='props.schema'
             />
             <label
                 v-if='filters[mode].enabled.stale && typeof filters[mode].properties.stale === "number"'
-                v-text='humanSeconds(filters[mode].enabled.stale)'
+                class='text-muted small'
+                v-text='humanSeconds(Number(filters[mode].properties.stale))'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconEye
-                    :size='20'
-                    stroke='1'
-                /> Min Zoom</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconEye
+                        :size='20'
+                        stroke='1'
+                    /> Min Zoom Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.minzoom'
@@ -324,49 +377,48 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='filters[mode].enabled.minzoom'
                 v-model='filters[mode].properties.minzoom'
-                :rows='1'
                 placeholder='Min Zoom (0-24)'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconEye
-                    :size='20'
-                    stroke='1'
-                /> Max Zoom</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconEye
+                        :size='20'
+                        stroke='1'
+                    /> Max Zoom Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
-                        v-model=' filters[mode].enabled.minzoom'
+                        v-model='filters[mode].enabled.maxzoom'
                         :disabled='disabled'
                         label='Enabled'
                     />
                 </div>
             </div>
-
-            <StyleTemplate
-                v-if='filters[mode].enabled.minzoom'
-                v-model='filters[mode].properties.minzoom'
-                :rows='1'
+            <HandleForm
+                v-if='filters[mode].enabled.maxzoom'
+                v-model='filters[mode].properties.maxzoom'
                 placeholder='Max Zoom (0-24)'
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconBlockquote
-                    :size='20'
-                    stroke='1'
-                /> Remarks Override</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Remarks Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.remarks'
@@ -375,22 +427,50 @@
                     />
                 </div>
             </div>
-
-            <StyleTemplate
+            <HandleForm
                 v-if='filters[mode].enabled.remarks'
                 v-model='filters[mode].properties.remarks'
                 placeholder='Remarks Override'
+                rows=''
                 :disabled='disabled'
                 :schema='props.schema'
             />
         </div>
 
-        <div class='col-md-12 hover rounded px-2 py-2'>
-            <div class='col-12 d-flex align-items-center'>
-                <label class='user-select-none subheader'><IconLink
-                    :size='20'
-                    stroke='1'
-                /> Links Override</label>
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconBlockquote
+                        :size='20'
+                        stroke='1'
+                    /> Phone Override
+                </label>
+                <div class='ms-auto'>
+                    <TablerToggle
+                        v-model='filters[mode].enabled.phone'
+                        :disabled='disabled'
+                        label='Enabled'
+                    />
+                </div>
+            </div>
+            <HandleForm
+                v-if='filters[mode].enabled.phone'
+                v-model='filters[mode].properties.phone'
+                placeholder='Phone Override'
+                rows=''
+                :disabled='disabled'
+                :schema='props.schema'
+            />
+        </div>
+
+        <div class='col-12 style-item px-2 py-2'>
+            <div class='d-flex align-items-center'>
+                <label class='user-select-none subheader'>
+                    <IconLink
+                        :size='20'
+                        stroke='1'
+                    /> Links Override
+                </label>
                 <div class='ms-auto'>
                     <TablerToggle
                         v-model='filters[mode].enabled.links'
@@ -399,7 +479,6 @@
                     />
                 </div>
             </div>
-
             <StyleLinks
                 v-if='filters[mode].enabled.links'
                 v-model='filters[mode].properties.links'
@@ -410,12 +489,14 @@
         </div>
 
         <template v-if='mode === "point"'>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconCategory
-                        :size='20'
-                        stroke='1'
-                    /> Point Type</label>
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconCategory
+                            :size='20'
+                            stroke='1'
+                        /> Point Type
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled.type'
@@ -424,21 +505,23 @@
                         />
                     </div>
                 </div>
-                <StyleTemplate
+                <HandleForm
                     v-if='filters[mode].enabled.type'
                     v-model='filters[mode].properties.type'
                     placeholder='Type Override (a-f-G)'
                     :disabled='disabled'
-                    :rows='1'
                     :schema='props.schema'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconPhoto
-                        :size='20'
-                        stroke='1'
-                    /> Point Icon</label>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconPhoto
+                            :size='20'
+                            stroke='1'
+                        /> Point Icon
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled.icon'
@@ -449,17 +532,20 @@
                 </div>
                 <IconSelect
                     v-if='filters[mode].enabled.icon'
-                    v-model='filters[mode].properties.icon'
+                    v-model='filters[mode].properties.icon!'
                     label=''
                     :disabled='disabled || !filters[mode].enabled.icon'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconPaint
-                        :size='20'
-                        stroke='1'
-                    /> Point Color</label>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconPaint
+                            :size='20'
+                            stroke='1'
+                        /> Point Color
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled["marker-color"]'
@@ -475,19 +561,19 @@
                     :disabled='disabled || !filters[mode].enabled["marker-color"]'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
                     <label class='user-select-none subheader'>
                         <IconGhost
                             :size='20'
                             stroke='1'
-                        />
-                        Point Opacity
+                        /> Point Opacity
                     </label>
                     <span
                         v-if='filters[mode].enabled["marker-opacity"]'
-                        class='mx-2'
-                        v-text='`(${Math.round(filters[mode].properties["marker-opacity"] * 100)}%)`'
+                        class='mx-2 text-muted small'
+                        v-text='`(${Math.round((filters[mode].properties["marker-opacity"] ?? 0) * 100)}%)`'
                     />
                     <div class='ms-auto'>
                         <TablerToggle
@@ -507,13 +593,15 @@
                 />
             </div>
         </template>
-        <template v-else-if='mode !== "point"'>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconPaint
-                        :size='20'
-                        stroke='1'
-                    /> Line Color
+
+        <template v-else>
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconPaint
+                            :size='20'
+                            stroke='1'
+                        /> Line Color
                     </label>
                     <div class='ms-auto'>
                         <TablerToggle
@@ -531,12 +619,14 @@
                 />
             </div>
 
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconBorderStyle2
-                        :size='20'
-                        stroke='1'
-                    /> Line Style</label>
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconBorderStyle2
+                            :size='20'
+                            stroke='1'
+                        /> Line Style
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled["stroke-style"]'
@@ -552,12 +642,15 @@
                     :options='["Solid", "Dashed", "Dotted", "Outlined"]'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconRuler2
-                        :size='20'
-                        stroke='1'
-                    /> Line Width</label>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconRuler2
+                            :size='20'
+                            stroke='1'
+                        /> Line Width
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled["stroke-width"]'
@@ -575,21 +668,21 @@
                     :step='1'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
                     <label class='user-select-none subheader'>
                         <IconGhost
                             :size='20'
                             stroke='1'
-                        />
-                        Line Opacity
+                        /> Line Opacity
                     </label>
                     <span
                         v-if='filters[mode].enabled["stroke-opacity"]'
-                        class='mx-2'
-                        v-text='`(${Math.round(filters[mode].properties["stroke-opacity"] * 100)}%)`'
+                        class='mx-2 text-muted small'
+                        v-text='`(${Math.round((filters[mode].properties["stroke-opacity"] ?? 0) * 100)}%)`'
                     />
-                    <div class='d-flex align-items-center ms-auto btn-list'>
+                    <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled["stroke-opacity"]'
                             :disabled='disabled'
@@ -607,13 +700,16 @@
                 />
             </div>
         </template>
+
         <template v-if='mode === "polygon"'>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
-                    <label class='user-select-none subheader'><IconPaint
-                        :size='20'
-                        stroke='1'
-                    /> Fill Color</label>
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
+                    <label class='user-select-none subheader'>
+                        <IconPaint
+                            :size='20'
+                            stroke='1'
+                        /> Fill Color
+                    </label>
                     <div class='ms-auto'>
                         <TablerToggle
                             v-model='filters[mode].enabled.fill'
@@ -629,19 +725,19 @@
                     :disabled='disabled || !filters[mode].enabled.fill'
                 />
             </div>
-            <div class='col-md-12 hover rounded px-2 py-2'>
-                <div class='col-12 d-flex align-items-center'>
+
+            <div class='col-12 style-item px-2 py-2'>
+                <div class='d-flex align-items-center'>
                     <label class='user-select-none subheader'>
                         <IconGhost
                             :size='20'
                             stroke='1'
-                        />
-                        Fill Opacity
+                        /> Fill Opacity
                     </label>
                     <span
                         v-if='filters[mode].enabled["fill-opacity"]'
-                        class='mx-2'
-                        v-text='`(${Math.round(filters[mode].properties["fill-opacity"] * 100)}%)`'
+                        class='mx-2 text-muted small'
+                        v-text='`(${Math.round((filters[mode].properties["fill-opacity"] ?? 0) * 100)}%)`'
                     />
                     <div class='ms-auto'>
                         <TablerToggle
@@ -664,12 +760,14 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import { humanSeconds } from '../../../../std.js';
-import StyleTemplate from './StyleTemplate.vue';
+import HandleForm from '../../../util/HandleForm.vue';
+import StyleMarti from './StyleMarti.vue';
 import {
     IconLink,
+    IconServer,
     IconPaint,
     IconGhost,
     IconPoint,
@@ -690,48 +788,106 @@ import {
     TablerRange,
     TablerInput,
     TablerToggle,
-    TablerEnum
+    TablerEnum,
+    TablerInlineAlert,
+    TablerPillGroup
 } from '@tak-ps/vue-tabler';
 
-const props = defineProps({
-    modelValue: {
-        type: Object,
-        default: function() {
-            return {};
-        }
-    },
-    schema: {
-        type: Object,
-        required: true
-    },
-    disabled: {
-        type: Boolean,
-        default: false
-    }
+interface StyleLink {
+    remarks: string;
+    url: string;
+    [key: string]: unknown;
+}
+
+interface GeometryProperties {
+    id: string;
+    stale: string;
+    minzoom: number;
+    maxzoom: number;
+    remarks: string;
+    phone: string;
+    callsign: string;
+    type?: string;
+    links: StyleLink[];
+    icon?: string;
+    'marker-color'?: string;
+    'marker-opacity'?: number;
+    stroke?: string;
+    'stroke-style'?: string;
+    'stroke-opacity'?: number;
+    'stroke-width'?: number;
+    fill?: string;
+    'fill-opacity'?: number;
+    [key: string]: unknown;
+}
+
+interface GeometryOverride {
+    enabled: Record<string, boolean>;
+    properties: GeometryProperties;
+    [key: string]: unknown;
+}
+
+interface StyleFilters {
+    id: string;
+    callsign: string;
+    remarks: string;
+    phone: string;
+    stale: string;
+    minzoom: number;
+    maxzoom: number;
+    links: StyleLink[];
+    marti: Record<string, unknown>;
+    point: GeometryOverride;
+    line: GeometryOverride;
+    polygon: GeometryOverride;
+    [key: string]: unknown;
+}
+
+interface EnabledFlags {
+    [key: string]: boolean;
+}
+
+const props = withDefaults(defineProps<{
+    modelValue?: Record<string, unknown>;
+    schema: Record<string, unknown>;
+    disabled?: boolean;
+    disableMarti?: boolean;
+    connection?: number;
+}>(), {
+    modelValue: () => ({}),
+    disabled: false,
+    disableMarti: false,
+    connection: undefined
 });
 
-const emit = defineEmits([ 'update:modelValue' ]);
+const emit = defineEmits<{
+    (e: 'update:modelValue', value: Record<string, unknown>): void;
+}>();
 
-const mode = ref('point');
+const mode = ref<'point' | 'line' | 'polygon'>('point');
 
-const enabled = ref({
+const enabled = ref<EnabledFlags>({
     id: false,
     stale: false,
     minzoom: false,
     maxzoom: false,
     remarks: false,
+    phone: false,
     callsign: false,
     links: false,
+    marti: false,
 });
 
-const filters = ref({
+const filters = ref<StyleFilters>({
     id: '',
     callsign: '',
     remarks: '',
+    phone: '',
     stale: '20',
     minzoom: 0,
     maxzoom: 24,
     links: [],
+    marti: {},
     point: {
         enabled: {
             id: false,
@@ -743,6 +899,7 @@ const filters = ref({
             'marker-color': false,
             'marker-opacity': false,
             remarks: false,
+            phone: false,
             callsign: false
         },
         properties: {
@@ -754,6 +911,7 @@ const filters = ref({
             'marker-color': '#d63939',
             'marker-opacity': 1,
             remarks: '',
+            phone: '',
             callsign: '',
             links: []
         }
@@ -770,6 +928,7 @@ const filters = ref({
             maxzoom: false,
             links: false,
             remarks: false,
+            phone: false,
             callsign: false
         },
         properties: {
@@ -782,6 +941,7 @@ const filters = ref({
             minzoom: 0,
             maxzoom: 24,
             remarks: '',
+            phone: '',
             callsign: '',
             links: []
         }
@@ -800,6 +960,7 @@ const filters = ref({
             links: false,
             'fill-opacity': false,
             remarks: false,
+            phone: false,
             callsign: false,
         },
         properties: {
@@ -814,18 +975,19 @@ const filters = ref({
             minzoom: 0,
             maxzoom: 24,
             remarks: '',
+            phone: '',
             callsign: '',
             links: []
         }
     }
 });
 
-watch(enabled.value, format);
-watch(filters.value, format);
+watch(enabled, format, { deep: true });
+watch(filters, format, { deep: true });
 
 onMounted(() => {
-    for (const prop of ['id', 'remarks', 'callsign', 'links', 'minzoom', 'maxzoom', 'stale']) {
-        if (props.modelValue[prop] === undefined || (Array.isArray(props.modelValue[prop]) && props.modelValue[prop].length === 0)) {
+    for (const prop of ['id', 'remarks', 'phone', 'callsign', 'links', 'minzoom', 'maxzoom', 'stale']) {
+        if (props.modelValue[prop] === undefined || (Array.isArray(props.modelValue[prop]) && (props.modelValue[prop] as unknown[]).length === 0)) {
             continue;
         }
 
@@ -833,15 +995,21 @@ onMounted(() => {
         enabled.value[prop] = true;
     }
 
-    for (const key of ['point', 'line', 'polygon']) {
+    if (props.modelValue.marti && Object.keys(props.modelValue.marti as Record<string, unknown>).length > 0) {
+        filters.value.marti = JSON.parse(JSON.stringify(props.modelValue.marti));
+        enabled.value.marti = true;
+    }
+
+    for (const key of ['point', 'line', 'polygon'] as const) {
         if (!props.modelValue[key]) continue;
-        for (const prop in props.modelValue[key]) {
-            if (props.modelValue[key][prop] !== undefined) {
+        const geomInput = props.modelValue[key] as Record<string, unknown>;
+        for (const prop in geomInput) {
+            if (geomInput[prop] !== undefined) {
                 filters.value[key].enabled[prop] = true;
             }
         }
 
-        const style = JSON.parse(JSON.stringify(props.modelValue[key]));
+        const style = JSON.parse(JSON.stringify(geomInput)) as Record<string, unknown>;
         Object.assign(filters.value[key].properties, style);
     }
 
@@ -849,11 +1017,11 @@ onMounted(() => {
 });
 
 function format() {
-    const styles = JSON.parse(JSON.stringify(filters.value));
+    const styles = JSON.parse(JSON.stringify(filters.value)) as StyleFilters;
 
-    const res = {};
+    const res: Record<string, unknown> = {};
 
-    for (const prop of ['id', 'remarks', 'callsign', 'links', 'minzoom', 'maxzoom', 'stale']) {
+    for (const prop of ['id', 'remarks', 'phone', 'callsign', 'links', 'minzoom', 'maxzoom', 'stale']) {
         if (!enabled.value[prop]) continue;
 
         if (['minzoom', 'maxzoom', 'stale'].includes(prop) && !isNaN(Number(styles[prop]))) {
@@ -863,19 +1031,24 @@ function format() {
         }
     }
 
-    for (const geom of ['point', 'line', 'polygon']) {
-        res[geom] = {};
+    if (enabled.value.marti && styles.marti && Object.keys(styles.marti).length > 0) {
+        res.marti = styles.marti;
+    }
+
+    for (const geom of ['point', 'line', 'polygon'] as const) {
+        const geomRes: Record<string, unknown> = {};
+        res[geom] = geomRes;
         for (const key in styles[geom].enabled) {
             if (!styles[geom].enabled[key]) continue;
 
             if (['minzoom', 'maxzoom', 'stale'].includes(key) && !isNaN(Number(styles[geom][key]))) {
                 styles[geom][key] = Number(styles[geom][key]);
             } else if (['fill-opacity', 'stroke-width', 'stroke-opacity'].includes(key)) {
-                if (styles[geom].properties[key] !== undefined) res[geom][key] = Number(styles[geom].properties[key])
-            } else if (['remarks', 'callsign'].includes(key)) {
-                if (styles[geom].properties[key]) res[geom][key] = styles[geom].properties[key];
+                if (styles[geom].properties[key] !== undefined) geomRes[key] = Number(styles[geom].properties[key]);
+            } else if (['remarks', 'callsign', 'phone'].includes(key)) {
+                if (styles[geom].properties[key]) geomRes[key] = styles[geom].properties[key];
             } else {
-                res[geom][key] = styles[geom].properties[key];
+                geomRes[key] = styles[geom].properties[key];
             }
         }
     }
@@ -883,3 +1056,15 @@ function format() {
     emit('update:modelValue', res);
 }
 </script>
+
+<style scoped>
+.style-item {
+    border: 1px solid transparent;
+    border-radius: 4px;
+    transition: border-color 0.15s ease;
+}
+
+.style-item:hover {
+    border-color: var(--tblr-border-color, #e6e7e9);
+}
+</style>

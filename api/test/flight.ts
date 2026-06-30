@@ -1,9 +1,7 @@
 process.env.StackName = 'test';
 
-import { fetch, FormData } from 'undici';
-import type { Response, Headers } from 'undici';
 import CP from 'node:child_process';
-import MockTAKServer from './tak-server.js'
+import MockTAKServer from './tak-server.js';
 import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import api from '../index.js';
@@ -13,11 +11,12 @@ import { pathToRegexp } from 'path-to-regexp';
 import test from 'node:test';
 import assert from 'node:assert';
 import ProfileControl from '../lib/control/profile.js';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { Ajv } from 'ajv';
+import type { FormatsPlugin } from 'ajv-formats';
+import * as ajvFormats from 'ajv-formats';
 import * as pgtypes from '../lib/schema.js';
 import { Pool } from '@openaddresses/batch-generic';
-const ajv = addFormats(new Ajv({ allErrors: true }));
+const ajv = (ajvFormats.default as unknown as FormatsPlugin)(new Ajv({ allErrors: true }));
 
 /**
  * @class
@@ -60,9 +59,14 @@ export default class Flight {
     /**
      * Clear and restore an empty database schema
      *
-     * @param {boolean} dropdb Should the database be dropped
+     * @param {Object} [opts] Options
+     * @param {boolean} [opts.dropdb=true] Should the database be dropped
+     * @param {boolean} [opts.takserver=false] Should the MockTAKServer be started
      */
-    init(dropdb = true) {
+    init(opts: { dropdb?: boolean; takserver?: boolean } = {}) {
+        const dropdb = opts.dropdb !== undefined ? opts.dropdb : true;
+        const takserver = opts.takserver !== undefined ? opts.takserver : false;
+
         test('start: database', async () => {
             try {
                 if (dropdb) {
@@ -90,15 +94,17 @@ export default class Flight {
                 }
             }
 
-            this._tak = new MockTAKServer();
-            await this._tak.start();
+            if (takserver) {
+                this._tak = new MockTAKServer();
+                await this._tak.start();
+            }
 
             process.env.ASSET_BUCKET = 'fake-asset-bucket';
         });
     }
 
     get tak() {
-        if (!this._tak) throw new Error('Flight Test Runner not initialized - call flight.init() first');
+        if (!this._tak) throw new Error('Flight Test Runner not initialized - call flight.init({ takserver: true }) first');
         return this._tak;
     }
 
@@ -112,7 +118,7 @@ export default class Flight {
         test(`Fixture: ${name}`, async () => {
             const req = JSON.parse(String(fs.readFileSync(new URL('./fixtures/' + name, import.meta.url))));
             if (auth) req.auth = {
-                bearer: this.token[auth]
+                bearer: this.token[auth],
             };
 
             try {
@@ -135,14 +141,14 @@ export default class Flight {
     async fetch(
         url: string | URL,
         req: any,
-        t: boolean | { verify?: boolean; json?: boolean; binary?: boolean }
+        t: boolean | { verify?: boolean; json?: boolean; binary?: boolean },
     ): Promise<any> {
         if (t === undefined) throw new Error('flight.fetch requires two arguments - pass (<url>, <req>, false) to disable schema testing');
 
         const defs = {
             verify: false,
             json: true,
-            binary: false
+            binary: false,
         };
 
         if (t === true) {
@@ -205,7 +211,7 @@ export default class Flight {
         schemaurl.searchParams.append('url', match.split(' ')[1]);
 
         const rawschema = await (await fetch(schemaurl)).json() as {
-            res: object
+            res: object;
         };
 
         if (!rawschema.res) throw new Error('Cannot validate resultant schema - no result schema defined');
@@ -243,7 +249,7 @@ export default class Flight {
                 silent: true,
                 noevents: true,
                 nosinks: true,
-                nocache: true
+                nocache: true,
             });
 
             Object.assign(this.config, custom);
@@ -253,9 +259,9 @@ export default class Flight {
                 url: 'ssl://localhost:8089',
                 auth: {
                     cert: String(fs.readFileSync(this.tak.keys.cert)),
-                    key: String(fs.readFileSync(this.tak.keys.key))
+                    key: String(fs.readFileSync(this.tak.keys.key)),
                 },
-                api: 'https://localhost:8443'
+                api: 'https://localhost:8443',
             });
 
             this.srv = await api(this.config);
@@ -274,9 +280,9 @@ export default class Flight {
         test('Create User', async () => {
             const username = opts.username || (opts.admin ? 'admin' : 'user');
 
-           if (!this.config) throw new Error('TakeOff not completed');
+            if (!this.config) throw new Error('TakeOff not completed');
 
-           const profileControl = new ProfileControl(this.config);
+            const profileControl = new ProfileControl(this.config);
 
             CP.execSync(`
                 openssl req \
@@ -300,19 +306,19 @@ export default class Flight {
                     2> /dev/null
             `);
 
-           await profileControl.generate({
+            await profileControl.generate({
                 username: username + '@example.com',
                 system_admin: opts.admin,
                 auth: {
                     key: String(fs.readFileSync(`/tmp/cloudtak-test-${username}.key`)),
-                    cert: String(fs.readFileSync(`/tmp/cloudtak-test-${username}.cert`))
-                }
+                    cert: String(fs.readFileSync(`/tmp/cloudtak-test-${username}.cert`)),
+                },
             });
 
             if (opts.admin) {
-                this.token[username] = jwt.sign({ access: 'admin', email: username + '@example.com' }, 'coe-wildland-fire')
+                this.token[username] = jwt.sign({ access: 'admin', email: username + '@example.com' }, 'coe-wildland-fire');
             } else {
-                this.token[username] = jwt.sign({ access: 'user', email: username + '@example.com' }, 'coe-wildland-fire')
+                this.token[username] = jwt.sign({ access: 'user', email: username + '@example.com' }, 'coe-wildland-fire');
             }
         });
     }
@@ -322,12 +328,12 @@ export default class Flight {
             await this.fetch('/api/server', {
                 method: 'PATCH',
                 auth: {
-                    bearer: this.token.admin
+                    bearer: this.token.admin,
                 },
                 body: {
                     name: 'Test Server',
-                    url:    'ssl://localhost:8089',
-                    api:    'https://localhost:8443',
+                    url: 'ssl://localhost:8089',
+                    api: 'https://localhost:8443',
                     webtak: 'http://localhost:8444',
 
                     username,
@@ -335,14 +341,14 @@ export default class Flight {
 
                     auth: {
                         cert: String(fs.readFileSync(this.tak.keys.cert)),
-                        key: String(fs.readFileSync(this.tak.keys.key))
-                    }
-                }
+                        key: String(fs.readFileSync(this.tak.keys.key)),
+                    },
+                },
             }, true);
 
             // Refresh config to pick up new server details
             this.config!.server = await this.config!.models.Server.from(this.config!.server.id);
-        })
+        });
     }
 
     connection() {
@@ -372,16 +378,16 @@ export default class Flight {
             const conn = await this.fetch('/api/connection', {
                 method: 'POST',
                 auth: {
-                    bearer: this.token.admin
+                    bearer: this.token.admin,
                 },
                 body: {
                     name: 'Test Connection',
                     description: 'Connection created by Flight Test Runner',
                     auth: {
                         key: String(fs.readFileSync('/tmp/cloudtak-test-alice.key')),
-                        cert: String(fs.readFileSync('/tmp/cloudtak-test-alice.cert'))
-                    }
-                }
+                        cert: String(fs.readFileSync('/tmp/cloudtak-test-alice.cert')),
+                    },
+                },
             }, true);
 
             delete conn.body.certificate.validFrom;
@@ -392,7 +398,7 @@ export default class Flight {
             assert.deepEqual(conn.body, {
                 status: 'dead',
                 certificate: {
-                    subject: 'CN=Alice'
+                    subject: 'CN=Alice',
                 },
                 id: 1,
                 agency: null,
@@ -400,13 +406,13 @@ export default class Flight {
                 readonly: false,
                 name: 'Test Connection',
                 description: 'Connection created by Flight Test Runner',
-                enabled: true
+                enabled: true,
             });
 
             await new Promise((resolve) => {
                 setTimeout(resolve, 1000);
-            })
-       })
+            });
+        });
     }
 
     /**
@@ -414,9 +420,15 @@ export default class Flight {
      */
     landing() {
         test('test server landing - api', async () => {
+            if (this._tak) {
+                assert.equal(
+                    this._tak.unhandledMartiRequests.length, 0,
+                    `Unhandled Marti requests detected: ${this._tak.unhandledMartiRequests.join(', ')}`,
+                );
+            }
+
             if (this.srv) await this.srv.close();
-            if (this.tak) await this.tak.close();
+            if (this._tak) await this._tak.close();
         });
     }
 }
-

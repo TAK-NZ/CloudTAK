@@ -1,4 +1,4 @@
-import type { S3ClientConfig } from '@aws-sdk/client-s3'
+import type { S3ClientConfig } from '@aws-sdk/client-s3';
 import * as S3AWS from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import Err from '@openaddresses/batch-error';
@@ -13,7 +13,7 @@ export default class S3 {
         if (!process.env.ASSET_BUCKET) throw new Err(400, null, 'ASSET_BUCKET not set');
 
         const config: S3ClientConfig = {
-            region: process.env.AWS_REGION
+            region: process.env.AWS_REGION,
         };
 
         if (process.env.AWS_S3_Endpoint) {
@@ -26,8 +26,8 @@ export default class S3 {
 
             config.credentials = {
                 accessKeyId: process.env.AWS_S3_AccessKeyId,
-                secretAccessKey: process.env.AWS_S3_SecretAccessKey
-            }
+                secretAccessKey: process.env.AWS_S3_SecretAccessKey,
+            };
         }
 
         return new S3AWS.S3Client(config);
@@ -39,7 +39,7 @@ export default class S3 {
 
             const head = await s3.send(new S3AWS.HeadObjectCommand({
                 Bucket: process.env.ASSET_BUCKET,
-                Key: key
+                Key: key,
             }));
 
             return head;
@@ -58,8 +58,8 @@ export default class S3 {
                 params: {
                     Bucket: process.env.ASSET_BUCKET,
                     Key: key,
-                    Body: body
-                }
+                    Body: body,
+                },
             });
 
             await upload.done();
@@ -74,7 +74,7 @@ export default class S3 {
 
             const res = await s3.send(new S3AWS.GetObjectCommand({
                 Bucket: process.env.ASSET_BUCKET,
-                Key: key
+                Key: key,
             }));
 
             const read = res.Body as Readable;
@@ -90,7 +90,7 @@ export default class S3 {
 
             await s3.send(new S3AWS.HeadObjectCommand({
                 Bucket: process.env.ASSET_BUCKET,
-                Key: key
+                Key: key,
             }));
             return true;
         } catch (err) {
@@ -110,7 +110,7 @@ export default class S3 {
 
             const list = await s3.send(new S3AWS.ListObjectsV2Command({
                 Bucket: process.env.ASSET_BUCKET,
-                Prefix: fragment
+                Prefix: fragment,
             }));
 
             return list.Contents || [];
@@ -127,7 +127,7 @@ export default class S3 {
      * @param {boolean} [opts.recurse]      Recursive Delete on key
      */
     static async del(key: string, opts: {
-        recurse: boolean
+        recurse: boolean;
     } = { recurse: false }): Promise<void> {
         try {
             const s3 = this.#client();
@@ -135,7 +135,7 @@ export default class S3 {
             if (!opts.recurse) {
                 await s3.send(new S3AWS.DeleteObjectCommand({
                     Bucket: process.env.ASSET_BUCKET,
-                    Key: key
+                    Key: key,
                 }));
             } else {
                 const list = await this.list(key);
@@ -147,10 +147,10 @@ export default class S3 {
                     Delete: {
                         Objects: list.map((l) => {
                             return {
-                                Key: l.Key
+                                Key: l.Key,
                             };
-                        })
-                    }
+                        }),
+                    },
                 }));
             }
         } catch (err) {

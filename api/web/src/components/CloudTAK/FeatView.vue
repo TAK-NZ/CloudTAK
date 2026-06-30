@@ -1,14 +1,11 @@
 <template>
     <div
-        class='position-absolute end-0 bottom-0 text-white bg-dark'
-        style='
-            z-index: 1;
-            width: 400px;
-            top: 56px;
-        '
+        v-if='feature'
+        class='d-flex flex-column'
+        style='height: 100%;'
     >
         <div
-            class='col-12 border-light border-bottom sticky-top'
+            class='col-12 border-light border-bottom flex-shrink-0'
             style='
                 height: 90px;
                 border-radius: 0px;
@@ -18,7 +15,7 @@
                 <div
                     class='card-title mx-2 text-truncate'
                     style='width: 280px'
-                    v-text='feat.properties?.name || "No Name"'
+                    v-text='feature.properties?.name || "No Name"'
                 />
             </div>
             <div class='col-12 btn-list my-2 d-flex align-items-center mx-2'>
@@ -72,8 +69,8 @@
         </div>
 
         <div
-            class='col-12 overflow-auto'
-            style='height: calc(100vh - 90px)'
+            class='col-12 overflow-auto flex-fill'
+            style='min-height: 0'
         >
             <template v-if='mode === "default"'>
                 <div class='col-12 px-2 py-2'>
@@ -111,23 +108,23 @@
                                     <th>Value</th>
                                 </tr>
                             </thead>
-                            <tbody class='bg-accent'>
-                                <template v-if='feat.properties'>
+                            <tbody class='cloudtak-accent'>
+                                <template v-if='feature.properties && displayProperties.length'>
                                     <tr
-                                        v-for='prop of Object.keys(feat.properties)'
+                                        v-for='prop of displayProperties'
                                         :key='prop'
                                     >
                                         <td v-text='prop' />
                                         <td>
                                             <a
-                                                v-if='typeof feat.properties[prop] === "string" && feat.properties[prop].startsWith("http")'
-                                                :href='feat.properties[prop]'
+                                                v-if='typeof feature.properties[prop] === "string" && feature.properties[prop].startsWith("http")'
+                                                :href='feature.properties[prop]'
                                                 target='_blank'
-                                                v-text='feat.properties[prop]'
+                                                v-text='feature.properties[prop]'
                                             />
                                             <span
                                                 v-else
-                                                v-text='feat.properties[prop]'
+                                                v-text='feature.properties[prop]'
                                             />
                                         </td>
                                     </tr>
@@ -138,23 +135,21 @@
                 </div>
             </template>
             <template v-else-if='mode === "raw"'>
-                <pre v-text='feat' />
+                <pre v-text='feature' />
             </template>
         </div>
     </div>
 </template>
 
 <script setup lang='ts'>
-import { v4 as randomUUID } from 'uuid';
 import { ref, computed } from 'vue';
 import { useMapStore } from '../../stores/map.ts';
-import { std } from '../../std.ts';
-import Overlay from '../../base/overlay.ts';
 import type { LngLatLike, MapGeoJSONFeature } from 'maplibre-gl';
 import type { Feature } from 'geojson';
 import pointOnFeature from '@turf/point-on-feature';
 import Coordinate from './util/Coordinate.vue';
 import CopyField from './util/CopyField.vue';
+import { cutOverlayFeature, getFeatureOverlay } from './util/featureCut.ts';
 import {
     TablerIconButton
 } from '@tak-ps/vue-tabler';
@@ -169,27 +164,45 @@ import {
 const mapStore = useMapStore();
 
 const props = defineProps<{
-    feat: Feature | MapGeoJSONFeature
+    feat?: Feature | MapGeoJSONFeature
 }>();
+
+const feature = computed(() => {
+    if (props.feat) return props.feat;
+    return mapStore.viewedFeature;
+})
 
 const mode = ref('default');
 
-const overlay = computed<Overlay | null>(() => {
-    // @ts-expect-error Doesn't exist in typedef
-    const source: number | undefined = Number(props.feat.source);
-    if (!source || isNaN(source)) return null
-    const ov = mapStore.getOverlayById(source);
-    return ov;
-})
+const STYLE_PROPERTIES = new Set([
+    'marker-color',
+    'marker-opacity',
+    'marker-size',
+    'marker-symbol',
+    'stroke',
+    'stroke-opacity',
+    'stroke-width',
+    'stroke-style',
+    'fill',
+    'fill-opacity'
+]);
+
+const displayProperties = computed(() => {
+    if (!feature.value || !feature.value.properties) return [];
+    return Object.keys(feature.value.properties).filter((prop) => !STYLE_PROPERTIES.has(prop));
+});
+
+const overlay = computed(() => getFeatureOverlay(feature.value));
 
 const center = computed(() => {
-    return pointOnFeature(props.feat).geometry.coordinates;
+    if (!feature.value) return [0, 0];
+    return pointOnFeature(feature.value).geometry.coordinates;
 });
 
 const htmlDescription = computed(() => {
-    if (!props.feat.properties?.description) return null;
+    if (!feature.value || !feature.value.properties?.description) return null;
     try {
-        const desc = JSON.parse(props.feat.properties.description);
+        const desc = JSON.parse(feature.value.properties.description);
         if (desc['@type'] === 'html' && desc.value) {
             return desc.value;
         }
@@ -200,37 +213,7 @@ const htmlDescription = computed(() => {
 });
 
 async function cutFeature() {
-    if (!overlay.value) throw new Error("Could not determine Overlay");
-
-    const rawFeature = await std(`/api/basemap/${overlay.value.mode_id}/feature/${props.feat.id}`) as Feature;
-    const id = randomUUID();
-
-    if (
-        rawFeature.geometry.type !== "Point"
-        && rawFeature.geometry.type !== "LineString"
-        && rawFeature.geometry.type !== "Polygon"
-    ) {
-        throw new Error(`${rawFeature.geometry.type} geometry type is not currently supported`);
-    }
-
-    mapStore.toImport.push({
-        id,
-        type: 'Feature',
-        path: '/',
-        properties: {
-            id,
-            type: 'u-d-p',
-            how: 'h-g-i-g-o',
-            color: '#00FF00',
-            archived: true,
-            time: new Date().toISOString(),
-            start: new Date().toISOString(),
-            stale: new Date().toISOString(),
-            center: pointOnFeature(rawFeature).geometry.coordinates,
-            callsign: 'New Feature'
-        },
-        geometry: rawFeature.geometry
-    });
+    await cutOverlayFeature(mapStore, feature.value);
 }
 
 function zoomTo() {
