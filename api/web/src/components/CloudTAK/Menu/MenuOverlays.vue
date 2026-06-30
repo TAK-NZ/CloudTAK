@@ -69,6 +69,8 @@
                             }'
                             :hover='!isDraggable && card.overlay.id !== 0'
                             @click='handleCardClick(card.overlay.id)'
+                            @keydown.enter.prevent='handleCardKeydown(card.overlay.id)'
+                            @keydown.space.prevent='handleCardKeydown(card.overlay.id)'
                         >
                             <div
                                 class='d-flex justify-content-between gap-3'
@@ -100,7 +102,7 @@
                                         stroke='1'
                                         class='flex-shrink-0 text-white-50'
                                     />
-                                    <IconAmbulance
+                                    <IconReplace
                                         v-else-if='card.overlay.type === "geojson" && card.overlay.mode === "mission"'
                                         v-tooltip='"Data Sync"'
                                         :size='20'
@@ -290,7 +292,7 @@ import TreeVector from './Overlays/TreeVector.vue';
 import TreeMission from './Overlays/TreeMission.vue';
 import {
     IconGripVertical,
-    IconAmbulance,
+    IconReplace,
     IconMaximize,
     IconVector,
     IconEyeOff,
@@ -480,6 +482,10 @@ function handleCardClick(id: number) {
     if (isDraggable.value) return;
     if (id === 0) return;
     toggleOverlay(id);
+}
+
+function handleCardKeydown(id: number) {
+    handleCardClick(id);
 }
 
 function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
