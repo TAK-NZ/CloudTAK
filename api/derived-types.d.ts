@@ -344,6 +344,7 @@ export interface paths {
                         "application/json": {
                             id: number;
                             name: string;
+                            description?: unknown;
                         };
                     };
                 };

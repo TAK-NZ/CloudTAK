@@ -52,7 +52,7 @@
                             </div>
                             <div
                                 class='datagrid-content'
-                                v-text='"No Description"'
+                                v-text='agency.description || "No Description"'
                             />
                         </div>
                     </div>

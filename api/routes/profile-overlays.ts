@@ -298,6 +298,38 @@ export default async function router(schema: Schema, config: Config) {
                 BasemapProtocol.isValidStyle(req.body.type || 'raster', req.body.styles);
             }
 
+            // Normalize URL early (before duplicate check)
+            if (req.body.mode === 'profile' && req.body.url && req.body.url.startsWith('http')) {
+                const url = new URL(req.body.url);
+                req.body.url = url.pathname;
+            }
+
+            // Check if overlay already exists and unhide it instead of creating a duplicate
+            if (req.body.mode !== 'mission' && req.body.url) {
+                const existing = await config.models.ProfileOverlay.list({
+                    limit: 1,
+                    where: sql`username = ${user.email} AND url = ${req.body.url}`
+                });
+
+                if (existing.total > 0) {
+                    const overlay = await config.models.ProfileOverlay.commit(existing.items[0].id, {
+                        visible: true
+                    });
+
+                    if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
+                        if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
+                        const basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
+                        return res.json(serializeOverlay(
+                            overlay,
+                            fromProtocol(basemap.protocol, basemap).actions(),
+                            basemap.type === 'raster-dem' ? basemap.encoding : undefined,
+                        ));
+                    } else {
+                        return res.json(serializeOverlay(overlay, fromProtocol().actions()));
+                    }
+                }
+            }
+
             if (req.body.active && req.body.mode !== 'mission') {
                 throw new Err(400, null, 'Only mission overlays can be made active');
             } else if (req.body.active) {
@@ -328,11 +360,6 @@ export default async function router(schema: Schema, config: Config) {
                     token: sub.data.token,
                 });
             } else {
-                if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
-                    const url = new URL(req.body.url);
-                    req.body.url = url.pathname;
-                }
-
                 if ((req.body.mode === 'basemap' || req.body.mode === 'overlay') && req.body.mode_id && !req.body.type) {
                     const basemapForType = await config.models.Basemap.from(parseInt(req.body.mode_id));
                     req.body.type = basemapForType.type;
@@ -358,11 +385,7 @@ export default async function router(schema: Schema, config: Config) {
                 res.json(serializeOverlay(overlay, fromProtocol().actions()));
             }
         } catch (err) {
-            if (String(err).includes('duplicate key value violates unique constraint')) {
-                Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'Overlay appears to exist - cannot add duplicate'), res);
-            } else {
-                Err.respond(err, res);
-            }
+            return Err.respond(err, res);
         }
     });
 
@@ -385,6 +408,16 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             await config.models.ProfileOverlay.delete(overlay.id);
+
+            // Delete associated iconset if it exists
+            if (overlay.iconset) {
+                try {
+                    await config.models.Iconset.delete(overlay.iconset);
+                } catch (err) {
+                    // Iconset might be shared or already deleted, ignore error
+                    console.warn(`Failed to delete iconset ${overlay.iconset}:`, err);
+                }
+            }
 
             if (overlay.mode === 'mission' && overlay.mode_id) {
                 const profile = await config.models.Profile.from(user.email);
