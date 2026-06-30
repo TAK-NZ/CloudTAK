@@ -1,10 +1,9 @@
-import fetch from './fetch.js';
 import Err from '@openaddresses/batch-error';
 import Config from './config.js';
 import { Static } from '@sinclair/typebox';
-import { Agency, MachineUser, Channel } from './external.js';
+import { Agency, MachineUser, Channel } from './interface-user.js';
 import crypto from 'crypto';
-import TAKAPI from '@tak-ps/node-tak';
+import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
 
 export default class AuthentikProvider {
     config: Config;
@@ -491,7 +490,6 @@ export default class AuthentikProvider {
         const userData: any = await userResponse.json();
         
         // Use password auth instead of potentially revoked certificate
-        const { APIAuthPassword } = await import('@tak-ps/node-tak');
         const takAuth = new APIAuthPassword(userData.username, tempPassword);
         const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
         const enrollment = await takApi.Certificate.generate({
