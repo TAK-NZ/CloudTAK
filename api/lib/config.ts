@@ -9,7 +9,7 @@ import ConnectionPool from './connection-pool.js';
 import ConnectionGeofence from './connection-geofence.js';
 import { ConnectionWebSocket } from './connection-web.js';
 import type { Server } from './schema.js';
-import { type InferSelectModel } from 'drizzle-orm';
+import { type InferSelectModel, sql } from 'drizzle-orm';
 import Models from './models.js';
 import process from 'node:process';
 import * as pgtypes from './schema.js';
@@ -32,10 +32,12 @@ export default class Config {
     models: Models;
     StackName: string;
     SigningSecret: string;
+    MediaSecret: string;
     user?: UserManager;
     weather: WeatherManager;
     API_URL: string;
     PMTILES_URL: string;
+    DynamoDB?: string;
     wsClients: Map<string, ConnectionWebSocket[]>;
     Bucket?: string;
     pg: Pool<typeof pgtypes>;
@@ -43,6 +45,10 @@ export default class Config {
     geofence: ConnectionGeofence;
     server: InferSelectModel<typeof Server>;
     events: EventsPool;
+    VpcId?: string;
+    SubnetPublicA?: string;
+    SubnetPublicB?: string;
+    MediaSecurityGroup?: string;
     arnPrefix?: string;
 
     constructor(init: {
@@ -56,9 +62,11 @@ export default class Config {
         API_URL: string;
         PMTILES_URL: string;
         SigningSecret: string;
+        MediaSecret: string;
         wsClients: Map<string, ConnectionWebSocket[]>;
         pg: Pool<typeof pgtypes>;
         server: InferSelectModel<typeof Server>;
+        DynamoDB?: string;
         Bucket?: string;
     }) {
         this.silent = init.silent;
@@ -69,10 +77,12 @@ export default class Config {
         this.models = init.models;
         this.StackName = init.StackName;
         this.SigningSecret = init.SigningSecret;
+        this.MediaSecret = init.MediaSecret;
         this.API_URL = init.API_URL;
         this.PMTILES_URL = init.PMTILES_URL;
         this.wsClients = init.wsClients;
         this.pg = init.pg;
+        this.DynamoDB = init.DynamoDB;
         this.Bucket = init.Bucket;
         this.server = init.server;
 
@@ -102,11 +112,12 @@ export default class Config {
             process.env.AWS_REGION = 'us-east-1';
         }
 
-        let SigningSecret, API_URL, PMTILES_URL, Bucket;
+        let SigningSecret, MediaSecret, API_URL, PMTILES_URL, DynamoDB, Bucket;
         if (!process.env.StackName || process.env.StackName === 'test') {
             process.env.StackName = 'test';
 
             SigningSecret = process.env.SigningSecret || 'coe-wildland-fire';
+            MediaSecret = process.env.MediaSecret || 'coe-wildland-fire-video';
             Bucket = process.env.ASSET_BUCKET;
             API_URL = process.env.API_URL || 'http://localhost:5001';
             PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
@@ -115,18 +126,20 @@ export default class Config {
             if (!process.env.API_URL) throw new Error('API_URL env must be set');
             if (!process.env.ASSET_BUCKET) throw new Error('ASSET_BUCKET env must be set');
 
-            API_URL = process.env.API_URL;
-
-            const apiUrl = new URL(process.env.API_URL);
+            // API_URL env var contains only the hostname; prepend the scheme
+            const apiUrl = new URL(`http://${process.env.API_URL}`);
             if (apiUrl.hostname === 'localhost') {
+                API_URL = `http://${process.env.API_URL}`;
                 PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
             } else {
-                const url = new URL(process.env.API_URL);
-                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${url.host}`;
+                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${process.env.API_URL}`;
+                API_URL = `https://${process.env.API_URL}`;
             }
 
             Bucket = process.env.ASSET_BUCKET;
+            DynamoDB = process.env.StackName;
             SigningSecret = process.env.SigningSecret || await Config.fetchSecret(process.env.StackName, 'secret');
+            MediaSecret = process.env.MediaSecret || await Config.fetchSecret(process.env.StackName, 'media');
         }
 
         const pg: Pool<typeof pgtypes> = await Pool.connect(args.postgres, pgtypes, {
@@ -142,11 +155,81 @@ export default class Config {
         } catch (err) {
             console.log(`ok - no server config found: ${err instanceof Error ? err.message : String(err)}`);
 
-            server = await models.Server.generate({
-                name: 'Default Server',
-                url: 'ssl://localhost:8089',
-                api: 'https://localhost:8443',
-            });
+            // Create server record, seeding from CLOUDTAK_Server_* env vars if present
+            const serverData: Record<string, unknown> = {
+                name: process.env.CLOUDTAK_Server_name || 'Default Server',
+                url: process.env.CLOUDTAK_Server_url || 'ssl://localhost:8089',
+                api: process.env.CLOUDTAK_Server_api || 'https://localhost:8443',
+            };
+            if (process.env.CLOUDTAK_Server_webtak) {
+                serverData.webtak = process.env.CLOUDTAK_Server_webtak;
+            }
+            if (process.env.CLOUDTAK_Server_auth_cert && process.env.CLOUDTAK_Server_auth_key) {
+                serverData.auth = {
+                    cert: process.env.CLOUDTAK_Server_auth_cert,
+                    key: process.env.CLOUDTAK_Server_auth_key,
+                };
+            } else if (process.env.CLOUDTAK_Server_auth_p12_secret_arn && process.env.CLOUDTAK_Server_auth_password) {
+                try {
+                    const secrets = new SecretsManager.SecretsManagerClient({ region: process.env.AWS_REGION });
+                    const secretValue = await secrets.send(new SecretsManager.GetSecretValueCommand({
+                        SecretId: process.env.CLOUDTAK_Server_auth_p12_secret_arn,
+                    }));
+                    if (secretValue.SecretBinary) {
+                        const pem = (await import('pem')).default;
+                        const p12Buffer = Buffer.from(secretValue.SecretBinary);
+                        const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
+                            pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
+                                if (e) reject(e); else resolve({ pemCertificate: result.cert, pemKey: result.key });
+                            });
+                        });
+                        serverData.auth = { cert: certs.pemCertificate, key: certs.pemKey };
+                        console.error('ok - Extracted P12 certificate from Secrets Manager');
+                    }
+                } catch (e) {
+                    console.error(`Error loading P12 from Secrets Manager: ${e instanceof Error ? e.message : String(e)}`);
+                }
+            }
+            server = await models.Server.generate(serverData);
+        }
+
+        // Apply CLOUDTAK_Server_* env var overrides to an existing server record
+        const serverUpdates: Record<string, unknown> = {};
+        if (process.env.CLOUDTAK_Server_name) serverUpdates.name = process.env.CLOUDTAK_Server_name;
+        if (process.env.CLOUDTAK_Server_url) serverUpdates.url = process.env.CLOUDTAK_Server_url;
+        if (process.env.CLOUDTAK_Server_api) serverUpdates.api = process.env.CLOUDTAK_Server_api;
+        if (process.env.CLOUDTAK_Server_webtak) serverUpdates.webtak = process.env.CLOUDTAK_Server_webtak;
+
+        if (process.env.CLOUDTAK_Server_auth_cert && process.env.CLOUDTAK_Server_auth_key) {
+            serverUpdates.auth = {
+                ...(server.auth || {}),
+                cert: process.env.CLOUDTAK_Server_auth_cert,
+                key: process.env.CLOUDTAK_Server_auth_key,
+            };
+        } else if (process.env.CLOUDTAK_Server_auth_p12_secret_arn && process.env.CLOUDTAK_Server_auth_password) {
+            try {
+                const secrets = new SecretsManager.SecretsManagerClient({ region: process.env.AWS_REGION });
+                const secretValue = await secrets.send(new SecretsManager.GetSecretValueCommand({
+                    SecretId: process.env.CLOUDTAK_Server_auth_p12_secret_arn,
+                }));
+                if (secretValue.SecretBinary) {
+                    const pem = (await import('pem')).default;
+                    const p12Buffer = Buffer.from(secretValue.SecretBinary);
+                    const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
+                        pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
+                            if (e) reject(e); else resolve({ pemCertificate: result.cert, pemKey: result.key });
+                        });
+                    });
+                    serverUpdates.auth = { ...(server.auth || {}), cert: certs.pemCertificate, key: certs.pemKey };
+                }
+            } catch (e) {
+                console.error(`Error loading P12 for server update: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
+
+        if (Object.keys(serverUpdates).length > 0) {
+            server = await models.Server.commit(server.id, { ...serverUpdates, updated: sql`Now()` });
+            console.error(`ok - Server updated from environment variables`);
         }
 
         const config = new Config({
@@ -157,7 +240,7 @@ export default class Config {
             nocache: (args.nocache || false),
             StackName: process.env.StackName,
             wsClients: new Map(),
-            server, SigningSecret, API_URL, Bucket, pg, models, PMTILES_URL,
+            server, SigningSecret, MediaSecret, API_URL, DynamoDB, Bucket, pg, models, PMTILES_URL,
         });
 
         if (!config.silent) {
@@ -168,6 +251,26 @@ export default class Config {
 
         config.user = new UserManager(config);
         await config.user.init();
+
+        // Set optional VPC/networking config from env
+        if (process.env.VpcId) config.VpcId = process.env.VpcId;
+        if (process.env.SubnetPublicA) config.SubnetPublicA = process.env.SubnetPublicA;
+        if (process.env.SubnetPublicB) config.SubnetPublicB = process.env.SubnetPublicB;
+        if (process.env.MediaSecurityGroup) config.MediaSecurityGroup = process.env.MediaSecurityGroup;
+
+        // Ensure admin user exists with system_admin if credentials are provided
+        if (process.env.CLOUDTAK_ADMIN_USERNAME && process.env.CLOUDTAK_ADMIN_PASSWORD) {
+            try {
+                await config.models.Profile.generate({
+                    username: process.env.CLOUDTAK_ADMIN_USERNAME,
+                    auth: { password: process.env.CLOUDTAK_ADMIN_PASSWORD },
+                    system_admin: true,
+                }, { upsert: GenerateUpsert.UPDATE });
+                console.error('ok - Admin user ensured');
+            } catch (err) {
+                console.error(`Error ensuring admin user: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
 
         for (const envkey in process.env) {
             if (!envkey.startsWith('CLOUDTAK')) continue;
