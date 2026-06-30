@@ -23,7 +23,10 @@ if (url.hostname === 'localhost') {
         'worker-src': [`'self'`, 'blob:'],
         'style-src-elem': [`'self'`, `'unsafe-inline'`],
         'style-src-attr': [`'unsafe-inline'`],
-        'connect-src': [`'self'`]
+        'connect-src': [`'self'`],
+        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
+        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
+        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
     }
 
     cspstr = `add_header 'Content-Security-Policy' "`
