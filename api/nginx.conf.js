@@ -23,7 +23,10 @@ if (url.hostname === 'localhost') {
         'worker-src': [`'self'`, 'blob:'],
         'style-src-elem': [`'self'`, `'unsafe-inline'`],
         'style-src-attr': [`'unsafe-inline'`],
-        'connect-src': [`'self'`]
+        'connect-src': [`'self'`],
+        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
+        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
+        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
     }
 
     cspstr = `add_header 'Content-Security-Policy' "`
@@ -78,6 +81,10 @@ http {
         '"$http_user_agent" "$http_x_forwarded_for"';
 
     access_log  /var/log/nginx/access.log  main;
+
+    # Increase buffer sizes for ALB OIDC cookies
+    large_client_header_buffers 4 32k;
+    client_header_buffer_size 32k;
 
     server {
         listen 5000;
