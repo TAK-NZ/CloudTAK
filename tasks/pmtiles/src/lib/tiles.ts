@@ -6,7 +6,7 @@ import { S3Source, nativeDecompress, CACHE } from '../lib/pmtiles.js';
 import * as pmtiles from 'pmtiles';
 import zlib from "zlib";
 import { VectorTile } from '@mapbox/vector-tile';
-import Pbf from 'pbf';
+import { PbfReader } from 'pbf';
 import tileCover from '@mapbox/tile-cover';
 import { PromisePool } from '@supercharge/promise-pool';
 // @ts-expect-error No Type Defs
@@ -233,7 +233,7 @@ export class FileTiles {
         const features: any[] = [];
 
         if (header.tileType === pmtiles.TileType.Mvt) {
-            const tile = new VectorTile(new Pbf(tile_result.data));
+            const tile = new VectorTile(new PbfReader(tile_result.data));
 
             const layers = opts.layer ? [opts.layer] : Object.keys(tile.layers);
 
@@ -307,7 +307,7 @@ export class FileTiles {
 
                 const features: any[] = [];
 
-                const tile = new VectorTile(new Pbf(tile_result.data));
+                const tile = new VectorTile(new PbfReader(tile_result.data));
 
                 const layers = opts.layer ? [opts.layer] : Object.keys(tile.layers);
 
