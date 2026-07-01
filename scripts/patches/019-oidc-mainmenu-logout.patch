@@ -1,12 +1,2 @@
-diff --git a/api/web/src/components/CloudTAK/MainMenuContents.vue b/api/web/src/components/CloudTAK/MainMenuContents.vue
-index abc123..def456 100644
---- a/api/web/src/components/CloudTAK/MainMenuContents.vue
-+++ b/api/web/src/components/CloudTAK/MainMenuContents.vue
-@@ -536,7 +536,7 @@ function external(url: string) {
- 
- function logout() {
-     delete localStorage.token;
--    router.push("/login");
-+    window.location.href = '/api/logout';
- }
- </script>
+# NOTE: patch 019 (mainmenu logout) is covered by 003-mainmenu-vue.patch
+# (same file: api/web/src/components/CloudTAK/MainMenuContents.vue). Apply 003 instead.
