@@ -10,7 +10,7 @@
         >
             <template #default>
                 <div
-                    class='px-2 py-2 d-flex flex-column justify-content-center h-100'
+                    class='px-1 py-1 d-flex flex-column justify-content-center h-100'
                     :class='isNative ? "" : "cursor-pointer cloudtak-hover pe-5"'
                 >
                     <span
