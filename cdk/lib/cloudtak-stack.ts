@@ -163,20 +163,26 @@ export class CloudTakStack extends cdk.Stack {
       });
       
       eventsImageAsset = new ecrAssets.DockerImageAsset(this, 'EventsDockerAsset', {
-        directory: '../tasks/events',
-        file: 'Dockerfile',
+        directory: '..',
+        file: 'tasks/events/Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
         },
         exclude: [
           'node_modules/**',
+          '**/node_modules/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
           '**/*.log',
           '**/*.tmp',
           '**/.DS_Store',
-          '**/Thumbs.db'
+          '**/Thumbs.db',
+          'cdk/**',
+          'api/dist/**',
+          'api/fonts/**',
+          'api/web/node_modules/**',
+          'api/web/dist/**',
         ]
       });
       
