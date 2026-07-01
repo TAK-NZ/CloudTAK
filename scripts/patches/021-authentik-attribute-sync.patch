@@ -1,2 +1,0 @@
-# NOTE: patch 021 (Authentik attribute sync) is covered by 013-oidc-login-route.patch
-# (same file: api/routes/login.ts). Apply 013 instead.

@@ -1,3 +1,0 @@
-# NOTE: patch 029 (remove LoginModal, redirect 401 to /login) is fully superseded by
-# upstream v13.26.0. LoginModal.vue did not exist in the v13 baseline, and App.vue
-# already uses appStore.routeLogin() for 401 handling. No changes needed after sync.

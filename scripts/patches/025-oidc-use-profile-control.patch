@@ -1,2 +1,0 @@
-# NOTE: patch 025 (use ProfileControl for OIDC user creation) is covered by 013-oidc-login-route.patch
-# (same file: api/routes/login.ts). Apply 013 instead.

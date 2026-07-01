@@ -1,2 +1,0 @@
-# NOTE: patch 019 (mainmenu logout) is covered by 003-mainmenu-vue.patch
-# (same file: api/web/src/components/CloudTAK/MainMenuContents.vue). Apply 003 instead.
