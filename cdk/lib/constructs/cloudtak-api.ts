@@ -275,7 +275,7 @@ export class CloudTakApi extends Construct {
             // ECR permissions (matching old CloudFormation)
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['ecr:Describe*', 'ecr:Get*', 'ecr:BatchDeleteImage', 'ecr:List*'],
+              actions: ['ecr:Describe*', 'ecr:Get*', 'ecr:BatchGetImage', 'ecr:BatchDeleteImage', 'ecr:List*'],
               resources: [etlEcrRepository.repositoryArn]
             })
           ]

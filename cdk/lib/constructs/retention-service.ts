@@ -36,6 +36,7 @@ export interface RetentionServiceProps {
   assetBucketName: string;
   serviceUrl: string;
   connectionStringSecret: secretsmanager.ISecret;
+  signingSecret: secretsmanager.ISecret;
   kmsKey: kms.IKey;
 }
 
@@ -52,6 +53,7 @@ export class RetentionService extends Construct {
       assetBucketName,
       serviceUrl,
       connectionStringSecret,
+      signingSecret,
       kmsKey,
     } = props;
 
@@ -109,6 +111,7 @@ export class RetentionService extends Construct {
     });
 
     connectionStringSecret.grantRead(executionRole);
+    signingSecret.grantRead(executionRole);
 
     // Task definition — 256 CPU / 512 MB (upstream fixed values)
     const taskDefinition = new ecs.FargateTaskDefinition(
@@ -158,6 +161,7 @@ export class RetentionService extends Construct {
       },
       secrets: {
         POSTGRES: ecs.Secret.fromSecretsManager(connectionStringSecret),
+        SigningSecret: ecs.Secret.fromSecretsManager(signingSecret),
       },
       logging: ecs.LogDrivers.awsLogs({
         logGroup,

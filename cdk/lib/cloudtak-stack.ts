@@ -424,6 +424,7 @@ export class CloudTakStack extends cdk.Stack {
       assetBucketName: s3Resources.assetBucket.bucketName,
       serviceUrl: route53Records.serviceUrl,
       connectionStringSecret: database.connectionStringSecret,
+      signingSecret: secrets.signingSecret,
       kmsKey,
     });
 
