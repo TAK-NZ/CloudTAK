@@ -175,7 +175,28 @@
                                         Sign in with {{ brandStore.oidc.name || 'SSO' }}
                                     </a>
                                 </template>
-                                <template v-if='brandStore.passkey.enabled && !loading'>
+                                <template v-if='albOidcEnabled && !loading'>
+                                    <div
+                                        v-if='!brandStore.oidc.enforced'
+                                        class='my-3 d-flex align-items-center'
+                                    >
+                                        <hr class='flex-grow-1 m-0'>
+                                        <span class='mx-2 text-muted small'>or</span>
+                                        <hr class='flex-grow-1 m-0'>
+                                    </div>
+                                    <button
+                                        type='button'
+                                        class='btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2'
+                                        @click='loginWithSSO'
+                                    >
+                                        <IconKey
+                                            :size='20'
+                                            stroke='1.5'
+                                        />
+                                        Login with SSO
+                                    </button>
+                                </template>
+                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
                                     <div
                                         v-if='!brandStore.oidc.enabled || !brandStore.oidc.enforced'
                                         class='my-3 d-flex align-items-center'
@@ -359,7 +380,7 @@
 import type { Login_Create, ConfigLogin } from '../types.ts'
 import { ref, computed, onMounted, reactive, watch } from 'vue';
 import { version } from '../../package.json';
-import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser } from '@tabler/icons-vue';
+import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser, IconKey } from '@tabler/icons-vue';
 import { Preferences } from '@capacitor/preferences';
 import { startAuthentication } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
@@ -493,6 +514,8 @@ watch(showSettings, (val) => {
 });
 
 const loading = ref(false);
+const albOidcEnabled = ref(false);
+const albOidcForced = ref(false);
 const storedUsername = ref<string | null>(null);
 const body = ref<Login_Create>({
     username: '',
@@ -576,7 +599,25 @@ onMounted(async () => {
     brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
     brandStore.loaded = true;
 
-    if (brandStore.passkey.enabled) {
+    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
+    try {
+        const oidcRes = await fetch('/api/server/oidc');
+        if (oidcRes.ok) {
+            const oidcStatus = await oidcRes.json() as { oidc_enabled: boolean; oidc_forced?: boolean };
+            albOidcEnabled.value = oidcStatus.oidc_enabled;
+            albOidcForced.value = oidcStatus.oidc_forced || false;
+            // If SSO is forced and no explicit local-login override, redirect immediately
+            if (albOidcForced.value && !route.query.local) {
+                loginWithSSO();
+                return;
+            }
+        }
+    } catch (err) {
+        console.error('Failed to check ALB OIDC status:', err);
+    }
+
+    // Only start conditional passkey autofill when ALB SSO is not active
+    if (brandStore.passkey.enabled && !albOidcEnabled.value) {
         startConditionalPasskey();
     }
 
@@ -783,6 +824,11 @@ function skipCertRenewal() {
     certRenewal.required = false;
     certRenewal.password = '';
     navigateAfterLogin();
+}
+
+function loginWithSSO() {
+    const redirect = route.query.redirect || '/';
+    window.location.href = `/api/login/oidc?redirect=${encodeURIComponent(String(redirect))}`;
 }
 </script>
 
