@@ -10,39 +10,47 @@ Reference diff: `git diff v12.47.2 v13.26.0 -- cloudformation/`
 
 ## Audit Status
 
-_Last audited against CDK codebase on 2026-06-30._
+_Last audited against CDK codebase on 2026-06-30. All actionable items implemented in `feat/cdk-upstream-changes`._
 
 | # | Change | Priority | Breaking | CDK Status |
 |---|--------|----------|----------|------------|
-| 1 | IAM S3 least-privilege | High | No | ⚠️ Partial |
-| 2 | `cloudformation:ListStacks` | High | No | ❌ Missing |
-| 3 | EventBridge tag permissions | High | No | ❌ Missing |
-| 4 | GeofenceSecret + env var | High | No | ⚠️ Partial |
+| 1 | IAM S3 least-privilege | High | No | ✅ Done |
+| 2 | `cloudformation:ListStacks` | High | No | ✅ Done |
+| 3 | EventBridge tag permissions | High | No | ✅ Done |
+| 4 | GeofenceSecret + env var | High | No | ✅ Done |
 | 5 | ECS service name | Low | **Yes** | ✅ Done |
 | 6 | KMS key rotation | Medium | No | ⬜ Out of scope (base-infra) |
 | 7 | S3 encryption + public access block | Medium | No | ✅ Done |
-| 8 | RDS security group IPv6 | Low | No | ❌ Missing |
-| 9 | PMTiles API GW v1 → v2 | High | **Yes** | ❌ Not done |
-| 10 | Lambda Node 20 → 24 | Medium | No | ❌ Missing |
-| 11 | Events auto-scaling + fixed CPU/mem | Medium | No | ❌ Missing |
-| 12 | Retention service (new) | Medium | No | ❌ Missing |
+| 8 | RDS security group IPv6 | Low | No | ✅ Done |
+| 9 | PMTiles API GW v1 → v2 | High | **Yes** | ✅ Done |
+| 10 | Lambda Node 20 → 24 | Medium | No | ✅ Done |
+| 11 | Events auto-scaling + fixed CPU/mem | Medium | No | ✅ Done |
+| 12 | Retention service (new) | Medium | No | ✅ Done |
 | 13 | Webhooks API GW v1 → v2 | Conditional | **Yes** | ✅ Done |
 
 ### Status key
 
-- ✅ **Done** — already implemented in the CDK codebase, no action required
-- ⚠️ **Partial** — partially implemented; remaining gaps noted in each section
-- ❌ **Missing / Not done** — not yet implemented
-- ⬜ **Out of scope** — the resource is owned by another stack (e.g. base-infra); needs action there
+- ✅ **Done** — implemented in the CDK codebase
+- ⬜ **Out of scope** — the resource is owned by another stack (base-infra); needs action there
 
-### Suggested implementation order
+### PMTiles API GW migration note (#9)
 
-1. **Changes 2, 3, 8, 10** — all low-effort, non-breaking, do together in one PR
-2. **Changes 1 & 4** — S3 tightening + GeofenceSecret wiring, one PR
-3. **Change 11** — Events auto-scaling, one PR
-4. **Change 9** — PMTiles v1→v2 (plan a maintenance window), one PR
-5. **Change 12** — Retention service, one PR
-6. **Change 6** — Raise with base-infra maintainers to enable KMS key rotation
+The v1 → v2 migration requires a two-step deployment because both share the same domain namespace
+and CloudFormation creates before it deletes within a single changeset.
+
+**Manual deployment:**
+```bash
+# Step 1 — delete orphaned v2 domain (if any from a previous failed attempt), then deploy
+aws apigatewayv2 delete-domain-name --domain-name tiles.<hostname> --region <region>
+npm run cdk deploy -- ... --context skipPmtilesDomain=true --require-approval never
+
+# Step 2 — normal deploy creates the v2 domain
+npm run cdk deploy -- ... --require-approval never
+```
+
+**GitHub Actions (demo pipeline):** The `demo-deploy.yml` workflow auto-detects the v1 domain
+and runs the two-step migration automatically. Once migration is complete the detection step
+becomes a no-op on every subsequent pipeline run.
 
 ---
 
