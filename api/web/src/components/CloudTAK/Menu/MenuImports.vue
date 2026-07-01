@@ -87,7 +87,7 @@
                             v-tooltip='`${imported.source} Import`'
                             class='col-auto mx-2'
                         >
-                            <IconAmbulance
+                            <IconReplace
                                 v-if='imported.source === "Mission"'
                                 :size='32'
                                 stroke='0.5'
@@ -150,7 +150,7 @@ import {
 import {
     IconUpload,
     IconFile,
-    IconAmbulance,
+    IconReplace,
     IconPackages,
     IconLetterCase,
     IconClock,

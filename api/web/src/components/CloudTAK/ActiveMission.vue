@@ -31,7 +31,7 @@
                 style='height: 40px;'
                 @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}`)'
             >
-                <IconAmbulance
+                <IconReplace
                     :size='32'
                     stroke='1'
                     class='me-2'
@@ -153,7 +153,7 @@ import { useObservable } from '@vueuse/rxjs';
 import { from } from 'rxjs';
 import { TablerIconButton } from '@tak-ps/vue-tabler';
 import {
-    IconAmbulance,
+    IconReplace,
     IconMap,
     IconBoxMultiple,
     IconTimeline,

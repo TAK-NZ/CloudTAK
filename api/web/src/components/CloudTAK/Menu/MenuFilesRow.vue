@@ -167,7 +167,7 @@
                         @click.stop.prevent='emit("share-mission", asset)'
                         @keyup.enter='emit("share-mission", asset)'
                     >
-                        <IconAmbulance
+                        <IconReplace
                             :size='32'
                             stroke='1'
                         />
@@ -266,7 +266,7 @@ import {
     TablerDropdown
 } from '@tak-ps/vue-tabler';
 import {
-    IconAmbulance,
+    IconReplace,
     IconPackage,
     IconMapOff,
     IconMapPlus,
