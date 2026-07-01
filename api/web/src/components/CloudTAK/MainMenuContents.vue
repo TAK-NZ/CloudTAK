@@ -319,7 +319,7 @@ async function saveOrder() {
 
 onMounted(async () => {
     const usernameConfig = await ProfileConfig.get('username');
-    if (alive && usernameConfig) {
+    if (usernameConfig) {
         username.value = usernameConfig.value;
     }
 })
