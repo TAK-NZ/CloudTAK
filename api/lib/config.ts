@@ -126,14 +126,14 @@ export default class Config {
             if (!process.env.API_URL) throw new Error('API_URL env must be set');
             if (!process.env.ASSET_BUCKET) throw new Error('ASSET_BUCKET env must be set');
 
-            // API_URL env var contains only the hostname; prepend the scheme
-            const apiUrl = new URL(`http://${process.env.API_URL}`);
+            // API_URL env var already contains the full URL with scheme (set by CDK)
+            const apiUrl = new URL(process.env.API_URL);
             if (apiUrl.hostname === 'localhost') {
-                API_URL = `http://${process.env.API_URL}`;
+                API_URL = process.env.API_URL;
                 PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
             } else {
-                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${process.env.API_URL}`;
-                API_URL = `https://${process.env.API_URL}`;
+                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${apiUrl.host}`;
+                API_URL = process.env.API_URL;
             }
 
             Bucket = process.env.ASSET_BUCKET;
