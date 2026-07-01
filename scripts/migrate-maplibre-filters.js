@@ -15,6 +15,7 @@
  *   ["in",  prop, v1, v2, ...]    → ["in",  ["get", prop], ["literal", [v1, v2, ...]]]
  *   ["!in", prop, v1, v2, ...]    → ["!",   ["in", ["get", prop], ["literal", [v1, v2, ...]]]]
  *   ["!has", prop]                → ["!",   ["has", prop]]
+ *   ["none", f1, f2, ...]         → ["all", ["!", f1], ["!", f2], ...]
  *
  * Combinatorial operators (all, any, none) are recursed into but not changed.
  * "has", "!=" with non-string LHS, and already-migrated expressions are left unchanged.
@@ -50,8 +51,14 @@ function migrate(f) {
     const op = f[0];
 
     // Recurse into combinatorial operators
-    if (op === 'all' || op === 'any' || op === 'none') {
+    if (op === 'all' || op === 'any') {
         return [op, ...f.slice(1).map(migrate)];
+    }
+
+    // ["none", f1, f2, ...] → ["all", ["!", f1], ["!", f2], ...]
+    // "none" is not valid in expression syntax
+    if (op === 'none') {
+        return ['all', ...f.slice(1).map((c) => ['!', migrate(c)])];
     }
 
     // ["!has", prop] → ["!", ["has", prop]]
