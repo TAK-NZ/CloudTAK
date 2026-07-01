@@ -9,7 +9,7 @@ export default class AuthentikProvider {
     config: Config;
     authentikUrl: string;
     tokenArn: string;
-    cache?: { expires: Date; token: string; };
+    cache?: { expires: Date; token: string };
 
     constructor(config: Config, authentikUrl: string, tokenArn: string) {
         this.config = config;
@@ -36,12 +36,12 @@ export default class AuthentikProvider {
         return new AuthentikProvider(config, authentikUrl, tokenArn);
     }
 
-    async auth(): Promise<{ expires: Date; token: string; }> {
+    async auth(): Promise<{ expires: Date; token: string }> {
         if (!this.cache || this.cache.expires < new Date()) {
             const AWS = await import('@aws-sdk/client-secrets-manager');
             const client = new AWS.SecretsManagerClient({});
             const response = await client.send(
-                new AWS.GetSecretValueCommand({ SecretId: this.tokenArn })
+                new AWS.GetSecretValueCommand({ SecretId: this.tokenArn }),
             );
 
             const token = response.SecretString || '';
@@ -56,10 +56,10 @@ export default class AuthentikProvider {
 
     async agencies(uid: number, filter: string): Promise<{
         total: number;
-        items: Array<Static<typeof Agency>>
+        items: Array<Static<typeof Agency>>;
     }> {
         const creds = await this.auth();
-        
+
         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
         const url = new URL('/api/v3/core/groups/', this.authentikUrl);
@@ -67,9 +67,9 @@ export default class AuthentikProvider {
 
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency List Error');
@@ -82,14 +82,14 @@ export default class AuthentikProvider {
             items: filteredResults.map((g: any) => ({
                 id: g.attributes?.agencyId || 0,
                 name: g.attributes?.agencyName || g.name,
-                description: g.attributes?.description || ''
-            }))
+                description: g.attributes?.description || '',
+            })),
         };
     }
 
     async agency(uid: number, agencyId: number): Promise<Static<typeof Agency>> {
         const creds = await this.auth();
-        
+
         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
         const url = new URL('/api/v3/core/groups/', this.authentikUrl);
@@ -97,9 +97,9 @@ export default class AuthentikProvider {
 
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency Fetch Error');
@@ -112,7 +112,7 @@ export default class AuthentikProvider {
         return {
             id: group.attributes?.agencyId || agencyId,
             name: group.attributes?.agencyName || group.name,
-            description: group.attributes?.description || ''
+            description: group.attributes?.description || '',
         };
     }
 
@@ -128,9 +128,9 @@ export default class AuthentikProvider {
         userUrl.searchParams.append('pk', String(uid));
         const userResponse = await fetch(userUrl, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik User Fetch Error');
@@ -146,7 +146,7 @@ export default class AuthentikProvider {
             headers: {
                 'Authorization': `Bearer ${creds.token}`,
                 'Content-Type': 'application/json',
-                'Accept': 'application/json'
+                'Accept': 'application/json',
             },
             body: JSON.stringify({
                 name: username,
@@ -156,9 +156,9 @@ export default class AuthentikProvider {
                     agencyId: body.agency_id || null,
                     createdBy: creatorUsername,
                     createdAt: new Date().toISOString(),
-                    description: body.integration.description
-                }
-            })
+                    description: body.integration.description,
+                },
+            }),
         });
 
         if (!createResponse.ok) throw new Err(500, new Error(await createResponse.text()), 'Authentik Service Account Creation Error');
@@ -171,9 +171,9 @@ export default class AuthentikProvider {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${creds.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ password: body.password })
+            body: JSON.stringify({ password: body.password }),
         });
 
         if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Authentik Password Set Error');
@@ -181,7 +181,7 @@ export default class AuthentikProvider {
         return {
             id: userId,
             email: username,
-            integrations: []
+            integrations: [],
         };
     }
 
@@ -193,9 +193,9 @@ export default class AuthentikProvider {
 
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
@@ -208,7 +208,7 @@ export default class AuthentikProvider {
         return {
             id: user.pk,
             email: user.username,
-            integrations: []
+            integrations: [],
         };
     }
 
@@ -223,9 +223,9 @@ export default class AuthentikProvider {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${creds.token}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ password: body.password })
+                body: JSON.stringify({ password: body.password }),
             });
 
             if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Password Update Error');
@@ -234,7 +234,7 @@ export default class AuthentikProvider {
         return {
             id: mid,
             email: '',
-            integrations: []
+            integrations: [],
         };
     }
 
@@ -243,7 +243,7 @@ export default class AuthentikProvider {
         agency?: number;
     }): Promise<{
         total: number;
-        items: Array<Static<typeof Channel>>
+        items: Array<Static<typeof Channel>>;
     }> {
         const creds = await this.auth();
         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
@@ -253,9 +253,9 @@ export default class AuthentikProvider {
 
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Channel List Error');
@@ -273,8 +273,8 @@ export default class AuthentikProvider {
                 id: g.attributes?.channelId || g.num_pk || 0,
                 rdn: g.name.replace(/^tak_/, ''),
                 name: g.attributes?.channelName || g.name.replace(/^tak_/, ''),
-                description: g.attributes?.description || ''
-            }))
+                description: g.attributes?.description || '',
+            })),
         };
     }
 
@@ -289,17 +289,17 @@ export default class AuthentikProvider {
         const groupsUrl = new URL('/api/v3/core/groups/', this.authentikUrl);
         const groupsResponse = await fetch(groupsUrl, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!groupsResponse.ok) throw new Err(500, new Error(await groupsResponse.text()), 'Authentik Groups Fetch Error');
 
         const groupsData: any = await groupsResponse.json();
-        const group = groupsData.results.find((g: any) => 
-            g.name.startsWith(channelPrefix) && 
-            (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id)
+        const group = groupsData.results.find((g: any) =>
+            g.name.startsWith(channelPrefix)
+            && (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id),
         );
 
         if (!group) throw new Err(404, null, `Channel ${body.channel_id} not found`);
@@ -309,9 +309,9 @@ export default class AuthentikProvider {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${creds.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ pk: body.machine_id })
+            body: JSON.stringify({ pk: body.machine_id }),
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Group Assignment Error');
@@ -335,9 +335,9 @@ export default class AuthentikProvider {
 
             const response = await fetch(url, {
                 headers: {
-                    'Authorization': `Bearer ${creds.token}`,
-                    'Accept': 'application/json'
-                }
+                    Authorization: `Bearer ${creds.token}`,
+                    Accept: 'application/json',
+                },
             });
 
             if (!response.ok) {
@@ -364,9 +364,9 @@ export default class AuthentikProvider {
             const deleteResponse = await fetch(deleteUrl, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${creds.token}`,
-                    'Accept': 'application/json'
-                }
+                    Authorization: `Bearer ${creds.token}`,
+                    Accept: 'application/json',
+                },
             });
 
             if (!deleteResponse.ok) {
@@ -397,9 +397,9 @@ export default class AuthentikProvider {
 
         const response = await fetch(url, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
 
         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
@@ -417,9 +417,9 @@ export default class AuthentikProvider {
                 const groupUrl = new URL(`/api/v3/core/groups/${groupUuid}/`, this.authentikUrl);
                 const groupResponse = await fetch(groupUrl, {
                     headers: {
-                        'Authorization': `Bearer ${creds.token}`,
-                        'Accept': 'application/json'
-                    }
+                        Authorization: `Bearer ${creds.token}`,
+                        Accept: 'application/json',
+                    },
                 });
                 if (groupResponse.ok) {
                     const groupData: any = await groupResponse.json();
@@ -455,40 +455,40 @@ export default class AuthentikProvider {
             system_admin: isSystemAdmin,
             agency_admin: agencyAdminIds,
             tak_callsign: attributes.takCallsign,
-            tak_group: attributes.takColor
+            tak_group: attributes.takColor,
         };
     }
 
     async renewConnectionCertificate(
         machineUserId: number,
-        takServerUrl: string
+        takServerUrl: string,
     ): Promise<{ cert: string; key: string }> {
         const creds = await this.auth();
         const tempPassword = crypto.randomBytes(32).toString('base64url');
-        
+
         const passwordUrl = new URL(`/api/v3/core/users/${machineUserId}/set_password/`, this.authentikUrl);
         const passwordResponse = await fetch(passwordUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${creds.token}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ password: tempPassword })
+            body: JSON.stringify({ password: tempPassword }),
         });
-        
+
         if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set password');
-        
+
         const userUrl = new URL(`/api/v3/core/users/${machineUserId}/`, this.authentikUrl);
         const userResponse = await fetch(userUrl, {
             headers: {
-                'Authorization': `Bearer ${creds.token}`,
-                'Accept': 'application/json'
-            }
+                Authorization: `Bearer ${creds.token}`,
+                Accept: 'application/json',
+            },
         });
-        
+
         if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Failed to fetch user');
         const userData: any = await userResponse.json();
-        
+
         // Use password auth instead of potentially revoked certificate
         const takAuth = new APIAuthPassword(userData.username, tempPassword);
         const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);

@@ -63,11 +63,11 @@ export class ConnectionWebSocket {
                             if (!chat.raw.event.detail) chat.raw.event.detail = {};
                             if (chat.raw.event.detail.marti) {
                                 (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
-                                    { _attributes: { callsign: msg.data.to.callsign } }
+                                    { _attributes: { callsign: msg.data.to.callsign } },
                                 ];
                             }
                             (chat.raw.event.detail as Record<string, unknown>).dest = {
-                                _attributes: { callsign: msg.data.to.callsign }
+                                _attributes: { callsign: msg.data.to.callsign },
                             };
                         }
 

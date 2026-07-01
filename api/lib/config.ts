@@ -180,7 +180,11 @@ export default class Config {
                         const p12Buffer = Buffer.from(secretValue.SecretBinary);
                         const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
                             pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
-                                if (e) reject(e); else resolve({ pemCertificate: result.cert, pemKey: result.key });
+                                if (e) {
+                                    reject(e);
+                                } else {
+                                    resolve({ pemCertificate: result.cert, pemKey: result.key });
+                                }
                             });
                         });
                         serverData.auth = { cert: certs.pemCertificate, key: certs.pemKey };
@@ -217,7 +221,11 @@ export default class Config {
                     const p12Buffer = Buffer.from(secretValue.SecretBinary);
                     const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
                         pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
-                            if (e) reject(e); else resolve({ pemCertificate: result.cert, pemKey: result.key });
+                            if (e) {
+                                reject(e);
+                            } else {
+                                resolve({ pemCertificate: result.cert, pemKey: result.key });
+                            }
                         });
                     });
                     serverUpdates.auth = { ...(server.auth || {}), cert: certs.pemCertificate, key: certs.pemKey };

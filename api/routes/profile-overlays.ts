@@ -308,12 +308,12 @@ export default async function router(schema: Schema, config: Config) {
             if (req.body.mode !== 'mission' && req.body.url) {
                 const existing = await config.models.ProfileOverlay.list({
                     limit: 1,
-                    where: sql`username = ${user.email} AND url = ${req.body.url}`
+                    where: sql`username = ${user.email} AND url = ${req.body.url}`,
                 });
 
                 if (existing.total > 0) {
                     const overlay = await config.models.ProfileOverlay.commit(existing.items[0].id, {
-                        visible: true
+                        visible: true,
                     });
 
                     if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {

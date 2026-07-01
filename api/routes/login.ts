@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess, oidcParser, isOidcEnabled, isOidcForced } from '../lib/auth.js';
+import Auth, { AuthUserAccess, oidcParser, isOidcEnabled } from '../lib/auth.js';
 import Config from '../lib/config.js';
 import Schema from '@openaddresses/batch-schema';
 import { Type } from '@sinclair/typebox';
@@ -248,7 +248,7 @@ export default async function router(schema: Schema, config: Config) {
             const token = jwt.sign(
                 { access, email: profile.username, s: session.id },
                 config.SigningSecret,
-                { expiresIn: '16h' }
+                { expiresIn: '16h' },
             );
 
             const safeRedirect = String(redirectTarget).startsWith('/') ? String(redirectTarget) : '/';

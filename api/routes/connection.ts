@@ -440,16 +440,16 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Check and renew connection certificate if needed',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
         res: Type.Object({
             renewed: Type.Boolean(),
-            message: Type.String()
-        })
+            message: Type.String(),
+        }),
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
             let authentik: InstanceType<typeof AuthentikProvider> | null = null;
@@ -472,7 +472,7 @@ export default async function router(schema: Schema, config: Config) {
             const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
 
             await config.models.Connection.commit(req.params.connectionid, {
-                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
             });
 
             if (connection.enabled && config.conns.has(connection.id)) {
@@ -492,13 +492,13 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Layer',
         description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
         params: Type.Object({
-            layerid: Type.Integer({ minimum: 1 })
+            layerid: Type.Integer({ minimum: 1 }),
         }),
         res: Type.Object({
             healthy: Type.Boolean(),
             cert_renewed: Type.Boolean(),
-            message: Type.Optional(Type.String())
-        })
+            message: Type.Optional(Type.String()),
+        }),
     }, async (req, res) => {
         try {
             const auth = await Auth.as_user(config, req, { token: true });
@@ -530,7 +530,7 @@ export default async function router(schema: Schema, config: Config) {
                 const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
 
                 await config.models.Connection.commit(connection.id, {
-                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
                 });
 
                 if (connection.enabled && config.conns.has(connection.id)) {
