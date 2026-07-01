@@ -217,43 +217,54 @@ export class LambdaFunctions extends Construct {
       autoDeploy: true,
     });
 
-    // Custom domain mapped to the API
-    const pmtilesDomain = new apigwv2.CfnDomainName(this, 'PMTilesDomain', {
-      domainName: tilesHostname,
-      domainNameConfigurations: [
-        {
-          certificateArn: certificate.certificateArn,
-          endpointType: 'REGIONAL',
-        },
-      ],
-    });
+    // Two-step migration guard:
+    // When upgrading from API GW v1 → v2, the old v1 DomainName must be deleted
+    // by CloudFormation BEFORE the new v2 DomainName can be created (they share
+    // the same domain namespace).  Deploy once with --context skipPmtilesDomain=true
+    // to let CloudFormation remove the v1 resources, then redeploy without the flag
+    // to create the v2 domain and DNS records.
+    const skipDomain = cdk.Stack.of(this).node.tryGetContext('skipPmtilesDomain') === true
+      || cdk.Stack.of(this).node.tryGetContext('skipPmtilesDomain') === 'true';
 
-    new apigwv2.CfnApiMapping(this, 'PMTilesApiMapping', {
-      apiId: this.tilesApi.ref,
-      domainName: pmtilesDomain.ref,
-      stage: stage.ref,
-    });
+    if (!skipDomain) {
+      // Custom domain mapped to the API
+      const pmtilesDomain = new apigwv2.CfnDomainName(this, 'PMTilesDomain', {
+        domainName: tilesHostname,
+        domainNameConfigurations: [
+          {
+            certificateArn: certificate.certificateArn,
+            endpointType: 'REGIONAL',
+          },
+        ],
+      });
 
-    // Route53 — alias to the v2 regional domain name
-    const aliasTarget = route53.RecordTarget.fromAlias({
-      bind: () => ({
-        dnsName: pmtilesDomain.attrRegionalDomainName,
-        hostedZoneId: pmtilesDomain.attrRegionalHostedZoneId,
-      }),
-    });
+      new apigwv2.CfnApiMapping(this, 'PMTilesApiMapping', {
+        apiId: this.tilesApi.ref,
+        domainName: pmtilesDomain.ref,
+        stage: stage.ref,
+      });
 
-    new route53.ARecord(this, 'PMTilesDNS', {
-      zone: hostedZone,
-      recordName: `tiles.${envConfig.cloudtak.hostname}`,
-      target: aliasTarget,
-      comment: `${cdk.Stack.of(this).stackName} PMTiles API DNS Entry`,
-    });
+      // Route53 — alias to the v2 regional domain name
+      const aliasTarget = route53.RecordTarget.fromAlias({
+        bind: () => ({
+          dnsName: pmtilesDomain.attrRegionalDomainName,
+          hostedZoneId: pmtilesDomain.attrRegionalHostedZoneId,
+        }),
+      });
 
-    new route53.AaaaRecord(this, 'PMTilesDNSIPv6', {
-      zone: hostedZone,
-      recordName: `tiles.${envConfig.cloudtak.hostname}`,
-      target: aliasTarget,
-      comment: `${cdk.Stack.of(this).stackName} PMTiles API IPv6 DNS Entry`,
-    });
+      new route53.ARecord(this, 'PMTilesDNS', {
+        zone: hostedZone,
+        recordName: `tiles.${envConfig.cloudtak.hostname}`,
+        target: aliasTarget,
+        comment: `${cdk.Stack.of(this).stackName} PMTiles API DNS Entry`,
+      });
+
+      new route53.AaaaRecord(this, 'PMTilesDNSIPv6', {
+        zone: hostedZone,
+        recordName: `tiles.${envConfig.cloudtak.hostname}`,
+        target: aliasTarget,
+        comment: `${cdk.Stack.of(this).stackName} PMTiles API IPv6 DNS Entry`,
+      });
+    }
   }
 }
