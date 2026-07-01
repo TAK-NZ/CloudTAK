@@ -492,11 +492,8 @@ export default class AuthentikProvider {
         // Use password auth instead of potentially revoked certificate
         const takAuth = new APIAuthPassword(userData.username, tempPassword);
         const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
-        const enrollment = await takApi.Certificate.generate({
-            username: userData.username,
-            password: tempPassword
-        });
-        
+        const enrollment = await takApi.Credentials.generate();
+
         return { cert: enrollment.cert, key: enrollment.key };
     }
 }

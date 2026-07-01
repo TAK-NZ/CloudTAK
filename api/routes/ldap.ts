@@ -37,7 +37,7 @@ export default async function router(schema: Schema, config: Config) {
                 profile = await config.models.Profile.from(profile.username);
             }
 
-            const list = await cotak.channels(profile.id, req.query);
+            const list = await cotak.channels(profile.id!, req.query);
 
             res.json(list);
         } catch (err) {
@@ -85,7 +85,7 @@ export default async function router(schema: Schema, config: Config) {
                 return String.fromCharCode(crypto.randomInt(94) + 33);
             }).join('');
 
-            const user = await cotak.createMachineUser(profile.id, {
+            const user = await cotak.createMachineUser(profile.id!, {
                 name: req.body.name,
                 description: req.body.description,
                 management_url: config.API_URL,
@@ -142,9 +142,9 @@ export default async function router(schema: Schema, config: Config) {
             const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
                 .join('');
 
-            const user = await cotak.fetchMachineUser(profile.id, req.params.email);
+            const user = await cotak.fetchMachineUser(profile.id!, req.params.email);
 
-            await cotak.updateMachineUser(profile.id, { id: user.id, password });
+            await cotak.updateMachineUser(profile.id!, { id: user.id, password });
 
             const api = await TAKAPI.init(
                 new URL(config.server.webtak),

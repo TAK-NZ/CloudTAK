@@ -462,7 +462,7 @@ export async function oidcParser(req: Request): Promise<{ user: AuthUser; groups
     // Extract group claims from JWT (Authentik includes these if configured)
     const groups: string[] = Array.isArray(payload.groups) ? payload.groups : [];
 
-    return { user: new AuthUser(AuthUserAccess.USER, payload.email), groups };
+    return { user: new AuthUser(AuthUserAccess.USER, payload.email, ''), groups };
 }
 
 export function isOidcEnabled(): boolean {

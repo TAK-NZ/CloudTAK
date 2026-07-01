@@ -149,7 +149,7 @@ export default async function router(schema: Schema, config: Config) {
                 throw new Err(403, null, 'OIDC authentication is not enabled');
             }
 
-            const { user: auth, groups } = await oidcParser(req);
+            const { user: auth, groups } = await oidcParser(req as import('express').Request);
             const email = auth.email;
 
             // Block accounts configured for local-only login

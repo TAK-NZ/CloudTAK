@@ -467,7 +467,9 @@ export default async function router(schema: Schema, config: Config) {
                 return res.json({ renewed: false, message: 'Certificate does not need renewal' });
             }
 
-            const renewed = await authentik.renewConnectionCertificate(connection.machine_id, String(config.server.api));
+            // Look up the Authentik user by connection username to get their numeric ID
+            const machineUser = await authentik.fetchMachineUser(0, connection.username || '');
+            const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
 
             await config.models.Connection.commit(req.params.connectionid, {
                 auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
@@ -500,7 +502,8 @@ export default async function router(schema: Schema, config: Config) {
     }, async (req, res) => {
         try {
             const auth = await Auth.as_user(config, req, { token: true });
-            if (auth.access !== 'layer' || auth.id !== req.params.layerid) {
+            // Layer tokens have access='layer' (AuthResourceAccess) — check via string comparison
+            if ((auth.access as string) !== 'layer' || (auth as { id?: unknown }).id !== req.params.layerid) {
                 throw new Err(401, null, 'Invalid layer token');
             }
 
@@ -523,7 +526,8 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             try {
-                const renewed = await authentik.renewConnectionCertificate(connection.machine_id, String(config.server.api));
+                const machineUser2 = await authentik.fetchMachineUser(0, connection.username || '');
+                const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
 
                 await config.models.Connection.commit(connection.id, {
                     auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }

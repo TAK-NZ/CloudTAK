@@ -190,7 +190,7 @@ export default class Config {
                     console.error(`Error loading P12 from Secrets Manager: ${e instanceof Error ? e.message : String(e)}`);
                 }
             }
-            server = await models.Server.generate(serverData);
+            server = await models.Server.generate(serverData as unknown as { url: string });
         }
 
         // Apply CLOUDTAK_Server_* env var overrides to an existing server record
@@ -261,11 +261,25 @@ export default class Config {
         // Ensure admin user exists with system_admin if credentials are provided
         if (process.env.CLOUDTAK_ADMIN_USERNAME && process.env.CLOUDTAK_ADMIN_PASSWORD) {
             try {
-                await config.models.Profile.generate({
-                    username: process.env.CLOUDTAK_ADMIN_USERNAME,
-                    auth: { password: process.env.CLOUDTAK_ADMIN_PASSWORD },
-                    system_admin: true,
-                }, { upsert: GenerateUpsert.UPDATE });
+                // Ensure admin profile exists with system_admin flag.
+                // In v13, auth uses certificates; the admin must login normally
+                // to enroll their cert. We just ensure the profile record exists
+                // with the correct system_admin flag.
+                try {
+                    const existing = await config.models.Profile.from(process.env.CLOUDTAK_ADMIN_USERNAME);
+                    await config.models.Profile.commit(process.env.CLOUDTAK_ADMIN_USERNAME, { system_admin: true });
+                    void existing; // mark as used
+                } catch (err) {
+                    if (err instanceof Error && err.message.includes('Item Not Found')) {
+                        await config.models.Profile.generate({
+                            username: process.env.CLOUDTAK_ADMIN_USERNAME,
+                            auth: { ca: [], key: '', cert: '' },
+                            system_admin: true,
+                        });
+                    } else {
+                        throw err;
+                    }
+                }
                 console.error('ok - Admin user ensured');
             } catch (err) {
                 console.error(`Error ensuring admin user: ${err instanceof Error ? err.message : String(err)}`);
