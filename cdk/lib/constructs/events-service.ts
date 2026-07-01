@@ -62,9 +62,14 @@ export class EventsService extends Construct {
             }),
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
-              actions: ['s3:*'],
+              actions: [
+                's3:GetObject',
+                's3:PutObject',
+                's3:DeleteObject',
+                's3:AbortMultipartUpload',
+                's3:ListMultipartUploadParts',
+              ],
               resources: [
-                `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`,
                 `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`
               ]
             }),
@@ -108,11 +113,11 @@ export class EventsService extends Construct {
       }
     });
 
-    // Create task definition
+    // Create task definition — fixed 1024 CPU / 2048 MB per upstream change #11
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'EventsTaskDefinition', {
       family: `TAK-${envConfig.stackName}-CloudTAK-events`,
-      cpu: envConfig.ecs.taskCpu,
-      memoryLimitMiB: envConfig.ecs.taskMemory,
+      cpu: 1024,
+      memoryLimitMiB: 2048,
       taskRole: taskRole,
       executionRole: executionRole
     });
@@ -177,5 +182,23 @@ export class EventsService extends Construct {
 
     // Add tags
     cdk.Tags.of(this.service).add('Name', `TAK-${envConfig.stackName}-CloudTAK-events`);
+
+    // Auto-scaling: track CPU (70%) and memory (80%), scale between 1–10 tasks
+    const scaling = this.service.autoScaleTaskCount({
+      minCapacity: 1,
+      maxCapacity: 10,
+    });
+
+    scaling.scaleOnCpuUtilization('EventsCPUScaling', {
+      targetUtilizationPercent: 70,
+      scaleInCooldown: cdk.Duration.seconds(300),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
+    scaling.scaleOnMemoryUtilization('EventsMemoryScaling', {
+      targetUtilizationPercent: 80,
+      scaleInCooldown: cdk.Duration.seconds(300),
+      scaleOutCooldown: cdk.Duration.seconds(60),
+    });
   }
 }

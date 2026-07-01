@@ -8,7 +8,62 @@ Reference diff: `git diff v12.47.2 v13.26.0 -- cloudformation/`
 
 ---
 
+## Audit Status
+
+_Last audited against CDK codebase on 2026-06-30. All actionable items implemented in `feat/cdk-upstream-changes`._
+
+| # | Change | Priority | Breaking | CDK Status |
+|---|--------|----------|----------|------------|
+| 1 | IAM S3 least-privilege | High | No | ✅ Done |
+| 2 | `cloudformation:ListStacks` | High | No | ✅ Done |
+| 3 | EventBridge tag permissions | High | No | ✅ Done |
+| 4 | GeofenceSecret + env var | High | No | ✅ Done |
+| 5 | ECS service name | Low | **Yes** | ✅ Done |
+| 6 | KMS key rotation | Medium | No | ⬜ Out of scope (base-infra) |
+| 7 | S3 encryption + public access block | Medium | No | ✅ Done |
+| 8 | RDS security group IPv6 | Low | No | ✅ Done |
+| 9 | PMTiles API GW v1 → v2 | High | **Yes** | ✅ Done |
+| 10 | Lambda Node 20 → 24 | Medium | No | ✅ Done |
+| 11 | Events auto-scaling + fixed CPU/mem | Medium | No | ✅ Done |
+| 12 | Retention service (new) | Medium | No | ✅ Done |
+| 13 | Webhooks API GW v1 → v2 | Conditional | **Yes** | ✅ Done |
+
+### Status key
+
+- ✅ **Done** — implemented in the CDK codebase
+- ⬜ **Out of scope** — the resource is owned by another stack (base-infra); needs action there
+
+### PMTiles API GW migration note (#9)
+
+The v1 → v2 migration requires a two-step deployment because both share the same domain namespace
+and CloudFormation creates before it deletes within a single changeset.
+
+**Manual deployment:**
+```bash
+# Step 1 — delete orphaned v2 domain (if any from a previous failed attempt), then deploy
+aws apigatewayv2 delete-domain-name --domain-name tiles.<hostname> --region <region>
+npm run cdk deploy -- ... --context skipPmtilesDomain=true --require-approval never
+
+# Step 2 — normal deploy creates the v2 domain
+npm run cdk deploy -- ... --require-approval never
+```
+
+**GitHub Actions (demo pipeline):** The `demo-deploy.yml` workflow auto-detects the v1 domain
+and runs the two-step migration automatically. Once migration is complete the detection step
+becomes a no-op on every subsequent pipeline run.
+
+---
+
 ## 1. IAM: Tighten S3 permissions on API and Events task roles
+
+> **CDK Status: ⚠️ Partial**
+>
+> `cloudtak-api.ts`: Already uses specific actions (`s3:GetObject`, `s3:PutObject`, `s3:DeleteObject`,
+> `s3:ListBucket`, `s3:GetBucketLocation`) — not a wildcard. However `s3:AbortMultipartUpload` and
+> `s3:ListMultipartUploadParts` are missing, and the bucket-level / object-level actions are not
+> split into separate statements.
+>
+> `events-service.ts`: Still uses `actions: ['s3:*']` — **needs to be replaced**.
 
 **Source file:** `cloudformation/lib/api.js`, `cloudformation/lib/events.js`  
 **Priority:** High (security)  
@@ -55,11 +110,31 @@ new iam.PolicyStatement({
 }),
 ```
 
-For the Events task role, omit `s3:ListBucket` (object-level actions only).
+For the Events task role, replace `s3:*` with the object-level actions only (omit `s3:ListBucket`):
+
+```typescript
+new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: [
+        's3:GetObject',
+        's3:PutObject',
+        's3:DeleteObject',
+        's3:AbortMultipartUpload',
+        's3:ListMultipartUploadParts',
+    ],
+    resources: [`arn:aws:s3:::${assetBucketName}/*`],
+}),
+```
 
 ---
 
 ## 2. IAM: Add `cloudformation:ListStacks` to API task role
+
+> **CDK Status: ❌ Missing**
+>
+> `cloudtak-api.ts` has `cloudformation:DescribeStacks`, `ListExports`, `CreateStack`, etc., but
+> `cloudformation:ListStacks` is absent. All existing CloudFormation actions are scoped to specific
+> stack ARNs; `ListStacks` requires `Resource: *`.
 
 **Source file:** `cloudformation/lib/api.js`  
 **Priority:** High (functional — layer stack management broken without this)  
@@ -79,7 +154,7 @@ Added a new IAM statement to the API task role:
 
 ### How to implement in CDK
 
-Add a `PolicyStatement` to the API task role:
+Add a `PolicyStatement` to the API task role in `cdk/lib/constructs/cloudtak-api.ts`:
 
 ```typescript
 new iam.PolicyStatement({
@@ -92,6 +167,12 @@ new iam.PolicyStatement({
 ---
 
 ## 3. IAM: EventBridge tag permissions on API task role
+
+> **CDK Status: ❌ Missing**
+>
+> `cloudtak-api.ts` EventBridge statement has `events:PutRule`, `events:PutTargets`,
+> `events:DeleteRule`, `events:RemoveTargets`, `events:DescribeRule`. The three tag-management
+> actions (`UntagResource`, `TagResource`, `ListTagsForResource`) are not present.
 
 **Source file:** `cloudformation/lib/api.js`  
 **Priority:** High (functional — EventBridge rule management incomplete without these)  
@@ -107,12 +188,39 @@ Three new EventBridge actions added to the existing EventBridge policy block:
 
 ### How to implement in CDK
 
-Find the existing EventBridge policy statement on the API task role and add the three new actions
-alongside the existing ones (`events:PutRule`, `events:DescribeRule`, etc.).
+Find the existing EventBridge policy statement on the API task role in `cdk/lib/constructs/cloudtak-api.ts`
+and add the three new actions alongside the existing ones:
+
+```typescript
+new cdk.aws_iam.PolicyStatement({
+    effect: cdk.aws_iam.Effect.ALLOW,
+    actions: [
+        'events:PutRule',
+        'events:PutTargets',
+        'events:DeleteRule',
+        'events:RemoveTargets',
+        'events:DescribeRule',
+        'events:UntagResource',       // ← add
+        'events:TagResource',         // ← add
+        'events:ListTagsForResource', // ← add
+    ],
+    resources: [`arn:...rule/TAK-${envConfig.stackName}-CloudTAK-layer-*`]
+}),
+```
 
 ---
 
 ## 4. ECS: GeofenceSecret — new secret + env var
+
+> **CDK Status: ⚠️ Partial**
+>
+> `cdk/lib/constructs/secrets.ts`: `GeofenceSecret` **is** created with the correct name
+> (`TAK-${envConfig.stackName}-CloudTAK/api/geofence`). ✅
+>
+> `cdk/lib/cloudtak-stack.ts`: `secrets.geofenceSecret` is **not** passed to `CloudTakApi` props. ❌
+>
+> `cdk/lib/constructs/cloudtak-api.ts`: No `CLOUDTAK_Config_geofence_password` env var injected
+> into the API container, and no `grantRead` call on the secret. ❌
 
 **Source file:** `cloudformation/lib/api.js`  
 **Priority:** High (functional — geofence feature broken without this)  
@@ -129,46 +237,45 @@ alongside the existing ones (`events:PutRule`, `events:DescribeRule`, etc.).
 
 ### How to implement in CDK
 
-**Step 1** — Create the secret in `cdk/lib/cloudtak-stack.ts` (or wherever `SigningSecret` is created):
+The secret already exists. The remaining work is three steps:
+
+**Step 1** — Add `geofenceSecret` to `CloudTakApiProps` in `cloudtak-api.ts` and pass it from
+`cloudtak-stack.ts`:
 
 ```typescript
-const geofenceSecret = new secretsmanager.Secret(this, 'GeofenceSecret', {
-    secretName: `${stackName}/api/geofence`,
-    description: 'CloudTAK geofence service password',
-    generateSecretString: {
-        passwordLength: 32,
-        excludePunctuation: true,
-    },
-});
+// In CloudTakApiProps interface:
+geofenceSecret: secretsmanager.ISecret;
+
+// In cloudtak-stack.ts CloudTakApi constructor call:
+geofenceSecret: secrets.geofenceSecret,
 ```
 
-**Step 2** — Add it to the task definition dependency (if using L1 `CfnTaskDefinition`, add
-`addDependency(geofenceSecret)`; with L2, CDK handles ordering automatically when you use
-`ecs.Secret.fromSecretsManager()`).
-
-**Step 3** — Inject as an environment variable on the API container:
+**Step 2** — Grant read access and inject env var in `cloudtak-api.ts`:
 
 ```typescript
-environment: {
-    // existing vars …
-    CLOUDTAK_Config_geofence_password: secretsmanager.Secret
-        .fromSecretNameV2(this, 'GeofenceSecretRef', `${stackName}/api/geofence`)
-        .secretValue.unsafeUnwrap(),
-},
+// Grant access (alongside other secret grants)
+props.geofenceSecret.grantRead(executionRole);
+
+// In the container environment secrets map:
+secrets: {
+    'SigningSecret': ecs.Secret.fromSecretsManager(signingSecret),
+    'POSTGRES': ecs.Secret.fromSecretsManager(connectionStringSecret),
+    'CLOUDTAK_Config_geofence_password': ecs.Secret.fromSecretsManager(props.geofenceSecret), // ← add
+    // ...
+}
 ```
 
-Or, safer — use the resolve syntax directly in the environment map if you're using L1 constructs:
-
-```typescript
-{ name: 'CLOUDTAK_Config_geofence_password',
-  value: `{{resolve:secretsmanager:${stackName}/api/geofence}}` }
-```
-
-**Step 4** — Grant the API task role `secretsmanager:GetSecretValue` on the new secret.
+**Step 3** — CDK handles dependency ordering automatically when you use `ecs.Secret.fromSecretsManager()`,
+so no explicit `addDependency` call is needed.
 
 ---
 
 ## 5. ECS: Service name change
+
+> **CDK Status: ✅ Done**
+>
+> `cloudtak-api.ts` already uses `serviceName: \`TAK-${envConfig.stackName}-CloudTAK\`` — no
+> `-Service` suffix. This is consistent with the upstream change direction. No action required.
 
 **Source file:** `cloudformation/lib/api.js`  
 **Priority:** Low — **implement with caution**  
@@ -183,27 +290,24 @@ Or, safer — use the resolve syntax directly in the environment map if you're u
 
 ### How to implement in CDK
 
-Find the `serviceName` property on the CloudTAK API ECS Service construct and remove the `-Service`
-suffix.
+Already done. For reference, the CDK service name is set in `cdk/lib/constructs/cloudtak-api.ts`:
 
-**Before deploying**, verify whether the live service currently has the old name:
-
-```bash
-aws ecs describe-services \
-  --cluster TAK-Demo-BaseInfra \
-  --services TAK-Demo-CloudTAK-Service \
-  --region ap-southeast-2 \
-  --profile tak-nz-demo \
-  --query 'services[0].serviceName'
+```typescript
+this.service = new ecs.FargateService(this, 'Service', {
+    serviceName: `TAK-${envConfig.stackName}-CloudTAK`, // ← already correct
+    // ...
+});
 ```
-
-Because ECS service names are immutable, CloudFormation/CDK will **delete** the old service and
-**create** a new one. Plan for a rolling deployment window. Ensure the load balancer health check
-grace period is sufficient so the new service registers before the old one is fully drained.
 
 ---
 
 ## 6. KMS: Enable annual key rotation
+
+> **CDK Status: ⬜ Out of scope (base-infra)**
+>
+> The CloudTAK CDK stack does not own the KMS key — it imports it via
+> `kms.Key.fromKeyArn(...)` from a `base-infra` export. The `enableKeyRotation` property
+> can only be set on a key you own. **This change must be made in the base-infra stack.**
 
 **Source file:** `cloudformation/lib/kms.js`  
 **Priority:** Medium (security best practice)  
@@ -216,11 +320,13 @@ grace period is sufficient so the new service registers before the old one is fu
 + EnableKeyRotation: true
 ```
 
-### How to implement in CDK
+### How to implement
 
-Find the KMS key construct in the CDK stack and set `enableKeyRotation: true`:
+Find the KMS key construct in the **base-infra** CDK/CloudFormation stack and set
+`enableKeyRotation: true` (or `EnableKeyRotation: true`):
 
 ```typescript
+// In base-infra stack:
 const kmsKey = new kms.Key(this, 'KMS', {
     enableKeyRotation: true,  // ← add/change this
     description: stackName,
@@ -235,6 +341,12 @@ changes required.
 
 ## 7. S3: Public access block and AES256 encryption on asset bucket
 
+> **CDK Status: ✅ Done**
+>
+> `cdk/lib/constructs/s3-resources.ts` already sets `blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL`
+> and `encryption: s3.BucketEncryption.KMS` (which is stronger than upstream's AES256). No action
+> required. Consider adding `enforceSSL: true` as an optional hardening step.
+
 **Source file:** `cloudformation/lib/s3.js`  
 **Priority:** Medium (security hardening)  
 **Breaking:** No
@@ -246,21 +358,27 @@ to the asset bucket definition.
 
 ### How to implement in CDK
 
-The CDK L2 `s3.Bucket` construct applies these by default. Verify the existing bucket construct
-has these set (or relies on CDK defaults) and add them explicitly if not:
+Already done. For reference, `s3-resources.ts` has:
 
 ```typescript
 const assetBucket = new s3.Bucket(this, 'AssetBucket', {
-    bucketName: `${stackName}-${this.account}-${this.region}`,
-    blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,  // ← ensures all 4 settings
-    encryption: s3.BucketEncryption.S3_MANAGED,         // ← AES256
-    enforceSSL: true,                                    // ← recommended alongside encryption
+    encryption: s3.BucketEncryption.KMS,             // ✅ stronger than upstream AES256
+    encryptionKey: kmsKey,
+    blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL, // ✅ all 4 settings
+    // Optional hardening (not yet set):
+    // enforceSSL: true,
 });
 ```
 
 ---
 
 ## 8. RDS security group: Add IPv6 ingress rule
+
+> **CDK Status: ❌ Missing**
+>
+> `cdk/lib/constructs/security-groups.ts` imports `vpcCidrIpv6` and uses it for ECS outbound
+> rules, but the **database** security group only has one ingress rule:
+> `this.ecs → Port.tcp(5432)`. No IPv6 ingress rule exists on the database SG.
 
 **Source file:** `cloudformation/lib/db.js`  
 **Priority:** Low  
@@ -282,6 +400,21 @@ Added a second ingress rule to the RDS security group for IPv6:
 
 ### How to implement in CDK
 
+In `cdk/lib/constructs/security-groups.ts`, add a second ingress rule to `this.database`
+(the `vpcCidrIpv6` variable is already imported in that file):
+
+```typescript
+// Existing rule:
+this.database.addIngressRule(this.ecs, ec2.Port.tcp(5432), 'ECS to Database');
+
+// Add this:
+this.database.addIngressRule(
+    ec2.Peer.ipv6(vpcCidrIpv6),
+    ec2.Port.tcp(5432),
+    'Allow Internal IPv6 network access',
+);
+```
+
 **Pre-condition:** Verify that the base-infra stack exports `tak-vpc-${env}-vpc-cidr-ipv6`. If it
 does not export this value, skip this change.
 
@@ -292,21 +425,15 @@ aws cloudformation list-exports \
   --query "Exports[?contains(Name, 'ipv6')]"
 ```
 
-If the export exists, find the RDS security group in the CDK stack and add:
-
-```typescript
-dbSecurityGroup.addIngressRule(
-    ec2.Peer.ipv6(
-        Fn.importValue(`tak-vpc-${environment}-vpc-cidr-ipv6`)
-    ),
-    ec2.Port.tcp(5432),
-    'Allow Internal IPv6 network access',
-);
-```
-
 ---
 
 ## 9. PMTiles: Migrate from API Gateway v1 (REST) to v2 (HTTP API)
+
+> **CDK Status: ❌ Not done**
+>
+> `cdk/lib/constructs/lambda-functions.ts` still uses `apigateway.RestApi` (v1 REST API) with
+> `PMTilesApiGatewayRole`, `apigateway.DomainName`, `apigateway.Deployment`, `apigateway.Stage`,
+> and `apigateway.BasePathMapping`. The PMTiles Lambda also lacks the `API_URL` environment variable.
 
 **Source file:** `cloudformation/lib/pmtiles.js`  
 **Priority:** High (architecture — HTTP API is cheaper, simpler, and has built-in CORS)  
@@ -332,7 +459,7 @@ Also: `API_URL` env var added to the PMTiles Lambda.
 
 ### How to implement in CDK
 
-Find the PMTiles API Gateway construct in `cdk/lib/constructs/` or `cdk/lib/cloudtak-stack.ts`.
+Find the PMTiles API Gateway construct in `cdk/lib/constructs/lambda-functions.ts`.
 
 **Step 1** — Replace `apigw.RestApi` with `apigwv2.HttpApi`:
 
@@ -405,6 +532,11 @@ maintenance window.
 
 ## 10. Lambda: Bump EFS cleanup runtime to Node.js 24
 
+> **CDK Status: ❌ Missing**
+>
+> `cdk/lib/constructs/pmtiles-efs.ts` — `CleanupLambda` uses `lambda.Runtime.NODEJS_20_X`.
+> One-line change required.
+
 **Source file:** `cloudformation/lib/pmtiles.js`  
 **Priority:** Medium (Node 20 EOL approaching)  
 **Breaking:** No
@@ -418,10 +550,10 @@ maintenance window.
 
 ### How to implement in CDK
 
-Find the EFS cleanup Lambda in the PMTiles construct and update:
+In `cdk/lib/constructs/pmtiles-efs.ts`, update the cleanup Lambda runtime:
 
 ```typescript
-new lambda.Function(this, 'EFSCleanupLambda', {
+this.cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
     runtime: lambda.Runtime.NODEJS_24_X,  // ← was NODEJS_20_X
     // …
 });
@@ -430,6 +562,12 @@ new lambda.Function(this, 'EFSCleanupLambda', {
 ---
 
 ## 11. ECS Events: Auto-scaling + dedicated CPU/memory
+
+> **CDK Status: ❌ Missing**
+>
+> `cdk/lib/constructs/events-service.ts` uses `envConfig.ecs.taskCpu` / `envConfig.ecs.taskMemory`
+> for the Events task definition (same shared config as the API service). It should use fixed values
+> of **1024 CPU / 2048 MB**. No auto-scaling is configured at all.
 
 **Source file:** `cloudformation/lib/events.js`  
 **Priority:** Medium (operational — prevents Events service saturation under load)  
@@ -447,12 +585,12 @@ new lambda.Function(this, 'EFSCleanupLambda', {
 
 ### How to implement in CDK
 
-**Step 1** — Fix the Events task definition CPU/memory:
+**Step 1** — Fix the Events task definition CPU/memory in `cdk/lib/constructs/events-service.ts`:
 
 ```typescript
 const eventsTaskDef = new ecs.FargateTaskDefinition(this, 'EventsTaskDefinition', {
-    cpu: 1024,
-    memoryLimitMiB: 2048,
+    cpu: 1024,           // ← was envConfig.ecs.taskCpu
+    memoryLimitMiB: 2048, // ← was envConfig.ecs.taskMemory
     // …
 });
 ```
@@ -467,14 +605,14 @@ const eventsScaling = eventsService.autoScaleTaskCount({
 
 eventsScaling.scaleOnCpuUtilization('EventsCPUScaling', {
     targetUtilizationPercent: 70,
-    scaleInCooldown: Duration.seconds(300),
-    scaleOutCooldown: Duration.seconds(60),
+    scaleInCooldown: cdk.Duration.seconds(300),
+    scaleOutCooldown: cdk.Duration.seconds(60),
 });
 
 eventsScaling.scaleOnMemoryUtilization('EventsMemoryScaling', {
     targetUtilizationPercent: 80,
-    scaleInCooldown: Duration.seconds(300),
-    scaleOutCooldown: Duration.seconds(60),
+    scaleInCooldown: cdk.Duration.seconds(300),
+    scaleOutCooldown: cdk.Duration.seconds(60),
 });
 ```
 
@@ -484,6 +622,11 @@ automatically — no need to create them manually.
 ---
 
 ## 12. New: Retention service (scheduled ECS task)
+
+> **CDK Status: ❌ Missing**
+>
+> No `RetentionService` construct exists in `cdk/lib/constructs/` and it is not referenced in
+> `cdk/lib/cloudtak-stack.ts`. This is a net-new component to be built.
 
 **Source file:** `cloudformation/lib/retention.js` (new file)  
 **Priority:** Medium (functional — old data cleanup does not run without this)  
@@ -567,7 +710,7 @@ import * as targets from 'aws-cdk-lib/aws-events-targets';
 
 const retentionSchedule = new events.Rule(this, 'RetentionSchedule', {
     description: 'Schedule for CloudTAK retention runs',
-    schedule: events.Schedule.rate(Duration.days(1)),
+    schedule: events.Schedule.rate(cdk.Duration.days(1)),
     enabled: true,
 });
 
@@ -586,6 +729,12 @@ retentionSchedule.addTarget(new targets.EcsTask({
 
 ## 13. Webhooks: API Gateway v1 → v2 domain name resource
 
+> **CDK Status: ✅ Done**
+>
+> `cdk/lib/constructs/webhooks.ts` already uses `apigatewayv2.CfnDomainName` with
+> `domainNameConfigurations: [{ certificateArn, endpointType: 'REGIONAL' }]` throughout.
+> No action required.
+
 **Source file:** `cloudformation/webhooks.template.js`  
 **Priority:** Depends on whether the webhooks stack is deployed  
 **Breaking:** ⚠️ YES — triggers replacement of the domain name resource
@@ -603,61 +752,16 @@ The webhooks API domain changed from `AWS::ApiGateway::DomainName` (v1) to
 + DomainNameConfigurations: [{ CertificateArn: …, EndpointType: 'REGIONAL' }]
 ```
 
-### How to implement in CDK
+### Current CDK implementation
 
-**Pre-condition:** Check whether the webhooks stack is deployed for your environment:
-
-```bash
-aws cloudformation describe-stacks \
-  --stack-name TAK-Demo-CloudTAK-Webhooks \
-  --region ap-southeast-2 \
-  --profile tak-nz-demo 2>&1 | grep StackStatus
-```
-
-If the webhooks stack is deployed, find the domain name construct and update it. The CDK L2
-`apigwv2.DomainName` construct already uses the v2 resource type:
+Already correct in `cdk/lib/constructs/webhooks.ts`:
 
 ```typescript
-// If using L1 CfnDomainName, replace with:
-import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
-
-const webhooksDomain = new apigwv2.DomainName(this, 'CloudTAKWebhooksApiDomain', {
-    domainName: `${subdomainPrefix}.${hostedZoneName}`,
-    certificate: acmCert,
-    endpointType: apigwv2.EndpointType.REGIONAL,
+this.domainName = new apigatewayv2.CfnDomainName(this, 'WebhooksDomain', {
+    domainName: this.webhookUrl,
+    domainNameConfigurations: [{
+        certificateArn: certificate.certificateArn,
+        endpointType: 'REGIONAL'
+    }]
 });
 ```
-
-**Deployment note:** Same caution as change #9 — the old v1 domain resource will be deleted and
-a new v2 resource created. Briefly, the subdomain DNS alias will be stale. Perform during a
-low-traffic window.
-
----
-
-## Summary
-
-| # | Change | Priority | Breaking | Effort |
-|---|--------|----------|----------|--------|
-| 1 | IAM S3 least-privilege | High | No | Low |
-| 2 | `cloudformation:ListStacks` | High | No | Low |
-| 3 | EventBridge tag permissions | High | No | Low |
-| 4 | GeofenceSecret + env var | High | No | Medium |
-| 5 | ECS service name | Low | **Yes** | Low |
-| 6 | KMS key rotation | Medium | No | Low |
-| 7 | S3 encryption + public access block | Medium | No | Low |
-| 8 | RDS security group IPv6 | Low | No | Low |
-| 9 | PMTiles API GW v1 → v2 | High | **Yes** | High |
-| 10 | Lambda Node 20 → 24 | Medium | No | Low |
-| 11 | Events auto-scaling + fixed CPU/mem | Medium | No | Medium |
-| 12 | Retention service (new) | Medium | No | High |
-| 13 | Webhooks API GW v1 → v2 | Conditional | **Yes** | Medium |
-
-**Suggested implementation order:**
-
-1. Changes 1–3, 6–8, 10 — low-effort, non-breaking, do together in one PR
-2. Change 4 (GeofenceSecret) — requires secret creation + migration, one PR
-3. Change 11 (Events auto-scaling) — one PR
-4. Change 9 (PMTiles v1→v2) — plan a maintenance window, one PR
-5. Change 12 (Retention service) — one PR
-6. Change 5 (service name) — plan a maintenance window, do last
-7. Change 13 (Webhooks) — only if webhooks stack is deployed

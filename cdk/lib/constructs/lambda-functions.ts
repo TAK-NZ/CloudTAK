@@ -1,3 +1,15 @@
+/**
+ * Lambda Functions construct — PMTiles tile server
+ *
+ * Change #9: migrated from API Gateway v1 (REST API) to v2 (HTTP API).
+ * HTTP API is cheaper, natively handles CORS, and uses a resource-based Lambda
+ * permission instead of an execution-role credential.
+ *
+ * Deployment note: the first deploy that removes the v1 resources and creates the
+ * v2 resources will cause a brief DNS gap on tiles.<domain>.  Schedule during a
+ * low-traffic window.
+ */
+
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
@@ -5,9 +17,8 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
-import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as route53targets from 'aws-cdk-lib/aws-route53-targets';
 import * as efs from 'aws-cdk-lib/aws-efs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { ContextEnvironmentConfig } from '../stack-config';
@@ -29,69 +40,97 @@ export interface LambdaFunctionsProps {
 
 export class LambdaFunctions extends Construct {
   public readonly tilesLambda: lambda.Function;
-  public readonly tilesApi: apigateway.RestApi;
+  public readonly tilesApi: apigwv2.CfnApi;
 
   constructor(scope: Construct, id: string, props: LambdaFunctionsProps) {
     super(scope, id);
 
-    const { envConfig, ecrRepository, tilesImageAsset, assetBucketName, serviceUrl, signingSecret, kmsKey, hostedZone, certificate, vpc, efsAccessPoint, lambdaSecurityGroup } = props;
+    const {
+      envConfig,
+      ecrRepository,
+      tilesImageAsset,
+      assetBucketName,
+      serviceUrl,
+      signingSecret,
+      kmsKey,
+      hostedZone,
+      certificate,
+      vpc,
+      efsAccessPoint,
+      lambdaSecurityGroup,
+    } = props;
 
-    // Get image tag from context for CI/CD deployments
-    const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
+    const cloudtakImageTag =
+      cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
 
-    
-    // Create PMTiles Lambda Role
+    // IAM role for the PMTiles Lambda
     const tilesLambdaRole = new iam.Role(this, 'PMTilesLambdaRole', {
       roleName: `TAK-${envConfig.stackName}-CloudTAK-pmtiles`,
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       inlinePolicies: {
-        'pmtiles': new iam.PolicyDocument({
+        pmtiles: new iam.PolicyDocument({
           statements: [
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: ['s3:List*', 's3:Get*', 's3:Head*', 's3:Describe*'],
-              resources: [`arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`, `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`]
+              resources: [
+                `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`,
+                `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`,
+              ],
             }),
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
-              actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
-              resources: [`arn:${cdk.Stack.of(this).partition}:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:TAK-${envConfig.stackName}-*`]
+              actions: [
+                'secretsmanager:GetSecretValue',
+                'secretsmanager:DescribeSecret',
+              ],
+              resources: [
+                `arn:${cdk.Stack.of(this).partition}:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:TAK-${envConfig.stackName}-*`,
+              ],
             }),
             new iam.PolicyStatement({
               effect: iam.Effect.ALLOW,
               actions: [
                 'elasticfilesystem:ClientMount',
                 'elasticfilesystem:ClientWrite',
-                'elasticfilesystem:DescribeMountTargets'
+                'elasticfilesystem:DescribeMountTargets',
               ],
-              resources: ['*']
-            })
-          ]
-        })
+              resources: ['*'],
+            }),
+          ],
+        }),
       },
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
-        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaVPCAccessExecutionRole')
-      ]
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AWSLambdaBasicExecutionRole',
+        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AWSLambdaVPCAccessExecutionRole',
+        ),
+      ],
     });
 
-    // Grant KMS permissions for S3, Secrets Manager, and EFS encryption
     kmsKey.grantDecrypt(tilesLambdaRole);
-    
-    // Create PMTiles Lambda
-    const tilesTag = cloudtakImageTag ? `pmtiles-${cloudtakImageTag.replace('cloudtak-', '')}` : 'pmtiles-latest';
-    const baseHostname = serviceUrl.replace('https://', '').replace('http://', '');
+
+    const tilesTag = cloudtakImageTag
+      ? `pmtiles-${cloudtakImageTag.replace('cloudtak-', '')}`
+      : 'pmtiles-latest';
+
+    const baseHostname = serviceUrl
+      .replace('https://', '')
+      .replace('http://', '');
     const tilesHostname = `tiles.${baseHostname}`;
-    
+
+    // PMTiles Lambda function
     this.tilesLambda = new lambda.Function(this, 'PMTilesLambda', {
       functionName: `TAK-${envConfig.stackName}-CloudTAK-pmtiles`,
       runtime: lambda.Runtime.FROM_IMAGE,
-      code: tilesImageAsset 
+      code: tilesImageAsset
         ? lambda.Code.fromEcrImage(tilesImageAsset.repository, {
-            tagOrDigest: tilesImageAsset.assetHash
+            tagOrDigest: tilesImageAsset.assetHash,
           })
         : lambda.Code.fromEcrImage(ecrRepository, {
-            tagOrDigest: tilesTag
+            tagOrDigest: tilesTag,
           }),
       handler: lambda.Handler.FROM_IMAGE,
       role: tilesLambdaRole,
@@ -99,148 +138,133 @@ export class LambdaFunctions extends Construct {
       timeout: cdk.Duration.seconds(60),
       description: 'Return Mapbox Vector Tiles from a PMTiles Store',
       environment: {
-        'StackName': cdk.Stack.of(this).stackName,
-        'ASSET_BUCKET': assetBucketName,
-        'PMTILES_URL': `https://${tilesHostname}`,
-        'APIROOT': `https://${tilesHostname}`,  // Legacy value for PMTILES_URL
-        'SigningSecret': `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`
+        StackName: cdk.Stack.of(this).stackName,
+        ASSET_BUCKET: assetBucketName,
+        PMTILES_URL: `https://${tilesHostname}`,
+        APIROOT: `https://${tilesHostname}`,
+        // API_URL required by PMTiles Lambda since CloudTAK v13
+        API_URL: `https://${baseHostname}`,
+        SigningSecret: `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`,
       },
       environmentEncryption: kmsKey,
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [lambdaSecurityGroup],
-      filesystem: lambda.FileSystem.fromEfsAccessPoint(efsAccessPoint, '/mnt/efs')
+      filesystem: lambda.FileSystem.fromEfsAccessPoint(
+        efsAccessPoint,
+        '/mnt/efs',
+      ),
     });
-    
-    // Note: No need to grant read access when using CloudFormation dynamic references
-    
-    // Create API Gateway for PMTiles
-    // Force REGIONAL endpoint to use local certificate (EDGE requires us-east-1 certificate)
-    const endpointType = apigateway.EndpointType.REGIONAL;
-    
-    this.tilesApi = new apigateway.RestApi(this, 'PMTilesAPI', {
-      restApiName: `TAK-${envConfig.stackName}-CloudTAK-pmtiles`,
-      description: 'PMTiles API Gateway',
-      endpointConfiguration: {
-        types: [endpointType]
-      },
-      binaryMediaTypes: ['application/vnd.mapbox-vector-tile', 'application/x-protobuf'],
+
+    // -------------------------------------------------------------------------
+    // API Gateway v2 (HTTP API) — replaces the former v1 REST API
+    // -------------------------------------------------------------------------
+
+    this.tilesApi = new apigwv2.CfnApi(this, 'PMTilesAPI', {
+      name: `TAK-${envConfig.stackName}-CloudTAK-pmtiles`,
+      protocolType: 'HTTP',
       disableExecuteApiEndpoint: true,
-      deploy: false,  // Disable default deployment to prevent prod stage
-      // No default CORS - will add explicit OPTIONS method like CloudFormation
-      cloudWatchRole: true,
-      cloudWatchRoleRemovalPolicy: cdk.RemovalPolicy.DESTROY,
-      policy: new iam.PolicyDocument({
-        statements: [
-          new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            principals: [new iam.AnyPrincipal()],
-            actions: ['execute-api:Invoke'],
-            resources: ['*']
-          })
-        ]
-      })
+      description: 'PMTiles HTTP API (v2)',
+      corsConfiguration: {
+        allowHeaders: [
+          'Content-Type',
+          'X-Amz-Date',
+          'Authorization',
+          'X-Api-Key',
+          'X-Amz-Security-Token',
+          'X-Amz-User-Agent',
+        ],
+        allowMethods: ['GET', 'POST', 'OPTIONS'],
+        allowOrigins: ['*'],
+      },
     });
-    
-    // Enable IPv6 support via CloudFormation property
-    const cfnApi = this.tilesApi.node.defaultChild as apigateway.CfnRestApi;
-    cfnApi.addPropertyOverride('EndpointConfiguration.IpAddressType', 'dualstack');
-    
-    // Create API Gateway execution role (like CloudFormation)
-    const apiGatewayRole = new iam.Role(this, 'PMTilesApiGatewayRole', {
-      assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
-      inlinePolicies: {
-        'lambda-invoke': new iam.PolicyDocument({
-          statements: [
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: ['lambda:InvokeFunction'],
-              resources: [this.tilesLambda.functionArn]
-            })
-          ]
-        })
-      }
+
+    // Resource-based permission — API Gateway v2 uses this instead of an
+    // execution role (PMTilesApiGatewayRole is no longer needed)
+    this.tilesLambda.addPermission('PMTilesAPIPermission', {
+      principal: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+      sourceArn: `arn:${cdk.Stack.of(this).partition}:execute-api:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:${this.tilesApi.ref}/*/*`,
     });
-    
-    // Add proxy resource for all paths
-    const proxyResource = this.tilesApi.root.addResource('{proxy+}');
-    proxyResource.addMethod('GET', new apigateway.LambdaIntegration(this.tilesLambda, {
-      proxy: true,
-      credentialsRole: apiGatewayRole
-    }));
-    
-    // Add explicit OPTIONS method like CloudFormation
-    proxyResource.addMethod('OPTIONS', new apigateway.MockIntegration({
-      integrationResponses: [{
-        statusCode: '204',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Headers': "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent'",
-          'method.response.header.Access-Control-Allow-Origin': "'*'",
-          'method.response.header.Access-Control-Allow-Methods': "'OPTIONS,GET,PUT,POST,DELETE,PATCH,HEAD'"
-        }
-      }],
-      requestTemplates: {
-        'application/json': '{ "statusCode": 200 }'
-      }
-    }), {
-      methodResponses: [{
-        statusCode: '204',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Headers': true,
-          'method.response.header.Access-Control-Allow-Origin': true,
-          'method.response.header.Access-Control-Allow-Methods': true
-        }
-      }]
+
+    // Lambda integration (payload format v1.0 for binary tile compatibility)
+    const integration = new apigwv2.CfnIntegration(
+      this,
+      'PMTilesIntegration',
+      {
+        apiId: this.tilesApi.ref,
+        integrationType: 'AWS_PROXY',
+        integrationUri: this.tilesLambda.functionArn,
+        payloadFormatVersion: '1.0',
+      },
+    );
+
+    new apigwv2.CfnRoute(this, 'PMTilesRouteGet', {
+      apiId: this.tilesApi.ref,
+      routeKey: 'GET /{proxy+}',
+      target: `integrations/${integration.ref}`,
     });
-    
-    // No Lambda permissions needed - using API Gateway execution role
-    
-    // Create custom domain and base path mapping (matches CloudFormation approach)
-    const domainName = new apigateway.DomainName(this, 'PMTilesDomain', {
-      domainName: tilesHostname,
-      certificate: certificate,
-      endpointType: endpointType,
-      securityPolicy: apigateway.SecurityPolicy.TLS_1_2
+
+    new apigwv2.CfnRoute(this, 'PMTilesRoutePost', {
+      apiId: this.tilesApi.ref,
+      routeKey: 'POST /{proxy+}',
+      target: `integrations/${integration.ref}`,
     });
-    
-    // Create deployment and stage like CloudFormation
-    const deployment = new apigateway.Deployment(this, 'PMTilesDeployment', {
-      api: this.tilesApi,
-      description: envConfig.stackName
+
+    // $default stage with auto-deploy (no explicit Deployment resource needed)
+    const stage = new apigwv2.CfnStage(this, 'PMTilesStage', {
+      apiId: this.tilesApi.ref,
+      stageName: '$default',
+      autoDeploy: true,
     });
-    
-    deployment.node.addDependency(proxyResource);
-    
-    const stage = new apigateway.Stage(this, 'PMTilesStage', {
-      deployment: deployment,
-      stageName: 'tiles'
-    });
-    
-    // Create base path mapping to tiles stage
-    new apigateway.BasePathMapping(this, 'PMTilesBasePathMapping', {
-      domainName: domainName,
-      restApi: this.tilesApi,
-      stage: stage
-    });
-    
-    // Create Route53 records for tiles subdomain (using custom domain)
-    new route53.ARecord(this, 'PMTilesDNS', {
-      zone: hostedZone,
-      recordName: `tiles.${envConfig.cloudtak.hostname}`,
-      target: route53.RecordTarget.fromAlias(
-        new route53targets.ApiGatewayDomain(domainName)
-      ),
-      comment: `${cdk.Stack.of(this).stackName} PMTiles API DNS Entry`
-    });
-    
-    // Add IPv6 support with AAAA record
-    new route53.AaaaRecord(this, 'PMTilesDNSIPv6', {
-      zone: hostedZone,
-      recordName: `tiles.${envConfig.cloudtak.hostname}`,
-      target: route53.RecordTarget.fromAlias(
-        new route53targets.ApiGatewayDomain(domainName)
-      ),
-      comment: `${cdk.Stack.of(this).stackName} PMTiles API IPv6 DNS Entry`
-    });
+
+    // Two-step migration guard:
+    // When upgrading from API GW v1 → v2, the old v1 DomainName must be deleted
+    // by CloudFormation BEFORE the new v2 DomainName can be created (they share
+    // the same domain namespace).  Deploy once with --context skipPmtilesDomain=true
+    // to let CloudFormation remove the v1 resources, then redeploy without the flag
+    // to create the v2 domain and DNS records.
+    const skipDomain = cdk.Stack.of(this).node.tryGetContext('skipPmtilesDomain') === true
+      || cdk.Stack.of(this).node.tryGetContext('skipPmtilesDomain') === 'true';
+
+    if (!skipDomain) {
+      // Custom domain mapped to the API
+      const pmtilesDomain = new apigwv2.CfnDomainName(this, 'PMTilesDomain', {
+        domainName: tilesHostname,
+        domainNameConfigurations: [
+          {
+            certificateArn: certificate.certificateArn,
+            endpointType: 'REGIONAL',
+          },
+        ],
+      });
+
+      new apigwv2.CfnApiMapping(this, 'PMTilesApiMapping', {
+        apiId: this.tilesApi.ref,
+        domainName: pmtilesDomain.ref,
+        stage: stage.ref,
+      });
+
+      // Route53 — alias to the v2 regional domain name
+      const aliasTarget = route53.RecordTarget.fromAlias({
+        bind: () => ({
+          dnsName: pmtilesDomain.attrRegionalDomainName,
+          hostedZoneId: pmtilesDomain.attrRegionalHostedZoneId,
+        }),
+      });
+
+      new route53.ARecord(this, 'PMTilesDNS', {
+        zone: hostedZone,
+        recordName: `tiles.${envConfig.cloudtak.hostname}`,
+        target: aliasTarget,
+        comment: `${cdk.Stack.of(this).stackName} PMTiles API DNS Entry`,
+      });
+
+      new route53.AaaaRecord(this, 'PMTilesDNSIPv6', {
+        zone: hostedZone,
+        recordName: `tiles.${envConfig.cloudtak.hostname}`,
+        target: aliasTarget,
+        comment: `${cdk.Stack.of(this).stackName} PMTiles API IPv6 DNS Entry`,
+      });
+    }
   }
 }

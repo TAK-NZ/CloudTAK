@@ -38,6 +38,7 @@ import { Webhooks } from './constructs/webhooks';
 import { EtlRole } from './constructs/etl-role';
 import { CloudTakOidcSetup } from './constructs/cloudtak-oidc-setup';
 import { PMTilesEfs } from './constructs/pmtiles-efs';
+import { RetentionService } from './constructs/retention-service';
 
 import { registerOutputs } from './outputs';
 import { createBaseImportValue, BASE_EXPORT_NAMES } from './cloudformation-imports';
@@ -134,6 +135,7 @@ export class CloudTakStack extends cdk.Stack {
     let dockerImageAsset: ecrAssets.DockerImageAsset | undefined;
     let eventsImageAsset: ecrAssets.DockerImageAsset | undefined;
     let tilesImageAsset: ecrAssets.DockerImageAsset | undefined;
+    let retentionImageAsset: ecrAssets.DockerImageAsset | undefined;
     
     if (usePreBuiltImages) {
       // Use BaseInfra ECR repository for CI/CD deployments
@@ -189,6 +191,30 @@ export class CloudTakStack extends cdk.Stack {
       tilesImageAsset = new ecrAssets.DockerImageAsset(this, 'TilesDockerAsset', {
         directory: '..',
         file: 'tasks/pmtiles/Dockerfile',
+        buildArgs: {
+          NODE_ENV: environment === 'prod' ? 'production' : 'development'
+        },
+        exclude: [
+          'node_modules/**',
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/.vscode/**',
+          '**/.idea/**',
+          '**/*.log',
+          '**/*.tmp',
+          '**/.DS_Store',
+          '**/Thumbs.db',
+          'cdk/**',
+          'api/dist/**',
+          'api/fonts/**',
+          'api/web/node_modules/**',
+          'api/web/dist/**',
+        ]
+      });
+
+      retentionImageAsset = new ecrAssets.DockerImageAsset(this, 'RetentionDockerAsset', {
+        directory: '..',
+        file: 'tasks/retention/Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
         },
@@ -360,6 +386,7 @@ export class CloudTakStack extends cdk.Stack {
       assetBucketName: s3Resources.assetBucket.bucketName,
       signingSecret: secrets.signingSecret,
       adminPasswordSecret: secrets.adminPasswordSecret,
+      geofenceSecret: secrets.geofenceSecret,
       serviceUrl: route53Records.serviceUrl
     });
 
@@ -385,6 +412,19 @@ export class CloudTakStack extends cdk.Stack {
     const alarms = new Alarms(this, 'Alarms', {
       envConfig,
       eventsService: eventsService.service
+    });
+
+    // Create retention service for automated cleanup of expired data
+    new RetentionService(this, 'RetentionService', {
+      envConfig,
+      vpc,
+      ecsCluster,
+      ecrRepository,
+      retentionImageAsset,
+      assetBucketName: s3Resources.assetBucket.bucketName,
+      serviceUrl: route53Records.serviceUrl,
+      connectionStringSecret: database.connectionStringSecret,
+      kmsKey,
     });
 
     // Create webhooks infrastructure for layer webhook support
