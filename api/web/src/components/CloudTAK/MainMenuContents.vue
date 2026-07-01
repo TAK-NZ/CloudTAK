@@ -20,69 +20,6 @@
         </div>
 
         <div class='main-menu-footer flex-shrink-0'>
-            <div class='d-flex justify-content-center mb-2'>
-                <TablerDropdown
-                    position='left'
-                >
-                    <template #default>
-                        <TablerIconButton
-                            title='Application Switcher'
-                            class='cloudtak-hover'
-                            :hover='false'
-                        >
-                            <IconGridDots
-                                :size='32'
-                                stroke='1'
-                            />
-                        </TablerIconButton>
-                    </template>
-                    <template #dropdown>
-                        <div
-                            class='py-1'
-                            style='min-width: 200px;'
-                        >
-                            <div class='px-3 pt-2 pb-1 fw-bold'>
-                                Applications
-                            </div>
-                            <div class='px-2 pb-2'>
-                                <div
-                                    v-for='application in appSwitcherApplications'
-                                    :key='application.url'
-                                    class='col-12 py-1 px-2 cloudtak-hover cursor-pointer user-select-none'
-                                    @click.stop='external(application.url)'
-                                >
-                                    <img
-                                        v-if='application.icon'
-                                        :src='application.icon'
-                                        :alt='`${application.name} logo`'
-                                        class='app-switcher-logo'
-                                    >
-                                    <IconWorld
-                                        v-else
-                                        :size='25'
-                                        stroke='1'
-                                    />
-                                    <span class='ps-2'>{{ application.name }}</span>
-                                </div>
-                                <div
-                                    v-if='appSwitcherApplications.length'
-                                    class='dropdown-divider my-1'
-                                />
-                                <div
-                                    class='col-12 py-1 px-2 cloudtak-hover cursor-pointer user-select-none'
-                                    @click.stop='external("/video")'
-                                >
-                                    <IconDeviceTv
-                                        :size='25'
-                                        stroke='1'
-                                    />
-                                    <span class='ps-2'>Video Wall</span>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </TablerDropdown>
-            </div>
             <div class='d-flex justify-content-center mb-1'>
                 <ServerStatus
                     :version='true'
@@ -264,13 +201,10 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, onMounted, onUnmounted, computed, watch, onBeforeUnmount } from 'vue';
+import { ref, onMounted, computed, watch, onBeforeUnmount } from 'vue';
 import {
     IconUser,
     IconLogout,
-    IconGridDots,
-    IconWorld,
-    IconDeviceTv,
     IconLayoutGrid,
     IconLayoutList,
     IconPencil, 
@@ -282,7 +216,6 @@ import {
 } from '@tabler/icons-vue';
 import Sortable from 'sortablejs';
 import {
-    TablerDropdown,
     TablerIconButton,
     TablerInput,
     TablerNone,
@@ -291,7 +224,6 @@ import { openSecondaryView } from '../../base/capacitor.ts';
 import { useMapStore } from '../../stores/map.ts';
 import { useAppStore } from '../../stores/app.ts';
 import type { MenuItemConfig } from '../../stores/modules/menu.ts';
-import Config from '../../base/config.ts';
 import { useRouter } from 'vue-router';
 import MenuItemCard from './Menu/MenuItemCard.vue';
 import MenuTemplate from './util/MenuTemplate.vue';
@@ -302,26 +234,6 @@ const router = useRouter();
 
 const mapStore = useMapStore();
 const appStore = useAppStore();
-
-type AppSwitcherApplication = {
-    name: string;
-    icon: string;
-    url: string;
-};
-
-const appSwitcherApplications = ref<AppSwitcherApplication[]>([]);
-
-let alive = false;
-onMounted(() => { alive = true; });
-onUnmounted(() => { alive = false; });
-
-onMounted(async () => {
-    const applicationsConfig = await Config.list(['external::applications' as never]);
-
-    if (!alive) return;
-
-    appSwitcherApplications.value = normalizeApplications(applicationsConfig['external::applications' as never]);
-});
 
 const username = ref<string>('Username');
 
@@ -440,19 +352,6 @@ async function logout() {
     await appStore.logout();
 }
 
-function normalizeApplications(applications: unknown): AppSwitcherApplication[] {
-    if (!Array.isArray(applications)) return [];
-
-    return applications.map((application) => {
-        const value = application as Partial<AppSwitcherApplication> | null;
-
-        return {
-            name: typeof value?.name === 'string' ? value.name : '',
-            icon: typeof value?.icon === 'string' ? value.icon : '',
-            url: typeof value?.url === 'string' ? value.url : '',
-        };
-    });
-}
 </script>
 
 <style scoped>
@@ -492,10 +391,4 @@ function normalizeApplications(applications: unknown): AppSwitcherApplication[] 
     cursor: move !important;
 }
 
-.app-switcher-logo {
-    width: 32px;
-    height: 32px;
-    object-fit: contain;
-    flex-shrink: 0;
-}
 </style>
