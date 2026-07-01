@@ -54,6 +54,7 @@
                 </div>
             </StandardItem>
             <StandardItem
+                v-if='false'
                 @click='router.push("/menu/settings/passkeys")'
             >
                 <div class='d-flex align-items-center px-2 py-2'>
