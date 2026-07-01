@@ -115,7 +115,7 @@ export class PMTilesEfs extends Construct {
     // Create cleanup Lambda
     this.cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
       functionName: `TAK-${envConfig.stackName}-CloudTAK-efs-cleanup`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromInline(`
 import fs from 'fs';
