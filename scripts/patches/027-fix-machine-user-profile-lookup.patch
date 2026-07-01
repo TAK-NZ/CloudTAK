@@ -1,64 +1,89 @@
 diff --git a/api/routes/ldap.ts b/api/routes/ldap.ts
-index 8c2e7a41f..9a3c5b861 100644
+index 3625005dd..75c07931e 100644
 --- a/api/routes/ldap.ts
 +++ b/api/routes/ldap.ts
-@@ -23,13 +23,17 @@ export default async function router(schema: Schema, config: Config) {
-         })
+@@ -23,7 +23,7 @@ export default async function router(schema: Schema, config: Config) {
+         }),
      }, async (req, res) => {
          try {
 -            const profile = await Auth.as_profile(config, req);
 +            let profile = await Auth.as_profile(config, req);
  
-             if (!config.external || !config.external.configured) {
+             const cotak = config.user?.get('cotak');
+ 
+@@ -31,9 +31,13 @@ export default async function router(schema: Schema, config: Config) {
                  throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
              }
  
 -            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 +            if (!profile.id) {
-+                const response = await config.external.login(profile.username);
++                const response = await cotak.login(profile.username);
 +                await config.models.Profile.commit(profile.username, { id: response.id });
 +                profile = await config.models.Profile.from(profile.username);
 +            }
  
-             const list = await config.external.channels(profile.id, req.query)
+-            const list = await cotak.channels(profile.id, req.query);
++            const list = await cotak.channels(profile.id!, req.query);
  
-@@ -60,13 +64,17 @@ export default async function router(schema: Schema, config: Config) {
-         })
+             res.json(list);
+         } catch (err) {
+@@ -63,7 +67,7 @@ export default async function router(schema: Schema, config: Config) {
+         }),
      }, async (req, res) => {
          try {
 -            const profile = await Auth.as_profile(config, req);
 +            let profile = await Auth.as_profile(config, req);
  
-             if (!config.external || !config.external.configured) {
+             const cotak = config.user?.get('cotak');
+ 
+@@ -71,13 +75,17 @@ export default async function router(schema: Schema, config: Config) {
                  throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
              }
  
 -            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 +            if (!profile.id) {
-+                const response = await config.external.login(profile.username);
++                const response = await cotak.login(profile.username);
 +                await config.models.Profile.commit(profile.username, { id: response.id });
 +                profile = await config.models.Profile.from(profile.username);
 +            }
  
-             const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
-                 .map((n) => String.fromCharCode((n % 94) + 33))
-@@ -121,13 +129,17 @@ export default async function router(schema: Schema, config: Config) {
-         })
+             const password = Array.from({ length: 16 }, () => {
+                 return String.fromCharCode(crypto.randomInt(94) + 33);
+             }).join('');
+ 
+-            const user = await cotak.createMachineUser(profile.id, {
++            const user = await cotak.createMachineUser(profile.id!, {
+                 name: req.body.name,
+                 description: req.body.description,
+                 management_url: config.API_URL,
+@@ -117,7 +125,7 @@ export default async function router(schema: Schema, config: Config) {
+         }),
      }, async (req, res) => {
          try {
 -            const profile = await Auth.as_profile(config, req);
 +            let profile = await Auth.as_profile(config, req);
  
-             if (!config.external || !config.external.configured) {
+             const cotak = config.user?.get('cotak');
+ 
+@@ -125,14 +133,18 @@ export default async function router(schema: Schema, config: Config) {
                  throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
              }
  
 -            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 +            if (!profile.id) {
-+                const response = await config.external.login(profile.username);
++                const response = await cotak.login(profile.username);
 +                await config.models.Profile.commit(profile.username, { id: response.id });
 +                profile = await config.models.Profile.from(profile.username);
 +            }
  
-             const password = Array.from(crypto.randomFillSync(new Uint8Array(16)))
-                 .map((n) => String.fromCharCode((n % 94) + 33))
+             const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
+                 .join('');
+ 
+-            const user = await cotak.fetchMachineUser(profile.id, req.params.email);
++            const user = await cotak.fetchMachineUser(profile.id!, req.params.email);
+ 
+-            await cotak.updateMachineUser(profile.id, { id: user.id, password });
++            await cotak.updateMachineUser(profile.id!, { id: user.id, password });
+ 
+             const api = await TAKAPI.init(
+                 new URL(config.server.webtak),
