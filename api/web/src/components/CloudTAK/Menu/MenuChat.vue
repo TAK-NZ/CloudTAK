@@ -188,10 +188,10 @@ async function deleteChats(ids: Array<string | number>): Promise<void> {
     await fetchChats();
 }
 
-async function fetchChats(): Promise<void> {
+async function fetchChats(opts: { skipRefresh?: boolean } = {}): Promise<void> {
     loading.value = true;
 
-    if (route.params.chatroom !== 'new' && room.value) {
+    if (route.params.chatroom !== 'new' && room.value && !opts.skipRefresh) {
         try {
             await Chatroom.load(room.value.name, { reload: false });
             await room.value.chats.refresh();
@@ -206,5 +206,15 @@ async function fetchChats(): Promise<void> {
         await nextTick();
         await room.value?.chats.markRead();
     }
+}
+
+function formatTime(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const month = d.toLocaleString('default', { month: 'short' });
+    const day = d.getDate();
+    const hour = String(d.getHours()).padStart(2, '0');
+    const minute = String(d.getMinutes()).padStart(2, '0');
+    return `${month} ${day}, ${hour}:${minute}`;
 }
 </script>

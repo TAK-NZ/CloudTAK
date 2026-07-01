@@ -735,6 +735,8 @@ export const useMapStore = defineStore('cloudtak', {
                     this.hasNoChannels = true;
                 } else if (msg.type === WorkerMessageType.Channels_List) {
                     this.hasNoChannels = false;
+                } else if (msg.type === WorkerMessageType.Session_Logout) {
+                    window.location.href = '/api/logout';
                 } else if (msg.type === WorkerMessageType.Channel_Change) {
                     this.channelChange = true;
                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {

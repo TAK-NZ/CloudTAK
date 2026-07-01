@@ -89,7 +89,18 @@ export default class Atlas {
             this.token = '';
             this.username = '';
             this.initialized = false;
-            throw error;
+
+            // On auth/connection errors, signal the main thread to log out
+            if (error instanceof Error && (
+                error.message.includes('401') ||
+                error.message.includes('403') ||
+                error.message.includes('other side closed')
+            )) {
+                console.log('Session expired or connection failed — signalling logout');
+                this.postMessage({ type: WorkerMessageType.Session_Logout });
+            } else {
+                throw error;
+            }
         }
     }
 

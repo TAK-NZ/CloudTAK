@@ -56,6 +56,21 @@ export class ConnectionWebSocket {
                             chat.position(msg.data.location);
                         }
 
+                        // TAK Server plugins route by callsign in xmlDetail.
+                        // Inject dest into both <marti> and directly in <detail>
+                        // so plugins searching either location can route correctly.
+                        if (msg.data.to?.callsign && chat instanceof DirectChat) {
+                            if (!chat.raw.event.detail) chat.raw.event.detail = {};
+                            if (chat.raw.event.detail.marti) {
+                                (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
+                                    { _attributes: { callsign: msg.data.to.callsign } }
+                                ];
+                            }
+                            (chat.raw.event.detail as Record<string, unknown>).dest = {
+                                _attributes: { callsign: msg.data.to.callsign }
+                            };
+                        }
+
                         client.tak.write([chat], { stripFlow: true });
 
                         const feat = await CoTParser.to_geojson(chat);

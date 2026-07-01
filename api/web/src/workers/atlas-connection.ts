@@ -5,7 +5,6 @@
 import { stdurl } from '../std.ts';
 import type Atlas from './atlas.ts';
 import { version } from '../../package.json'
-import Chatroom from '../base/chatroom.ts';
 import { db } from '../database.ts';
 import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../base/events.ts';
@@ -18,6 +17,7 @@ export default class AtlasConnection {
     isOpen: boolean;
     ws: WebSocket | undefined;
     reconnectAttempts: number;
+    maxReconnectAttempts: number;
 
     version: string;
 
@@ -28,6 +28,7 @@ export default class AtlasConnection {
         this.isOpen = false;
         this.ws = undefined;
         this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
 
         this.version = version;
     }
@@ -61,6 +62,7 @@ export default class AtlasConnection {
         this.ws.addEventListener('open', () => {
             this.atlas.postMessage({ type: WorkerMessageType.Connection_Open });
             this.isOpen = true;
+            this.reconnectAttempts = 0;
         });
 
         this.ws.addEventListener('error', (err) => {
@@ -68,13 +70,19 @@ export default class AtlasConnection {
         });
 
         this.ws.addEventListener('close', () => {
-            // Otherwise the user is probably logged out
-            if (!this.isDestroyed) {
-                this.connect(connection);
-            }
-
-            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
             this.isOpen = false;
+            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
+
+            if (!this.isDestroyed && this.reconnectAttempts < this.maxReconnectAttempts) {
+                this.reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+                console.log(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                setTimeout(() => {
+                    if (!this.isDestroyed) this.connect(connection);
+                }, delay);
+            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+                console.error('WebSocket: Max reconnection attempts reached. Please refresh the page.');
+            }
         });
 
         this.ws.addEventListener('message', async (msg) => {
@@ -213,12 +221,25 @@ export default class AtlasConnection {
                     console.error('Error getting profile for chat routing', err);
                 }
 
-                await Chatroom.load(chatroom, { reload: false });
-
-                await db.chatroom.where('id').equals(chatroom).modify(room => {
-                    room.updated = chat.time;
-                    room.unread = (room.unread || 0) + 1;
-                });
+                // Ensure chatroom record exists without making an API call.
+                // Chatroom.load() calls fetch() which requires auth and fails
+                // in the worker context. Use direct DB operations instead.
+                const existing = await db.chatroom.get(chatroom);
+                if (!existing) {
+                    await db.chatroom.put({
+                        id: chatroom,
+                        name: chatroom,
+                        created: chat.time,
+                        updated: chat.time,
+                        last_read: null,
+                        unread: 1
+                    });
+                } else {
+                    await db.chatroom.update(chatroom, {
+                        updated: chat.time,
+                        unread: (existing.unread || 0) + 1
+                    });
+                }
 
                 await db.chatroom_chats.put({
                     id: chat.messageId,
@@ -232,8 +253,8 @@ export default class AtlasConnection {
                 await TAKNotification.create(
                     NotificationType.Chat,
                     'New Chat Message',
-                    `${chat.from.callsign} to ${chat.chatroom} says: ${chat.message}`,
-                    `/menu/chats`,
+                    `${chat.from.callsign} to ${chatroom} says: ${chat.message}`,
+                    `/menu/chats/${encodeURIComponent(chatroom)}`,
                     true
                 );
             } else if (body.type === 'status') {

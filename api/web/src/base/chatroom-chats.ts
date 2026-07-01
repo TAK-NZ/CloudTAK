@@ -31,20 +31,20 @@ export default class ChatroomChats {
         const list = res.data as ProfileChatList;
 
         await db.transaction('rw', db.chatroom_chats, async () => {
-            await db.chatroom_chats
-                .where('chatroom')
-                .equals(this.chatroom)
-                .delete();
-
+            // Add server messages not already in local DB.
+            // Never delete local messages during refresh — the server may not
+            // have echoed back sent messages yet.
             for (const chat of list.items) {
                 const c = chat as APIProfileChat;
+                const existing = await db.chatroom_chats.get(c.message_id);
                 await db.chatroom_chats.put({
                     id: c.message_id,
                     chatroom: this.chatroom,
                     sender: c.sender_callsign,
                     sender_uid: c.sender_uid,
                     message: c.message,
-                    created: c.created
+                    // Preserve local created timestamp if record already exists
+                    created: existing?.created || c.created
                 });
             }
         });
@@ -91,9 +91,19 @@ export default class ChatroomChats {
         const id = crypto.randomUUID();
         const created = new Date().toISOString();
 
-        await db.chatroom.update(this.chatroom, {
-            updated: created
-        });
+        // Ensure the chatroom record exists before updating
+        const existingRoom = await db.chatroom.get(this.chatroom);
+        if (!existingRoom) {
+            await db.chatroom.put({
+                id: this.chatroom,
+                name: this.chatroom,
+                created: created,
+                updated: created,
+                last_read: null
+            });
+        } else {
+            await db.chatroom.update(this.chatroom, { updated: created });
+        }
 
         await db.chatroom_chats.put({
             id: id,
