@@ -13,6 +13,7 @@ import * as Default from '../lib/limits.js';
 import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
 import { needsCertRenewal } from '../lib/cert-health.js';
 import AuthentikProvider from '../lib/authentik-provider.js';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/connection', {
@@ -560,7 +561,7 @@ export default async function router(schema: Schema, config: Config) {
         res: StandardResponse,
     }, async (req, res) => {
         try {
-            await Auth.is_connection(config, req, {}, req.params.connectionid);
+            const { connection } = await Auth.is_connection(config, req, {}, req.params.connectionid);
 
             if (await config.models.Layer.count({
                 where: sql`connection = ${req.params.connectionid}`,
@@ -587,6 +588,39 @@ export default async function router(schema: Schema, config: Config) {
             await config.models.Connection.delete(req.params.connectionid);
 
             config.conns.delete(req.params.connectionid);
+
+            // Revoke the TAK server certificate so the account can no longer authenticate
+            if (connection.auth.cert && config.server.auth.cert && config.server.auth.key) {
+                try {
+                    const x509 = new X509Certificate(connection.auth.cert);
+                    // TAK Server revoke API takes the SHA-256 fingerprint without colons
+                    const certHash = x509.fingerprint256.replace(/:/g, '');
+                    const takApi = await TAKAPI.init(
+                        new URL(String(config.server.api)),
+                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
+                    );
+                    await takApi.Credentials.revoke(certHash);
+                    console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to revoke TAK certificate for connection ${req.params.connectionid}:`, err);
+                }
+            }
+
+            // Delete the Authentik service account associated with this connection
+            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                try {
+                    const authentik = await AuthentikProvider.init(config);
+                    // Reconstruct the machine user's Authentik username from the naming convention
+                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
+                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
+                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+                    await authentik.deleteMachineUser(machineName);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
+                }
+            }
 
             const cotak = config.user?.get('cotak');
             if (cotak && cotak.configured) {
