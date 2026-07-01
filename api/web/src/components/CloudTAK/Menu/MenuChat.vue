@@ -208,13 +208,5 @@ async function fetchChats(opts: { skipRefresh?: boolean } = {}): Promise<void> {
     }
 }
 
-function formatTime(iso: string): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const month = d.toLocaleString('default', { month: 'short' });
-    const day = d.getDate();
-    const hour = String(d.getHours()).padStart(2, '0');
-    const minute = String(d.getMinutes()).padStart(2, '0');
-    return `${month} ${day}, ${hour}:${minute}`;
-}
+
 </script>
