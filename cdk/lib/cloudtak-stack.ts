@@ -187,20 +187,26 @@ export class CloudTakStack extends cdk.Stack {
       });
       
       tilesImageAsset = new ecrAssets.DockerImageAsset(this, 'TilesDockerAsset', {
-        directory: '../tasks/pmtiles',
-        file: 'Dockerfile',
+        directory: '..',
+        file: 'tasks/pmtiles/Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
         },
         exclude: [
           'node_modules/**',
+          '**/node_modules/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
           '**/*.log',
           '**/*.tmp',
           '**/.DS_Store',
-          '**/Thumbs.db'
+          '**/Thumbs.db',
+          'cdk/**',
+          'api/dist/**',
+          'api/fonts/**',
+          'api/web/node_modules/**',
+          'api/web/dist/**',
         ]
       });
       
