@@ -1,19 +1,21 @@
 diff --git a/api/web/src/components/CloudTAK/Map.vue b/api/web/src/components/CloudTAK/Map.vue
-index 7095f0722..c14dc0f5f 100644
 --- a/api/web/src/components/CloudTAK/Map.vue
 +++ b/api/web/src/components/CloudTAK/Map.vue
-@@ -904,37 +904,21 @@ async function mountMap(): Promise<void> {
- </script>
- 
- <style>
+@@ Remove upstream overrides that replace the default MapLibre scale control
+@@ styling with an ugly white-on-transparent custom design.
+@@ Removing these rules restores the clean default scale bar appearance.
+-
 -.maplibregl-ctrl-scale {
 -    background-color: transparent !important;
 -    color: #ffffff;
+-    text-align: center;
 -    text-shadow: 1px 0 0 black, -1px 0 0 black, 0 1px 0 black, 0 -1px 0 black;
 -    border-bottom: 1px solid #fff;
 -    border-left: 1px solid #fff;
 -    border-right: 1px solid #fff;
+-    margin: 0;
 -}
+-
 -.maplibregl-ctrl-scale::before {
 -    background-color: transparent !important;
 -    border-bottom: 1px solid #000;
@@ -27,23 +29,3 @@ index 7095f0722..c14dc0f5f 100644
 -    right: 1px;
 -    bottom: 1px;
 -}
-+/* Map scale control positioning */
- .maplibregl-ctrl-bottom-left {
--    bottom: 0;
--    left: 260px;
-+    bottom: 15px;
-+    right: 65px;
-+    left: auto !important;
-+    z-index: 1 !important;
- }
-+
- .maplibregl-ctrl-bottom-right {
-     bottom: 0;
-     right: 60px;
-     z-index: 1 !important;
-     color: black !important;
- }
-+
- .maplibregl-ctrl-attrib a {
-     color: black !important;
- }
