@@ -64,7 +64,7 @@
                                 </h2>
                                 <TablerLoading
                                     v-if='loading'
-                                    desc='Logging in'
+                                    :desc='loadingMessage'
                                 />
                                 <template v-else-if='brandStore.oidc.enabled && brandStore.oidc.enforced'>
                                     <div class='text-center text-muted py-3'>
@@ -514,6 +514,7 @@ watch(showSettings, (val) => {
 });
 
 const loading = ref(false);
+const loadingMessage = ref('Logging in');
 const albOidcEnabled = ref(false);
 const albOidcForced = ref(false);
 const storedUsername = ref<string | null>(null);
@@ -535,6 +536,7 @@ onMounted(async () => {
     // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
     if (route.query.token) {
         loading.value = true;
+        loadingMessage.value = 'Completing login...';
         const token = String(route.query.token);
         const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
         // Decode the JWT minimally to extract email and session for persistence
@@ -608,6 +610,8 @@ onMounted(async () => {
             albOidcForced.value = oidcStatus.oidc_forced || false;
             // If SSO is forced and no explicit local-login override, redirect immediately
             if (albOidcForced.value && !route.query.local) {
+                loading.value = true;
+                loadingMessage.value = 'Redirecting to SSO...';
                 loginWithSSO();
                 return;
             }
