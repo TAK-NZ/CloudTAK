@@ -101,9 +101,6 @@ export default class AtlasDatabase {
 
     async init(): Promise<void> {
         COT.selfUid = this.atlas.profile.uid();
-        // Clear stale contacts from any previous session. Live contacts will
-        // be re-added as their CoT skittle markers arrive from the TAK server.
-        await db.contact.clear();
         try {
             await this.loadArchive();
         } catch (err) {
