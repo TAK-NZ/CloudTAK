@@ -50,10 +50,30 @@ index 237280200..f29f4b373 100644
          syncing.value = false;
      }
 diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
-index efc74244b..8078783ac 100644
+index efc74244b..e78c75306 100644
 --- a/api/web/src/workers/atlas-database.ts
 +++ b/api/web/src/workers/atlas-database.ts
-@@ -95,6 +95,9 @@ export default class AtlasDatabase {
+@@ -51,6 +51,11 @@ export default class AtlasDatabase {
+     pendingUnhide: Set<string>;
+     pendingDelete: Set<string>;
+ 
++    /** Set to true by Atlas after db.init() completes. Notifications for
++     *  new contacts are suppressed until then to avoid flooding the user
++     *  with presence alerts for everyone already online at login time. */
++    isInitialized: boolean;
++
+     subscriptionPending: Map<string, string>;
+ 
+     breadcrumb: AtlasBreadcrumb & Comlink.ProxyMarked;
+@@ -59,6 +64,7 @@ export default class AtlasDatabase {
+         this.atlas = atlas;
+ 
+         this.cots = new Map();
++        this.isInitialized = false;
+ 
+         this.pendingCreate = new Map();
+         this.pendingUpdate = new Map();
+@@ -95,6 +101,9 @@ export default class AtlasDatabase {
  
      async init(): Promise<void> {
          COT.selfUid = this.atlas.profile.uid();
@@ -63,7 +83,7 @@ index efc74244b..8078783ac 100644
          try {
              await this.loadArchive();
          } catch (err) {
-@@ -767,22 +770,22 @@ export default class AtlasDatabase {
+@@ -767,29 +776,31 @@ export default class AtlasDatabase {
                      throw new Error('Contact Marker must have group property');
                  }
  
@@ -79,6 +99,17 @@ index efc74244b..8078783ac 100644
 -                        role: exists.properties.group.role,
 -                        takv: ''
 -                    }
+-
+-                    await ContactManager.put(contact);
+-
+-                    if (this.atlas.profile.uid() !== exists.id) {
+-                        await TAKNotification.create(
+-                            NotificationType.Contact,
+-                            'Online Contact',
+-                            `${exists.properties.callsign} is now Online`,
+-                            `/cot/${exists.id}`,
+-                            false
+-                        );
 +        if (this.atlas.profile.uid() !== exists.id) {
 +                    const entry = await ContactManager.from(exists.id);
 +
@@ -92,11 +123,51 @@ index efc74244b..8078783ac 100644
 +                            role: exists.properties.group.role,
 +                            takv: ''
 +                        }
- 
--                    await ContactManager.put(contact);
++
 +                        await ContactManager.put(contact);
++
++                        if (this.isInitialized) {
++                            await TAKNotification.create(
++                                NotificationType.Contact,
++                                'Online Contact',
++                                `${exists.properties.callsign} is now Online`,
++                                `/cot/${exists.id}`,
++                                false
++                            );
++                        }
+                     }
+                 }
+             }
+diff --git a/api/web/src/workers/atlas.ts b/api/web/src/workers/atlas.ts
+index b77d9e669..3d0519afe 100644
+--- a/api/web/src/workers/atlas.ts
++++ b/api/web/src/workers/atlas.ts
+@@ -80,7 +80,7 @@ export default class Atlas {
+             await this.conn.connect(this.username)
  
--                    if (this.atlas.profile.uid() !== exists.id) {
-                         await TAKNotification.create(
-                             NotificationType.Contact,
-                             'Online Contact',
+             await this.db.init();
+-
++            this.db.isInitialized = true;
+             this.initialized = true;
+         } catch (error) {
+             // Reset state so a future init call can retry after a transient failure
+@@ -89,7 +89,18 @@ export default class Atlas {
+             this.token = '';
+             this.username = '';
+             this.initialized = false;
+-            throw error;
++
++            // On auth/connection errors, signal the main thread to log out
++            if (error instanceof Error && (
++                error.message.includes('401') ||
++                error.message.includes('403') ||
++                error.message.includes('other side closed')
++            )) {
++                console.log('Session expired or connection failed — signalling logout');
++                this.postMessage({ type: WorkerMessageType.Session_Logout });
++            } else {
++                throw error;
++            }
+         }
+     }
+ 
