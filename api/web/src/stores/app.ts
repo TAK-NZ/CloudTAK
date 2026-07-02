@@ -145,9 +145,12 @@ export const useAppStore = defineStore('cloudtak-app', {
         async logout(): Promise<void> {
             this.user = false;
             this.tokenExpiry = null;
-            await this.destroySession();
-            // Redirect through the backend logout endpoint to expire ALB OIDC cookies
-            // and trigger the IdP end-session. Falls back to /login for non-OIDC deployments.
+            // Clear the auth tokens synchronously so the session is invalidated
+            // immediately, then redirect without waiting for the database wipe —
+            // db.delete() on a large dataset can take 1-3 seconds and the user
+            // shouldn't have to wait for it before being sent to the IdP.
+            await this.clearSession();
+            void this.destroySession().catch(() => { /* best-effort */ });
             window.location.href = '/api/logout';
         },
 
