@@ -82,14 +82,12 @@ export default class ContactManager extends BaseInterface {
 
         if (res.error) throw new Error(res.error.message);
 
-        // Wrap clear + bulkPut in a single transaction so the liveQuery
-        // subscriber never fires on the empty intermediate state — without
-        // this, the contacts panel flashes blank while the API call is in
-        // flight after the user hits Refresh.
-        await db.transaction('rw', db.contact, async () => {
-            await db.contact.clear();
-            await db.contact.bulkPut(res.data);
-        });
+        // Upsert server contacts without clearing locally-discovered ones.
+        // Contacts found via CoT skittle markers (e.g. chatbots or CoT-only
+        // devices not registered in the TAK server's contact list) are
+        // preserved. Stale contacts from previous sessions are already
+        // handled by clearing db.contact at AtlasDatabase.init().
+        await db.contact.bulkPut(res.data);
 
         await db.cache.put({
             key: this.listCacheKey,
