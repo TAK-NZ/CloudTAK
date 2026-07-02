@@ -1,10 +1,21 @@
+From 7f09579bc6e4d200ecdc9def7c471cc867e21595 Mon Sep 17 00:00:00 2001
+From: Christian Elsen <chris@chriselsen.net>
+Date: Wed, 1 Jul 2026 03:53:49 +0000
+Subject: [PATCH] fix: restore default MapLibre scale control styling by
+ removing upstream CSS overrides
+
+---
+ api/web/src/components/CloudTAK/Map.vue | 25 -------------------------
+ 1 file changed, 25 deletions(-)
+
 diff --git a/api/web/src/components/CloudTAK/Map.vue b/api/web/src/components/CloudTAK/Map.vue
+index b3bca959a..9edc565d2 100644
 --- a/api/web/src/components/CloudTAK/Map.vue
 +++ b/api/web/src/components/CloudTAK/Map.vue
-@@ Remove upstream overrides that replace the default MapLibre scale control
-@@ styling with an ugly white-on-transparent custom design.
-@@ Removing these rules restores the clean default scale bar appearance.
--
+@@ -1007,31 +1007,6 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
+     margin-top: 2px;
+ }
+ 
 -.maplibregl-ctrl-scale {
 -    background-color: transparent !important;
 -    color: #ffffff;
@@ -29,3 +40,10 @@ diff --git a/api/web/src/components/CloudTAK/Map.vue b/api/web/src/components/Cl
 -    right: 1px;
 -    bottom: 1px;
 -}
+-
+ .maplibregl-ctrl-bottom-left {
+     bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
+     left: 8px;
+-- 
+2.43.0
+
