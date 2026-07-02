@@ -1,0 +1,70 @@
+diff --git a/api/web/src/base/contact.ts b/api/web/src/base/contact.ts
+index 058a087c5..1201715b0 100644
+--- a/api/web/src/base/contact.ts
++++ b/api/web/src/base/contact.ts
+@@ -82,8 +82,15 @@ export default class ContactManager extends BaseInterface {
+ 
+         if (res.error) throw new Error(res.error.message);
+ 
+-        await db.contact.clear();
+-        await db.contact.bulkPut(res.data);
++        // Wrap clear + bulkPut in a single transaction so the liveQuery
++        // subscriber never fires on the empty intermediate state — without
++        // this, the contacts panel flashes blank while the API call is in
++        // flight after the user hits Refresh.
++        await db.transaction('rw', db.contact, async () => {
++            await db.contact.clear();
++            await db.contact.bulkPut(res.data);
++        });
++
+         await db.cache.put({
+             key: this.listCacheKey,
+             updated: Date.now()
+diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
+index efc74244b..12fee4f96 100644
+--- a/api/web/src/workers/atlas-database.ts
++++ b/api/web/src/workers/atlas-database.ts
+@@ -95,6 +95,9 @@ export default class AtlasDatabase {
+ 
+     async init(): Promise<void> {
+         COT.selfUid = this.atlas.profile.uid();
++        // Clear stale contacts from any previous session. Live contacts will
++        // be re-added as their CoT skittle markers arrive from the TAK server.
++        await db.contact.clear();
+         try {
+             await this.loadArchive();
+         } catch (err) {
+@@ -767,9 +770,7 @@ export default class AtlasDatabase {
+                     throw new Error('Contact Marker must have group property');
+                 }
+ 
+-                const entry = await ContactManager.from(exists.id);
+-
+-                if (!entry) {
++        if (this.atlas.profile.uid() !== exists.id) {
+                     const contact: Contact = {
+                         uid: exists.id,
+                         notes: '',
+@@ -782,15 +783,13 @@ export default class AtlasDatabase {
+ 
+                     await ContactManager.put(contact);
+ 
+-                    if (this.atlas.profile.uid() !== exists.id) {
+-                        await TAKNotification.create(
+-                            NotificationType.Contact,
+-                            'Online Contact',
+-                            `${exists.properties.callsign} is now Online`,
+-                            `/cot/${exists.id}`,
+-                            false
+-                        );
+-                    }
++                    await TAKNotification.create(
++                        NotificationType.Contact,
++                        'Online Contact',
++                        `${exists.properties.callsign} is now Online`,
++                        `/cot/${exists.id}`,
++                        false
++                    );
+                 }
+             }
+ 
