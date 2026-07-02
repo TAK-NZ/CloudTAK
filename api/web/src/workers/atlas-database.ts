@@ -771,25 +771,29 @@ export default class AtlasDatabase {
                 }
 
         if (this.atlas.profile.uid() !== exists.id) {
-                    const contact: Contact = {
-                        uid: exists.id,
-                        notes: '',
-                        filterGroups: null,
-                        callsign: exists.properties.callsign,
-                        team: exists.properties.group.name,
-                        role: exists.properties.group.role,
-                        takv: ''
+                    const entry = await ContactManager.from(exists.id);
+
+                    if (!entry) {
+                        const contact: Contact = {
+                            uid: exists.id,
+                            notes: '',
+                            filterGroups: null,
+                            callsign: exists.properties.callsign,
+                            team: exists.properties.group.name,
+                            role: exists.properties.group.role,
+                            takv: ''
+                        }
+
+                        await ContactManager.put(contact);
+
+                        await TAKNotification.create(
+                            NotificationType.Contact,
+                            'Online Contact',
+                            `${exists.properties.callsign} is now Online`,
+                            `/cot/${exists.id}`,
+                            false
+                        );
                     }
-
-                    await ContactManager.put(contact);
-
-                    await TAKNotification.create(
-                        NotificationType.Contact,
-                        'Online Contact',
-                        `${exists.properties.callsign} is now Online`,
-                        `/cot/${exists.id}`,
-                        false
-                    );
                 }
             }
 
