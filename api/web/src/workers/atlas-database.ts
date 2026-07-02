@@ -95,6 +95,9 @@ export default class AtlasDatabase {
 
     async init(): Promise<void> {
         COT.selfUid = this.atlas.profile.uid();
+        // Clear stale contacts from any previous session. Live contacts will
+        // be re-added as their CoT skittle markers arrive from the TAK server.
+        await db.contact.clear();
         try {
             await this.loadArchive();
         } catch (err) {
@@ -767,9 +770,7 @@ export default class AtlasDatabase {
                     throw new Error('Contact Marker must have group property');
                 }
 
-                const entry = await ContactManager.from(exists.id);
-
-                if (!entry) {
+        if (this.atlas.profile.uid() !== exists.id) {
                     const contact: Contact = {
                         uid: exists.id,
                         notes: '',
@@ -782,15 +783,13 @@ export default class AtlasDatabase {
 
                     await ContactManager.put(contact);
 
-                    if (this.atlas.profile.uid() !== exists.id) {
-                        await TAKNotification.create(
-                            NotificationType.Contact,
-                            'Online Contact',
-                            `${exists.properties.callsign} is now Online`,
-                            `/cot/${exists.id}`,
-                            false
-                        );
-                    }
+                    await TAKNotification.create(
+                        NotificationType.Contact,
+                        'Online Contact',
+                        `${exists.properties.callsign} is now Online`,
+                        `/cot/${exists.id}`,
+                        false
+                    );
                 }
             }
 
