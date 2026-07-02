@@ -1,14 +1,19 @@
 diff --git a/api/web/src/stores/app.ts b/api/web/src/stores/app.ts
-index 226480433..59a611a70 100644
+index 226480433..875cb18bb 100644
 --- a/api/web/src/stores/app.ts
 +++ b/api/web/src/stores/app.ts
-@@ -146,7 +146,9 @@ export const useAppStore = defineStore('cloudtak-app', {
+@@ -145,8 +145,13 @@ export const useAppStore = defineStore('cloudtak-app', {
+         async logout(): Promise<void> {
              this.user = false;
              this.tokenExpiry = null;
-             await this.destroySession();
+-            await this.destroySession();
 -            window.location.href = '/login';
-+            // Redirect through the backend logout endpoint to expire ALB OIDC cookies
-+            // and trigger the IdP end-session. Falls back to /login for non-OIDC deployments.
++            // Clear the auth tokens synchronously so the session is invalidated
++            // immediately, then redirect without waiting for the database wipe —
++            // db.delete() on a large dataset can take 1-3 seconds and the user
++            // shouldn't have to wait for it before being sent to the IdP.
++            await this.clearSession();
++            void this.destroySession().catch(() => { /* best-effort */ });
 +            window.location.href = '/api/logout';
          },
  
