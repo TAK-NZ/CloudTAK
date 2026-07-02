@@ -80,7 +80,7 @@ export default class Atlas {
             await this.conn.connect(this.username)
 
             await this.db.init();
-
+            this.db.isInitialized = true;
             this.initialized = true;
         } catch (error) {
             // Reset state so a future init call can retry after a transient failure

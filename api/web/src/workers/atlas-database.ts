@@ -51,6 +51,11 @@ export default class AtlasDatabase {
     pendingUnhide: Set<string>;
     pendingDelete: Set<string>;
 
+    /** Set to true by Atlas after db.init() completes. Notifications for
+     *  new contacts are suppressed until then to avoid flooding the user
+     *  with presence alerts for everyone already online at login time. */
+    isInitialized: boolean;
+
     subscriptionPending: Map<string, string>;
 
     breadcrumb: AtlasBreadcrumb & Comlink.ProxyMarked;
@@ -59,6 +64,7 @@ export default class AtlasDatabase {
         this.atlas = atlas;
 
         this.cots = new Map();
+        this.isInitialized = false;
 
         this.pendingCreate = new Map();
         this.pendingUpdate = new Map();
@@ -786,13 +792,15 @@ export default class AtlasDatabase {
 
                         await ContactManager.put(contact);
 
-                        await TAKNotification.create(
-                            NotificationType.Contact,
-                            'Online Contact',
-                            `${exists.properties.callsign} is now Online`,
-                            `/cot/${exists.id}`,
-                            false
-                        );
+                        if (this.isInitialized) {
+                            await TAKNotification.create(
+                                NotificationType.Contact,
+                                'Online Contact',
+                                `${exists.properties.callsign} is now Online`,
+                                `/cot/${exists.id}`,
+                                false
+                            );
+                        }
                     }
                 }
             }
