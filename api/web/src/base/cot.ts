@@ -320,7 +320,9 @@ export default class COT {
             try {
                 this._username = (await this.subscription()).username;
             } catch (err) {
-                console.error(err);
+                // 404 is expected for contacts that are not CloudTAK users
+                // (chatbots, external devices, etc.) — log at debug level only
+                console.debug(err);
                 this._username = '';
             }
 
