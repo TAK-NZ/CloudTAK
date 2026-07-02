@@ -4,6 +4,7 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
 import * as Default from '../lib/limits.js';
+import AuthentikProvider from '../lib/authentik-provider.js';
 
 export const AgencyResponse = Type.Object({
     id: Type.Integer(),
@@ -34,24 +35,28 @@ export default async function router(schema: Schema, config: Config) {
 
             const cotak = config.user?.get('cotak');
 
-            if (!cotak || !cotak.configured) {
-                res.json({
-                    total: 0,
-                    config: {
-                        enabled: false,
-                    },
-                    items: [],
-                });
-            } else if (!profile.id) {
-                throw new Err(400, null, 'External ID must be set on profile');
-            } else {
+            if (cotak && cotak.configured) {
+                if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+
                 const list = await cotak.agencies(profile.id, req.query.filter);
 
                 res.json({
                     ...list,
-                    config: {
-                        enabled: true,
-                    },
+                    config: { enabled: true },
+                });
+            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                const authentik = await AuthentikProvider.init(config);
+                const list = await authentik.agencies(0, req.query.filter);
+
+                res.json({
+                    ...list,
+                    config: { enabled: true },
+                });
+            } else {
+                res.json({
+                    total: 0,
+                    config: { enabled: false },
+                    items: [],
                 });
             }
         } catch (err) {
@@ -74,14 +79,17 @@ export default async function router(schema: Schema, config: Config) {
 
             const cotak = config.user?.get('cotak');
 
-            if (!cotak || !cotak.configured) {
+            if (cotak && cotak.configured) {
+                if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+                const agency = await cotak.agency(profile.id, req.params.agencyid);
+                res.json(agency);
+            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                const authentik = await AuthentikProvider.init(config);
+                const agency = await authentik.agency(0, req.params.agencyid);
+                res.json(agency);
+            } else {
                 throw new Err(404, null, 'External API not configured');
             }
-
-            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
-            const agency = await cotak.agency(profile.id, req.params.agencyid);
-
-            res.json(agency);
         } catch (err) {
             Err.respond(err, res);
         }
