@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const currentYear = new Date().getFullYear();
+const currentYear = import.meta.env.BUILD_YEAR;
 </script>
 
 <template>

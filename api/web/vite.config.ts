@@ -9,6 +9,7 @@ export default defineConfig(({ mode }) => {
     return {
         define: {
             'import.meta.env.HASH': JSON.stringify(Math.random().toString(36).substring(2, 15)),
+            'import.meta.env.BUILD_YEAR': JSON.stringify(new Date().getFullYear()),
         },
         plugins: [
             vue(),
