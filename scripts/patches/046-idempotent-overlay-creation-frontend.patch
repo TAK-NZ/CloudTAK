@@ -1,4 +1,0 @@
-# NOTE: patch 046 (getSource() guards before addSource() in overlay-class.ts)
-# is fully superseded by upstream v13.26.0. The upstream already added getSource()
-# guards before every addSource() call in api/web/src/base/overlay-class.ts
-# (the successor to the old overlay.ts). No changes needed after sync.
