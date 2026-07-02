@@ -23,6 +23,7 @@ import {
 import ProfileConfig from '../../base/profile.ts';
 import ContactManager from '../../base/contact.ts';
 import Chatroom from '../../base/chatroom.ts';
+import Config from '../../base/config.ts';
 import type { Profile } from '../../types.ts';
 
 export type MenuItemConfig = {
@@ -37,6 +38,7 @@ export type MenuItemConfig = {
     visibility?: string;
     requiresSystemAdmin?: boolean;
     requiresAgencyAdmin?: boolean;
+    requiresMedia?: boolean;
 };
 
 /**
@@ -51,6 +53,7 @@ export default class MenuManager {
     unreadChatsCount: Ref<number>;
     isSystemAdmin: Ref<boolean>;
     isAgencyAdmin: Ref<boolean>;
+    mediaEnabled: Ref<boolean>;
     pluginMenuItems: Ref<MenuItemConfig[]>;
     preferenceOrder: Ref<Profile['menu_order']>;
 
@@ -62,6 +65,7 @@ export default class MenuManager {
         this.unreadChatsCount = ref(0);
         this.isSystemAdmin = ref(false);
         this.isAgencyAdmin = ref(false);
+        this.mediaEnabled = ref(false);
         this.pluginMenuItems = ref([]);
         this.preferenceOrder = ref([]);
 
@@ -75,6 +79,13 @@ export default class MenuManager {
 
         const isAgencyAdmin = await ProfileConfig.get('agency_admin');
         this.isAgencyAdmin.value = (isAgencyAdmin?.value && isAgencyAdmin.value.length > 0) || false;
+
+        try {
+            const mediaConfig = await Config.list(['media::url']);
+            this.mediaEnabled.value = !!(mediaConfig['media::url'] as string | undefined)?.trim();
+        } catch {
+            this.mediaEnabled.value = false;
+        }
 
         try {
             const menuOrder = await ProfileConfig.get('menu_order');
@@ -159,6 +170,7 @@ export default class MenuManager {
                 tooltip: 'Videos',
                 description: 'Access live and recorded video feeds',
                 icon: IconVideo,
+                requiresMedia: true,
             },
             {
                 key: 'chats',
@@ -255,6 +267,7 @@ export default class MenuManager {
             let combined = [...this.baseMenuItems, ...this.pluginMenuItems.value].filter((item) => {
                 if (item.requiresSystemAdmin && !this.isSystemAdmin.value) return false;
                 if (item.requiresAgencyAdmin && !(this.isAgencyAdmin.value || this.isSystemAdmin.value)) return false;
+                if (item.requiresMedia && !this.mediaEnabled.value) return false;
                 return true;
             });
 
