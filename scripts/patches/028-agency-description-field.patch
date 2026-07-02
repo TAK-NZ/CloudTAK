@@ -11,10 +11,15 @@ index 72d50e474..45e5a3229 100644
                      };
                  };
 diff --git a/api/routes/agency.ts b/api/routes/agency.ts
-index 1e8897dbf..7ce70b491 100644
+index 1e8897dbf..398a50414 100644
 --- a/api/routes/agency.ts
 +++ b/api/routes/agency.ts
-@@ -8,6 +8,7 @@ import * as Default from '../lib/limits.js';
+@@ -4,10 +4,12 @@ import Schema from '@openaddresses/batch-schema';
+ import Err from '@openaddresses/batch-error';
+ import Auth from '../lib/auth.js';
+ import * as Default from '../lib/limits.js';
++import AuthentikProvider from '../lib/authentik-provider.js';
+ 
  export const AgencyResponse = Type.Object({
      id: Type.Integer(),
      name: Type.String(),
@@ -22,6 +27,72 @@ index 1e8897dbf..7ce70b491 100644
  });
  
  export default async function router(schema: Schema, config: Config) {
+@@ -33,24 +35,28 @@ export default async function router(schema: Schema, config: Config) {
+ 
+             const cotak = config.user?.get('cotak');
+ 
+-            if (!cotak || !cotak.configured) {
++            if (cotak && cotak.configured) {
++                if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
++
++                const list = await cotak.agencies(profile.id, req.query.filter);
++
+                 res.json({
+-                    total: 0,
+-                    config: {
+-                        enabled: false,
+-                    },
+-                    items: [],
++                    ...list,
++                    config: { enabled: true },
+                 });
+-            } else if (!profile.id) {
+-                throw new Err(400, null, 'External ID must be set on profile');
+-            } else {
+-                const list = await cotak.agencies(profile.id, req.query.filter);
++            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                const authentik = await AuthentikProvider.init(config);
++                const list = await authentik.agencies(0, req.query.filter);
+ 
+                 res.json({
+                     ...list,
+-                    config: {
+-                        enabled: true,
+-                    },
++                    config: { enabled: true },
++                });
++            } else {
++                res.json({
++                    total: 0,
++                    config: { enabled: false },
++                    items: [],
+                 });
+             }
+         } catch (err) {
+@@ -73,14 +79,17 @@ export default async function router(schema: Schema, config: Config) {
+ 
+             const cotak = config.user?.get('cotak');
+ 
+-            if (!cotak || !cotak.configured) {
++            if (cotak && cotak.configured) {
++                if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
++                const agency = await cotak.agency(profile.id, req.params.agencyid);
++                res.json(agency);
++            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                const authentik = await AuthentikProvider.init(config);
++                const agency = await authentik.agency(0, req.params.agencyid);
++                res.json(agency);
++            } else {
+                 throw new Err(404, null, 'External API not configured');
+             }
+-
+-            if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+-            const agency = await cotak.agency(profile.id, req.params.agencyid);
+-
+-            res.json(agency);
+         } catch (err) {
+             Err.respond(err, res);
+         }
 diff --git a/api/web/src/components/ETL/Connection/AgencyBadge.vue b/api/web/src/components/ETL/Connection/AgencyBadge.vue
 index c034ebb89..5bba1cb7c 100644
 --- a/api/web/src/components/ETL/Connection/AgencyBadge.vue
