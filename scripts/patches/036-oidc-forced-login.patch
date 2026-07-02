@@ -1,71 +1,322 @@
 diff --git a/api/routes/login.ts b/api/routes/login.ts
-index 1234567..abcdefg 100644
+index cd1abf134..f0766ee7b 100644
 --- a/api/routes/login.ts
 +++ b/api/routes/login.ts
-@@ -28,10 +28,18 @@ export default async function router(schema: Schema, config: Config) {
-         })
-     }, async (req, res) => {
-         try {
-+            // Check if OIDC is forced and local login is restricted to system admins
-+            const oidcForced = process.env.OIDC_FORCED === 'true';
-+            
-             let profile;
+@@ -1,10 +1,11 @@
+ import jwt from 'jsonwebtoken';
+ import Err from '@openaddresses/batch-error';
+-import Auth, { AuthUserAccess } from '../lib/auth.js';
++import Auth, { AuthUserAccess, oidcParser, isOidcEnabled } from '../lib/auth.js';
+ import Config from '../lib/config.js';
+ import Schema from '@openaddresses/batch-schema';
+ import { Type } from '@sinclair/typebox';
+ import Provider from '../lib/provider.js';
++import ProfileControl from '../lib/control/profile.js';
+ import { UAParser } from 'ua-parser-js';
  
-             if (config.server.auth.key && config.server.auth.cert) {
-                 const email = await provider.login(req.body.username, req.body.password);
-+                
-+                // If OIDC is forced, only allow system admins to login locally
-+                if (oidcForced) {
-+                    const tempProfile = await config.models.Profile.from(email);
-+                    if (!tempProfile.system_admin) {
-+                        throw new Err(403, null, 'Local login is restricted. Please use SSO.');
-+                    }
+ export default async function router(schema: Schema, config: Config) {
+@@ -63,6 +64,13 @@ export default async function router(schema: Schema, config: Config) {
+                 }
+ 
+                 profile = await config.models.Profile.from(email);
++
++                // When ALB OIDC is forced, only system admins may use local username/password login.
++                // Regular users must authenticate via SSO (/login/oidc).
++                // System admins can bypass by navigating to /login?local=true.
++                if (process.env.OIDC_FORCED === 'true' && !profile.system_admin) {
++                    throw new Err(403, null, 'Local login is restricted to system admins. Please use SSO.');
 +                }
- 
-                 if (config.external && config.external.configured) {
-                     try {
+             } else {
+                 throw new Err(400, null, 'Server has not been configured');
+             }
+@@ -125,4 +133,167 @@ export default async function router(schema: Schema, config: Config) {
+             Err.respond(err, res);
+         }
+     });
++
++    /**
++     * ALB OIDC authentication endpoint.
++     * The ALB handles the OIDC redirect with the IdP and adds x-amzn-oidc-data
++     * headers. This route validates those headers, creates/updates the user
++     * profile, and redirects to the frontend with a signed JWT.
++     */
++    await schema.get('/login/oidc', {
++        name: 'OIDC Login',
++        group: 'Login',
++        description: 'ALB OIDC authentication - validates ALB headers and issues a JWT',
++        query: Type.Object({
++            redirect: Type.Optional(Type.String()),
++            error: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        const redirectTarget = req.query.redirect || '/';
++
++        try {
++            if (!isOidcEnabled()) {
++                throw new Err(403, null, 'OIDC authentication is not enabled');
++            }
++
++            const { user: auth, groups } = await oidcParser(req as import('express').Request);
++            const email = auth.email;
++
++            // Block accounts configured for local-only login
++            const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
++                .split(',').map((a: string) => a.trim()).filter(Boolean);
++            if (localOnlyAccounts.includes(email)) {
++                return res.redirect(`/login?error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
++            }
++
++            // Parse group membership for role assignment
++            const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
++            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
++
++            const isSystemAdmin = groups.includes(systemAdminGroup);
++            const agencyAdminIds: number[] = [];
++            for (const group of groups) {
++                if (group.startsWith(agencyAdminPrefix)) {
++                    const agencyId = parseInt(group.substring(agencyAdminPrefix.length), 10);
++                    if (!isNaN(agencyId) && agencyId > 0) agencyAdminIds.push(agencyId);
++                }
++            }
++
++            const profileControl = new ProfileControl(config);
++            let profile;
++
++            try {
++                profile = await config.models.Profile.from(email);
++
++                // Update group membership on every login
++                await config.models.Profile.commit(email, {
++                    system_admin: isSystemAdmin,
++                    agency_admin: agencyAdminIds,
++                    last_login: new Date().toISOString(),
++                });
++                profile = await config.models.Profile.from(email);
++            } catch (err) {
++                if (err instanceof Error && err.message.includes('Item Not Found')) {
++                    // First OIDC login — auto-create profile using ProfileControl
++                    // to inherit any admin-configured system defaults
++                    profile = await profileControl.generate({
++                        username: email,
++                        auth: { ca: [], key: '', cert: '' },
++                        system_admin: isSystemAdmin,
++                        agency_admin: agencyAdminIds,
++                        last_login: new Date().toISOString(),
++                    });
++                } else {
++                    throw err;
++                }
++            }
++
++            // Sync Authentik attributes if configured
++            if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true'
++                && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN
++                && process.env.AUTHENTIK_URL) {
++                try {
++                    const AuthentikProvider = (await import('../lib/authentik-provider.js')).default;
++                    const authentik = await AuthentikProvider.init(config);
++                    const userInfo = await authentik.login(email);
++
++                    const updates: Record<string, unknown> = {};
++                    if (userInfo.tak_callsign) {
++                        updates.tak_callsign = userInfo.tak_callsign;
++                        updates.tak_remarks = userInfo.tak_callsign;
++                    }
++                    if (userInfo.tak_group) updates.tak_group = userInfo.tak_group;
++
++                    if (Object.keys(updates).length > 0) {
++                        await config.models.Profile.commit(email, updates);
++                        profile = await config.models.Profile.from(email);
++                    }
++                } catch (err) {
++                    console.error('Authentik attribute sync error (continuing):', err);
++                }
++            }
++
++            let access = AuthUserAccess.USER;
++            if (profile.system_admin) {
++                access = AuthUserAccess.ADMIN;
++            } else if (profile.agency_admin && profile.agency_admin.length) {
++                access = AuthUserAccess.AGENCY;
++            }
++
++            const userAgent = req.headers['user-agent'] || '';
++            const ua = UAParser(userAgent);
++            const session = await config.models.ProfileSession.generate({
++                username: profile.username,
++                created: new Date().toISOString(),
++                ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown'),
++                device_type: ua.device.type || 'Desktop',
++                browser: [ua.browser.name, ua.browser.version].filter(Boolean).join(' ') || 'Unknown',
++                os: [ua.os.name, ua.os.version].filter(Boolean).join(' ') || 'Unknown',
++                user_agent: userAgent,
++            });
++
++            const token = jwt.sign(
++                { access, email: profile.username, s: session.id },
++                config.SigningSecret,
++                { expiresIn: '16h' },
++            );
++
++            const safeRedirect = String(redirectTarget).startsWith('/') ? String(redirectTarget) : '/';
++            return res.redirect(`/login?token=${encodeURIComponent(token)}&redirect=${encodeURIComponent(safeRedirect)}`);
++        } catch (err) {
++            console.error('OIDC login error:', err);
++            const errorMsg = err instanceof Error ? err.message : 'OIDC authentication failed';
++            return res.redirect(`/login?error=${encodeURIComponent(errorMsg)}`);
++        }
++    });
++
++    /**
++     * Logout endpoint — expires ALB OIDC session cookies and redirects to the
++     * IdP end-session endpoint (if configured) or to /login.
++     */
++    await schema.get('/logout', {
++        name: 'Logout',
++        group: 'Login',
++        description: 'Logout and clear ALB OIDC session cookies',
++    }, async (req, res) => {
++        try {
++            const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
++            const cookieOptions = { path: '/', httpOnly: true, secure: true, maxAge: -1 };
++
++            // ALB can create up to 4 cookie shards (0–3)
++            for (let i = 0; i < 4; i++) {
++                res.cookie(`${cookieName}-${i}`, '', cookieOptions);
++            }
++
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
++                const authentikBase = process.env.AUTHENTIK_URL.replace(/\/$/, '');
++                return res.redirect(`${authentikBase}/application/o/${process.env.AUTHENTIK_APP_SLUG}/end-session/`);
++            }
++
++            return res.redirect('/login');
++        } catch (err) {
++            console.error('Logout error:', err);
++            Err.respond(err, res);
++        }
++    });
+ }
 diff --git a/api/web/src/components/Login.vue b/api/web/src/components/Login.vue
-index 1234567..abcdefg 100644
+index 59ecc6ace..19a4d2720 100644
 --- a/api/web/src/components/Login.vue
 +++ b/api/web/src/components/Login.vue
-@@ -168,6 +168,7 @@ const router = useRouter();
- const brandStore = useBrandStore();
+@@ -175,7 +175,28 @@
+                                         Sign in with {{ brandStore.oidc.name || 'SSO' }}
+                                     </a>
+                                 </template>
+-                                <template v-if='brandStore.passkey.enabled && !loading'>
++                                <template v-if='albOidcEnabled && !loading'>
++                                    <div
++                                        v-if='!brandStore.oidc.enforced'
++                                        class='my-3 d-flex align-items-center'
++                                    >
++                                        <hr class='flex-grow-1 m-0'>
++                                        <span class='mx-2 text-muted small'>or</span>
++                                        <hr class='flex-grow-1 m-0'>
++                                    </div>
++                                    <button
++                                        type='button'
++                                        class='btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2'
++                                        @click='loginWithSSO'
++                                    >
++                                        <IconKey
++                                            :size='20'
++                                            stroke='1.5'
++                                        />
++                                        Login with SSO
++                                    </button>
++                                </template>
++                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
+                                     <div
+                                         v-if='!brandStore.oidc.enabled || !brandStore.oidc.enforced'
+                                         class='my-3 d-flex align-items-center'
+@@ -359,7 +380,7 @@
+ import type { Login_Create, ConfigLogin } from '../types.ts'
+ import { ref, computed, onMounted, reactive, watch } from 'vue';
+ import { version } from '../../package.json';
+-import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser } from '@tabler/icons-vue';
++import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser, IconKey } from '@tabler/icons-vue';
+ import { Preferences } from '@capacitor/preferences';
+ import { startAuthentication } from '@simplewebauthn/browser';
+ import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
+@@ -493,6 +514,8 @@ watch(showSettings, (val) => {
+ });
  
  const loading = ref(false);
- const ssoEnabled = ref(false);
-+const oidcForced = ref(false);
++const albOidcEnabled = ref(false);
++const albOidcForced = ref(false);
+ const storedUsername = ref<string | null>(null);
  const body = ref<Login_Create>({
      username: '',
-     password: ''
-@@ -183,10 +184,17 @@ onMounted(async () => {
-         return;
+@@ -509,6 +532,32 @@ const certRenewal = reactive<{
+ });
+ 
+ onMounted(async () => {
++    // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
++    if (route.query.token) {
++        loading.value = true;
++        const token = String(route.query.token);
++        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
++        // Decode the JWT minimally to extract email and session for persistence
++        try {
++            const parts = token.split('.');
++            if (parts.length === 3) {
++                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
++                if (payload.email && payload.s) {
++                    await appStore.persistSession({ token, username: payload.email, session: payload.s });
++                } else {
++                    localStorage.token = token;
++                }
++            } else {
++                localStorage.token = token;
++            }
++        } catch {
++            localStorage.token = token;
++        }
++        emit('login');
++        await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
++        return;
++    }
++
+     const config = await Config.list([
+         'login::name',
+         'login::logo',
+@@ -550,7 +599,25 @@ onMounted(async () => {
+     brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
+     brandStore.loaded = true;
+ 
+-    if (brandStore.passkey.enabled) {
++    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
++    try {
++        const oidcRes = await fetch('/api/server/oidc');
++        if (oidcRes.ok) {
++            const oidcStatus = await oidcRes.json() as { oidc_enabled: boolean; oidc_forced?: boolean };
++            albOidcEnabled.value = oidcStatus.oidc_enabled;
++            albOidcForced.value = oidcStatus.oidc_forced || false;
++            // If SSO is forced and no explicit local-login override, redirect immediately
++            if (albOidcForced.value && !route.query.local) {
++                loginWithSSO();
++                return;
++            }
++        }
++    } catch (err) {
++        console.error('Failed to check ALB OIDC status:', err);
++    }
++
++    // Only start conditional passkey autofill when ALB SSO is not active
++    if (brandStore.passkey.enabled && !albOidcEnabled.value) {
+         startConditionalPasskey();
      }
  
--    // Check if SSO is enabled
-+    // Check if SSO is enabled and if OIDC is forced
-     try {
--        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
-+        const config = await std('/api/server/oidc') as { oidc_enabled: boolean; oidc_forced?: boolean };
-         ssoEnabled.value = config.oidc_enabled;
-+        oidcForced.value = config.oidc_forced || false;
-+        
-+        // If OIDC is forced and no local=true query param, redirect to SSO immediately
-+        if (oidcForced.value && !route.query.local) {
-+            loginWithSSO();
-+            return;
-+        }
-     } catch (error) {
-         console.error('Failed to check SSO status:', error);
-     }
-@@ -220,8 +228,14 @@ async function createLogin() {
-             router.push("/");
-         }
+@@ -613,7 +680,13 @@ async function createLogin() {
+         navigateAfterLogin();
      } catch (err) {
-+    } catch (err: any) {
          loading.value = false;
 -        throw err;
-+        // If OIDC is forced and user is not a system admin, redirect to SSO
-+        if (oidcForced.value && err?.message?.includes('restricted')) {
++        // When OIDC is forced and the backend rejects a non-admin local login,
++        // redirect to SSO instead of bubbling up a confusing error.
++        if (albOidcForced.value && err instanceof Error && err.message.includes('restricted')) {
 +            loginWithSSO();
 +        } else {
 +            throw err;
@@ -73,3 +324,15 @@ index 1234567..abcdefg 100644
      }
  }
  
+@@ -758,6 +831,11 @@ function skipCertRenewal() {
+     certRenewal.password = '';
+     navigateAfterLogin();
+ }
++
++function loginWithSSO() {
++    const redirect = route.query.redirect || '/';
++    window.location.href = `/api/login/oidc?redirect=${encodeURIComponent(String(redirect))}`;
++}
+ </script>
+ 
+ <style scoped>
