@@ -1,131 +1,773 @@
 diff --git a/api/lib/authentik-provider.ts b/api/lib/authentik-provider.ts
-index 0000000..0000000 100644
+index 19bf620b0..4373fae86 100644
 --- a/api/lib/authentik-provider.ts
 +++ b/api/lib/authentik-provider.ts
-@@ -1,7 +1,6 @@
- import fetch from './fetch.js';
+@@ -1,16 +1,15 @@
+-import fetch from './fetch.js';
  import Err from '@openaddresses/batch-error';
  import Config from './config.js';
--import { Static } from '@sinclair/typebox';
- import { Agency, MachineUser, Channel } from './external.js';
+ import { Static } from '@sinclair/typebox';
+-import { Agency, MachineUser, Channel } from './external.js';
++import { Agency, MachineUser, Channel } from './interface-user.js';
  import crypto from 'crypto';
- import TAKAPI from '@tak-ps/node-tak';
-@@ -400,8 +399,8 @@ export default class AuthentikProvider {
+-import TAKAPI from '@tak-ps/node-tak';
++import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
+ 
+ export default class AuthentikProvider {
+     config: Config;
+     authentikUrl: string;
+     tokenArn: string;
+-    cache?: { expires: Date; token: string; };
++    cache?: { expires: Date; token: string };
+ 
+     constructor(config: Config, authentikUrl: string, tokenArn: string) {
+         this.config = config;
+@@ -37,12 +36,12 @@ export default class AuthentikProvider {
+         return new AuthentikProvider(config, authentikUrl, tokenArn);
+     }
+ 
+-    async auth(): Promise<{ expires: Date; token: string; }> {
++    async auth(): Promise<{ expires: Date; token: string }> {
+         if (!this.cache || this.cache.expires < new Date()) {
+             const AWS = await import('@aws-sdk/client-secrets-manager');
+             const client = new AWS.SecretsManagerClient({});
+             const response = await client.send(
+-                new AWS.GetSecretValueCommand({ SecretId: this.tokenArn })
++                new AWS.GetSecretValueCommand({ SecretId: this.tokenArn }),
+             );
+ 
+             const token = response.SecretString || '';
+@@ -57,10 +56,10 @@ export default class AuthentikProvider {
+ 
+     async agencies(uid: number, filter: string): Promise<{
+         total: number;
+-        items: Array<Static<typeof Agency>>
++        items: Array<Static<typeof Agency>>;
+     }> {
+         const creds = await this.auth();
+-        
++
+         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
+ 
+         const url = new URL('/api/v3/core/groups/', this.authentikUrl);
+@@ -68,9 +67,9 @@ export default class AuthentikProvider {
+ 
+         const response = await fetch(url, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency List Error');
+@@ -83,14 +82,14 @@ export default class AuthentikProvider {
+             items: filteredResults.map((g: any) => ({
+                 id: g.attributes?.agencyId || 0,
+                 name: g.attributes?.agencyName || g.name,
+-                description: g.attributes?.description || ''
+-            }))
++                description: g.attributes?.description || '',
++            })),
+         };
+     }
+ 
+     async agency(uid: number, agencyId: number): Promise<Static<typeof Agency>> {
+         const creds = await this.auth();
+-        
++
+         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
+ 
+         const url = new URL('/api/v3/core/groups/', this.authentikUrl);
+@@ -98,9 +97,9 @@ export default class AuthentikProvider {
+ 
+         const response = await fetch(url, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency Fetch Error');
+@@ -113,7 +112,7 @@ export default class AuthentikProvider {
+         return {
+             id: group.attributes?.agencyId || agencyId,
+             name: group.attributes?.agencyName || group.name,
+-            description: group.attributes?.description || ''
++            description: group.attributes?.description || '',
+         };
+     }
+ 
+@@ -129,9 +128,9 @@ export default class AuthentikProvider {
+         userUrl.searchParams.append('pk', String(uid));
+         const userResponse = await fetch(userUrl, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik User Fetch Error');
+@@ -147,7 +146,7 @@ export default class AuthentikProvider {
+             headers: {
+                 'Authorization': `Bearer ${creds.token}`,
+                 'Content-Type': 'application/json',
+-                'Accept': 'application/json'
++                'Accept': 'application/json',
+             },
+             body: JSON.stringify({
+                 name: username,
+@@ -157,9 +156,9 @@ export default class AuthentikProvider {
+                     agencyId: body.agency_id || null,
+                     createdBy: creatorUsername,
+                     createdAt: new Date().toISOString(),
+-                    description: body.integration.description
+-                }
+-            })
++                    description: body.integration.description,
++                },
++            }),
+         });
+ 
+         if (!createResponse.ok) throw new Err(500, new Error(await createResponse.text()), 'Authentik Service Account Creation Error');
+@@ -172,9 +171,9 @@ export default class AuthentikProvider {
+             method: 'POST',
+             headers: {
+                 'Authorization': `Bearer ${creds.token}`,
+-                'Content-Type': 'application/json'
++                'Content-Type': 'application/json',
+             },
+-            body: JSON.stringify({ password: body.password })
++            body: JSON.stringify({ password: body.password }),
+         });
+ 
+         if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Authentik Password Set Error');
+@@ -182,7 +181,7 @@ export default class AuthentikProvider {
+         return {
+             id: userId,
+             email: username,
+-            integrations: []
++            integrations: [],
+         };
+     }
+ 
+@@ -194,9 +193,9 @@ export default class AuthentikProvider {
+ 
+         const response = await fetch(url, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
+@@ -209,7 +208,7 @@ export default class AuthentikProvider {
+         return {
+             id: user.pk,
+             email: user.username,
+-            integrations: []
++            integrations: [],
+         };
+     }
+ 
+@@ -224,9 +223,9 @@ export default class AuthentikProvider {
+                 method: 'POST',
+                 headers: {
+                     'Authorization': `Bearer ${creds.token}`,
+-                    'Content-Type': 'application/json'
++                    'Content-Type': 'application/json',
+                 },
+-                body: JSON.stringify({ password: body.password })
++                body: JSON.stringify({ password: body.password }),
+             });
+ 
+             if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Password Update Error');
+@@ -235,7 +234,7 @@ export default class AuthentikProvider {
+         return {
+             id: mid,
+             email: '',
+-            integrations: []
++            integrations: [],
+         };
+     }
+ 
+@@ -244,7 +243,7 @@ export default class AuthentikProvider {
+         agency?: number;
+     }): Promise<{
+         total: number;
+-        items: Array<Static<typeof Channel>>
++        items: Array<Static<typeof Channel>>;
+     }> {
+         const creds = await this.auth();
+         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
+@@ -254,9 +253,9 @@ export default class AuthentikProvider {
+ 
+         const response = await fetch(url, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Channel List Error');
+@@ -274,8 +273,8 @@ export default class AuthentikProvider {
+                 id: g.attributes?.channelId || g.num_pk || 0,
+                 rdn: g.name.replace(/^tak_/, ''),
+                 name: g.attributes?.channelName || g.name.replace(/^tak_/, ''),
+-                description: g.attributes?.description || ''
+-            }))
++                description: g.attributes?.description || '',
++            })),
+         };
+     }
+ 
+@@ -290,17 +289,17 @@ export default class AuthentikProvider {
+         const groupsUrl = new URL('/api/v3/core/groups/', this.authentikUrl);
+         const groupsResponse = await fetch(groupsUrl, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!groupsResponse.ok) throw new Err(500, new Error(await groupsResponse.text()), 'Authentik Groups Fetch Error');
+ 
+         const groupsData: any = await groupsResponse.json();
+-        const group = groupsData.results.find((g: any) => 
+-            g.name.startsWith(channelPrefix) && 
+-            (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id)
++        const group = groupsData.results.find((g: any) =>
++            g.name.startsWith(channelPrefix)
++            && (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id),
+         );
+ 
+         if (!group) throw new Err(404, null, `Channel ${body.channel_id} not found`);
+@@ -310,9 +309,9 @@ export default class AuthentikProvider {
+             method: 'POST',
+             headers: {
+                 'Authorization': `Bearer ${creds.token}`,
+-                'Content-Type': 'application/json'
++                'Content-Type': 'application/json',
+             },
+-            body: JSON.stringify({ pk: body.machine_id })
++            body: JSON.stringify({ pk: body.machine_id }),
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Group Assignment Error');
+@@ -336,9 +335,9 @@ export default class AuthentikProvider {
+ 
+             const response = await fetch(url, {
+                 headers: {
+-                    'Authorization': `Bearer ${creds.token}`,
+-                    'Accept': 'application/json'
+-                }
++                    Authorization: `Bearer ${creds.token}`,
++                    Accept: 'application/json',
++                },
+             });
+ 
+             if (!response.ok) {
+@@ -365,9 +364,9 @@ export default class AuthentikProvider {
+             const deleteResponse = await fetch(deleteUrl, {
+                 method: 'DELETE',
+                 headers: {
+-                    'Authorization': `Bearer ${creds.token}`,
+-                    'Accept': 'application/json'
+-                }
++                    Authorization: `Bearer ${creds.token}`,
++                    Accept: 'application/json',
++                },
+             });
+ 
+             if (!deleteResponse.ok) {
+@@ -398,9 +397,9 @@ export default class AuthentikProvider {
+ 
+         const response = await fetch(url, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+ 
+         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
+@@ -418,9 +417,9 @@ export default class AuthentikProvider {
+                 const groupUrl = new URL(`/api/v3/core/groups/${groupUuid}/`, this.authentikUrl);
+                 const groupResponse = await fetch(groupUrl, {
+                     headers: {
+-                        'Authorization': `Bearer ${creds.token}`,
+-                        'Accept': 'application/json'
+-                    }
++                        Authorization: `Bearer ${creds.token}`,
++                        Accept: 'application/json',
++                    },
+                 });
+                 if (groupResponse.ok) {
+                     const groupData: any = await groupResponse.json();
+@@ -456,49 +455,45 @@ export default class AuthentikProvider {
+             system_admin: isSystemAdmin,
+             agency_admin: agencyAdminIds,
+             tak_callsign: attributes.takCallsign,
+-            tak_group: attributes.takColor
++            tak_group: attributes.takColor,
+         };
      }
  
      async renewConnectionCertificate(
          machineUserId: number,
--        takApi: TAKAPI
-+        takServerUrl: string
+-        takServerUrl: string
++        takServerUrl: string,
      ): Promise<{ cert: string; key: string }> {
          const creds = await this.auth();
          const tempPassword = crypto.randomBytes(32).toString('base64url');
-@@ -428,7 +427,11 @@ export default class AuthentikProvider {
+-        
++
+         const passwordUrl = new URL(`/api/v3/core/users/${machineUserId}/set_password/`, this.authentikUrl);
+         const passwordResponse = await fetch(passwordUrl, {
+             method: 'POST',
+             headers: {
+                 'Authorization': `Bearer ${creds.token}`,
+-                'Content-Type': 'application/json'
++                'Content-Type': 'application/json',
+             },
+-            body: JSON.stringify({ password: tempPassword })
++            body: JSON.stringify({ password: tempPassword }),
+         });
+-        
++
+         if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set password');
+-        
++
+         const userUrl = new URL(`/api/v3/core/users/${machineUserId}/`, this.authentikUrl);
+         const userResponse = await fetch(userUrl, {
+             headers: {
+-                'Authorization': `Bearer ${creds.token}`,
+-                'Accept': 'application/json'
+-            }
++                Authorization: `Bearer ${creds.token}`,
++                Accept: 'application/json',
++            },
+         });
+-        
++
          if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Failed to fetch user');
          const userData: any = await userResponse.json();
-         
+-        
++
+         // Use password auth instead of potentially revoked certificate
+-        const { APIAuthPassword } = await import('@tak-ps/node-tak');
+         const takAuth = new APIAuthPassword(userData.username, tempPassword);
+         const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
 -        const enrollment = await takApi.Certificate.generate({
-+        // Use password auth instead of potentially revoked certificate
-+        const { APIAuthPassword } = await import('@tak-ps/node-tak');
-+        const takAuth = new APIAuthPassword(userData.username, tempPassword);
-+        const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
-+        const enrollment = await takApi.Certificate.generate({
-             username: userData.username,
-             password: tempPassword
-         });
+-            username: userData.username,
+-            password: tempPassword
+-        });
+-        
++        const enrollment = await takApi.Credentials.generate();
++
+         return { cert: enrollment.cert, key: enrollment.key };
+     }
+ }
 diff --git a/api/routes/connection.ts b/api/routes/connection.ts
-index 0000000..0000000 100644
+index 62bf958fa..04940ce1c 100644
 --- a/api/routes/connection.ts
 +++ b/api/routes/connection.ts
-@@ -13,7 +13,6 @@ import * as Default from '../lib/limits.js';
+@@ -11,6 +11,9 @@ import { MachineConnConfig, ConnectionAuth } from '../lib/connection-config.js';
+ import Schema from '@openaddresses/batch-schema';
+ import * as Default from '../lib/limits.js';
  import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
- import { needsCertRenewal } from '../lib/cert-health.js';
- import AuthentikProvider from '../lib/authentik-provider.js';
--import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
++import { needsCertRenewal } from '../lib/cert-health.js';
++import AuthentikProvider from '../lib/authentik-provider.js';
++import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
  
  export default async function router(schema: Schema, config: Config) {
      await schema.get('/connection', {
-@@ -380,8 +379,7 @@ export default async function router(schema: Schema, config: Config) {
-                 return res.json({ renewed: false, message: 'Certificate does not need renewal' });
-             }
+@@ -433,6 +436,121 @@ export default async function router(schema: Schema, config: Config) {
+         }
+     });
  
--            const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
--            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
-+            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
++    await schema.post('/connection/:connectionid/cert/renew', {
++        name: 'Renew Certificate',
++        group: 'Connection',
++        description: 'Check and renew connection certificate if needed',
++        params: Type.Object({
++            connectionid: Type.Integer({ minimum: 1 }),
++        }),
++        res: Type.Object({
++            renewed: Type.Boolean(),
++            message: Type.String(),
++        }),
++    }, async (req, res) => {
++        try {
++            const { connection } = await Auth.is_connection(config, req, {
++                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
++            }, req.params.connectionid);
++
++            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
++            try {
++                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                    authentik = await AuthentikProvider.init(config);
++                }
++            } catch { /* Authentik not configured */ }
++
++            if (!authentik) {
++                return res.json({ renewed: false, message: 'Certificate renewal only supported with Authentik provider' });
++            }
++
++            if (!needsCertRenewal(connection.auth.cert)) {
++                return res.json({ renewed: false, message: 'Certificate does not need renewal' });
++            }
++
++            // Look up the Authentik user by connection username to get their numeric ID
++            const machineUser = await authentik.fetchMachineUser(0, connection.username || '');
++            const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
++
++            await config.models.Connection.commit(req.params.connectionid, {
++                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
++            });
++
++            if (connection.enabled && config.conns.has(connection.id)) {
++                await config.conns.delete(connection.id);
++                const updatedConn = await config.models.Connection.from(connection.id);
++                await config.conns.add(new MachineConnConfig(config, updatedConn));
++            }
++
++            res.json({ renewed: true, message: `Certificate renewed for connection ${connection.id}` });
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/layer/:layerid/health', {
++        name: 'Layer Health Check',
++        group: 'Layer',
++        description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
++        params: Type.Object({
++            layerid: Type.Integer({ minimum: 1 }),
++        }),
++        res: Type.Object({
++            healthy: Type.Boolean(),
++            cert_renewed: Type.Boolean(),
++            message: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        try {
++            const auth = await Auth.as_user(config, req, { token: true });
++            // Layer tokens have access='layer' (AuthResourceAccess) — check via string comparison
++            if ((auth.access as string) !== 'layer' || (auth as { id?: unknown }).id !== req.params.layerid) {
++                throw new Err(401, null, 'Invalid layer token');
++            }
++
++            const layer = await config.models.Layer.from(req.params.layerid);
++            if (!layer.connection) {
++                return res.json({ healthy: true, cert_renewed: false });
++            }
++
++            const connection = await config.models.Connection.from(layer.connection);
++
++            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
++            try {
++                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                    authentik = await AuthentikProvider.init(config);
++                }
++            } catch { /* Authentik not configured */ }
++
++            if (!authentik || !needsCertRenewal(connection.auth.cert)) {
++                return res.json({ healthy: true, cert_renewed: false });
++            }
++
++            try {
++                const machineUser2 = await authentik.fetchMachineUser(0, connection.username || '');
++                const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
++
++                await config.models.Connection.commit(connection.id, {
++                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
++                });
++
++                if (connection.enabled && config.conns.has(connection.id)) {
++                    await config.conns.delete(connection.id);
++                    const updatedConn = await config.models.Connection.from(connection.id);
++                    await config.conns.add(new MachineConnConfig(config, updatedConn));
++                }
++
++                console.log(`Certificate renewed for connection ${connection.id} via layer ${layer.id} health check`);
++                return res.json({ healthy: true, cert_renewed: true, message: 'Certificate renewed' });
++            } catch (err) {
++                console.error(`Certificate renewal failed for connection ${connection.id}:`, err);
++                return res.json({ healthy: true, cert_renewed: false, message: 'Renewal failed, will retry' });
++            }
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
+     await schema.delete('/connection/:connectionid', {
+         name: 'Delete Connection',
+         group: 'Connection',
+@@ -443,7 +561,7 @@ export default async function router(schema: Schema, config: Config) {
+         res: StandardResponse,
+     }, async (req, res) => {
+         try {
+-            await Auth.is_connection(config, req, {}, req.params.connectionid);
++            const { connection } = await Auth.is_connection(config, req, {}, req.params.connectionid);
  
-             await config.models.Connection.commit(req.params.connectionid, {
-                 auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
-@@ -430,8 +428,7 @@ export default async function router(schema: Schema, config: Config) {
-             }
+             if (await config.models.Layer.count({
+                 where: sql`connection = ${req.params.connectionid}`,
+@@ -471,6 +589,39 @@ export default async function router(schema: Schema, config: Config) {
  
-             try {
--                const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
--                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
-+                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
+             config.conns.delete(req.params.connectionid);
  
-                 await config.models.Connection.commit(connection.id, {
-                     auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
++            // Revoke the TAK server certificate so the account can no longer authenticate
++            if (connection.auth.cert && config.server.auth.cert && config.server.auth.key) {
++                try {
++                    const x509 = new X509Certificate(connection.auth.cert);
++                    // TAK Server revoke API takes the SHA-256 fingerprint without colons
++                    const certHash = x509.fingerprint256.replace(/:/g, '');
++                    const takApi = await TAKAPI.init(
++                        new URL(String(config.server.api)),
++                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
++                    );
++                    await takApi.Credentials.revoke(certHash);
++                    console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
++                } catch (err) {
++                    // Don't block deletion — log and continue
++                    console.error(`Failed to revoke TAK certificate for connection ${req.params.connectionid}:`, err);
++                }
++            }
++
++            // Delete the Authentik service account associated with this connection
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                try {
++                    const authentik = await AuthentikProvider.init(config);
++                    // Reconstruct the machine user's Authentik username from the naming convention
++                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
++                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
++                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
++                    await authentik.deleteMachineUser(machineName);
++                } catch (err) {
++                    // Don't block deletion — log and continue
++                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
++                }
++            }
++
+             const cotak = config.user?.get('cotak');
+             if (cotak && cotak.configured) {
+                 const user = await Auth.as_user(config, req);
 diff --git a/api/routes/login.ts b/api/routes/login.ts
-index 0000000..0000000 100644
+index cd1abf134..f0766ee7b 100644
 --- a/api/routes/login.ts
 +++ b/api/routes/login.ts
-@@ -231,14 +231,9 @@ export default async function router(schema: Schema, config: Config) {
-                 }
-             }
-             
--            // Check if certificate is missing, invalid, expired, or revoked
-+            // Check if certificate is missing, invalid, or expired
-             const hasValidCert = profile.auth && profile.auth.cert && profile.auth.cert.length > 0;
--            let needsCertificate = !hasValidCert || (hasValidCert && await isCertificateExpired(profile.auth.cert));
--            
--            // If certificate exists and isn't expired, test if it's revoked by TAK Server
--            if (hasValidCert && !needsCertificate && config.server.auth.key && config.server.auth.cert) {
--                needsCertificate = await isCertificateRevoked(profile.auth, config.server.webtak);
--            }
-+            const needsCertificate = !hasValidCert || (hasValidCert && await isCertificateExpired(profile.auth.cert));
-             
-             // Check if we should sync attributes from Authentik
-             const shouldSyncAttributes = process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';
-@@ -280,7 +275,7 @@ export default async function router(schema: Schema, config: Config) {
-                         // Refresh profile to get updated cert
-                         profile = await config.models.Profile.from(auth.email);
-                         
--                        console.log(`Certificate enrolled successfully for ${auth.email}`);
-+                        console.log(`Certificate ${hasValidCert ? 'renewed' : 'enrolled'} successfully for ${auth.email}`);
-                     }
-                 } catch (certErr) {
-                     console.error('Certificate enrollment error:', certErr);
-@@ -559,32 +554,3 @@ async function isCertificateExpired(certPem: string): Promise<boolean> {
-     }
- }
+@@ -1,10 +1,11 @@
+ import jwt from 'jsonwebtoken';
+ import Err from '@openaddresses/batch-error';
+-import Auth, { AuthUserAccess } from '../lib/auth.js';
++import Auth, { AuthUserAccess, oidcParser, isOidcEnabled } from '../lib/auth.js';
+ import Config from '../lib/config.js';
+ import Schema from '@openaddresses/batch-schema';
+ import { Type } from '@sinclair/typebox';
+ import Provider from '../lib/provider.js';
++import ProfileControl from '../lib/control/profile.js';
+ import { UAParser } from 'ua-parser-js';
  
--// Helper function to check if certificate is revoked by TAK Server
--async function isCertificateRevoked(auth: { cert: string; key: string }, takServerUrl: string): Promise<boolean> {
--    try {
--        const cert = new X509Certificate(auth.cert);
--        const serialNumber = cert.serialNumber.toLowerCase();
--        
--        // Check TAK Server API for certificate status
--        const api = await TAKAPI.init(new URL(takServerUrl), {
--            cert: auth.cert,
--            key: auth.key
--        });
--        
--        // Get active certificates and check if ours has a revocationDate
--        const response = await api.axios.get('/Marti/api/certadmin/cert/active');
--        const certs = response.data?.data || [];
--        
--        const certInfo = certs.find((c: any) => c.serialNumber?.toLowerCase() === serialNumber);
--        
--        if (certInfo && certInfo.revocationDate) {
--            console.log(`Certificate ${serialNumber} is revoked (revocationDate: ${certInfo.revocationDate})`);
--            return true;
--        }
--        
--        return false;
--    } catch (err) {
--        console.warn('Certificate revocation check failed (assuming valid):', err instanceof Error ? err.message : String(err));
--        return false;
--    }
--}
-
+ export default async function router(schema: Schema, config: Config) {
+@@ -63,6 +64,13 @@ export default async function router(schema: Schema, config: Config) {
+                 }
+ 
+                 profile = await config.models.Profile.from(email);
++
++                // When ALB OIDC is forced, only system admins may use local username/password login.
++                // Regular users must authenticate via SSO (/login/oidc).
++                // System admins can bypass by navigating to /login?local=true.
++                if (process.env.OIDC_FORCED === 'true' && !profile.system_admin) {
++                    throw new Err(403, null, 'Local login is restricted to system admins. Please use SSO.');
++                }
+             } else {
+                 throw new Err(400, null, 'Server has not been configured');
+             }
+@@ -125,4 +133,167 @@ export default async function router(schema: Schema, config: Config) {
+             Err.respond(err, res);
+         }
+     });
++
++    /**
++     * ALB OIDC authentication endpoint.
++     * The ALB handles the OIDC redirect with the IdP and adds x-amzn-oidc-data
++     * headers. This route validates those headers, creates/updates the user
++     * profile, and redirects to the frontend with a signed JWT.
++     */
++    await schema.get('/login/oidc', {
++        name: 'OIDC Login',
++        group: 'Login',
++        description: 'ALB OIDC authentication - validates ALB headers and issues a JWT',
++        query: Type.Object({
++            redirect: Type.Optional(Type.String()),
++            error: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        const redirectTarget = req.query.redirect || '/';
++
++        try {
++            if (!isOidcEnabled()) {
++                throw new Err(403, null, 'OIDC authentication is not enabled');
++            }
++
++            const { user: auth, groups } = await oidcParser(req as import('express').Request);
++            const email = auth.email;
++
++            // Block accounts configured for local-only login
++            const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
++                .split(',').map((a: string) => a.trim()).filter(Boolean);
++            if (localOnlyAccounts.includes(email)) {
++                return res.redirect(`/login?error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
++            }
++
++            // Parse group membership for role assignment
++            const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
++            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
++
++            const isSystemAdmin = groups.includes(systemAdminGroup);
++            const agencyAdminIds: number[] = [];
++            for (const group of groups) {
++                if (group.startsWith(agencyAdminPrefix)) {
++                    const agencyId = parseInt(group.substring(agencyAdminPrefix.length), 10);
++                    if (!isNaN(agencyId) && agencyId > 0) agencyAdminIds.push(agencyId);
++                }
++            }
++
++            const profileControl = new ProfileControl(config);
++            let profile;
++
++            try {
++                profile = await config.models.Profile.from(email);
++
++                // Update group membership on every login
++                await config.models.Profile.commit(email, {
++                    system_admin: isSystemAdmin,
++                    agency_admin: agencyAdminIds,
++                    last_login: new Date().toISOString(),
++                });
++                profile = await config.models.Profile.from(email);
++            } catch (err) {
++                if (err instanceof Error && err.message.includes('Item Not Found')) {
++                    // First OIDC login — auto-create profile using ProfileControl
++                    // to inherit any admin-configured system defaults
++                    profile = await profileControl.generate({
++                        username: email,
++                        auth: { ca: [], key: '', cert: '' },
++                        system_admin: isSystemAdmin,
++                        agency_admin: agencyAdminIds,
++                        last_login: new Date().toISOString(),
++                    });
++                } else {
++                    throw err;
++                }
++            }
++
++            // Sync Authentik attributes if configured
++            if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true'
++                && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN
++                && process.env.AUTHENTIK_URL) {
++                try {
++                    const AuthentikProvider = (await import('../lib/authentik-provider.js')).default;
++                    const authentik = await AuthentikProvider.init(config);
++                    const userInfo = await authentik.login(email);
++
++                    const updates: Record<string, unknown> = {};
++                    if (userInfo.tak_callsign) {
++                        updates.tak_callsign = userInfo.tak_callsign;
++                        updates.tak_remarks = userInfo.tak_callsign;
++                    }
++                    if (userInfo.tak_group) updates.tak_group = userInfo.tak_group;
++
++                    if (Object.keys(updates).length > 0) {
++                        await config.models.Profile.commit(email, updates);
++                        profile = await config.models.Profile.from(email);
++                    }
++                } catch (err) {
++                    console.error('Authentik attribute sync error (continuing):', err);
++                }
++            }
++
++            let access = AuthUserAccess.USER;
++            if (profile.system_admin) {
++                access = AuthUserAccess.ADMIN;
++            } else if (profile.agency_admin && profile.agency_admin.length) {
++                access = AuthUserAccess.AGENCY;
++            }
++
++            const userAgent = req.headers['user-agent'] || '';
++            const ua = UAParser(userAgent);
++            const session = await config.models.ProfileSession.generate({
++                username: profile.username,
++                created: new Date().toISOString(),
++                ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown'),
++                device_type: ua.device.type || 'Desktop',
++                browser: [ua.browser.name, ua.browser.version].filter(Boolean).join(' ') || 'Unknown',
++                os: [ua.os.name, ua.os.version].filter(Boolean).join(' ') || 'Unknown',
++                user_agent: userAgent,
++            });
++
++            const token = jwt.sign(
++                { access, email: profile.username, s: session.id },
++                config.SigningSecret,
++                { expiresIn: '16h' },
++            );
++
++            const safeRedirect = String(redirectTarget).startsWith('/') ? String(redirectTarget) : '/';
++            return res.redirect(`/login?token=${encodeURIComponent(token)}&redirect=${encodeURIComponent(safeRedirect)}`);
++        } catch (err) {
++            console.error('OIDC login error:', err);
++            const errorMsg = err instanceof Error ? err.message : 'OIDC authentication failed';
++            return res.redirect(`/login?error=${encodeURIComponent(errorMsg)}`);
++        }
++    });
++
++    /**
++     * Logout endpoint — expires ALB OIDC session cookies and redirects to the
++     * IdP end-session endpoint (if configured) or to /login.
++     */
++    await schema.get('/logout', {
++        name: 'Logout',
++        group: 'Login',
++        description: 'Logout and clear ALB OIDC session cookies',
++    }, async (req, res) => {
++        try {
++            const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
++            const cookieOptions = { path: '/', httpOnly: true, secure: true, maxAge: -1 };
++
++            // ALB can create up to 4 cookie shards (0–3)
++            for (let i = 0; i < 4; i++) {
++                res.cookie(`${cookieName}-${i}`, '', cookieOptions);
++            }
++
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
++                const authentikBase = process.env.AUTHENTIK_URL.replace(/\/$/, '');
++                return res.redirect(`${authentikBase}/application/o/${process.env.AUTHENTIK_APP_SLUG}/end-session/`);
++            }
++
++            return res.redirect('/login');
++        } catch (err) {
++            console.error('Logout error:', err);
++            Err.respond(err, res);
++        }
++    });
+ }
