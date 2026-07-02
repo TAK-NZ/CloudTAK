@@ -64,6 +64,13 @@ export default async function router(schema: Schema, config: Config) {
                 }
 
                 profile = await config.models.Profile.from(email);
+
+                // When ALB OIDC is forced, only system admins may use local username/password login.
+                // Regular users must authenticate via SSO (/login/oidc).
+                // System admins can bypass by navigating to /login?local=true.
+                if (process.env.OIDC_FORCED === 'true' && !profile.system_admin) {
+                    throw new Err(403, null, 'Local login is restricted to system admins. Please use SSO.');
+                }
             } else {
                 throw new Err(400, null, 'Server has not been configured');
             }

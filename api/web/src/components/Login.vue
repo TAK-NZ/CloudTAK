@@ -680,7 +680,13 @@ async function createLogin() {
         navigateAfterLogin();
     } catch (err) {
         loading.value = false;
-        throw err;
+        // When OIDC is forced and the backend rejects a non-admin local login,
+        // redirect to SSO instead of bubbling up a confusing error.
+        if (albOidcForced.value && err instanceof Error && err.message.includes('restricted')) {
+            loginWithSSO();
+        } else {
+            throw err;
+        }
     }
 }
 
