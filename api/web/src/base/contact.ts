@@ -77,17 +77,29 @@ export default class ContactManager extends BaseInterface {
         await db.contact.put(contact);
     }
 
-    static async sync(): Promise<void> {
+    static async sync(selfUid?: string): Promise<void> {
         const res = await server.GET('/api/marti/api/contacts/all');
 
         if (res.error) throw new Error(res.error.message);
 
-        // Upsert server contacts without clearing locally-discovered ones.
-        // Contacts found via CoT skittle markers (e.g. chatbots or CoT-only
-        // devices not registered in the TAK server's contact list) are
-        // preserved. Stale contacts from previous sessions are already
-        // handled by clearing db.contact at AtlasDatabase.init().
-        await db.contact.bulkPut(res.data);
+        // Only update contacts already present in db.contact — those that arrived
+        // via live CoT skittle markers. Never add contacts solely because the TAK
+        // server lists them: that would admit machine users, ETL connections, and
+        // the current user, none of which should appear as human contacts. This
+        // mirrors exactly what happens on page load, where the contact list is
+        // populated only from CoT presence markers.
+        const existingUids = new Set(
+            await db.contact.toCollection().primaryKeys() as string[]
+        );
+
+        const contacts = res.data.filter((c) => {
+            if (selfUid && c.uid === selfUid) return false;
+            return existingUids.has(c.uid);
+        });
+
+        if (contacts.length > 0) {
+            await db.contact.bulkPut(contacts);
+        }
 
         await db.cache.put({
             key: this.listCacheKey,

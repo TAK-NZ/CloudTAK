@@ -238,7 +238,7 @@ async function updateContacts() {
 async function refreshList() {
     syncing.value = true;
     try {
-        await ContactManager.sync();
+        await ContactManager.sync(self.value);
     } finally {
         syncing.value = false;
     }
