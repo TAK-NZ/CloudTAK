@@ -50,7 +50,7 @@ index 237280200..f29f4b373 100644
          syncing.value = false;
      }
 diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
-index efc74244b..12fee4f96 100644
+index efc74244b..8078783ac 100644
 --- a/api/web/src/workers/atlas-database.ts
 +++ b/api/web/src/workers/atlas-database.ts
 @@ -95,6 +95,9 @@ export default class AtlasDatabase {
@@ -63,37 +63,40 @@ index efc74244b..12fee4f96 100644
          try {
              await this.loadArchive();
          } catch (err) {
-@@ -767,9 +770,7 @@ export default class AtlasDatabase {
+@@ -767,22 +770,22 @@ export default class AtlasDatabase {
                      throw new Error('Contact Marker must have group property');
                  }
  
 -                const entry = await ContactManager.from(exists.id);
 -
 -                if (!entry) {
+-                    const contact: Contact = {
+-                        uid: exists.id,
+-                        notes: '',
+-                        filterGroups: null,
+-                        callsign: exists.properties.callsign,
+-                        team: exists.properties.group.name,
+-                        role: exists.properties.group.role,
+-                        takv: ''
+-                    }
 +        if (this.atlas.profile.uid() !== exists.id) {
-                     const contact: Contact = {
-                         uid: exists.id,
-                         notes: '',
-@@ -782,15 +783,13 @@ export default class AtlasDatabase {
++                    const entry = await ContactManager.from(exists.id);
++
++                    if (!entry) {
++                        const contact: Contact = {
++                            uid: exists.id,
++                            notes: '',
++                            filterGroups: null,
++                            callsign: exists.properties.callsign,
++                            team: exists.properties.group.name,
++                            role: exists.properties.group.role,
++                            takv: ''
++                        }
  
-                     await ContactManager.put(contact);
+-                    await ContactManager.put(contact);
++                        await ContactManager.put(contact);
  
 -                    if (this.atlas.profile.uid() !== exists.id) {
--                        await TAKNotification.create(
--                            NotificationType.Contact,
--                            'Online Contact',
--                            `${exists.properties.callsign} is now Online`,
--                            `/cot/${exists.id}`,
--                            false
--                        );
--                    }
-+                    await TAKNotification.create(
-+                        NotificationType.Contact,
-+                        'Online Contact',
-+                        `${exists.properties.callsign} is now Online`,
-+                        `/cot/${exists.id}`,
-+                        false
-+                    );
-                 }
-             }
- 
+                         await TAKNotification.create(
+                             NotificationType.Contact,
+                             'Online Contact',
