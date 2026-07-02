@@ -269,7 +269,9 @@ export default class IconManager {
     /**
      * Decode an iconset blob into an `ImageBitmap`.
      *
-     * Raster formats (PNG/JPEG/...) decode directly via `createImageBitmap`.
+     * Raster formats (PNG/JPEG/...) decode via `createImageBitmap` then are
+     * scaled down to `SVG_RENDER_WIDTH` (same target as SVGs) so all icons
+     * render at a consistent size regardless of their source dimensions.
      * SVG blobs need special handling: `createImageBitmap` cannot decode
      * `image/svg+xml` blobs in some browsers (notably Firefox, which rejects
      * with a `DOMException`), so those are rasterized through an
@@ -281,7 +283,30 @@ export default class IconManager {
         }
 
         try {
-            return await createImageBitmap(blob);
+            const raw = await createImageBitmap(blob);
+
+            // If the icon already fits within the target size, use it as-is.
+            if (raw.width <= SVG_RENDER_WIDTH && raw.height <= SVG_RENDER_WIDTH) {
+                return raw;
+            }
+
+            // Scale down so the longest edge equals SVG_RENDER_WIDTH, preserving
+            // aspect ratio — exactly the same constraint applied to SVG icons.
+            const scale = SVG_RENDER_WIDTH / Math.max(raw.width, raw.height);
+            const renderWidth = Math.max(1, Math.round(raw.width * scale));
+            const renderHeight = Math.max(1, Math.round(raw.height * scale));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = renderWidth;
+            canvas.height = renderHeight;
+
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Canvas 2D context unavailable for raster icon resize');
+
+            ctx.drawImage(raw, 0, 0, renderWidth, renderHeight);
+            raw.close();
+
+            return await createImageBitmap(canvas);
         } catch {
             // Fall back to the canvas rasterization path for blobs that
             // `createImageBitmap` can't decode directly (e.g. SVGs served
