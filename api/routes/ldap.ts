@@ -7,6 +7,7 @@ import Auth from '../lib/auth.js';
 import { ConnectionAuth } from '../lib/connection-config.js';
 import { Channel, ChannelAccess } from '../lib/interface-user.js';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
+import AuthentikProvider from '../lib/authentik-provider.js';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/ldap/channel', {
@@ -27,19 +28,22 @@ export default async function router(schema: Schema, config: Config) {
 
             const cotak = config.user?.get('cotak');
 
-            if (!cotak || !cotak.configured) {
+            if (cotak && cotak.configured) {
+                if (!profile.id) {
+                    const response = await cotak.login(profile.username);
+                    await config.models.Profile.commit(profile.username, { id: response.id });
+                    profile = await config.models.Profile.from(profile.username);
+                }
+
+                const list = await cotak.channels(profile.id!, req.query);
+                res.json(list);
+            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                const authentik = await AuthentikProvider.init(config);
+                const list = await authentik.channels(0, req.query);
+                res.json(list);
+            } else {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
-
-            if (!profile.id) {
-                const response = await cotak.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
-
-            const list = await cotak.channels(profile.id!, req.query);
-
-            res.json(list);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -71,42 +75,69 @@ export default async function router(schema: Schema, config: Config) {
 
             const cotak = config.user?.get('cotak');
 
-            if (!cotak || !cotak.configured) {
+            if (cotak && cotak.configured) {
+                if (!profile.id) {
+                    const response = await cotak.login(profile.username);
+                    await config.models.Profile.commit(profile.username, { id: response.id });
+                    profile = await config.models.Profile.from(profile.username);
+                }
+
+                const password = Array.from({ length: 16 }, () => {
+                    return String.fromCharCode(crypto.randomInt(94) + 33);
+                }).join('');
+
+                const user = await cotak.createMachineUser(profile.id!, {
+                    name: req.body.name,
+                    description: req.body.description,
+                    management_url: config.API_URL,
+                    active: false,
+                    locking: req.body.locking ?? true,
+                    agency_id: req.body.agency_id,
+                    password,
+                    channels: req.body.channels,
+                });
+
+                const api = await TAKAPI.init(
+                    new URL(config.server.webtak),
+                    new APIAuthPassword(user.email, password),
+                );
+
+                const certs = await api.Credentials.generate();
+
+                res.json({
+                    integrationId: user.integrations.find(Boolean)?.id ?? undefined,
+                    auth: certs,
+                });
+            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                // Authentik does not support channel-locking; the machine user is created
+                // and a TAK certificate is generated via password auth — same as CoTAK flow.
+                const authentik = await AuthentikProvider.init(config);
+
+                const password = Array.from({ length: 16 }, () => {
+                    return String.fromCharCode(crypto.randomInt(94) + 33);
+                }).join('');
+
+                const user = await authentik.createMachineUser(0, {
+                    name: req.body.name,
+                    agency_id: req.body.agency_id,
+                    password,
+                    integration: { description: req.body.description },
+                });
+
+                const api = await TAKAPI.init(
+                    new URL(config.server.webtak),
+                    new APIAuthPassword(user.email, password),
+                );
+
+                const certs = await api.Credentials.generate();
+
+                res.json({
+                    integrationId: undefined,
+                    auth: certs,
+                });
+            } else {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
-
-            if (!profile.id) {
-                const response = await cotak.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
-
-            const password = Array.from({ length: 16 }, () => {
-                return String.fromCharCode(crypto.randomInt(94) + 33);
-            }).join('');
-
-            const user = await cotak.createMachineUser(profile.id!, {
-                name: req.body.name,
-                description: req.body.description,
-                management_url: config.API_URL,
-                active: false,
-                locking: req.body.locking ?? true,
-                agency_id: req.body.agency_id,
-                password,
-                channels: req.body.channels,
-            });
-
-            const api = await TAKAPI.init(
-                new URL(config.server.webtak),
-                new APIAuthPassword(user.email, password),
-            );
-
-            const certs = await api.Credentials.generate();
-
-            res.json({
-                integrationId: user.integrations.find(Boolean)?.id ?? undefined,
-                auth: certs,
-            });
         } catch (err) {
             Err.respond(err, res);
         }
@@ -129,34 +160,53 @@ export default async function router(schema: Schema, config: Config) {
 
             const cotak = config.user?.get('cotak');
 
-            if (!cotak || !cotak.configured) {
+            if (cotak && cotak.configured) {
+                if (!profile.id) {
+                    const response = await cotak.login(profile.username);
+                    await config.models.Profile.commit(profile.username, { id: response.id });
+                    profile = await config.models.Profile.from(profile.username);
+                }
+
+                const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
+                    .join('');
+
+                const user = await cotak.fetchMachineUser(profile.id!, req.params.email);
+                await cotak.updateMachineUser(profile.id!, { id: user.id, password });
+
+                const api = await TAKAPI.init(
+                    new URL(config.server.webtak),
+                    new APIAuthPassword(user.email, password),
+                );
+
+                const certs = await api.Credentials.generate();
+
+                res.json({
+                    integrationId: user.integrations.find(Boolean)?.id ?? undefined,
+                    auth: certs,
+                });
+            } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                const authentik = await AuthentikProvider.init(config);
+
+                const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
+                    .join('');
+
+                const user = await authentik.fetchMachineUser(0, req.params.email);
+                await authentik.updateMachineUser(0, user.id, { password });
+
+                const api = await TAKAPI.init(
+                    new URL(config.server.webtak),
+                    new APIAuthPassword(user.email, password),
+                );
+
+                const certs = await api.Credentials.generate();
+
+                res.json({
+                    integrationId: undefined,
+                    auth: certs,
+                });
+            } else {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
             }
-
-            if (!profile.id) {
-                const response = await cotak.login(profile.username);
-                await config.models.Profile.commit(profile.username, { id: response.id });
-                profile = await config.models.Profile.from(profile.username);
-            }
-
-            const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))
-                .join('');
-
-            const user = await cotak.fetchMachineUser(profile.id!, req.params.email);
-
-            await cotak.updateMachineUser(profile.id!, { id: user.id, password });
-
-            const api = await TAKAPI.init(
-                new URL(config.server.webtak),
-                new APIAuthPassword(user.email, password),
-            );
-
-            const certs = await api.Credentials.generate();
-
-            res.json({
-                integrationId: user.integrations.find(Boolean)?.id ?? undefined,
-                auth: certs,
-            });
         } catch (err) {
             Err.respond(err, res);
         }
