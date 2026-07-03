@@ -108,6 +108,28 @@ export class RetentionService extends Construct {
           'service-role/AmazonECSTaskExecutionRolePolicy',
         ),
       ],
+      inlinePolicies: {
+        'retention-ecr': new iam.PolicyDocument({
+          statements: [
+            // ECR authorization token — must be resource: * (no ARN scoping possible)
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ['ecr:GetAuthorizationToken'],
+              resources: ['*'],
+            }),
+            // ECR image pull from the shared artifacts repository
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: [
+                'ecr:BatchCheckLayerAvailability',
+                'ecr:GetDownloadUrlForLayer',
+                'ecr:BatchGetImage',
+              ],
+              resources: [ecrRepository.repositoryArn],
+            }),
+          ],
+        }),
+      },
     });
 
     connectionStringSecret.grantRead(executionRole);
