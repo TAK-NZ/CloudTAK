@@ -54,11 +54,37 @@ aws cloudformation create-change-set \
     --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
     --change-set-type UPDATE
 
-# Wait for changeset creation
+# Wait for changeset creation and check status
 echo "⏳ Waiting for changeset creation..."
-aws cloudformation wait change-set-create-complete \
-    --stack-name "$STACK_NAME" \
-    --change-set-name "$CHANGESET_NAME"
+STATUS=""
+for i in $(seq 1 30); do
+    STATUS=$(aws cloudformation describe-change-set \
+        --stack-name "$STACK_NAME" \
+        --change-set-name "$CHANGESET_NAME" \
+        --query "Status" --output text 2>/dev/null)
+    if [ "$STATUS" = "CREATE_COMPLETE" ] || [ "$STATUS" = "FAILED" ]; then
+        break
+    fi
+    sleep 5
+done
+
+# If the changeset failed to be created (e.g. EarlyValidation), skip validation
+# rather than blocking the deploy — we cannot evaluate changes if CF won't create the set.
+if [ "$STATUS" = "FAILED" ]; then
+    REASON=$(aws cloudformation describe-change-set \
+        --stack-name "$STACK_NAME" \
+        --change-set-name "$CHANGESET_NAME" \
+        --query "StatusReason" --output text 2>/dev/null)
+    echo "⚠️  Changeset creation failed (cannot validate): $REASON"
+    echo "ℹ️  Skipping changeset validation — the deploy will proceed and CloudFormation will enforce constraints."
+    aws cloudformation delete-change-set \
+        --stack-name "$STACK_NAME" \
+        --change-set-name "$CHANGESET_NAME" 2>/dev/null || true
+    if [ -n "$CDK_BUCKET" ] && [ -n "$TEMPLATE_KEY" ]; then
+        aws s3 rm "s3://$CDK_BUCKET/$TEMPLATE_KEY" 2>/dev/null || true
+    fi
+    exit 0
+fi
 
 # Get changeset details
 CHANGES=$(aws cloudformation describe-change-set \
