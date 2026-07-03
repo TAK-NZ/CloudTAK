@@ -98,53 +98,6 @@ jobs:
             echo "db-context=--context instanceClass=db.serverless --context instanceCount=1 --context enablePerformanceInsights=false --context monitoringInterval=0 --context backupRetentionDays=7 --context deleteProtection=false" >> $GITHUB_OUTPUT
           fi
 
-      # One-time migration: API Gateway v1 (REST) → v2 (HTTP API) for PMTiles
-      # The v1 and v2 domain names share the same namespace, so CloudFormation
-      # cannot create the v2 domain while the v1 domain still exists.
-      # This step detects the v1 domain and runs a skip-domain deploy first.
-      # Once the migration is complete, this step becomes a no-op automatically.
-      - name: Check PMTiles API GW Migration Needed (v1 → v2)
-        id: pmtiles-migration
-        run: |
-          V1_DOMAIN=$(aws apigateway get-domain-names \
-            --region ${{ vars.DEMO_AWS_REGION }} \
-            --query "items[?contains(domainName,'tiles')].domainName" \
-            --output text 2>/dev/null || true)
-          if [ -n "$V1_DOMAIN" ]; then
-            echo "needs-migration=true" >> $GITHUB_OUTPUT
-            echo "⚠️  V1 PMTiles domain found ($V1_DOMAIN) — two-step migration required"
-          else
-            echo "needs-migration=false" >> $GITHUB_OUTPUT
-            echo "✅ No V1 PMTiles domain — skipping migration"
-          fi
-
-      - name: PMTiles Migration Step 1 — Remove v1 domain from stack
-        if: steps.pmtiles-migration.outputs.needs-migration == 'true'
-        run: |
-          # Delete any orphaned v2 domain left over from a previous failed attempt
-          ORPHAN=$(aws apigatewayv2 get-domain-names \
-            --region ${{ vars.DEMO_AWS_REGION }} \
-            --query "Items[?contains(DomainName,'tiles')].DomainName" \
-            --output text 2>/dev/null || true)
-          if [ -n "$ORPHAN" ]; then
-            echo "Deleting orphaned v2 domain: $ORPHAN"
-            aws apigatewayv2 delete-domain-name \
-              --domain-name "$ORPHAN" \
-              --region ${{ vars.DEMO_AWS_REGION }}
-          fi
-          # Deploy with skipPmtilesDomain=true so CloudFormation deletes the v1
-          # RestApi + DomainName without simultaneously trying to create the v2 one
-          cd cdk
-          npm run cdk deploy -- \
-            --context envType=prod \
-            --context stackName=${{ vars.DEMO_STACK_NAME }} \
-            --context usePreBuiltImages=true \
-            --context cloudtakImageTag=${{ steps.images.outputs.cloudtak-tag }} \
-            --context useS3CloudTAKConfigFile=false \
-            ${{ steps.db-config.outputs.db-context }} \
-            --context skipPmtilesDomain=true \
-            --require-approval never
-
       - name: Deploy Demo with Prod Profile
         run: |
           cd cdk
