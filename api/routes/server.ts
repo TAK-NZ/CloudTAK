@@ -1,11 +1,12 @@
 import fs from 'node:fs';
-import { Static, Type } from '@sinclair/typebox'
+import { Static, Type } from '@sinclair/typebox';
 import { X509Certificate } from 'crypto';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced } from '../lib/auth.js';
 import { sql } from 'drizzle-orm';
 import Config from '../lib/config.js';
+import { AdminConnConfig } from '../lib/connection-config.js';
 import { ServerResponse } from '../lib/types.js';
 import ProfileControl from '../lib/control/profile.js';
 import { TAKAPI, APIAuthCertificate, APIAuthPassword } from '@tak-ps/node-tak';
@@ -15,20 +16,21 @@ const pkg = JSON.parse(String(fs.readFileSync(new URL('../package.json', import.
 export default async function router(schema: Schema, config: Config) {
     const profileControl = new ProfileControl(config);
 
+    // Public endpoint — returns env-var based OIDC status for ALB OIDC integration
     await schema.get('/server/oidc', {
         name: 'Get OIDC Status',
         group: 'Server',
-        description: 'Get OIDC Status (public endpoint)',
+        description: 'Public endpoint returning ALB OIDC configuration status',
         res: Type.Object({
             oidc_enabled: Type.Boolean(),
             oidc_forced: Type.Boolean(),
-            authentik_url: Type.Optional(Type.String())
-        })
+            authentik_url: Type.Optional(Type.String()),
+        }),
     }, async (req, res) => {
-        res.json({ 
+        res.json({
             oidc_enabled: isOidcEnabled(),
             oidc_forced: isOidcForced(),
-            authentik_url: process.env.AUTHENTIK_URL
+            authentik_url: process.env.AUTHENTIK_URL,
         });
     });
 
@@ -36,13 +38,15 @@ export default async function router(schema: Schema, config: Config) {
         name: 'Get Server',
         group: 'Server',
         description: 'Get Server',
-        res: ServerResponse
+        res: ServerResponse,
     }, async (req, res) => {
         try {
             if (!config.server.auth.key || !config.server.auth.cert) {
                 res.json({
                     id: 1,
                     status: 'unconfigured',
+                    connection_status: 'dead',
+                    connection: true,
                     name: 'Default Server',
                     version: pkg.version,
                     created: new Date().toISOString(),
@@ -51,23 +55,22 @@ export default async function router(schema: Schema, config: Config) {
                     api: '',
                     webtak: '',
                     auth: false,
-                    oidc_enabled: isOidcEnabled()
                 });
             } else {
                 const user = await Auth.as_user(config, req);
 
-                let auth = false
+                let auth = false;
                 if (config.server.auth.cert && config.server.auth.key) {
                     auth = true;
                 }
 
                 if (user.access === AuthUserAccess.ADMIN) {
                     const response: Static<typeof ServerResponse> = {
-                            status: 'configured',
-                            version: pkg.version,
-                            ...config.server,
-                            auth,
-                            oidc_enabled: isOidcEnabled()
+                        status: 'configured',
+                        connection_status: config.conns.status(0),
+                        version: pkg.version,
+                        ...config.server,
+                        auth,
                     };
 
                     if (config.server.auth.cert && config.server.auth.key) {
@@ -75,11 +78,13 @@ export default async function router(schema: Schema, config: Config) {
                         response.certificate = { validFrom, validTo, subject };
                     }
 
-                    res.json(response)
+                    res.json(response);
                 } else {
                     res.json({
                         id: config.server.id,
                         status: 'configured',
+                        connection_status: config.conns.status(0),
+                        connection: config.server.connection,
                         version: pkg.version,
                         name: config.server.name,
                         created: config.server.created,
@@ -88,12 +93,11 @@ export default async function router(schema: Schema, config: Config) {
                         api: config.server.api,
                         webtak: config.server.webtak,
                         auth,
-                        oidc_enabled: isOidcEnabled()
-                    })
+                    });
                 }
             }
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -106,6 +110,9 @@ export default async function router(schema: Schema, config: Config) {
             api: Type.String(),
             webtak: Type.String(),
             name: Type.Optional(Type.String()),
+            connection: Type.Optional(Type.Boolean({
+                description: 'Enable or disable the Admin Connection (connection 0) in the connection pool',
+            })),
 
             // Used during initial server config to test connection & set system admin
             username: Type.Optional(Type.String()),
@@ -114,9 +121,9 @@ export default async function router(schema: Schema, config: Config) {
             auth: Type.Optional(Type.Object({
                 cert: Type.String(),
                 key: Type.String(),
-            }))
+            })),
         }),
-        res: ServerResponse
+        res: ServerResponse,
     }, async (req, res) => {
         try {
             if (config.server.auth.key && config.server.auth.cert) {
@@ -128,7 +135,7 @@ export default async function router(schema: Schema, config: Config) {
             if (req.body.auth) {
                 const api = await TAKAPI.init(
                     new URL(String(req.body.api)),
-                    new APIAuthCertificate(req.body.auth.cert, req.body.auth.key)
+                    new APIAuthCertificate(req.body.auth.cert, req.body.auth.key),
                 );
 
                 const config = await api.Files.config();
@@ -139,7 +146,7 @@ export default async function router(schema: Schema, config: Config) {
 
             // An unconfigured server will set the first successful username/pass as a CloudTAK System Admin
             if (!config.server.auth.key && !config.server.auth.cert && req.body.username && req.body.password) {
-                const auth = new APIAuthPassword(req.body.username, req.body.password)
+                const auth = new APIAuthPassword(req.body.username, req.body.password);
                 const api = await TAKAPI.init(new URL(req.body.webtak), auth);
 
                 const certs = await api.Credentials.generate();
@@ -147,7 +154,7 @@ export default async function router(schema: Schema, config: Config) {
                 await profileControl.generate({
                     auth: certs,
                     username: req.body.username,
-                    system_admin: true
+                    system_admin: true,
                 });
             } else if (!config.server.auth.key && !config.server.auth.cert && (!req.body.username || !req.body.password)) {
                 throw new Err(400, null, 'Initial configuration must include valid TAK Username & Password to set System Administrator');
@@ -158,17 +165,39 @@ export default async function router(schema: Schema, config: Config) {
                 updated: sql`Now()`,
             });
 
-            await config.conns.refresh();
+            // If the server URL or auth cert actually changed, all connections need to reconnect.
+            // Otherwise just toggle the admin connection (connection 0) like a regular connection enable/disable.
+            const urlChanged = req.body.url !== config.server.url;
+            const authChanged = req.body.auth !== undefined && (
+                req.body.auth.cert !== config.server.auth.cert || req.body.auth.key !== config.server.auth.key
+            );
 
-            let auth = false
+            if (urlChanged || authChanged) {
+                await config.conns.refresh();
+            } else {
+                if (config.server.connection && !config.conns.has(0)) {
+                    if (config.server.auth.cert && config.server.auth.key) {
+                        await config.conns.add(new AdminConnConfig(config));
+                    }
+                } else if (config.server.connection && config.conns.has(0)) {
+                    config.conns.delete(0);
+                    if (config.server.auth.cert && config.server.auth.key) {
+                        await config.conns.add(new AdminConnConfig(config));
+                    }
+                } else if (!config.server.connection && config.conns.has(0)) {
+                    config.conns.delete(0);
+                }
+            }
+
+            let auth = false;
             if (config.server.auth.cert && config.server.auth.key) auth = true;
 
             const response: Static<typeof ServerResponse> = {
                 status: 'configured',
+                connection_status: config.conns.status(0),
                 version: pkg.version,
                 ...config.server,
                 auth,
-                oidc_enabled: isOidcEnabled()
             };
 
             if (config.server.auth.cert && config.server.auth.key) {
@@ -178,7 +207,7 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json(response);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 }

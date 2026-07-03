@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../lib/auth.js';
@@ -12,7 +12,7 @@ export default async function router(schema: Schema, config: Config) {
         name: 'Video Service',
         group: 'VideoService',
         description: 'Get Video Service Configuration',
-        res: Configuration
+        res: Configuration,
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req, { admin: true });
@@ -30,11 +30,11 @@ export default async function router(schema: Schema, config: Config) {
         group: 'VideoService',
         description: 'Get information about a given path',
         params: Type.Object({
-            path: Type.String()
+            path: Type.String(),
         }),
         res: Type.Object({
-            path: PathListItem
-        })
+            path: PathListItem,
+        }),
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req, { admin: true });

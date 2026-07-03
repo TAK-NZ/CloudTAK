@@ -14,6 +14,10 @@
         <template v-else>
             <div
                 class='col-12 d-flex py-2 btn-list border-bottom'
+                :class='{
+                    "sticky-top cloudtak-bg": props.stickyControls
+                }'
+                :style='props.stickyControls ? "z-index: 1;" : undefined'
             >
                 <TablerIconButton
                     v-if='selected.size < props.items.length'
@@ -54,7 +58,7 @@
                 <div
                     class='d-flex align-items-center rounded cursor-pointer'
                     :class='{
-                        "hover": props.hover
+                        "cloudtak-hover": props.hover
                     }'
                     @click='selected.has(item.id) ? selected.delete(item.id) : selected.add(item.id)'
                 >
@@ -107,19 +111,17 @@ defineSlots<{
 const props = withDefaults(defineProps<{
     disabled?: boolean
     hover?: boolean
+    stickyControls?: boolean
     items: T[]
 }>(), {
     disabled: false,
-    hover: true
+    hover: true,
+    stickyControls: false
 })
 
 const selected = ref<Set<string | number>>(new Set());
 
-interface GenericSelectExpose {
-  selected: Set<string | number>;
-}
-
-defineExpose<GenericSelectExpose>({
+defineExpose({
     selected: selected.value
 });
 </script>

@@ -1,4 +1,4 @@
-import { Static, Type } from '@sinclair/typebox'
+import { Static, Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import { GenerateUpsert } from '@openaddresses/batch-generic';
 import crypto from 'node:crypto';
@@ -11,7 +11,7 @@ import { HistoryOptions } from '@tak-ps/node-tak/lib/api/query';
 import { CoTParser, Feature } from '@tak-ps/node-cot';
 import { MissionLayerType } from '@tak-ps/node-tak/lib/api/mission-layer';
 import { StandardLayerResponse, LayerError } from '../lib/types.js';
-import { TAKAPI, APIAuthCertificate, } from '@tak-ps/node-tak';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.post('/layer/:layerid/cot', {
@@ -19,21 +19,25 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Internal',
         description: 'Post CoT data to a given layer',
         params: Type.Object({
-            layerid: Type.Integer({ minimum: 1 })
+            layerid: Type.Integer({ minimum: 1 }),
         }),
         query: Type.Object({
-            logging: Type.Optional(Type.Boolean({ "description": "If logging is enabled for the layer, allow callers to skip logging for a particular CoT payload" }))
+            logging: Type.Optional(Type.Boolean({ description: 'If logging is enabled for the layer, allow callers to skip logging for a particular CoT payload' })),
+            archive: Type.Boolean({
+                description: 'Save features to ConnectionFeature table',
+                default: true,
+            }),
         }),
         body: Type.Object({
             type: Type.Literal('FeatureCollection'),
             uids: Type.Optional(Type.Array(Type.String())),
-            features: Type.Array(Feature.InputFeature)
+            features: Type.Array(Feature.InputFeature),
         }),
-        res: StandardLayerResponse
+        res: StandardLayerResponse,
     }, async (req, res) => {
         try {
             await Auth.as_resource(config, req, {
-                resources: [{ access: AuthResourceAccess.LAYER, id: req.params.layerid }]
+                resources: [{ access: AuthResourceAccess.LAYER, id: req.params.layerid }],
             });
 
             if (!req.headers['content-type']) throw new Err(400, null, 'Content-Type not set');
@@ -49,7 +53,7 @@ export default async function router(schema: Schema, config: Config) {
             for (let i = 0; i < req.body.features.length; i++) {
                 if (!req.body.features[i].properties) req.body.features[i].properties = {};
 
-                const styledFeat = await style.feat(req.body.features[i])
+                const styledFeat = await style.feat(req.body.features[i]);
                 if (!styledFeat) continue;
 
                 if (styledFeat.properties.flow === undefined) {
@@ -83,12 +87,12 @@ export default async function router(schema: Schema, config: Config) {
             let cots = [];
             for (const feat of req.body.features) {
                 try {
-                    cots.push(await CoTParser.from_geojson(feat))
+                    cots.push(await CoTParser.from_geojson(feat));
                 } catch (err) {
                     errors.push({
                         error: err instanceof Error ? err.message : String(err),
-                        feature: feat
-                    })
+                        feature: feat,
+                    });
 
                     console.error(`Failed to decode ${String(err)}: feature: ${feat.id}`);
                 }
@@ -116,7 +120,7 @@ export default async function router(schema: Schema, config: Config) {
                     const features = await api.MissionLayer.latestFeats(
                         data.name,
                         `layer-${layer.id}`,
-                        { token: data.mission_token || undefined }
+                        { token: data.mission_token || undefined },
                     );
 
                     for (const feat of features.values()) {
@@ -129,23 +133,23 @@ export default async function router(schema: Schema, config: Config) {
                             await api.Mission.detachContents(
                                 data.name,
                                 { uid: String(feat.id) },
-                                { token: data.mission_token || undefined }
+                                { token: data.mission_token || undefined },
                             );
                         }
                     }
 
-                    const existMap: Map<string, Static<typeof Feature.Feature>> = new Map()
+                    const existMap: Map<string, Static<typeof Feature.Feature>> = new Map();
                     for (const feat of features) {
                         existMap.set(String(feat.id), feat);
                     }
 
                     const pathMap = await api.MissionLayer.listAsPathMap(
                         data.name,
-                        { token: data.mission_token || undefined }
+                        { token: data.mission_token || undefined },
                     );
 
                     for (const cot of cots) {
-                        const path = cot.path.split('/').filter((p) => !!p);
+                        const path = cot.path.split('/').filter(p => !!p);
 
                         let pathMapEntryLast = pathMap.get(`/${encodeURIComponent(layer.name)}/`);
                         if (!pathMapEntryLast) continue;
@@ -165,9 +169,9 @@ export default async function router(schema: Schema, config: Config) {
                                         name: p,
                                         type: MissionLayerType.UID,
                                         parentUid: pathMapEntryLast.uid,
-                                        creatorUid: `connection-${data.connection}-data-${data.id}`
+                                        creatorUid: `connection-${data.connection}-data-${data.id}`,
                                     },
-                                    { token: data.mission_token || undefined }
+                                    { token: data.mission_token || undefined },
                                 );
 
                                 pathMap.set(currentPath, missionLayer.data);
@@ -198,10 +202,10 @@ export default async function router(schema: Schema, config: Config) {
                             await api.MissionLayer.delete(
                                 data.name,
                                 {
-                                    uid: [ pathLayer.uid ],
-                                    creatorUid: `connection-${data.connection}-data-${data.id}`
+                                    uid: [pathLayer.uid],
+                                    creatorUid: `connection-${data.connection}-data-${data.id}`,
                                 },
-                                { token: data.mission_token || undefined }
+                                { token: data.mission_token || undefined },
                             );
                         }
                     }
@@ -213,7 +217,7 @@ export default async function router(schema: Schema, config: Config) {
                         if (exist && data.mission_diff) {
                             const b = await CoTParser.from_geojson(exist);
                             // TODO: Check for path change
-                            if (!(await CoTParser.isDiff(cot, b))) continue
+                            if (!(await CoTParser.isDiff(cot, b))) continue;
                         }
 
                         filtered.push(cot);
@@ -229,29 +233,22 @@ export default async function router(schema: Schema, config: Config) {
                 // Don't push already stale data as they will instantly disappear on the device
                 cots = cots.filter(cot => cot.is_stale);
 
-                if (layer.incoming.groups.length) {
-                    for (const cot of cots) {
-                        for (const group of layer.incoming.groups) {
-                            cot.addDest({ group });
-                        }
-                    }
-                }
-
                 const insertValues = [];
                 for (const cot of cots) {
                     insertValues.push({
                         path: '/',
                         connection: layer.connection,
-                        ...(await CoTParser.to_geojson(cot))
-                    })
+                        layer: layer.id,
+                        ...(await CoTParser.to_geojson(cot)),
+                    });
                 }
 
                 try {
-                    if (insertValues.length) {
+                    if (insertValues.length && req.query.archive) {
                         await config.models.ConnectionFeature.generate(insertValues, {
                             upsert: GenerateUpsert.UPDATE,
-                            upsertTarget: [ ConnectionFeature.connection, ConnectionFeature.id ]
-                        })
+                            upsertTarget: [ConnectionFeature.connection, ConnectionFeature.id],
+                        });
                     }
                 } catch (err) {
                     // We don't throw as priority is TAK Server Delivery
@@ -263,21 +260,21 @@ export default async function router(schema: Schema, config: Config) {
                 throw new Err(200, null, 'No features found');
             }
 
-            pooledClient.tak.write(cots);
+            pooledClient.tak.write(cots, { stripFlow: true });
 
             config.conns.cots(pooledClient.config, cots);
 
             res.status(errors.length ? 400 : 200).json({
                 status: errors.length ? 400 : 200,
                 message: 'Submitted',
-                errors
+                errors,
             });
         } catch (err) {
             if (err instanceof Err && err.status === 200) {
                 res.json({
                     status: 200,
                     message: err.message,
-                    errors: []
+                    errors: [],
                 });
             } else {
                 Err.respond(err, res);
@@ -292,16 +289,16 @@ export default async function router(schema: Schema, config: Config) {
         params: Type.Object({
             connectionid: Type.Integer(),
             layerid: Type.Integer(),
-            uid: Type.String()
+            uid: Type.String(),
         }),
-        res: Feature.Feature
+        res: Feature.Feature,
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
                 resources: [
                     { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid },
-                    { access: AuthResourceAccess.LAYER, id: req.params.layerid }
-                ]
+                    { access: AuthResourceAccess.LAYER, id: req.params.layerid },
+                ],
             }, req.params.connectionid);
 
             if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
@@ -317,15 +314,15 @@ export default async function router(schema: Schema, config: Config) {
                 new URL(String(config.server.api)),
                 new APIAuthCertificate(
                     pooledClient.config.auth.cert,
-                    pooledClient.config.auth.key
-                )
+                    pooledClient.config.auth.key,
+                ),
             );
 
             const feat = await api.Query.singleFeat(req.params.uid);
 
-            res.json(feat)
+            res.json(feat);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -336,20 +333,20 @@ export default async function router(schema: Schema, config: Config) {
         params: Type.Object({
             connectionid: Type.Integer(),
             layerid: Type.Integer(),
-            uid: Type.String()
+            uid: Type.String(),
         }),
         query: HistoryOptions,
         res: Type.Object({
             type: Type.String(),
-            features: Type.Array(Feature.Feature)
-        })
+            features: Type.Array(Feature.Feature),
+        }),
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
                 resources: [
                     { access: AuthResourceAccess.CONNECTION, id: req.params.connectionid },
-                    { access: AuthResourceAccess.LAYER, id: req.params.layerid }
-                ]
+                    { access: AuthResourceAccess.LAYER, id: req.params.layerid },
+                ],
             }, req.params.connectionid);
 
             if (connection.readonly) throw new Err(400, null, 'Connection is Read-Only mode');
@@ -365,8 +362,8 @@ export default async function router(schema: Schema, config: Config) {
                 new URL(String(config.server.api)),
                 new APIAuthCertificate(
                     pooledClient.config.auth.cert,
-                    pooledClient.config.auth.key
-                )
+                    pooledClient.config.auth.key,
+                ),
             );
 
             const features = await api.Query.historyFeats(req.params.uid, {
@@ -377,10 +374,10 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 type: 'FeatureCollection',
-                features
+                features,
             });
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 }

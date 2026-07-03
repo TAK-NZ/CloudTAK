@@ -1,22 +1,10 @@
 <template>
-    <div
-        ref='container'
-        class='position-absolute bg-dark rounded border resizable-content text-white video-container'
+    <FloatingPane
+        :uid='uid'
+        class='video-container'
+        @close='emit("close")'
     >
-        <div
-            style='height: 50px;'
-            class='d-flex align-items-center px-2 py-2 border-bottom border-secondary'
-        >
-            <div
-                ref='drag-handle'
-                class='cursor-pointer'
-            >
-                <IconGripVertical
-                    :size='24'
-                    stroke='1'
-                />
-            </div>
-
+        <template #header>
             <StatusDot
                 v-if='active && active.metadata'
                 :status='active.metadata.active ? "success" : "unknown"'
@@ -45,42 +33,32 @@
                     v-text='active.metadata.source_model'
                 />
             </div>
+        </template>
 
-            <div class='btn-list ms-auto'>
+        <template #actions>
+            <span
+                v-if='active && active.metadata'
+                class='watchers-info'
+            >
+                <IconUsersGroup
+                    :size='24'
+                    stroke='1'
+                />
+                <span v-text='active.metadata.watchers + 1' />
                 <span
-                    v-if='active && active.metadata'
-                    class='watchers-info'
-                >
-                    <IconUsersGroup
-                        :size='24'
-                        stroke='1'
-                    />
-                    <span v-text='active.metadata.watchers + 1' />
-                    <span
-                        class='ms-1 watcher-text'
-                        v-text='active.metadata.watchers + 1 > 1 ? "Watchers" : "Watcher"'
-                    />
-                </span>
+                    class='ms-1 watcher-text'
+                    v-text='active.metadata.watchers + 1 > 1 ? "Watchers" : "Watcher"'
+                />
+            </span>
+        </template>
 
-                <TablerIconButton
-                    title='Close Video Player'
-                    @click='emit("close")'
-                >
-                    <IconX
-                        :size='24'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-            </div>
-        </div>
         <div
-            class='modal-body'
+            class='h-100 w-100'
             :class='{ "modal-body--error": !!error }'
-            :style='`height: calc(100% - 50px)`'
         >
             <div
                 v-if='loading'
-                class='col-12 d-flex align-items-center justify-content-center'
+                class='col-12 d-flex align-items-center justify-content-center h-100'
             >
                 <TablerLoading label='Loading Stream' />
             </div>
@@ -117,21 +95,36 @@
             </template>
             <template v-else-if='!video || !videoProtocols || !videoProtocols.hls'>
                 <TablerNone
-                    label='HLS Streaming Protocol'
+                    label='No HLS Streaming Protocol'
                     :create='false'
                 />
             </template>
             <template v-else>
-                <video
-                    ref='videoTag'
-                    class='w-100 h-100 live-video'
-                    controls
-                    autoplay
-                    muted
-                />
+                <div class='position-relative w-100 h-100'>
+                    <video
+                        ref='videoTag'
+                        class='w-100 h-100 live-video'
+                        controls
+                        autoplay
+                        muted
+                    />
+                    
+                    <!-- Buffering Overlay -->
+                    <div
+                        v-if='isBuffering'
+                        class='buffering-overlay'
+                    >
+                        <div class='buffering-icon'>
+                            <IconPlayerPauseFilled :size='64' />
+                            <div class='mt-2 fw-bold'>
+                                Buffering...
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </template>
         </div>
-    </div>
+    </FloatingPane>
 </template>
 
 <script setup lang='ts'>
@@ -146,21 +139,20 @@ import { ref, computed, onMounted, onUnmounted, nextTick, useTemplateRef } from 
 import { std, stdurl } from '../../../../src/std.ts';
 import StatusDot from './../../util/StatusDot.vue';
 import VideoLeaseSourceType from './VideoLeaseSourceType.vue';
+import FloatingPane from './FloatingPane.vue';
 import type { VideoLeaseResponse, VideoLeaseMetadata } from '../../../types.ts';
 import Hls from 'hls.js'
 import { useFloatStore } from '../../../stores/float.ts';
-import type { VideoPane } from '../../../stores/float.ts';
+import type { Pane, PaneVideoConfig } from '../../../stores/float.ts';
 import {
-    IconX,
     IconUsersGroup,
-    IconGripVertical
+    IconPlayerPauseFilled
 } from '@tabler/icons-vue';
 import {
     TablerNone,
     TablerAlert,
     TablerLoading,
     TablerButton,
-    TablerIconButton,
 } from '@tak-ps/vue-tabler';
 
 // Store for managing floating panes
@@ -180,8 +172,6 @@ const props = defineProps({
 
 // Template refs for DOM elements
 const videoTag = useTemplateRef<HTMLVideoElement>('videoTag');
-const container = useTemplateRef<HTMLElement>('container');
-const dragHandle = useTemplateRef<HTMLElement>('drag-handle');
 
 // Component events
 const emit = defineEmits(['close']);
@@ -198,16 +188,23 @@ const maxRetries = ref(3); // Maximum retry attempts before giving up
 const player = ref<Hls | undefined>()
 
 // Video streaming data
-const video = ref(floatStore.panes.get(props.uid) as VideoPane);
+const video = ref(floatStore.panes.get(props.uid) as Pane<PaneVideoConfig>);
 const videoLease = ref<VideoLeaseResponse | undefined>(); // CloudTAK video lease
 const videoProtocols = ref<VideoLeaseMetadata["protocols"] | undefined>(); // Available streaming protocols
 
-// Drag and resize functionality
-const observer = ref<ResizeObserver | undefined>(); // Watches for container resize events
-const lastPosition = ref({ top: 0, left: 0 }) // Last mouse position during drag
-
 // Active stream metadata
 const active = ref();
+
+// Buffer monitoring state
+const isBuffering = ref(false);
+const bufferCheckInterval = ref<number | undefined>();
+const bufferRecoveryTimeout = ref<number | undefined>();
+
+// Buffer monitoring configuration
+const BUFFER_LOW_THRESHOLD = 2; // Pause when buffer falls below 2 seconds
+const BUFFER_RECOVERY_THRESHOLD = 5; // Resume when buffer recovers to 5+ seconds
+const BUFFER_CHECK_INTERVAL_MS = 500; // Check buffer every 500ms
+const BUFFER_RECOVERY_TIMEOUT_MS = 10000; // Escalate if buffering lasts too long
 
 // Computed title - uses stream metadata name if available, falls back to prop
 const title = computed(() => {
@@ -218,12 +215,113 @@ const title = computed(() => {
     }
 });
 
+/**
+ * Monitor video buffer levels and pause/resume playback as needed
+ * Prevents reaching the end of buffer which causes refresh loops
+ */
+function monitorBuffer(): void {
+    const video = videoTag.value;
+    if (!video) return;
+
+    try {
+        const buffered = video.buffered;
+        if (buffered.length === 0) {
+            if (isBuffering.value && !video.ended) return;
+            return;
+        }
+
+        const currentTime = video.currentTime;
+        const bufferedEnd = buffered.end(buffered.length - 1);
+        const bufferAhead = bufferedEnd - currentTime;
+
+        // If buffer is low (less than threshold), show buffering overlay
+        if (bufferAhead < BUFFER_LOW_THRESHOLD && !isBuffering.value && !video.ended) {
+            console.log(`Buffer running low (${bufferAhead.toFixed(2)}s), waiting for more data...`);
+            setBuffering(true);
+        }
+
+        // If buffer has recovered (more than threshold), resume
+        if (bufferAhead > BUFFER_RECOVERY_THRESHOLD && isBuffering.value) {
+            console.log(`Buffer recovered (${bufferAhead.toFixed(2)}s), resuming playback...`);
+            setBuffering(false);
+
+            if (video.paused && !video.ended) {
+                video.play().catch(e => console.error("Failed to resume video playback after buffering:", e));
+            }
+        }
+    } catch (err) {
+        console.error('Error monitoring buffer:', err);
+    }
+}
+
+function clearBufferRecoveryTimeout(): void {
+    if (bufferRecoveryTimeout.value) {
+        clearTimeout(bufferRecoveryTimeout.value);
+        bufferRecoveryTimeout.value = undefined;
+    }
+}
+
+function setBuffering(buffering: boolean): void {
+    isBuffering.value = buffering;
+
+    if (!buffering) {
+        clearBufferRecoveryTimeout();
+        return;
+    }
+
+    clearBufferRecoveryTimeout();
+    bufferRecoveryTimeout.value = window.setTimeout(() => {
+        if (!isBuffering.value) return;
+
+        console.warn('Buffering did not recover in time, attempting stream restart');
+        handleStreamRestart();
+    }, BUFFER_RECOVERY_TIMEOUT_MS);
+}
+
+function clearBufferMonitoring(): void {
+    if (bufferCheckInterval.value) {
+        clearInterval(bufferCheckInterval.value);
+        bufferCheckInterval.value = undefined;
+    }
+
+    clearBufferRecoveryTimeout();
+    isBuffering.value = false;
+}
+
+function startBufferMonitoring(): void {
+    clearBufferMonitoring();
+    bufferCheckInterval.value = window.setInterval(monitorBuffer, BUFFER_CHECK_INTERVAL_MS);
+}
+
+function attachVideoEventHandlers(): void {
+    const video = videoTag.value;
+    if (!video) return;
+
+    video.onwaiting = () => {
+        if (!video.ended) setBuffering(true);
+    };
+
+    video.onstalled = () => {
+        if (!video.ended) setBuffering(true);
+    };
+
+    video.onplaying = () => {
+        setBuffering(false);
+    };
+
+    video.oncanplay = () => {
+        if (isBuffering.value) setBuffering(false);
+    };
+
+    video.onerror = () => {
+        setBuffering(false);
+    };
+}
+
 // Cleanup when component is unmounted
 onUnmounted(async () => {
-    // Stop observing resize events
-    if (observer.value) {
-        observer.value.disconnect();
-    }
+    // Stop buffer monitoring
+    clearBufferMonitoring();
 
     // Destroy HLS player instance
     if (player.value) {
@@ -236,132 +334,9 @@ onUnmounted(async () => {
 
 // Initialize component when mounted
 onMounted(async () => {
-    // Set up resize observer to sync container size with store
-    observer.value = new ResizeObserver((entries) => {
-        if (!entries.length) return;
-
-        // Use requestAnimationFrame for smooth resize updates
-        window.requestAnimationFrame(() => {
-            if (video.value && video.value && container.value) {
-                video.value.config.height = entries[0].contentRect.height;
-                video.value.config.width = entries[0].contentRect.width;
-            }
-        });
-    })
-
-    // Initialize container position and size from stored config
-    if (container.value && video.value) {
-        container.value.style.top = video.value.config.y + 'px';
-        container.value.style.left = video.value.config.x + 'px';
-
-        container.value.style.height = video.value.config.height + 'px';
-        container.value.style.width = video.value.config.width + 'px';
-
-        // Start observing container for resize events
-        observer.value.observe(container.value);
-    }
-
-    // Set up drag functionality
-    if (dragHandle.value) {
-        dragHandle.value.addEventListener('mousedown', dragStart);
-        dragHandle.value.addEventListener('touchstart', touchStart, { passive: false });
-    }
-
     // Start the video lease request process
     await requestLease();
 });
-
-/**
- * Drag functionality - allows user to move the video player around the screen
- */
-function dragStart(event: MouseEvent) {
-    if (!container.value || !dragHandle.value) return;
-
-    // Store initial mouse position
-    lastPosition.value.left = event.clientX;
-    lastPosition.value.top = event.clientY;
-
-    // Add visual feedback for dragging state
-    dragHandle.value.classList.add('dragging');
-
-    // Attach drag event listeners
-    container.value.addEventListener('mousemove', dragMove);
-    container.value.addEventListener('mouseleave', dragEnd);
-    container.value.addEventListener('mouseup', dragEnd);
-}
-
-function dragMove(event: MouseEvent) {
-    if (!container.value || !dragHandle.value || !video.value) return;
-
-    // Calculate new position based on mouse movement
-    const dragElRect = container.value.getBoundingClientRect();
-
-    // Update stored position in video config
-    video.value.config.x = dragElRect.left + event.clientX - lastPosition.value.left;
-    video.value.config.y = dragElRect.top + event.clientY - lastPosition.value.top;
-
-    // Update last position for next move calculation
-    lastPosition.value.left = event.clientX;
-    lastPosition.value.top = event.clientY;
-
-    // Apply new position to DOM element
-    container.value.style.top = video.value.config.y + 'px';
-    container.value.style.left = video.value.config.x + 'px';
-}
-
-function dragEnd() {
-    if (!container.value || !dragHandle.value) return;
-
-    // Remove drag event listeners
-    container.value.removeEventListener('mousemove', dragMove);
-    container.value.removeEventListener('mouseleave', dragEnd);
-    container.value.removeEventListener('mouseup', dragEnd);
-
-    // Remove visual feedback for dragging state
-    dragHandle.value.classList.remove('dragging');
-}
-
-function touchStart(event: TouchEvent) {
-    if (!container.value || !dragHandle.value) return;
-    event.preventDefault();
-
-    const touch = event.touches[0];
-    lastPosition.value.left = touch.clientX;
-    lastPosition.value.top = touch.clientY;
-
-    dragHandle.value.classList.add('dragging');
-
-    container.value.addEventListener('touchmove', touchMove, { passive: false });
-    container.value.addEventListener('touchend', touchEnd);
-    container.value.addEventListener('touchcancel', touchEnd);
-}
-
-function touchMove(event: TouchEvent) {
-    if (!container.value || !dragHandle.value || !video.value) return;
-    event.preventDefault();
-
-    const touch = event.touches[0];
-    const dragElRect = container.value.getBoundingClientRect();
-
-    video.value.config.x = dragElRect.left + touch.clientX - lastPosition.value.left;
-    video.value.config.y = dragElRect.top + touch.clientY - lastPosition.value.top;
-
-    lastPosition.value.left = touch.clientX;
-    lastPosition.value.top = touch.clientY;
-
-    container.value.style.top = video.value.config.y + 'px';
-    container.value.style.left = video.value.config.x + 'px';
-}
-
-function touchEnd() {
-    if (!container.value || !dragHandle.value) return;
-
-    container.value.removeEventListener('touchmove', touchMove);
-    container.value.removeEventListener('touchend', touchEnd);
-    container.value.removeEventListener('touchcancel', touchEnd);
-
-    dragHandle.value.classList.remove('dragging');
-}
 
 /**
  * Clean up video lease from CloudTAK server when component is destroyed
@@ -388,6 +363,8 @@ async function deleteLease(): Promise<void> {
 async function createPlayer(): Promise<void> {
     try {
         const url = new URL(videoProtocols.value!.hls!.url);
+
+        attachVideoEventHandlers();
 
         player.value = new Hls({
             enableWorker: true,
@@ -416,6 +393,9 @@ async function createPlayer(): Promise<void> {
         player.value.on(Hls.Events.MANIFEST_PARSED, async () => {
             try {
                 if (videoTag.value) await videoTag.value.play();
+                
+                // Start buffer monitoring interval
+                startBufferMonitoring();
             } catch (err) {
                 console.error("Error playing video:", err);
             }
@@ -428,7 +408,12 @@ async function createPlayer(): Promise<void> {
             switch (data.type) {
                 case Hls.ErrorTypes.NETWORK_ERROR:
                     if (!data.fatal) {
-                        handleStreamRestart(); // Handle muxer restart scenario
+                        setBuffering(true);
+
+                        if (player.value) {
+                            player.value.startLoad();
+                        }
+
                         break;
                     } else {
                         console.log("Fatal network error:", data);
@@ -437,7 +422,16 @@ async function createPlayer(): Promise<void> {
                     }
                 case Hls.ErrorTypes.MEDIA_ERROR:
                     if (!data.fatal) {
-                        handleStreamRestart(); // Handle muxer restart scenario
+                        setBuffering(true);
+
+                        if (player.value) {
+                            try {
+                                player.value.recoverMediaError();
+                            } catch (err) {
+                                console.error('Failed to recover non-fatal media error:', err);
+                            }
+                        }
+
                         break;
                     } else {
                         console.log("Fatal media error:", data);
@@ -479,6 +473,9 @@ async function createPlayer(): Promise<void> {
 
     console.log('Handling HLS stream restart (muxer restart detected)');
 
+    // Clear buffer monitoring before restarting player
+    clearBufferMonitoring();
+
     try {
         hls.recoverMediaError();
         hls.stopLoad();
@@ -488,10 +485,16 @@ async function createPlayer(): Promise<void> {
         if (videoElement) {
             hls.once(Hls.Events.LEVEL_LOADED, () => {
                 // Seek to the end (live edge) to bypass the stalled gap
-                videoElement.currentTime = videoElement.duration;
+                if (Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
+                    videoElement.currentTime = videoElement.duration;
+                }
+
                 hls.startLoad();
                 videoElement.play().catch(e => console.error("Play failed", e));
+                startBufferMonitoring();
             });
+
+            setBuffering(true);
         }
     } catch (err) {
         console.error('Error handling stream restart:', err);
@@ -504,6 +507,9 @@ async function createPlayer(): Promise<void> {
  * Implements 3-attempt retry system with increasing delays: 1s, 2s, 4s
  */
 function handleStreamError(streamError: Error): void {
+    // Clear buffer monitoring before destroying player
+    clearBufferMonitoring();
+
     if (retryCount.value < maxRetries.value) {
         // Calculate exponential backoff delay
         const delay = 1000 * Math.pow(2, retryCount.value); // 1s, 2s, 4s
@@ -552,7 +558,7 @@ async function requestLease(): Promise<void> {
     try {
         // Check if stream is already active on the server
         const url = stdurl('/api/video/active');
-        url.searchParams.append('url', video.value.config.url)
+        url.searchParams.set('url', video.value.config.url)
         active.value = await std(url);
 
         if (active.value.metadata) {
@@ -597,17 +603,6 @@ async function requestLease(): Promise<void> {
 </script>
 
 <style>
-.dragging {
-    cursor: move !important;
-}
-
-.resizable-content {
-    min-height: 300px;
-    min-width: 400px;
-    resize: both;
-    overflow: hidden;
-}
-
 .video-container {
     container-type: inline-size;
 }
@@ -650,5 +645,38 @@ async function requestLease(): Promise<void> {
 
 .live-video::-webkit-media-controls-time-remaining-display {
     display: none;
+}
+
+.buffering-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+}
+
+.buffering-icon {
+    color: white;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
 }
 </style>

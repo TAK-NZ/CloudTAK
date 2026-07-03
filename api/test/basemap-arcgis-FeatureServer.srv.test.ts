@@ -4,17 +4,27 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-const ARCGIS_FEATURE_URL = 'https://sampleserver6.arcgisonline.com/arcgis/rest/services/Wildfire/FeatureServer/0';
+const ARCGIS_FEATURE_URL = 'https://sampleserver6.arcgisonline.com/arcgis/rest/services/EmergencyFacilities/FeatureServer/0';
 
 const SAMPLE_TILES = [
-    { label: 'Pacific Northwest overview', z: 6, x: 10, y: 23 },
-    { label: 'Cascade Range detail', z: 7, x: 20, y: 47 },
-    { label: 'Upper Klamath region', z: 8, x: 41, y: 94 },
-    { label: 'Crater Lake approach', z: 9, x: 83, y: 188 },
-    { label: 'Klamath Falls close-up', z: 10, x: 166, y: 376 }
+    { label: 'Southern California overview', z: 6, x: 11, y: 25 },
+    { label: 'Inland Empire region', z: 7, x: 22, y: 51 },
+    { label: 'San Bernardino area', z: 8, x: 44, y: 102 },
+    { label: 'Redlands approach', z: 9, x: 89, y: 204 },
+    { label: 'Redlands close-up', z: 10, x: 178, y: 408 },
 ];
 
-flight.init();
+function assertBoundsIn4326(bounds: Array<number>): void {
+    assert.equal(bounds.length, 4);
+    assert.ok(bounds[0] >= -180 && bounds[0] <= 180, `Unexpected minLon: ${bounds[0]}`);
+    assert.ok(bounds[1] >= -90 && bounds[1] <= 90, `Unexpected minLat: ${bounds[1]}`);
+    assert.ok(bounds[2] >= -180 && bounds[2] <= 180, `Unexpected maxLon: ${bounds[2]}`);
+    assert.ok(bounds[3] >= -90 && bounds[3] <= 90, `Unexpected maxLat: ${bounds[3]}`);
+    assert.ok(bounds[0] < bounds[2], 'Expected minLon to be less than maxLon');
+    assert.ok(bounds[1] < bounds[3], 'Expected minLat to be less than maxLat');
+}
+
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -23,15 +33,16 @@ test('POST: api/basemap - ArcGIS Feature Server Source', async () => {
         const res = await flight.fetch('/api/basemap', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
-                name: 'Wildfire Response Points',
+                name: 'Emergency Facilities',
                 url: ARCGIS_FEATURE_URL,
                 sharing_enabled: false,
                 type: 'vector',
-                format: 'mvt'
-            }
+                format: 'mvt',
+                protocol: 'featureserver',
+            },
         }, true);
 
         delete res.body.created;
@@ -39,15 +50,16 @@ test('POST: api/basemap - ArcGIS Feature Server Source', async () => {
 
         assert.deepEqual(res.body, {
             id: 1,
-            name: 'Wildfire Response Points',
+            name: 'Emergency Facilities',
             actions: { feature: ['fetch', 'query'] },
             url: ARCGIS_FEATURE_URL,
             overlay: false,
-            iconset: '',
+            iconset: null,
             title: 'callsign',
             username: 'admin@example.com',
-            attribution: '',
+            attribution: null,
             frequency: null,
+            hidden: false,
             sharing_enabled: false,
             sharing_token: null,
             collection: null,
@@ -55,10 +67,97 @@ test('POST: api/basemap - ArcGIS Feature Server Source', async () => {
             minzoom: 0,
             maxzoom: 16,
             format: 'mvt',
+            protocol: 'featureserver',
             scheme: 'xyz',
             styles: [],
-            type: 'vector'
+            type: 'vector',
+            snapping_enabled: false,
+            snapping_layer: null,
         });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/basemap/1 - ArcGIS Feature Server TileJSON Source', async () => {
+    try {
+        const res = await flight.fetch('/api/basemap/1', {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                tilejson: ARCGIS_FEATURE_URL,
+            },
+        }, true);
+
+        delete res.body.created;
+        delete res.body.updated;
+
+        assert.equal(res.status, 200);
+        assert.equal(res.body.id, 1);
+        assert.equal(res.body.url, ARCGIS_FEATURE_URL);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: api/basemap/1/tiles - ArcGIS Feature Server direct source', async () => {
+    try {
+        const res = await flight.fetch('/api/basemap/1/tiles', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.deepEqual({
+            ...res.body,
+            bounds: undefined,
+            center: undefined,
+        }, {
+            tilejson: '3.0.0',
+            version: '1.0.0',
+            description: '',
+            scheme: 'xyz',
+            name: 'Emergency Facilities',
+            type: 'vector',
+            bounds: undefined,
+            center: undefined,
+            tileSize: 256,
+            minzoom: 0,
+            maxzoom: 16,
+            actions: { feature: ['fetch', 'query'] },
+            tiles: ['http://localhost:5001/api/basemap/1/tiles/{z}/{x}/{y}'],
+            vector_layers: [{
+                id: 'out',
+                fields: {
+                    objectid: 'number',
+                    facilityid: 'string',
+                    facname: 'string',
+                    factype: 'integer',
+                    organiz: 'string',
+                    jurisdict: 'string',
+                    pocname: 'string',
+                    pocemail: 'string',
+                    pocphone: 'string',
+                    capacity: 'string',
+                    hoursoper: 'string',
+                    daysoper: 'string',
+                    opendate: 'date-time',
+                    closeddate: 'date-time',
+                    opsstatus: 'string',
+                    lastupdate: 'date-time',
+                    lasteditor: 'string',
+                    globalid: 'string',
+                    imageurl: 'string',
+                    curcapacity: 'integer',
+                },
+            }],
+        });
+
+        assert.notDeepEqual(res.body.bounds, [-180, -90, 180, 90]);
+        assertBoundsIn4326(res.body.bounds);
     } catch (err) {
         assert.ifError(err);
     }
@@ -69,26 +168,57 @@ test('GET: api/basemap/1/tiles - ArcGIS Feature Server TileJSON', async () => {
         const res = await flight.fetch('/api/basemap/1/tiles', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
-        assert.deepEqual(res.body, {
+        assert.deepEqual({
+            ...res.body,
+            bounds: undefined,
+            center: undefined,
+        }, {
             tilejson: '3.0.0',
             version: '1.0.0',
             description: '',
             scheme: 'xyz',
-            name: 'Wildfire Response Points',
+            name: 'Emergency Facilities',
             type: 'vector',
-            bounds: [ -180, -90, 180, 90 ],
-            center: [ 0, 0 ],
+            bounds: undefined,
+            center: undefined,
             tileSize: 256,
             minzoom: 0,
             maxzoom: 16,
             actions: { feature: ['fetch', 'query'] },
-            tiles: [ 'http://localhost:5001/api/basemap/1/tiles/{z}/{x}/{y}' ],
-            vector_layers: [{ id: 'out', fields: {} }]
+            tiles: ['http://localhost:5001/api/basemap/1/tiles/{z}/{x}/{y}'],
+            vector_layers: [{
+                id: 'out',
+                fields: {
+                    objectid: 'number',
+                    facilityid: 'string',
+                    facname: 'string',
+                    factype: 'integer',
+                    organiz: 'string',
+                    jurisdict: 'string',
+                    pocname: 'string',
+                    pocemail: 'string',
+                    pocphone: 'string',
+                    capacity: 'string',
+                    hoursoper: 'string',
+                    daysoper: 'string',
+                    opendate: 'date-time',
+                    closeddate: 'date-time',
+                    opsstatus: 'string',
+                    lastupdate: 'date-time',
+                    lasteditor: 'string',
+                    globalid: 'string',
+                    imageurl: 'string',
+                    curcapacity: 'integer',
+                },
+            }],
         });
+
+        assert.notDeepEqual(res.body.bounds, [-180, -90, 180, 90]);
+        assertBoundsIn4326(res.body.bounds);
     } catch (err) {
         assert.ifError(err);
     }
@@ -100,11 +230,11 @@ for (const { label, z, x, y } of SAMPLE_TILES) {
             const res = await flight.fetch(`/api/basemap/1/tiles/${z}/${x}/${y}`, {
                 method: 'GET',
                 auth: {
-                    bearer: flight.token.admin
-                }
+                    bearer: flight.token.admin,
+                },
             }, {
                 verify: false,
-                json: false
+                json: false,
             });
 
             assert.equal(res.status, 200);

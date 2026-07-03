@@ -3,8 +3,8 @@ import S3 from '../lib/aws/s3.js';
 import { sql, and, inArray } from 'drizzle-orm';
 import Config from '../lib/config.js';
 import Auth, { AuthResourceAccess } from '../lib/auth.js';
-import { X509Certificate } from 'crypto';
-import { Type } from '@sinclair/typebox'
+import { X509Certificate, createPrivateKey } from 'crypto';
+import { Type } from '@sinclair/typebox';
 import { StandardResponse, ConnectionResponse } from '../lib/types.js';
 import { Connection } from '../lib/schema.js';
 import { MachineConnConfig, ConnectionAuth } from '../lib/connection-config.js';
@@ -13,6 +13,7 @@ import * as Default from '../lib/limits.js';
 import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
 import { needsCertRenewal } from '../lib/cert-health.js';
 import AuthentikProvider from '../lib/authentik-provider.js';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.get('/connection', {
@@ -25,9 +26,9 @@ export default async function router(schema: Schema, config: Config) {
             order: Default.Order,
             sort: Type.String({
                 default: 'created',
-                enum: Object.keys(Connection)
+                enum: Object.keys(Connection),
             }),
-            filter: Default.Filter
+            filter: Default.Filter,
         }),
         res: Type.Object({
             total: Type.Integer(),
@@ -36,22 +37,22 @@ export default async function router(schema: Schema, config: Config) {
                 live: Type.Integer({ description: 'The connection is currently connected to a TAK server' }),
                 unknown: Type.Integer({ description: 'The status of the connection could not be determined' }),
             }),
-            items: Type.Array(ConnectionResponse)
-        })
+            items: Type.Array(ConnectionResponse),
+        }),
     }, async (req, res) => {
         try {
             const profile = await Auth.as_profile(config, req);
 
             let where;
             if (profile.system_admin) {
-                where = sql`name ~* ${req.query.filter}`
+                where = sql`name ~* ${req.query.filter}`;
             } else if (profile.agency_admin.length) {
                 where = and(
                     sql`name ~* ${req.query.filter}`,
-                    inArray(Connection.agency, profile.agency_admin)
+                    inArray(Connection.agency, profile.agency_admin),
                 );
             } else {
-                throw new Err(400, null, 'Insufficient Access')
+                throw new Err(400, null, 'Insufficient Access');
             }
 
             const list = await config.models.Connection.list({
@@ -59,7 +60,7 @@ export default async function router(schema: Schema, config: Config) {
                 page: req.query.page,
                 order: req.query.order,
                 sort: req.query.sort,
-                where
+                where,
             });
 
             const json = {
@@ -71,14 +72,15 @@ export default async function router(schema: Schema, config: Config) {
                     return {
                         status: config.conns.status(conn.id),
                         certificate: { validFrom, validTo, subject },
-                        ...conn
-                    }
-                })
-            }
+                        ...conn,
+                    };
+                }),
+            };
 
             for (const conn of config.conns.values()) {
                 if (!conn.tak) json.status.unknown++;
-                else json.status.live++;
+                else if (conn.tak.open) json.status.live++;
+                else json.status.dead++;
             }
 
             res.json(json);
@@ -100,7 +102,7 @@ export default async function router(schema: Schema, config: Config) {
             integrationId: Type.Optional(Type.Integer()),
             auth: ConnectionAuth,
         }),
-        res: ConnectionResponse
+        res: ConnectionResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -122,28 +124,79 @@ export default async function router(schema: Schema, config: Config) {
                 req.body.enabled = false;
             }
 
+            try {
+                new X509Certificate(req.body.auth.cert);
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid X509 Certificate Provided');
+            }
+
+            try {
+                createPrivateKey(req.body.auth.key);
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid Private Key Provided');
+            }
+
             const conn = await config.models.Connection.generate({
                 ...req.body,
-                username: user.email
+                username: user.email,
             });
 
             if (conn.enabled) await config.conns.add(new MachineConnConfig(config, conn));
 
             const { validFrom, validTo, subject } = new X509Certificate(conn.auth.cert);
 
-            if (req.body.integrationId && config.external && config.external.configured) {
+            const cotak = config.user?.get('cotak');
+            if (req.body.integrationId && cotak && cotak.configured) {
                 if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
 
-                await config.external.updateIntegrationConnectionId(profile.id, {
+                await cotak.updateMachineUser(profile.id, {
                     connection_id: conn.id,
-                    integration_id: req.body.integrationId
-                })
+                    integration_id: req.body.integrationId,
+                });
             }
 
             res.json({
                 status: config.conns.status(conn.id),
                 certificate: { validFrom, validTo, subject },
-                ...conn
+                ...conn,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/connection/refresh', {
+        name: 'Refresh Connections',
+        group: 'Connection',
+        description: 'Refresh all enabled connections',
+        res: StandardResponse,
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+
+            if (user.access !== 'admin') {
+                throw new Err(403, null, 'Only System Admins can refresh all connections');
+            }
+
+            if (!config.server) {
+                throw new Err(400, null, 'TAK Server must be configured before a connection can be made');
+            }
+            for await (const conn of config.models.Connection.iter({
+                where: sql`enabled = true`,
+            })) {
+                try {
+                    if (config.conns.has(conn.id)) {
+                        await config.conns.delete(conn.id);
+                    }
+                    await config.conns.add(new MachineConnConfig(config, conn));
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            res.json({
+                status: 200,
+                message: 'Connections Refreshed',
             });
         } catch (err) {
             Err.respond(err, res);
@@ -155,25 +208,39 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Update a connection',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
         body: Type.Object({
             name: Type.Optional(Default.NameField),
             description: Type.Optional(Default.DescriptionField),
             enabled: Type.Optional(Type.Boolean()),
-            agency: Type.Union([Type.Null(), Type.Optional(Type.Integer({ minimum: 1 }))]),
-            auth: Type.Optional(ConnectionAuth)
+            agency: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 1 })])),
+            auth: Type.Optional(ConnectionAuth),
         }),
-        res: ConnectionResponse
+        res: ConnectionResponse,
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
             if (req.body.agency !== undefined && req.body.agency !== connection.agency && await Auth.is_user(config, req)) {
                 const user = await Auth.as_user(config, req, { admin: true });
                 if (!user) throw new Err(400, null, 'Only System Admins can change an agency once a connection is created');
+            }
+
+            if (req.body.auth) {
+                try {
+                    new X509Certificate(req.body.auth.cert);
+                } catch (err) {
+                    throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid X509 Certificate Provided');
+                }
+
+                try {
+                    createPrivateKey(req.body.auth.key);
+                } catch (err) {
+                    throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid Private Key Provided');
+                }
             }
 
             if (connection.readonly) {
@@ -182,7 +249,7 @@ export default async function router(schema: Schema, config: Config) {
 
             const conn = await config.models.Connection.commit(req.params.connectionid, {
                 updated: sql`Now()`,
-                ...req.body
+                ...req.body,
             });
 
             if (conn.enabled && !config.conns.has(conn.id)) {
@@ -199,7 +266,40 @@ export default async function router(schema: Schema, config: Config) {
             res.json({
                 status: config.conns.status(conn.id),
                 certificate: { validFrom, validTo, subject },
-                ...conn
+                ...conn,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/connection/0', {
+        name: 'Get Admin Connection',
+        group: 'Connection',
+        description: 'Get the admin connection (server-level connection using the server certificate)',
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req, { admin: true });
+
+            if (!config.server.auth.cert || !config.server.auth.key) {
+                throw new Err(400, null, 'Server certificate is not configured');
+            }
+
+            const { validFrom, validTo, subject } = new X509Certificate(config.server.auth.cert);
+
+            res.json({
+                id: 0,
+                status: config.conns.status(0),
+                agency: null,
+                certificate: { validFrom, validTo, subject },
+                created: config.server.created,
+                updated: config.server.updated,
+                readonly: false,
+                username: null,
+                name: 'Admin Connection',
+                description: 'Server-level admin connection. Layers here are available to all connections as templates.',
+                enabled: config.server.connection,
             });
         } catch (err) {
             Err.respond(err, res);
@@ -211,13 +311,13 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Get a connection',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
-        res: ConnectionResponse
+        res: ConnectionResponse,
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
             const { validFrom, validTo, subject } = new X509Certificate(connection.auth.cert);
@@ -225,7 +325,7 @@ export default async function router(schema: Schema, config: Config) {
             res.json({
                 status: config.conns.status(connection.id),
                 certificate: { validFrom, validTo, subject },
-                ...connection
+                ...connection,
             });
         } catch (err) {
             Err.respond(err, res);
@@ -246,19 +346,19 @@ export default async function router(schema: Schema, config: Config) {
             }),
             download: Type.Boolean({
                 default: false,
-                description: 'Download auth as P12 file'
+                description: 'Download auth as P12 file',
             }),
             type: Type.String({
                 default: 'client',
                 description: 'Client or Truststore Data',
-                enum: ['client', 'truststore']
-            })
+                enum: ['client', 'truststore'],
+            }),
         }),
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
                 token: true,
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
             if (connection.readonly === false) {
@@ -269,7 +369,7 @@ export default async function router(schema: Schema, config: Config) {
                 const buff = await generateClientP12(
                     connection.auth,
                     config.server.name + ' - ' + connection.name,
-                    req.query.password
+                    req.query.password,
                 );
 
                 if (req.query.download) {
@@ -283,7 +383,7 @@ export default async function router(schema: Schema, config: Config) {
                 const buff = await generateTrustP12(
                     connection.auth,
                     config.server.name + ' Truststore',
-                    req.query.password
+                    req.query.password,
                 );
 
                 if (req.query.download) {
@@ -306,13 +406,13 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Refresh a connection',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
-        res: ConnectionResponse
+        res: ConnectionResponse,
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
             if (!connection.enabled) throw new Err(400, null, 'Connection is not currently enabled');
@@ -329,7 +429,7 @@ export default async function router(schema: Schema, config: Config) {
             res.json({
                 status: config.conns.status(connection.id),
                 certificate: { validFrom, validTo, subject },
-                ...connection
+                ...connection,
             });
         } catch (err) {
             Err.respond(err, res);
@@ -341,19 +441,26 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Check and renew connection certificate if needed',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
         res: Type.Object({
             renewed: Type.Boolean(),
-            message: Type.String()
-        })
+            message: Type.String(),
+        }),
     }, async (req, res) => {
         try {
             const { connection } = await Auth.is_connection(config, req, {
-                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
             }, req.params.connectionid);
 
-            if (!(config.external instanceof AuthentikProvider)) {
+            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
+            try {
+                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                    authentik = await AuthentikProvider.init(config);
+                }
+            } catch { /* Authentik not configured */ }
+
+            if (!authentik) {
                 return res.json({ renewed: false, message: 'Certificate renewal only supported with Authentik provider' });
             }
 
@@ -361,10 +468,12 @@ export default async function router(schema: Schema, config: Config) {
                 return res.json({ renewed: false, message: 'Certificate does not need renewal' });
             }
 
-            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
+            // Look up the Authentik user by connection username to get their numeric ID
+            const machineUser = await authentik.fetchMachineUser(0, connection.username || '');
+            const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
 
             await config.models.Connection.commit(req.params.connectionid, {
-                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
             });
 
             if (connection.enabled && config.conns.has(connection.id)) {
@@ -384,17 +493,18 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Layer',
         description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
         params: Type.Object({
-            layerid: Type.Integer({ minimum: 1 })
+            layerid: Type.Integer({ minimum: 1 }),
         }),
         res: Type.Object({
             healthy: Type.Boolean(),
             cert_renewed: Type.Boolean(),
-            message: Type.Optional(Type.String())
-        })
+            message: Type.Optional(Type.String()),
+        }),
     }, async (req, res) => {
         try {
             const auth = await Auth.as_user(config, req, { token: true });
-            if (auth.access !== 'layer' || auth.id !== req.params.layerid) {
+            // Layer tokens have access='layer' (AuthResourceAccess) — check via string comparison
+            if ((auth.access as string) !== 'layer' || (auth as { id?: unknown }).id !== req.params.layerid) {
                 throw new Err(401, null, 'Invalid layer token');
             }
 
@@ -404,20 +514,24 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             const connection = await config.models.Connection.from(layer.connection);
-            
-            if (!(config.external instanceof AuthentikProvider)) {
-                return res.json({ healthy: true, cert_renewed: false });
-            }
 
-            if (!needsCertRenewal(connection.auth.cert)) {
+            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
+            try {
+                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                    authentik = await AuthentikProvider.init(config);
+                }
+            } catch { /* Authentik not configured */ }
+
+            if (!authentik || !needsCertRenewal(connection.auth.cert)) {
                 return res.json({ healthy: true, cert_renewed: false });
             }
 
             try {
-                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, String(config.server.api));
+                const machineUser2 = await authentik.fetchMachineUser(0, connection.username || '');
+                const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
 
                 await config.models.Connection.commit(connection.id, {
-                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
+                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
                 });
 
                 if (connection.enabled && config.conns.has(connection.id)) {
@@ -442,23 +556,23 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Connection',
         description: 'Delete a connection',
         params: Type.Object({
-            connectionid: Type.Integer({ minimum: 1 })
+            connectionid: Type.Integer({ minimum: 1 }),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
-            await Auth.is_connection(config, req, {}, req.params.connectionid);
+            const { connection } = await Auth.is_connection(config, req, {}, req.params.connectionid);
 
             if (await config.models.Layer.count({
-                where: sql`connection = ${req.params.connectionid}`
+                where: sql`connection = ${req.params.connectionid}`,
             }) > 0) throw new Err(400, null, 'Connection has active Layers - Delete layers before deleting Connection');
 
             if (await config.models.Data.count({
-                where: sql`connection = ${req.params.connectionid}`
+                where: sql`connection = ${req.params.connectionid}`,
             }) > 0) throw new Err(400, null, 'Connection has active Data Syncs - Delete Syncs before deleting Connection');
 
             if (await config.models.VideoLease.count({
-                where: sql`connection = ${req.params.connectionid}`
+                where: sql`connection = ${req.params.connectionid}`,
             }) > 0) throw new Err(400, null, 'Connection has active Video LEases - Delete Leases before deleting Connection');
 
             await S3.del(`connection/${String(req.params.connectionid)}/`, { recurse: true });
@@ -475,22 +589,56 @@ export default async function router(schema: Schema, config: Config) {
 
             config.conns.delete(req.params.connectionid);
 
-            if (config.external && config.external.configured) {
+            // Revoke the TAK server certificate so the account can no longer authenticate
+            if (connection.auth.cert && config.server.auth.cert && config.server.auth.key) {
+                try {
+                    const x509 = new X509Certificate(connection.auth.cert);
+                    // TAK Server revoke API takes the SHA-256 fingerprint without colons
+                    const certHash = x509.fingerprint256.replace(/:/g, '');
+                    const takApi = await TAKAPI.init(
+                        new URL(String(config.server.api)),
+                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
+                    );
+                    await takApi.Credentials.revoke(certHash);
+                    console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to revoke TAK certificate for connection ${req.params.connectionid}:`, err);
+                }
+            }
+
+            // Delete the Authentik service account associated with this connection
+            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                try {
+                    const authentik = await AuthentikProvider.init(config);
+                    // Reconstruct the machine user's Authentik username from the naming convention
+                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
+                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
+                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+                    await authentik.deleteMachineUser(machineName);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
+                }
+            }
+
+            const cotak = config.user?.get('cotak');
+            if (cotak && cotak.configured) {
                 const user = await Auth.as_user(config, req);
                 const profile = await config.models.Profile.from(user.email);
 
                 if (profile.id) {
                     // I don't know how to figure out if the connection was created with a machine user and hence registered
                     // with COTAK, so just firing off the delete, which won't error out if no integration found.
-                    await config.external.deleteIntegrationByConnectionId(profile.id, {
+                    await cotak.deleteMachineUser(profile.id, {
                         connection_id: req.params.connectionid,
-                    })
+                    });
                 }
             }
 
             res.json({
                 status: 200,
-                message: 'Connection Deleted'
+                message: 'Connection Deleted',
             });
         } catch (err) {
             Err.respond(err, res);

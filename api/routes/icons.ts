@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Auth, { AuthUserAccess, ResourceCreationScope } from '../lib/auth.js';
 import path from 'node:path';
@@ -7,28 +7,28 @@ import fs from 'node:fs/promises';
 import Err from '@openaddresses/batch-error';
 import Config from '../lib/config.js';
 import Sprites from '../lib/sprites.js';
-import archiver from 'archiver';
+import { ZipArchive } from '@archiver/archiver';
 import xmljs from 'xml-js';
 import { Param } from '@openaddresses/batch-generic';
 import { sql } from 'drizzle-orm';
 import { StandardResponse, IconResponse, IconsetResponse } from '../lib/types.js';
-import { Icon, Iconset } from '../lib/schema.js'
+import { Icon, Iconset } from '../lib/schema.js';
 import * as Default from '../lib/limits.js';
 
 export type SpriteRecord = {
     json: object;
     image: Buffer;
-}
+};
 
 export enum IconsetFormatEnum {
     JSON = 'json',
-    ZIP = 'zip'
+    ZIP = 'zip',
 }
 
 export default async function router(schema: Schema, config: Config) {
     const DefaultSprite = {
         json: JSON.parse(String(await fs.readFile(new URL('../icons/generator.json', import.meta.url)))),
-        image: await fs.readFile(new URL('../icons/generator.png', import.meta.url))
+        image: await fs.readFile(new URL('../icons/generator.png', import.meta.url)),
     };
 
     for await (const iconset of config.models.Iconset.iter()) {
@@ -42,19 +42,19 @@ export default async function router(schema: Schema, config: Config) {
         description: 'List Iconsets',
         query: Type.Object({
             scope: Type.Optional(Type.Enum(ResourceCreationScope)),
-            limit: Default.Limit,
+            limit: Default.LimitAll,
             page: Default.Page,
             order: Default.Order,
             sort: Type.String({
                 default: 'created',
-                enum: Object.keys(Iconset)
+                enum: Object.keys(Iconset),
             }),
-            filter: Default.Filter
+            filter: Default.Filter,
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(IconsetResponse)
-        })
+            items: Type.Array(IconsetResponse),
+        }),
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -67,15 +67,16 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             const list = await config.models.Iconset.list({
-                limit: req.query.limit,
+                limit: req.query.limit === 0 ? Infinity : req.query.limit,
                 page: req.query.page,
                 order: req.query.order,
                 sort: req.query.sort,
                 where: sql`
                     name ~* ${req.query.filter}
                     AND (username IS NULL OR username = ${user.email})
+                    AND username_internal = False
                     AND ${scope}
-                `
+                `,
             });
 
             res.json(list);
@@ -94,7 +95,7 @@ export default async function router(schema: Schema, config: Config) {
             name: Default.NameField,
             internal: Type.Boolean({
                 description: 'If true, the iconset will not be shown in the UI for selection',
-                default: false
+                default: false,
             }),
             scope: Type.Optional(Type.Enum(ResourceCreationScope)),
             default_group: Type.Optional(Type.String()),
@@ -102,9 +103,9 @@ export default async function router(schema: Schema, config: Config) {
             default_hostile: Type.Optional(Type.String()),
             default_neutral: Type.Optional(Type.String()),
             default_unknown: Type.Optional(Type.String()),
-            skip_resize: Type.Optional(Type.Boolean())
+            skip_resize: Type.Optional(Type.Boolean()),
         }),
-        res: IconsetResponse
+        res: IconsetResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -119,7 +120,7 @@ export default async function router(schema: Schema, config: Config) {
             const iconset = await config.models.Iconset.generate({
                 ...req.body,
                 username_internal: req.body.internal,
-                username
+                username,
             });
 
             res.json(iconset);
@@ -133,7 +134,7 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         description: 'Update Iconset',
         params: Type.Object({
-            iconset: Type.String()
+            iconset: Type.String(),
         }),
         body: Type.Object({
             public: Type.Optional(Type.Boolean()),
@@ -142,9 +143,9 @@ export default async function router(schema: Schema, config: Config) {
             default_hostile: Type.Optional(Type.String()),
             default_neutral: Type.Optional(Type.String()),
             default_unknown: Type.Optional(Type.String()),
-            skip_resize: Type.Optional(Type.Boolean())
+            skip_resize: Type.Optional(Type.Boolean()),
         }),
-        res: IconsetResponse
+        res: IconsetResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -179,15 +180,15 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         description: 'Get Iconset',
         params: Type.Object({
-            iconset: Type.String()
+            iconset: Type.String(),
         }),
         query: Type.Object({
             format: Type.Optional(Type.Enum(IconsetFormatEnum)),
             download: Type.Optional(Type.Boolean()),
-            resize: Type.Optional(Type.Boolean({ description: 'Resize Images to 32x32px'})),
+            resize: Type.Optional(Type.Boolean({ description: 'Resize Images to 32x32px' })),
             token: Type.Optional(Type.String()),
         }),
-        res: IconsetResponse
+        res: IconsetResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req, { token: true });
@@ -203,9 +204,9 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             if (req.query.format === 'zip') {
-                const archive = archiver('zip', {
-                    zlib: { level: 9 } // Sets the compression level.
-                })
+                const archive = new ZipArchive({
+                    zlib: { level: 9 }, // Sets the compression level.
+                });
 
                 archive.pipe(res);
 
@@ -214,8 +215,8 @@ export default async function router(schema: Schema, config: Config) {
                         _attributes: {
                             version: '1.0',
                             encoding: 'UTF-8',
-                            standalone: 'yes'
-                        }
+                            standalone: 'yes',
+                        },
                     },
                     iconset: {
                         _attributes: {
@@ -227,24 +228,24 @@ export default async function router(schema: Schema, config: Config) {
                             name: iconset.name,
                             defaultGroup: iconset.default_group,
                             skipResize: 'false',
-                            uid: iconset.uid
+                            uid: iconset.uid,
                         },
-                        icon: []
-                    }
+                        icon: [],
+                    },
                 };
 
                 for (const icon of (await config.models.Icon.list({
                     limit: 1000,
-                    where: sql`iconset = ${String(req.params.iconset)}`
+                    where: sql`iconset = ${String(req.params.iconset)}`,
                 })).items) {
                     let buffer = Buffer.from(icon.data.split(',')[1], 'base64');
                     let ext = icon.format;
 
                     if (req.query.resize) {
-                        buffer = Buffer.from(await sharp(buffer).resize(32).png().toBuffer())
+                        buffer = Buffer.from(await sharp(buffer).resize(32).png().toBuffer());
                         ext = '.png';
                     } else if (ext !== '.png') {
-                        buffer = Buffer.from(await sharp(buffer).png().toBuffer())
+                        buffer = Buffer.from(await sharp(buffer).png().toBuffer());
                         ext = '.png';
                     }
 
@@ -252,8 +253,8 @@ export default async function router(schema: Schema, config: Config) {
 
                     xmljson.iconset.icon.push({ _attributes: {
                         name: icon.name + ext,
-                        type2525b: icon.type2525b
-                    } })
+                        type2525b: icon.type2525b,
+                    } });
                 }
 
                 const xml = xmljs.js2xml(xmljson, { compact: true, spaces: 2 });
@@ -274,9 +275,9 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         description: 'Regenerate Iconset Spritesheet',
         params: Type.Object({
-            iconset: Type.String()
+            iconset: Type.String(),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -293,22 +294,21 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 status: 200,
-                message: 'Iconset Regenerated'
+                message: 'Iconset Regenerated',
             });
         } catch (err) {
             Err.respond(err, res);
         }
     });
 
-
     await schema.delete('/iconset/:iconset', {
         name: 'Delete Iconset',
         group: 'Icons',
         description: 'Delete Iconset',
         params: Type.Object({
-            iconset: Type.String()
+            iconset: Type.String(),
         }),
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -326,33 +326,32 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 status: 200,
-                message: 'Iconset Deleted'
+                message: 'Iconset Deleted',
             });
         } catch (err) {
             Err.respond(err, res);
         }
     });
 
-
     await schema.post('/iconset/:iconset/icon', {
         name: 'Create Icon',
         group: 'Icons',
         description: 'Create Icon',
         params: Type.Object({
-            iconset: Type.String()
+            iconset: Type.String(),
         }),
         query: Type.Object({
             regen: Type.Boolean({
                 description: 'Regenerate Iconset spritesheet after upload',
-                default: true
-            })
+                default: true,
+            }),
         }),
         body: Type.Object({
             name: Default.NameField,
             data: Type.String(),
-            type2525b: Type.Optional(Type.Union([Type.Null(), Type.String()]))
+            type2525b: Type.Optional(Type.Union([Type.Null(), Type.String()])),
         }),
-        res: IconResponse
+        res: IconResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -361,7 +360,7 @@ export default async function router(schema: Schema, config: Config) {
 
             if (iconset.username && iconset.username !== user.email && user.access === AuthUserAccess.USER) {
                 throw new Err(400, null, 'You don\'t have permission to access this resource');
-            } else if(!iconset.username && user.access !== AuthUserAccess.ADMIN) {
+            } else if (!iconset.username && user.access !== AuthUserAccess.ADMIN) {
                 throw new Err(400, null, 'Only Server Admins can create Server scoped icons');
             }
 
@@ -382,7 +381,11 @@ export default async function router(schema: Schema, config: Config) {
                 name: full,
                 format: format,
                 path: `${iconset.uid}/${full}`,
-                iconset: iconset.uid
+                iconset: iconset.uid,
+            });
+
+            await config.models.Iconset.commit(iconset.uid, {
+                updated: new Date(),
             });
 
             res.json(icon);
@@ -401,17 +404,17 @@ export default async function router(schema: Schema, config: Config) {
         description: 'List Icons',
         query: Type.Object({
             scope: Type.Optional(Type.Enum(ResourceCreationScope)),
-            limit: Type.Optional(Type.Integer({ default: 100 })),
+            limit: Default.LimitAll,
             page: Default.Page,
             order: Default.Order,
-            sort: Type.Optional(Type.String({default: 'created', enum: Object.keys(Icon) })),
+            sort: Type.Optional(Type.String({ default: 'created', enum: Object.keys(Icon) })),
             iconset: Type.Optional(Type.String()),
-            filter: Default.Filter
+            filter: Default.Filter,
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(IconResponse)
-        })
+            items: Type.Array(IconResponse),
+        }),
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -430,7 +433,7 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             const list = await config.models.Icon.list({
-                limit: req.query.limit,
+                limit: req.query.limit === 0 ? Infinity : req.query.limit,
                 page: req.query.page,
                 order: req.query.order,
                 sort: req.query.sort,
@@ -439,11 +442,10 @@ export default async function router(schema: Schema, config: Config) {
                     AND (${Param(req.query.iconset)}::TEXT IS NULL OR ${Param(req.query.iconset)}::TEXT = iconset)
                     AND (username IS NULL OR username = ${user.email})
                     AND ${scope}
-                `
+                `,
             });
 
-            res.json(list)
-
+            res.json(list);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -454,10 +456,10 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         params: Type.Object({
             iconset: Type.String(),
-            icon: Type.Union([Type.Integer(), Type.String()])
+            icon: Type.Union([Type.Integer(), Type.String()]),
         }),
         description: 'Icon Metadata',
-        res: IconResponse
+        res: IconResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -468,12 +470,26 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             if (isNaN(Number(req.params.icon))) {
-                const { name, dir } = path.parse(decodeURIComponent(String(req.params.icon)));
-                const full = dir ? `${dir}/${name}` : name;
+                const decoded = decodeURIComponent(String(req.params.icon)).replace(/^\/+/, '');
+                const { name, dir, ext } = path.posix.parse(decoded);
+                const iconName = dir ? `${dir}/${name}` : name;
+                const iconPath = `${req.params.iconset}/${decoded}`;
+                const iconPathNoExt = `${req.params.iconset}/${iconName}`;
+                const format = ext.toLowerCase();
 
                 const icon = await config.models.Icon.from(sql`
                     iconset = ${req.params.iconset}
-                    AND name = ${full}
+                    AND (
+                        path = ${iconPath}
+                        OR (
+                            path = ${iconPathNoExt}
+                            AND (${format} = '' OR format = ${format})
+                        )
+                        OR (
+                            name = ${iconName}
+                            AND (${format} = '' OR format = ${format})
+                        )
+                    )
                 `);
 
                 return res.json(icon);
@@ -492,15 +508,15 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         params: Type.Object({
             iconset: Type.String(),
-            icon: Type.Integer()
+            icon: Type.Integer(),
         }),
         description: 'Update Icon in Iconset',
         body: Type.Object({
             name: Type.Optional(Type.String()),
             data: Type.Optional(Type.String()),
-            type2525b: Type.Optional(Type.Union([Type.Null(), Type.String()]))
+            type2525b: Type.Optional(Type.Union([Type.Null(), Type.String()])),
         }),
-        res: IconResponse
+        res: IconResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -533,6 +549,10 @@ export default async function router(schema: Schema, config: Config) {
 
             icon = await config.models.Icon.commit(icon.id, req.body);
 
+            await config.models.Iconset.commit(iconset.uid, {
+                updated: new Date(),
+            });
+
             res.json(icon);
 
             await Sprites.regen(config, iconset.uid);
@@ -546,10 +566,10 @@ export default async function router(schema: Schema, config: Config) {
         group: 'Icons',
         params: Type.Object({
             iconset: Type.String(),
-            icon: Type.Integer()
+            icon: Type.Integer(),
         }),
         description: 'Remove Icon from Iconset',
-        res: StandardResponse
+        res: StandardResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -567,9 +587,13 @@ export default async function router(schema: Schema, config: Config) {
                 AND id = ${req.params.icon}
             `);
 
+            await config.models.Iconset.commit(iconset.uid, {
+                updated: new Date(),
+            });
+
             res.json({
                 status: 200,
-                message: 'Icon Deleted'
+                message: 'Icon Deleted',
             });
 
             await Sprites.regen(config, iconset.uid);
@@ -584,13 +608,13 @@ export default async function router(schema: Schema, config: Config) {
         description: 'Get Spriteset JSON for CoT types',
         params: Type.Object({
             iconset: Type.String(),
-            size: Type.Optional(Type.String())
+            size: Type.Optional(Type.String()),
         }),
         query: Type.Object({
             scope: Type.Optional(Type.Enum(ResourceCreationScope)),
             token: Type.Optional(Type.String()),
         }),
-        res: Type.Unknown()
+        res: Type.Unknown(),
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req, { token: true });
@@ -604,7 +628,7 @@ export default async function router(schema: Schema, config: Config) {
                 }
 
                 if (iconset.spritesheet_json) {
-                    res.json(JSON.parse(String(iconset.spritesheet_json)));
+                    res.json(iconset.spritesheet_json);
                 } else {
                     // Return empty sprite JSON instead of error to prevent cascading failure
                     // This handles KMZ imports with no custom icons
@@ -623,11 +647,11 @@ export default async function router(schema: Schema, config: Config) {
         description: 'Return a sprite sheet for CoT Types',
         params: Type.Object({
             iconset: Type.String(),
-            size: Type.Optional(Type.String())
+            size: Type.Optional(Type.String()),
         }),
         query: Type.Object({
             token: Type.Optional(Type.String()),
-        })
+        }),
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req, { token: true });

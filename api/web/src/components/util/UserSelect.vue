@@ -40,20 +40,28 @@
                             </TablerIconButton>
                         </template>
                         <template #dropdown>
-                            <div class='card'>
-                                <div class='card-body'>
+                            <div
+                                class='py-1'
+                                style='min-width: 320px;'
+                            >
+                                <div class='px-2 pt-2'>
                                     <TablerInput
                                         v-model='paging.filter'
                                         icon='search'
                                         placeholder='Filter...'
                                     />
+                                </div>
+                                <div
+                                    class='px-2 pb-2'
+                                    style='max-height: 280px; overflow-y: auto;'
+                                >
                                     <div
                                         v-for='user of list.items'
                                         :key='user.username'
                                         tabindex='0'
-                                        class='cursor-pointer my-1 hover px-2 py-1'
+                                        class='cursor-pointer my-1 cloudtak-hover px-2 py-1'
                                         @keyup.enter='selected = user'
-                                        @click='selected = user'
+                                        @click.stop='selected = user'
                                     >
                                         <div class='d-flex'>
                                             <span style='width: 24px;'>
@@ -79,7 +87,7 @@
 
 <script setup lang='ts'>
 import { ref, onMounted, watch } from 'vue'
-import { std, stdurl } from '../../std.ts';
+import { server } from '../../std.ts';
 import type { User, UserList } from '../../types.ts';
 import {
     IconTrash,
@@ -101,7 +109,7 @@ const props = defineProps<{
 const emit = defineEmits(['update:modelValue']);
 
 const loading = ref(true);
-const selected = ref<User | undefined>()
+const selected = ref<UserList['items'][number] | undefined>()
 const paging = ref({
     filter: ''
 })
@@ -139,13 +147,33 @@ onMounted(async () => {
 
 async function getUser() {
     loading.value = true;
-    selected.value = await std(`/api/user/${props.modelValue}`) as User;
+    const res = await server.GET('/api/user/{:username}', {
+        params: {
+            path: {
+                ':username': String(props.modelValue)
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    selected.value = res.data as User;
     loading.value = false;
 }
 
 async function listUsers() {
-    const url = stdurl(`/api/user`);
-    url.searchParams.append('filter', paging.value.filter);
-    list.value = await std(url) as UserList;
+    const res = await server.GET('/api/user', {
+        params: {
+            query: {
+                filter: paging.value.filter,
+                limit: 100,
+                page: 0,
+                order: 'asc',
+                sort: 'username'
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    list.value = res.data as UserList;
 }
 </script>

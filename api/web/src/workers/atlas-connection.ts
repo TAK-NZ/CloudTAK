@@ -5,7 +5,7 @@
 import { stdurl } from '../std.ts';
 import type Atlas from './atlas.ts';
 import { version } from '../../package.json'
-import { db } from '../base/database.ts';
+import { db } from '../database.ts';
 import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../base/events.ts';
 import type { Feature, Import, Chat } from '../types.ts';
@@ -33,14 +33,23 @@ export default class AtlasConnection {
         this.version = version;
     }
 
+    reconnect(connection: string) {
+        console.log('Forcing WebSocket reconnection...');
+        this.reconnectAttempts = 0;  // Reset counter
+        if (this.ws) {
+            this.ws.close();
+        }
+        this.connect(connection);
+    }
+
     // COTs are submitted to pending and picked up by the partial update code every .5s
     connect(connection: string) {
         this.isDestroyed = false;
 
         const url = stdurl('/api');
-        url.searchParams.append('format', 'geojson');
-        url.searchParams.append('connection', connection);
-        url.searchParams.append('token', this.atlas.token);
+        url.searchParams.set('format', 'geojson');
+        url.searchParams.set('connection', connection);
+        url.searchParams.set('token', this.atlas.token);
 
         if (self.location.protocol === 'http:') {
             url.protocol = 'ws:';
@@ -63,16 +72,13 @@ export default class AtlasConnection {
         this.ws.addEventListener('close', () => {
             this.isOpen = false;
             this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
-            
+
             if (!this.isDestroyed && this.reconnectAttempts < this.maxReconnectAttempts) {
                 this.reconnectAttempts++;
                 const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
                 console.log(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                
                 setTimeout(() => {
-                    if (!this.isDestroyed) {
-                        this.connect(connection);
-                    }
+                    if (!this.isDestroyed) this.connect(connection);
                 }, delay);
             } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
                 console.error('WebSocket: Max reconnection attempts reached. Please refresh the page.');
@@ -80,6 +86,7 @@ export default class AtlasConnection {
         });
 
         this.ws.addEventListener('message', async (msg) => {
+            try {
             const body = JSON.parse(msg.data) as {
                 type: string;
                 connection: number | string;
@@ -91,6 +98,7 @@ export default class AtlasConnection {
                     properties: { message: string }
                 };
 
+                console.warn('Warning: Validation Error: received Error from WebSocket:', JSON.stringify(body));
                 throw new Error(err.properties.message);
             } else if (body.type === 'import') {
                 const imp = (body as unknown as {
@@ -115,13 +123,16 @@ export default class AtlasConnection {
                     'b-a-o-pan',
                     'b-a-o-opn'
                 ].includes(feat.properties.type)) {
-                    await TAKNotification.create(
-                        NotificationType.Alert,
-                        `${feat.properties.callsign} Created`,
-                        '',
-                        `/cot/${feat.id}`,
-                        true
-                    );
+                    const alertUrl = `/cot/${feat.id}`;
+                    if (!await TAKNotification.existsByUrl(alertUrl)) {
+                        await TAKNotification.create(
+                            NotificationType.Alert,
+                            `${feat.properties.callsign} Created`,
+                            '',
+                            alertUrl,
+                            true
+                        );
+                    }
                 } else if ([
                     'b-r-f-h-c'
                 ].includes(feat.properties.type)) {
@@ -145,6 +156,28 @@ export default class AtlasConnection {
                             `/menu/missions/${task.properties.mission.guid}/logs`,
                             true
                         );
+                    } else if (
+                        task.properties.type === 't-x-m-c'
+                        && task.properties.mission?.missionChanges?.length === 1
+                        && task.properties.mission?.missionChanges?.[0].contentResource?.name
+                    ) {
+                        if (task.properties.mission.missionChanges[0].type === 'ADD_CONTENT') {
+                            await TAKNotification.create(
+                                NotificationType.Mission,
+                                `${task.properties.mission.name} File Added`,
+                                `File ${task.properties.mission.missionChanges[0].contentResource.name}`,
+                                `/menu/missions/${task.properties.mission.guid}/content`,
+                                true
+                            );
+                        } else if (task.properties.mission.missionChanges[0].type === 'REMOVE_CONTENT') {
+                            await TAKNotification.create(
+                                NotificationType.Mission,
+                                `${task.properties.mission.name} File Removed`,
+                                `File ${task.properties.mission.missionChanges[0].contentResource.name}`,
+                                `/menu/missions/${task.properties.mission.guid}/content`,
+                                true
+                            );
+                        }
                     }
 
                     // Mission Change Tasking
@@ -160,6 +193,15 @@ export default class AtlasConnection {
                         `/menu/missions/${task.properties.mission.guid}`,
                         true
                     );
+                } else if (task.properties.type === 't-x-m-i' && task.properties.mission && task.properties.mission.type === 'INVITE') {
+                    this.atlas.postMessage({
+                        type: WorkerMessageType.Mission_Invite,
+                        body: task.properties.mission
+                    });
+                } else if (task.properties.type === 't-x-g-c') {
+                    this.atlas.postMessage({
+                        type: WorkerMessageType.Channel_Change
+                    });
                 } else {
                     console.warn('Unknown Task', JSON.stringify(task));
                 }
@@ -169,8 +211,10 @@ export default class AtlasConnection {
                 let chatroom = chat.chatroom;
 
                 try {
-                    const profile = await this.atlas.profile.profile;
-                    if (profile && (chatroom === profile.tak_callsign || chatroom === `ANDROID-CloudTAK-${profile.username}`)) {
+                    const callsign = this.atlas.profile.profile_callsign?.value;
+                    const username = this.atlas.profile.username;
+
+                    if (callsign && username && (chatroom === callsign || chatroom === `ANDROID-CloudTAK-${username}`)) {
                         chatroom = chat.from.callsign;
                     }
                 } catch (err) {
@@ -220,7 +264,9 @@ export default class AtlasConnection {
                     console.log(`Version change detected: ${this.version} -> ${status.version}`);
                     if ('serviceWorker' in self.navigator) {
                         const registration = await self.navigator.serviceWorker.ready;
-                        registration.update();
+                        registration.update().catch((err) => {
+                            console.debug('Failed to update ServiceWorker (likely unregistered):', err);
+                        });
 
                         this.version = status.version;
                     } else {
@@ -230,28 +276,38 @@ export default class AtlasConnection {
                     if ('serviceWorker' in self.navigator) {
                         const regs = await self.navigator.serviceWorker.getRegistrations()
 
-                        if (!regs.some(reg => reg.active?.scriptURL.includes(`version=${status.version}`))) {
+                        if (!regs.some(reg => {
+                            try {
+                                const scriptURL = reg.active?.scriptURL;
+                                if (!scriptURL) {
+                                    return false;
+                                }
+                                const url = new URL(scriptURL);
+                                return url.searchParams.get('v') === status.version;
+                            } catch (err) {
+                                console.error('Error parsing service worker script URL', err);
+                                return false;
+                            }
+                        })) {
                             console.log(`Service Worker out of date, updating to version ${status.version}`);
                             const registration = await self.navigator.serviceWorker.ready;
-                            registration.update();
+                            registration.update().catch((err) => {
+                                console.debug('Failed to update ServiceWorker (likely unregistered):', err);
+                            });
                         }
                     } else {
                         console.log('No Service Worker available');
                     }
                 }
+            } else if (body.type === 'connected') {
+                // Server has finished registering the WebSocket client - no client action needed
             } else {
                 console.log('UNKNOWN', body.data);
             }
+            } catch (err) {
+                console.warn('Error handling WebSocket message:', err);
+            }
         });
-    }
-
-    reconnect(connection: string) {
-        console.log('Forcing WebSocket reconnection...');
-        this.reconnectAttempts = 0;
-        if (this.ws) {
-            this.ws.close();
-        }
-        this.connect(connection);
     }
 
     destroy() {

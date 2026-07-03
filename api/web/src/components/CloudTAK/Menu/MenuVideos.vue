@@ -38,137 +38,125 @@
             </template>
         </template>
         <template #default>
-            <div
-                class='px-2 py-2 round btn-group w-100'
-                role='group'
+            <TablerPillGroup
+                v-model='mode'
+                :options='[
+                    { value: "connections", label: "Streams" },
+                    { value: "lease", label: "Leases" }
+                ]'
             >
-                <input
-                    id='connections'
-                    type='radio'
-                    class='btn-check'
-                    autocomplete='off'
-                    :checked='mode === "connections"'
-                    @click='mode = "connections"'
-                >
-                <label
-                    for='connections'
-                    type='button'
-                    class='btn btn-sm'
-                ><IconVideo
-                    v-tooltip='"Video Connections"'
-                    :size='32'
-                    stroke='1'
-                /><span class='ms-2'>Streams</span></label>
-
-                <input
-                    id='lease'
-                    type='radio'
-                    class='btn-check'
-                    autocomplete='off'
-                    :checked='mode === "lease"'
-                    @click='mode = "lease"'
-                >
-
-                <label
-                    for='lease'
-                    type='button'
-                    class='btn btn-sm'
-                ><IconServer2
-                    v-tooltip='"Video Leases"'
-                    :size='32'
-                    stroke='1'
-                /><span class='ms-2'>Leases</span></label>
-            </div>
+                <template #option='{ option }'>
+                    <IconVideo
+                        v-if='option.value === "connections"'
+                        v-tooltip='"Video Connections"'
+                        :size='32'
+                        stroke='1'
+                    />
+                    <IconServer2
+                        v-else
+                        v-tooltip='"Video Leases"'
+                        :size='32'
+                        stroke='1'
+                    />
+                    <span class='ms-2'>{{ option.label }}</span>
+                </template>
+            </TablerPillGroup>
 
             <template v-if='mode === "connections"'>
                 <div class='col-12'>
-                    <EmptyInfo v-if='mapStore.hasNoChannels' />
+                    <TablerInput
+                        v-model='connectionFilter'
+                        icon='search'
+                        placeholder='Stream Search'
+                    />
+                </div>
 
-                    <TablerLoading
-                        v-if='loading.connections'
-                    />
-                    <TablerNone
-                        v-else-if='!videos.size && !connections.videoConnections.length'
-                        label='Video Connections'
-                        :create='false'
-                    />
-                    <TablerAlert
-                        v-else-if='error'
-                        :err='error'
-                    />
-                    <div
-                        v-else
-                        class='col-12 d-flex flex-column gap-2'
+                <EmptyInfo v-if='mapStore.hasNoChannels' />
+
+                <TablerLoading
+                    v-if='loading.connections'
+                />
+                <TablerNone
+                    v-else-if='!filteredVideos.size && !filteredConnections.length'
+                    label='No Video Connections'
+                    :create='false'
+                />
+                <TablerAlert
+                    v-else-if='error'
+                    :err='error'
+                />
+                <div
+                    v-else
+                    class='col-12 d-flex flex-column gap-2 py-3'
+                >
+                    <StandardItem
+                        v-for='connection in filteredConnections'
+                        :key='connection.uuid'
+                        class='d-flex align-items-center gap-3 p-2'
+                        @click='floatStore.addConnection(connection)'
                     >
-                        <StandardItem
-                            v-for='connection in connections.videoConnections'
-                            :key='connection.uuid'
-                            class='d-flex align-items-center gap-3 p-2'
-                            @click='floatStore.addConnection(connection)'
+                        <div
+                            class='d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25'
+                            style='width: 3rem; height: 3rem; min-width: 3rem;'
                         >
-                            <div
-                                class='d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25'
-                                style='width: 3rem; height: 3rem; min-width: 3rem;'
+                            <IconVideo
+                                :size='24'
+                                stroke='1'
+                            />
+                        </div>
+
+                        <div class='d-flex flex-column'>
+                            <div class='fw-bold'>
+                                <span v-if='connection.alias'>{{ connection.alias }}</span>
+                                <span
+                                    v-else
+                                    class='fst-italic text-secondary'
+                                >Unnamed</span>
+                            </div>
+                        </div>
+
+                        <div class='d-flex btn-list ms-auto'>
+                            <TablerIconButton
+                                title='Edit Lease'
+                                @click.stop='router.push(`/menu/videos/remote/${connection.uuid}`)'
                             >
-                                <IconVideo
+                                <IconPencil
                                     :size='24'
                                     stroke='1'
                                 />
-                            </div>
-
-                            <div class='d-flex flex-column'>
-                                <div class='fw-bold'>
-                                    <span v-if='connection.alias'>{{ connection.alias }}</span>
-                                    <span
-                                        v-else
-                                        class='fst-italic text-secondary'
-                                    >Unnamed</span>
-                                </div>
-                            </div>
-
-                            <div class='d-flex btn-list ms-auto'>
-                                <TablerIconButton
-                                    title='Edit Lease'
-                                    @click.stop='router.push(`/menu/videos/remote/${connection.uuid}`)'
-                                >
-                                    <IconPencil
-                                        :size='24'
-                                        stroke='1'
-                                    />
-                                </TablerIconButton>
-                            </div>
-                        </StandardItem>
-                        <StandardItem
-                            v-for='video in videos'
-                            :key='video.id'
-                            class='d-flex align-items-center gap-3 p-2 cursor-pointer'
-                            @click='router.push(`/cot/${video.id}`)'
+                            </TablerIconButton>
+                        </div>
+                    </StandardItem>
+                    <StandardItem
+                        v-for='video in filteredVideos'
+                        :key='video.id'
+                        class='d-flex align-items-center gap-3 p-2 cursor-pointer'
+                        @click='router.push(`/cot/${video.id}`)'
+                    >
+                        <div
+                            class='d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25'
+                            style='width: 3rem; height: 3rem; min-width: 3rem;'
                         >
-                            <div
-                                class='d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25'
-                                style='width: 3rem; height: 3rem; min-width: 3rem;'
-                            >
-                                <IconVideo
-                                    :size='24'
-                                    stroke='1'
-                                />
-                            </div>
+                            <IconVideo
+                                :size='24'
+                                stroke='1'
+                            />
+                        </div>
 
-                            <div class='d-flex flex-column'>
-                                <div class='fw-bold'>
-                                    <span v-if='video.properties.callsign || video.properties.name'>{{ video.properties.callsign || video.properties.name }}</span>
-                                    <span
-                                        v-else
-                                        class='fst-italic text-secondary'
-                                    >Unnamed</span>
-                                </div>
+                        <div class='d-flex flex-column'>
+                            <div class='fw-bold'>
+                                <span v-if='video.properties.callsign || video.properties.name'>{{ video.properties.callsign || video.properties.name }}</span>
+                                <span
+                                    v-else
+                                    class='fst-italic text-secondary'
+                                >Unnamed</span>
                             </div>
-                        </StandardItem>
-                    </div>
+                        </div>
+                    </StandardItem>
                 </div>
             </template>
             <template v-else-if='mode === "lease"'>
-                <div class='col-12 px-2'>
+                <div class='col-12'>
                     <TablerInput
                         v-model='leasePaging.filter'
                         icon='search'
@@ -180,7 +168,7 @@
                 />
                 <TablerNone
                     v-else-if='leases.total === 0'
-                    label='Video Leases'
+                    label='No Video Leases'
                     :create='false'
                 />
                 <TablerAlert
@@ -189,7 +177,7 @@
                 />
                 <div
                     v-else
-                    class='col-12 d-flex flex-column gap-2 p-3'
+                    class='col-12 d-flex flex-column gap-2 py-3'
                 >
                     <StandardItem
                         v-for='l in leases.items'
@@ -260,9 +248,10 @@ import MenuTemplate from '../util/MenuTemplate.vue';
 import VideoLeaseModal from './Videos/VideoLeaseModal.vue';
 import EmptyInfo from '../util/EmptyInfo.vue';
 import StandardItem from '../util/StandardItem.vue';
-import { std, server } from '../../../std.ts';
+import { server } from '../../../std.ts';
 import COT from '../../../base/cot.ts';
-import type { VideoLease, VideoLeaseList, VideoConnectionList } from '../../../types.ts';
+import ProfileConfig from '../../../base/profile.ts';
+import type { VideoLease, VideoConnectionList } from '../../../types.ts';
 
 import { useMapStore } from '../../../stores/map.ts';
 import { useFloatStore } from '../../../stores/float.ts';
@@ -275,6 +264,7 @@ import {
     TablerLoading,
     TablerIconButton,
     TablerRefreshButton,
+    TablerPillGroup,
 } from '@tak-ps/vue-tabler';
 import {
     IconPlus,
@@ -290,13 +280,14 @@ import {
     IconDeviceDesktop,
 } from '@tabler/icons-vue';
 
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
 const mapStore = useMapStore();
 const floatStore = useFloatStore();
 
+const connectionFilter = ref('');
 const leasePaging = ref({
     page: 0,
     filter: '',
@@ -312,9 +303,30 @@ const loading = ref({
 });
 const lease = ref();
 const isSystemAdmin = ref(false);
-const leases = ref<VideoLeaseList>({ total: 0, items: [] });
+const leases = ref<{ total: number, items: VideoLease[] }>({ total: 0, items: [] });
 const connections = ref<VideoConnectionList>({ videoConnections: [] });
 const videos = ref<Set<COT>>(new Set())
+
+const filteredConnections = computed(() => {
+    if (!connectionFilter.value) return connections.value.videoConnections;
+
+    return connections.value.videoConnections.filter((c) => {
+        return (c.alias || 'Unnamed').toLowerCase().includes(connectionFilter.value.toLowerCase());
+    });
+});
+
+const filteredVideos = computed(() => {
+    if (!connectionFilter.value) return videos.value;
+
+    const filtered = new Set<COT>();
+    for (const v of videos.value) {
+        const name = v.properties.callsign || v.properties.name || 'Unnamed';
+        if (typeof name === 'string' && name.toLowerCase().includes(connectionFilter.value.toLowerCase())) {
+            filtered.add(v);
+        }
+    }
+    return filtered;
+});
 
 watch(leasePaging.value, async () => {
     await fetchLeases();
@@ -329,7 +341,8 @@ watch(mode, async () => {
 });
 
 onMounted(async () => {
-    if (await mapStore.worker.profile.isSystemAdmin()) {
+    const isSysAdmin = await ProfileConfig.get('system_admin');
+    if (isSysAdmin && isSysAdmin.value) {
         isSystemAdmin.value = true;
     }
 
@@ -383,7 +396,10 @@ async function fetchConnections(): Promise<void> {
         lease.value = undefined;
         loading.value.connections = true;
         error.value = undefined;
-        connections.value = await std('/api/marti/video') as VideoConnectionList;
+
+        const res = await server.GET('/api/marti/video');
+        if (res.error) throw new Error(res.error.message);
+        connections.value = res.data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     }
@@ -395,9 +411,10 @@ async function deleteLease(lease: VideoLease): Promise<void> {
     loading.value.main = true;
 
     try {
-        await std(`/api/video/lease/${lease.id}`, {
-            method: 'DELETE'
+        const res = await server.DELETE('/api/video/lease/{:lease}', {
+            params: { path: { ':lease': lease.id } }
         });
+        if (res.error) throw new Error(res.error.message);
 
         await fetchLeases();
 

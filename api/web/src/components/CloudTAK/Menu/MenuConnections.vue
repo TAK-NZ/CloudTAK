@@ -16,12 +16,33 @@
             </TablerIconButton>
         </template>
         <template #default>
-            <div class='col-12 px-2 pb-2'>
-                <TablerInput
+            <div class='my-2'>
+                <SearchSortFilter
                     v-model='paging.filter'
-                    icon='search'
+                    v-model:sort='sort'
+                    :sort-options='sortOptions'
                     placeholder='Filter'
-                />
+                >
+                    <template #sort-icon>
+                        <template v-if='sort'>
+                            <component
+                                :is='sortTypeIcon'
+                                :size='20'
+                                stroke='1'
+                            />
+                            <component
+                                :is='sortDirectionIcon'
+                                :size='20'
+                                stroke='1'
+                            />
+                        </template>
+                        <IconArrowsSort
+                            v-else
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                </SearchSortFilter>
             </div>
 
             <TablerLoading v-if='loading' />
@@ -31,7 +52,7 @@
             />
             <TablerNone
                 v-else-if='!list.items.length'
-                label='Connections'
+                label='No Connections'
                 :create='false'
             />
             <template v-else>
@@ -41,7 +62,7 @@
                     <div
                         v-for='conn in list.items'
                         :key='conn.id'
-                        class='col-12 px-2 py-1'
+                        class='col-12 py-1'
                     >
                         <StandardItem
                             class='d-flex align-items-center py-2 px-3'
@@ -66,10 +87,7 @@
                                         v-text='timeDiff(conn.created)'
                                     />
                                     <div class='ms-auto'>
-                                        <AgencyBadge
-                                            :connection='conn'
-                                            :muted='true'
-                                        />
+                                        <AgencyBadge :connection='conn' />
                                     </div>
                                 </div>
                             </div>
@@ -78,7 +96,7 @@
                 </div>
             </template>
 
-            <div class='px-2 py-2 d-flex'>
+            <div class='py-2 d-flex'>
                 <div class='ms-auto'>
                     <TablerPager
                         v-if='list.total > paging.limit'
@@ -94,13 +112,12 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import type { ETLConnectionList } from '../../../types.ts';
-import { std, stdurl } from '../../../std.ts';
+import { server } from '../../../std.ts';
 import {
     TablerNone,
     TablerAlert,
-    TablerInput,
     TablerPager,
     TablerLoading,
     TablerIconButton,
@@ -108,9 +125,15 @@ import {
 } from '@tak-ps/vue-tabler';
 import {
     IconPlus,
+    IconLetterCase,
+    IconClock,
+    IconArrowUp,
+    IconArrowDown,
+    IconArrowsSort,
 } from '@tabler/icons-vue';
 
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import StandardItem from '../util/StandardItem.vue';
 import ConnectionStatus from './../../ETL/Connection/StatusDot.vue';
 import AgencyBadge from './../../ETL/Connection/AgencyBadge.vue';
@@ -123,6 +146,11 @@ const paging = ref({
     filter: '',
     page: 0
 });
+
+const sort = ref('Newest → Oldest');
+const sortOptions = ['Newest → Oldest', 'Oldest → Newest', 'A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => (sort.value === 'A → Z' || sort.value === 'Z → A') ? IconLetterCase : IconClock);
+const sortDirectionIcon = computed(() => (sort.value === 'Oldest → Newest' || sort.value === 'A → Z') ? IconArrowUp : IconArrowDown);
 
 const list = ref<ETLConnectionList>({
     total: 0,
@@ -138,26 +166,40 @@ watch(paging.value, async () => {
     await fetchList()
 });
 
+watch(sort, async () => {
+    await fetchList();
+});
+
 onMounted(async () => {
     await fetchList();
 });
 
 async function fetchList() {
     loading.value = true;
+    error.value = undefined;
 
     try {
-        const url = stdurl('/api/connection');
-        url.searchParams.append('order', 'desc');
-        url.searchParams.append('page', String(paging.value.page));
-        url.searchParams.append('limit', String(paging.value.limit));
-        url.searchParams.append('sort', 'created');
-        url.searchParams.append('filter', paging.value.filter);
-        list.value = await std(url) as ETLConnectionList;
+        const res = await server.GET('/api/connection', {
+            params: {
+                query: {
+                    filter: paging.value.filter,
+                    limit: paging.value.limit,
+                    page: paging.value.page,
+                    sort: (sort.value === 'A → Z' || sort.value === 'Z → A') ? 'name' : 'created',
+                    order: (sort.value === 'Oldest → Newest' || sort.value === 'A → Z') ? 'asc' : 'desc'
+                }
+            }
+        });
+
+        if (res.error) throw new Error(res.error.message || 'Failed to load connections');
+        if (!res.data) throw new Error('Failed to load connections');
+
+        list.value = res.data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
+    } finally {
+        loading.value = false;
     }
-
-    loading.value = false;
 }
 
 function external(url: string) {

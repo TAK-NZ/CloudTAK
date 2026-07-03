@@ -7,7 +7,7 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -16,13 +16,13 @@ test('GET: /api/iconset', async () => {
         const res = await flight.fetch('/api/iconset', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.deepEqual(res.body, {
             total: 0,
-            items: []
+            items: [],
         });
     } catch (err) {
         assert.ifError(err);
@@ -34,7 +34,7 @@ test('POST: /api/iconset', async () => {
         const res = await flight.fetch('/api/iconset', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 uid: 'test-iconset',
@@ -44,8 +44,8 @@ test('POST: /api/iconset', async () => {
                 default_friendly: 'test',
                 default_hostile: 'test',
                 default_neutral: 'test',
-                default_unknown: 'test'
-            }
+                default_unknown: 'test',
+            },
         }, true);
 
         assert.equal(res.body.uid, 'test-iconset');
@@ -61,12 +61,12 @@ test('POST: /api/iconset/:iconset/icon - PNG with folder', async () => {
         const res = await flight.fetch('/api/iconset/test-iconset/icon', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'google/camera.png',
-                data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
-            }
+                data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            },
         }, true);
 
         assert.equal(res.body.name, 'google/camera');
@@ -81,12 +81,12 @@ test('POST: /api/iconset/:iconset/icon - PNG without folder', async () => {
         const res = await flight.fetch('/api/iconset/test-iconset/icon', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'car.png',
-                data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
-            }
+                data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            },
         }, true);
 
         assert.equal(res.body.name, 'car');
@@ -101,12 +101,12 @@ test('POST: /api/iconset/:iconset/icon - SVG with folder', async () => {
         const res = await flight.fetch('/api/iconset/test-iconset/icon', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'google/marker.svg',
-                data: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InJlZCIvPjwvc3ZnPg=='
-            }
+                data: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InJlZCIvPjwvc3ZnPg==',
+            },
         }, true);
 
         assert.equal(res.body.name, 'google/marker');
@@ -121,12 +121,12 @@ test('POST: /api/iconset/:iconset/icon - SVG without folder', async () => {
         const res = await flight.fetch('/api/iconset/test-iconset/icon', {
             method: 'POST',
             auth: {
-                bearer: flight.token.admin
+                bearer: flight.token.admin,
             },
             body: {
                 name: 'truck.svg',
-                data: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InJlZCIvPjwvc3ZnPg=='
-            }
+                data: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjxyZWN0IHdpZHRoPSIxIiBoZWlnaHQ9IjEiIGZpbGw9InJlZCIvPjwvc3ZnPg==',
+            },
         }, true);
 
         assert.equal(res.body.name, 'truck');
@@ -144,8 +144,8 @@ test('GET: /api/icon', async () => {
         const res = await flight.fetch('/api/icon?iconset=test-iconset', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.total, 4);
@@ -166,7 +166,6 @@ test('GET: /api/icon', async () => {
         const truckSvg = res.body.items.find((i: any) => i.name === 'truck' && i.format === '.svg');
         assert.ok(truckSvg);
         assert.equal(truckSvg.path, 'test-iconset/truck');
-
     } catch (err) {
         assert.ifError(err);
     }
@@ -178,16 +177,16 @@ test('GET: /api/iconset/:iconset/icon/:icon', async () => {
         const list = await flight.fetch('/api/icon?iconset=test-iconset', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         for (const icon of list.body.items) {
             const res = await flight.fetch(`/api/iconset/test-iconset/icon/${icon.id}`, {
                 method: 'GET',
                 auth: {
-                    bearer: flight.token.admin
-                }
+                    bearer: flight.token.admin,
+                },
             }, true);
 
             assert.equal(res.body.id, icon.id);
@@ -195,7 +194,6 @@ test('GET: /api/iconset/:iconset/icon/:icon', async () => {
             assert.equal(res.body.path, icon.path);
             assert.equal(res.body.iconset, 'test-iconset');
         }
-
     } catch (err) {
         assert.ifError(err);
     }
@@ -206,11 +204,11 @@ test('GET: /api/iconset/:iconset?format=zip', async () => {
         const res = await flight.fetch('/api/iconset/test-iconset?format=zip&download=true', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, {
             json: false,
-            binary: true
+            binary: true,
         });
 
         assert.equal(res.status, 200);
@@ -249,14 +247,75 @@ test('GET: /api/iconset/:iconset?format=zip', async () => {
     }
 });
 
+test('GET: /api/iconset/:iconset/sprite.json and sprite.png', async () => {
+    try {
+        await flight.fetch('/api/iconset/test-iconset/regen', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {},
+        }, true);
+
+        const spriteJson = await flight.fetch('/api/iconset/test-iconset/sprite.json', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.equal(typeof spriteJson.body, 'object');
+        assert.ok(spriteJson.body['google/camera']);
+        assert.ok(spriteJson.body.car);
+        assert.ok(spriteJson.body['google/marker']);
+        assert.ok(spriteJson.body.truck);
+
+        for (const key of ['google/camera', 'car', 'google/marker', 'truck']) {
+            assert.equal(spriteJson.body[key].width, 32);
+            assert.equal(spriteJson.body[key].height, 48);
+            assert.equal(spriteJson.body[key].pixelRatio, 1);
+        }
+
+        const spritePng = await flight.fetch('/api/iconset/test-iconset/sprite.png', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, {
+            json: false,
+            binary: true,
+        });
+
+        assert.equal(spritePng.status, 200);
+
+        const metadata = await sharp(Buffer.from(spritePng.body)).metadata();
+        const expectedWidth = Math.max(
+            ...['google/camera', 'car', 'google/marker', 'truck'].map((key) => {
+                return spriteJson.body[key].x + spriteJson.body[key].width;
+            }),
+        );
+        const expectedHeight = Math.max(
+            ...['google/camera', 'car', 'google/marker', 'truck'].map((key) => {
+                return spriteJson.body[key].y + spriteJson.body[key].height;
+            }),
+        );
+
+        assert.equal(metadata.format, 'png');
+        assert.equal(metadata.width, expectedWidth);
+        assert.equal(metadata.height, expectedHeight);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('GET: /api/iconset/:iconset/icon/:name', async () => {
     try {
         // Delete SVGs to avoid path collision for name lookup test
         const listAll = await flight.fetch('/api/icon?iconset=test-iconset', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         for (const icon of listAll.body.items) {
@@ -264,8 +323,8 @@ test('GET: /api/iconset/:iconset/icon/:name', async () => {
                 await flight.fetch(`/api/iconset/test-iconset/icon/${icon.id}`, {
                     method: 'DELETE',
                     auth: {
-                        bearer: flight.token.admin
-                    }
+                        bearer: flight.token.admin,
+                    },
                 }, false);
             }
         }
@@ -273,8 +332,8 @@ test('GET: /api/iconset/:iconset/icon/:name', async () => {
         const list = await flight.fetch('/api/icon?iconset=test-iconset', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         for (const icon of list.body.items) {
@@ -285,13 +344,79 @@ test('GET: /api/iconset/:iconset/icon/:name', async () => {
             const res = await flight.fetch(`/api/iconset/test-iconset/icon/${encodedName}`, {
                 method: 'GET',
                 auth: {
-                    bearer: flight.token.admin
-                }
+                    bearer: flight.token.admin,
+                },
             }, true);
 
             assert.equal(res.body.id, icon.id);
             assert.equal(res.body.name, icon.name);
         }
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('POST: /api/iconset/:iconset/icon - PNG with dots in filename', async () => {
+    try {
+        const res = await flight.fetch('/api/iconset/test-iconset/icon', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'INF.01.FireStation.png',
+                data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            },
+        }, true);
+
+        assert.equal(res.body.name, 'INF.01.FireStation');
+        assert.equal(res.body.path, 'test-iconset/INF.01.FireStation');
+
+        // Force synchronous regen
+        await flight.fetch('/api/iconset/test-iconset/regen', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {},
+        }, true);
+
+        const sprite = await flight.fetch('/api/iconset/test-iconset/sprite.json', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.ok(sprite.body['INF.01.FireStation'], 'Sprite JSON should contain the key with dots');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: /api/iconset/:iconset/icon/:icon - path lookup with seeded leaf-only name', async () => {
+    try {
+        if (!flight.config) throw new Error('Flight config not initialized');
+
+        const seeded = await flight.config.models.Icon.generate({
+            iconset: 'test-iconset',
+            name: 'open-diamond',
+            format: '.png',
+            type2525b: null,
+            data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            path: 'test-iconset/Shapes/open-diamond.png',
+        });
+
+        const res = await flight.fetch('/api/iconset/test-iconset/icon/Shapes%2Fopen-diamond.png', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.equal(res.body.id, seeded.id);
+        assert.equal(res.body.name, 'open-diamond');
+        assert.equal(res.body.path, 'test-iconset/Shapes/open-diamond.png');
     } catch (err) {
         assert.ifError(err);
     }

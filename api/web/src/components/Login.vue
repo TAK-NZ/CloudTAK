@@ -3,44 +3,44 @@
         class='page page-center cloudtak-gradient position-relative'
         style='overflow: auto;'
     >
+        <div
+            v-if='customBackgroundColor'
+            class='position-absolute w-100 h-100 top-0 start-0 bg-fade-enter'
+            style='z-index: 0;'
+            :style='{ backgroundColor: customBackgroundColor }'
+        />
+
         <img
+            v-if='brandStore.loaded && footerLogo'
             class='position-absolute d-none d-md-inline user-select-none'
+            :class='{ "logo-visible": footerLogoLoaded }'
             draggable='false'
             style='
                 height: 48px;
                 bottom: 24px;
                 left: 24px;
+                opacity: 0;
+                transition: opacity 0.8s ease-in-out;
+                z-index: 1;
             '
-            src='/CloudTAKLogoText.svg'
+            :src='footerLogo'
             alt='CloudTAK Logo'
+            @load='footerLogoLoaded = true'
         >
 
-        <div class='container container-normal py-4'>
+        <div
+            class='container container-normal py-4 position-relative'
+            style='z-index: 1;'
+        >
             <div class='row align-items-center g-4'>
                 <div class='col-lg'>
                     <div class='container-tight'>
                         <div class='card card-md'>
                             <div
                                 v-if='!brandStore || !brandStore.loaded'
-                                class='card-body'
+                                class='card-body d-flex align-items-center justify-content-center'
                                 style='height: 400px;'
                             >
-                                <div class='col-12 d-flex justify-content-center pb-4'>
-                                    <img
-                                        class='user-select-none'
-                                        draggable='false'
-                                        style='
-                                            height: 64px;
-                                        '
-                                        src='/CloudTAKLogo.svg'
-                                        alt='CloudTAK Logo'
-                                    >
-                                </div>
-                                <div class='col-12 d-flex justify-content-center pb-4'>
-                                    <h2 class='h2 text-center mb-4'>
-                                        Loading CloudTAK
-                                    </h2>
-                                </div>
                                 <TablerLoading />
                             </div>
                             <div
@@ -66,13 +66,50 @@
                                     v-if='loading'
                                     :desc='loadingMessage'
                                 />
-                                <template v-if='!loading && !route.query.token && !(oidcForced && !route.query.local)'>
+                                <template v-else-if='brandStore.oidc.enabled && brandStore.oidc.enforced'>
+                                    <div class='text-center text-muted py-3'>
+                                        <div class='mb-2'>
+                                            <IconLock
+                                                :size='32'
+                                                stroke='1.5'
+                                            />
+                                        </div>
+                                        <p class='mb-0'>
+                                            This instance only supports Single Sign-On (SSO). Please use the SSO login button below.
+                                        </p>
+                                    </div>
+                                </template>
+                                <template v-else>
                                     <div class='mb-3'>
+                                        <template v-if='storedUsername'>
+                                            <label class='form-label'>
+                                                {{ brandStore.login?.username || "Username or Email" }}
+                                            </label>
+                                            <div class='d-flex align-items-center justify-content-between border rounded px-3 py-2'>
+                                                <div class='d-flex align-items-center text-truncate'>
+                                                    <IconUser
+                                                        :size='20'
+                                                        stroke='1.5'
+                                                        class='me-2 text-muted flex-shrink-0'
+                                                    />
+                                                    <span class='text-truncate'>{{ storedUsername }}</span>
+                                                </div>
+                                                <button
+                                                    type='button'
+                                                    class='btn btn-sm btn-link text-decoration-none flex-shrink-0 ms-2'
+                                                    @click='notMe'
+                                                >
+                                                    Not Me
+                                                </button>
+                                            </div>
+                                        </template>
                                         <TablerInput
+                                            v-else
                                             v-model='body.username'
                                             icon='user'
-                                            label='Username or Email'
-                                            placeholder='your@email.com'
+                                            :label='brandStore.login?.username || "Username or Email"'
+                                            :placeholder='brandStore.login?.username || "your@email.com"'
+                                            autocomplete='username webauthn'
                                             @keyup.enter='createLogin'
                                         />
                                     </div>
@@ -107,21 +144,112 @@
                                             Sign In
                                         </button>
                                     </div>
-                                    <template v-if='ssoEnabled'>
-                                        <div class='text-center my-3'>
-                                            <div class='text-muted'>─── OR ───</div>
-                                        </div>
-                                        <div>
-                                            <button
-                                                type='button'
-                                                class='btn btn-primary w-100'
-                                                @click='loginWithSSO'
-                                            >
-                                                <IconKey class='icon' :size='20' :stroke='"2"' />
-                                                Login with SSO
-                                            </button>
-                                        </div>
-                                    </template>
+                                </template>
+                                <template v-if='brandStore.oidc.enabled'>
+                                    <div
+                                        v-if='!brandStore.oidc.enforced'
+                                        class='my-3 d-flex align-items-center'
+                                    >
+                                        <hr class='flex-grow-1 m-0'>
+                                        <span class='mx-2 text-muted small'>or</span>
+                                        <hr class='flex-grow-1 m-0'>
+                                    </div>
+                                    <TablerInlineAlert
+                                        v-if='!brandStore.oidc.discovery'
+                                        class='mb-2'
+                                        title='OIDC Misconfigured'
+                                        description='The administrator has not configured OIDC correctly. Please contact your system administrator.'
+                                        severity='warning'
+                                    />
+                                    <a
+                                        v-else
+                                        class='btn btn-secondary w-100 d-flex align-items-center justify-content-center gap-2'
+                                        href='/api/login/oidc'
+                                    >
+                                        <img
+                                            v-if='brandStore.oidc.logo'
+                                            :src='brandStore.oidc.logo'
+                                            style='height: 20px; width: 20px; object-fit: contain;'
+                                            alt=''
+                                        >
+                                        Sign in with {{ brandStore.oidc.name || 'SSO' }}
+                                    </a>
+                                </template>
+                                <template v-if='albOidcEnabled && !loading'>
+                                    <div
+                                        v-if='!brandStore.oidc.enforced'
+                                        class='my-3 d-flex align-items-center'
+                                    >
+                                        <hr class='flex-grow-1 m-0'>
+                                        <span class='mx-2 text-muted small'>or</span>
+                                        <hr class='flex-grow-1 m-0'>
+                                    </div>
+                                    <button
+                                        type='button'
+                                        class='btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2'
+                                        @click='loginWithSSO'
+                                    >
+                                        <IconKey
+                                            :size='20'
+                                            stroke='1.5'
+                                        />
+                                        Login with SSO
+                                    </button>
+                                </template>
+                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
+                                    <div
+                                        v-if='!brandStore.oidc.enabled || !brandStore.oidc.enforced'
+                                        class='my-3 d-flex align-items-center'
+                                    >
+                                        <hr class='flex-grow-1 m-0'>
+                                        <span class='mx-2 text-muted small'>or</span>
+                                        <hr class='flex-grow-1 m-0'>
+                                    </div>
+                                    <button
+                                        type='button'
+                                        class='btn btn-secondary w-100 d-flex align-items-center justify-content-center gap-2'
+                                        @click='authenticatePasskey'
+                                    >
+                                        <IconFingerprint
+                                            :size='20'
+                                            stroke='1.5'
+                                        />
+                                        Sign in with Passkey
+                                    </button>
+                                </template>
+                                <template v-if='certRenewal.required && !loading'>
+                                    <TablerInlineAlert
+                                        class='mt-3 mb-2'
+                                        title='Certificate Renewal Required'
+                                        description='Your TAK certificate is expiring soon. Please enter your password to renew it.'
+                                        severity='warning'
+                                    />
+                                    <div class='mb-3'>
+                                        <TablerInput
+                                            v-model='certRenewal.password'
+                                            icon='lock'
+                                            type='password'
+                                            label='Password'
+                                            placeholder='Enter your password'
+                                            @keyup.enter='renewCertificate'
+                                        />
+                                    </div>
+                                    <div class='d-flex gap-2'>
+                                        <button
+                                            type='button'
+                                            class='btn btn-primary flex-fill'
+                                            @click='renewCertificate'
+                                        >
+                                            Renew Certificate
+                                        </button>
+                                        <button
+                                            type='button'
+                                            class='btn btn-secondary'
+                                            @click='skipCertRenewal'
+                                        >
+                                            Skip
+                                        </button>
+                                    </div>
                                 </template>
                             </div>
                         </div>
@@ -140,111 +268,425 @@
                 </div>
             </div>
         </div>
+
+        <div
+            class='dropup position-absolute'
+            style='bottom: 24px; right: 24px; z-index: 20;'
+        >
+            <div
+                class='cursor-pointer'
+                @click='showSettings = !showSettings'
+            >
+                <IconSettings class='text-secondary' />
+            </div>
+
+            <div
+                v-if='showSettings'
+                class='dropdown-menu dropdown-menu-card show dropdown-menu-end p-0 shadow'
+                style='min-width: 300px; bottom: 100% !important; top: auto !important; right: 0 !important; left: auto !important;'
+            >
+                <div class='card'>
+                    <div class='card-header'>
+                        <h3 class='card-title'>
+                            Login Settings
+                        </h3>
+                        <div class='card-actions'>
+                            <button
+                                class='btn-close'
+                                @click.stop='showSettings = false'
+                            />
+                        </div>
+                    </div>
+                    <div class='card-body p-0'>
+                        <div
+                            v-if='isNativePlatform()'
+                            class='px-3 pt-2 pb-2 border-bottom'
+                        >
+                            <button
+                                class='btn btn-sm btn-outline-secondary w-100'
+                                @click='switchServers'
+                            >
+                                Switch Servers
+                            </button>
+                        </div>
+                        <div class='px-3 pt-2 pb-1 border-bottom'>
+                            <span class='text-muted small'>Running </span>
+                            <code class='small'>v{{ version }}</code>
+                            <span class='text-muted small'> (build: {{ buildHash }})</span>
+                        </div>
+                        <div
+                            v-if='workers.length === 0'
+                            class='p-3 text-muted text-center'
+                        >
+                            No Service Workers Found
+                        </div>
+                        <div
+                            v-else
+                            class='list-group list-group-flush'
+                        >
+                            <div
+                                v-for='w in workers'
+                                :key='w.url'
+                                class='list-group-item'
+                            >
+                                <div class='d-flex justify-content-between align-items-center'>
+                                    <div
+                                        class='text-truncate me-2'
+                                        title='Service Worker'
+                                    >
+                                        <div class='fw-bold'>
+                                            {{ w.url }}
+                                        </div>
+                                        <div class='mt-1 d-flex align-items-center gap-2'>
+                                            <TablerBadge
+                                                background-color='rgba(34, 197, 94, 0.2)'
+                                                border-color='rgba(34, 197, 94, 0.5)'
+                                                text-color='#16a34a'
+                                            >
+                                                {{ w.state }}
+                                            </TablerBadge>
+                                            <div
+                                                v-if='w.version'
+                                                class='text-muted small'
+                                            >
+                                                v{{ w.version }}
+                                            </div>
+                                            <div
+                                                v-if='w.build'
+                                                class='text-muted small'
+                                            >
+                                                {{ w.build }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        class='btn btn-icon btn-ghost-danger btn-sm'
+                                        title='Unregister'
+                                        @click='unregister(w.registration)'
+                                    >
+                                        <IconTrash size='16' />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
 <script setup lang='ts'>
-import type { Login_Create, Login_CreateRes } from '../types.ts'
-import { ref, onMounted } from 'vue';
-import { useBrandStore } from '../stores/brand.ts';
+import type { Login_Create, ConfigLogin } from '../types.ts'
+import { ref, computed, onMounted, reactive, watch } from 'vue';
+import { version } from '../../package.json';
+import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser, IconKey } from '@tabler/icons-vue';
+import { Preferences } from '@capacitor/preferences';
+import { startAuthentication } from '@simplewebauthn/browser';
+import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
+import Config from '../base/config.ts';
+import type { FullConfig } from '../base/config.ts';
+import { isNativePlatform, supportsServiceWorker } from '../base/capacitor.ts';
+import { getCurrentEntryBuildId } from '../base/service-worker.ts';
 import { useRouter, useRoute } from 'vue-router'
-import { std } from '../std.ts';
+import { server } from '../std.ts';
+import { useAppStore } from '../stores/app.ts';
 import {
+    TablerBadge,
     TablerLoading,
-    TablerInput
+    TablerInput,
+    TablerInlineAlert
 } from '@tak-ps/vue-tabler'
-import { IconKey } from '@tabler/icons-vue';
 
 const emit = defineEmits([ 'login' ]);
 
 const route = useRoute();
 const router = useRouter();
-const brandStore = useBrandStore();
+
+const appStore = useAppStore();
+
+const brandStore = reactive<{
+    loaded: boolean;
+    login: ConfigLogin | undefined;
+    passkey: {
+        enabled: boolean;
+    };
+    oidc: {
+        enforced: boolean;
+        enabled: boolean;
+        discovery: string;
+        name: string;
+        logo: string;
+    };
+}>({
+    loaded: false,
+    login: undefined,
+    passkey: {
+        enabled: true,
+    },
+    oidc: {
+        enforced: false,
+        enabled: false,
+        discovery: '',
+        name: '',
+        logo: ''
+    }
+});
+
+const footerLogoLoaded = ref(false);
+
+const customBackgroundColor = computed(() => {
+    if (brandStore.login?.background?.enabled && brandStore.login.background.color) {
+        return brandStore.login.background.color;
+    }
+    return null;
+});
+
+const footerLogo = computed(() => {
+    if (!brandStore.login) return undefined;
+
+    // Check if brand is enabled, if not return undefined (hidden)
+    // If enabled or default, check logic below
+    if (brandStore.login.brand?.enabled === 'disabled') {
+        return undefined;
+    } else if (brandStore.login.brand?.logo) {
+        return brandStore.login.brand.logo;
+    } else {
+        return '/CloudTAKLogoText.svg';
+    }
+});
+
+const buildHash = getCurrentEntryBuildId();
+
+const showSettings = ref(false);
+const workers = ref<{
+    url: string;
+    state: string;
+    version?: string | null;
+    build?: string | null;
+    registration: ServiceWorkerRegistration
+}[]>([]);
+
+const fetchWorkers = async () => {
+    if (!supportsServiceWorker()) return;
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    workers.value = registrations.map(r => {
+        const worker = r.active || r.waiting || r.installing;
+        const scriptURL = worker?.scriptURL;
+
+        let url = 'Unknown';
+        let version: string | null = null;
+        let build: string | null = null;
+
+        if (scriptURL) {
+            try {
+                const u = new URL(scriptURL);
+                url = u.origin + u.pathname;
+                version = u.searchParams.get('v');
+                build = u.searchParams.get('build');
+            } catch {
+                url = scriptURL;
+            }
+        }
+
+        return {
+            url,
+            state: worker?.state || 'Unknown',
+            version,
+            build,
+            registration: r
+        }
+    });
+}
+
+const unregister = async (r: ServiceWorkerRegistration) => {
+    await r.unregister();
+    await fetchWorkers();
+}
+
+async function switchServers(): Promise<void> {
+    await Preferences.remove({ key: 'serverUrl' });
+    window.location.href = '/setup.html';
+}
+
+watch(showSettings, (val) => {
+    if (val) fetchWorkers();
+});
 
 const loading = ref(false);
 const loadingMessage = ref('Logging in');
-const ssoEnabled = ref(false);
-const oidcForced = ref(false);
+const albOidcEnabled = ref(false);
+const albOidcForced = ref(false);
+const storedUsername = ref<string | null>(null);
 const body = ref<Login_Create>({
     username: '',
     password: ''
 });
+const certRenewal = reactive<{
+    required: boolean;
+    email: string;
+    password: string;
+}>({
+    required: false,
+    email: '',
+    password: '',
+});
 
 onMounted(async () => {
-    await brandStore.init();
-
-    // Check for token in URL (from OIDC redirect)
+    // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
     if (route.query.token) {
         loading.value = true;
         loadingMessage.value = 'Completing login...';
-        localStorage.token = String(route.query.token);
+        const token = String(route.query.token);
+        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
+        // Decode the JWT minimally to extract email and session for persistence
+        try {
+            const parts = token.split('.');
+            if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+                if (payload.email && payload.s) {
+                    await appStore.persistSession({ token, username: payload.email, session: payload.s });
+                } else {
+                    localStorage.token = token;
+                }
+            } else {
+                localStorage.token = token;
+            }
+        } catch {
+            localStorage.token = token;
+        }
         emit('login');
-        // Small delay to let auth state settle before navigation
-        setTimeout(() => {
-            const redirect = route.query.redirect || '/';
-            router.replace(String(redirect));
-        }, 200);
+        await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
         return;
     }
 
-    // Check if SSO is enabled and if OIDC is forced
-    try {
-        const config = await std('/api/server/oidc') as { oidc_enabled: boolean; oidc_forced?: boolean };
-        ssoEnabled.value = config.oidc_enabled;
-        oidcForced.value = config.oidc_forced || false;
-        
-        // If OIDC is forced and no local=true query param, redirect to SSO immediately
-        if (oidcForced.value && !route.query.local) {
-            loading.value = true;
-            loadingMessage.value = 'Redirecting to SSO...';
-            loginWithSSO();
-            return;
+    const config = await Config.list([
+        'login::name',
+        'login::logo',
+        'login::signup',
+        'login::forgot',
+        'login::username',
+        'login::brand::enabled',
+        'login::brand::logo',
+        'login::background::enabled',
+        'login::background::color',
+        'oidc::enforced',
+        'oidc::enabled',
+        'oidc::discovery',
+        'oidc::name',
+        'oidc::logo',
+        'passkey::enabled' as keyof FullConfig,
+    ]);
+
+    brandStore.login = {
+        name: config['login::name'],
+        logo: config['login::logo'],
+        signup: config['login::signup'],
+        forgot: config['login::forgot'],
+        username: config['login::username'] || 'Username or Email',
+        brand: {
+            enabled: config['login::brand::enabled'] as "default" | "enabled" | "disabled" || 'default',
+            logo: config['login::brand::logo']
+        },
+        background: {
+            enabled: config['login::background::enabled'] === true,
+            color: config['login::background::color']
         }
-    } catch (error) {
-        console.error('Failed to check SSO status:', error);
-    }
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-            for (const registration of registrations) {
-                registration.update();
-            }
-        });
-    }
-
-    const deleteDB = indexedDB.deleteDatabase('CloudTAK');
-
-    deleteDB.onerror = (event) => {
-        console.error('Failed to delete existing database', event);
     };
-})
+    brandStore.oidc.enforced = config['oidc::enforced'] === true;
+    brandStore.oidc.enabled = config['oidc::enabled'] === true;
+    brandStore.oidc.discovery = config['oidc::discovery'] as string || '';
+    brandStore.oidc.name = config['oidc::name'] as string || '';
+    brandStore.oidc.logo = config['oidc::logo'] as string || '';
+    brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
+    brandStore.loaded = true;
+
+    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
+    try {
+        const oidcRes = await fetch('/api/server/oidc');
+        if (oidcRes.ok) {
+            const oidcStatus = await oidcRes.json() as { oidc_enabled: boolean; oidc_forced?: boolean };
+            albOidcEnabled.value = oidcStatus.oidc_enabled;
+            albOidcForced.value = oidcStatus.oidc_forced || false;
+            // If SSO is forced and no explicit local-login override, redirect immediately
+            if (albOidcForced.value && !route.query.local) {
+                loading.value = true;
+                loadingMessage.value = 'Redirecting to SSO...';
+                loginWithSSO();
+                return;
+            }
+        }
+    } catch (err) {
+        console.error('Failed to check ALB OIDC status:', err);
+    }
+
+    // Only start conditional passkey autofill when ALB SSO is not active
+    if (brandStore.passkey.enabled && !albOidcEnabled.value) {
+        startConditionalPasskey();
+    }
+
+    // Detect an existing (un-cleared) session left behind by a previous login.
+    // The database is intentionally NOT deleted here - it is only cleared on an
+    // explicit sign-out or when a different user logs in. This avoids a costly
+    // resync when a token simply expires.
+    try {
+        const existing = await appStore.getUsername();
+        if (existing) {
+            storedUsername.value = existing;
+            body.value.username = existing;
+        }
+    } catch (err) {
+        console.error('Failed to read existing session', err);
+    }
+});
+
+// Clear the stored session and wipe the local database. Triggered by the
+// "Not Me" button when the user wants to log in as a different account.
+async function notMe(): Promise<void> {
+    try {
+        await appStore.destroySession();
+    } catch (err) {
+        console.error('Failed to clear existing session', err);
+    }
+
+    storedUsername.value = null;
+    body.value.username = '';
+    body.value.password = '';
+}
+
+// Persist a successful login. If the authenticated user differs from the one
+// whose data is already cached locally, wipe the database first so the new
+// user does not inherit the previous user's data.
+async function applySession(login: { token: string; email: string; session: string }): Promise<void> {
+    if (storedUsername.value && storedUsername.value !== login.email) {
+        await appStore.destroySession();
+    }
+
+    await appStore.persistSession({ token: login.token, username: login.email, session: login.session });
+    storedUsername.value = login.email;
+}
 
 async function createLogin() {
     loading.value = true;
-    loadingMessage.value = 'Logging in';
 
     try {
-        const login = await std('/api/login', {
-            method: 'POST',
+        const res = await server.POST('/api/login', {
             body: {
                 username: body.value.username,
                 password: body.value.password
              }
-        }) as Login_CreateRes
+        });
+        if (res.error) throw new Error(res.error.message);
+        const login = res.data;
 
-        localStorage.token = login.token;
+        await applySession({ token: login.token, email: login.email, session: login.session });
 
-        emit('login');
-
-        if (route.query.redirect && !String(route.query.redirect).includes('/login')) {
-            router.push(String(route.query.redirect));
-        } else {
-            router.push("/");
-        }
+        navigateAfterLogin();
     } catch (err) {
         loading.value = false;
-        // If OIDC is forced and user is not a system admin, redirect to SSO
-        if (oidcForced.value && err instanceof Error && err.message.includes('restricted')) {
+        // When OIDC is forced and the backend rejects a non-admin local login,
+        // redirect to SSO instead of bubbling up a confusing error.
+        if (albOidcForced.value && err instanceof Error && err.message.includes('restricted')) {
             loginWithSSO();
         } else {
             throw err;
@@ -252,8 +694,165 @@ async function createLogin() {
     }
 }
 
+async function startConditionalPasskey() {
+    try {
+        if (!window.PublicKeyCredential
+            || !PublicKeyCredential.isConditionalMediationAvailable
+            || !(await PublicKeyCredential.isConditionalMediationAvailable())
+        ) return;
+
+        const optionsRes = await server.POST('/api/login/passkey/authenticate/options', {
+            body: {}
+        });
+        if (optionsRes.error) throw new Error(optionsRes.error.message);
+
+        const credential = await startAuthentication({
+            optionsJSON: optionsRes.data as unknown as PublicKeyCredentialRequestOptionsJSON,
+            useBrowserAutofill: true,
+        });
+
+        await completePasskeyLogin(credential);
+    } catch {
+        // Conditional mediation was cancelled or unavailable
+    }
+}
+
+async function authenticatePasskey() {
+    loading.value = true;
+
+    try {
+        const optionsRes = await server.POST('/api/login/passkey/authenticate/options', {
+            body: {}
+        });
+        if (optionsRes.error) throw new Error(optionsRes.error.message);
+
+        const credential = await startAuthentication({ optionsJSON: optionsRes.data as unknown as PublicKeyCredentialRequestOptionsJSON });
+
+        await completePasskeyLogin(credential);
+    } catch (err) {
+        loading.value = false;
+        throw err;
+    }
+}
+
+async function completePasskeyLogin(credential: AuthenticationResponseJSON) {
+    loading.value = true;
+
+    try {
+        const res = await server.POST('/api/login/passkey/authenticate', {
+            body: {
+                credential: {
+                    id: credential.id,
+                    rawId: credential.rawId,
+                    response: {
+                        clientDataJSON: credential.response.clientDataJSON,
+                        authenticatorData: credential.response.authenticatorData,
+                        signature: credential.response.signature,
+                        userHandle: credential.response.userHandle,
+                    },
+                    authenticatorAttachment: credential.authenticatorAttachment,
+                    clientExtensionResults: credential.clientExtensionResults as Record<string, unknown>,
+                    type: credential.type,
+                }
+            }
+        });
+        if (res.error) throw new Error(res.error.message);
+        const login = res.data;
+
+        await applySession({ token: login.token, email: login.email, session: login.session });
+
+        if (login.certRenewalRequired) {
+            certRenewal.required = true;
+            certRenewal.email = login.email;
+            certRenewal.password = '';
+            loading.value = false;
+            return;
+        }
+
+        navigateAfterLogin();
+    } catch (err) {
+        loading.value = false;
+        throw err;
+    }
+}
+
+function navigateAfterLogin() {
+    emit('login');
+
+    if (route.query.redirect && !String(route.query.redirect).includes('/login')) {
+        const redirectPath = String(route.query.redirect);
+        const resolved = router.resolve(redirectPath);
+
+        const isSafeRedirect = (() => {
+            try {
+                const url = new URL(redirectPath, window.location.origin);
+                const isSameOrigin = url.origin === window.location.origin;
+                const isHttpProtocol = url.protocol === 'http:' || url.protocol === 'https:';
+                return isSameOrigin && isHttpProtocol;
+            } catch {
+                return false;
+            }
+        })();
+
+        if (resolved.matched.length > 0) {
+            router.push(redirectPath);
+        } else if (isSafeRedirect) {
+            window.location.href = redirectPath;
+        } else {
+            router.push("/");
+        }
+    } else {
+        router.push("/");
+    }
+}
+
+async function renewCertificate() {
+    loading.value = true;
+
+    try {
+        const res = await server.POST('/api/login', {
+            body: {
+                username: certRenewal.email,
+                password: certRenewal.password,
+            }
+        });
+        if (res.error) throw new Error(res.error.message);
+        const login = res.data;
+
+        await applySession({ token: login.token, email: login.email, session: login.session });
+        certRenewal.required = false;
+        certRenewal.password = '';
+
+        navigateAfterLogin();
+    } catch (err) {
+        loading.value = false;
+        throw err;
+    }
+}
+
+function skipCertRenewal() {
+    certRenewal.required = false;
+    certRenewal.password = '';
+    navigateAfterLogin();
+}
+
 function loginWithSSO() {
     const redirect = route.query.redirect || '/';
     window.location.href = `/api/login/oidc?redirect=${encodeURIComponent(String(redirect))}`;
 }
 </script>
+
+<style scoped>
+.logo-visible {
+    opacity: 1 !important;
+}
+
+.bg-fade-enter {
+    animation: fadeIn 0.8s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+</style>

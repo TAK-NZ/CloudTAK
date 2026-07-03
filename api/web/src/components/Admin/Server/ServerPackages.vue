@@ -35,7 +35,7 @@
                     />
                     <template v-else>
                         <template v-for='pkg in list.items'>
-                            <div class='col-12 hover d-flex align-items-center px-2 py-2 rounded'>
+                            <div class='col-12 cloudtak-hover d-flex align-items-center px-2 py-2 rounded'>
                                 <div class='row'>
                                     <div class='col-12'>
                                         <span v-text='pkg.name' />
@@ -70,7 +70,7 @@
 
 <script setup lang='ts'>
 import { ref, onMounted, watch } from 'vue';
-import { server, std, stdurl } from '../../../std.ts';
+import { server, stdurl, downloadUrl } from '../../../std.ts';
 import type { PackageList } from '../../../types.ts';
 import {
     TablerRefreshButton,
@@ -148,12 +148,8 @@ async function deletePackage(pkg: PackageList["items"][0]) {
 }
 
 async function downloadPackage(pkg: PackageList["items"][0]) {
-    const url = stdurl(`/api/marti/api/files/${pkg.hash}`)
-    url.searchParams.append('token', localStorage.token);
-    url.searchParams.append('name', pkg.name + '.zip');
-
-    await std(url, {
-        download: true
-    });
+    const url = stdurl(`/api/marti/api/files/${pkg.hash}`);
+    url.searchParams.set('name', pkg.name + '.zip');
+    await downloadUrl(url, { token: true });
 }
 </script>

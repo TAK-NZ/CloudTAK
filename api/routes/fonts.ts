@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import Config from '../lib/config.js';
@@ -30,11 +30,11 @@ export default async function router(schema: Schema, config: Config) {
     }, async (req, res) => {
         try {
             await Auth.is_auth(config, req, {
-                token: true
+                token: true,
             });
 
             try {
-                await fsp.access(new URL(`../fonts/${req.params.fontstack}/${req.params.start}-${req.params.end}.pbf`, import.meta.url))
+                await fsp.access(new URL(`../fonts/${req.params.fontstack}/${req.params.start}-${req.params.end}.pbf`, import.meta.url));
             } catch (err) {
                 if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
                     req.params.fontstack = 'Open Sans Regular';
@@ -44,7 +44,7 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             try {
-                await fsp.access(new URL(`../fonts/${req.params.fontstack}/${req.params.start}-${req.params.end}.pbf`, import.meta.url))
+                await fsp.access(new URL(`../fonts/${req.params.fontstack}/${req.params.start}-${req.params.end}.pbf`, import.meta.url));
             } catch (err) {
                 if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
                     throw new Err(404, err, 'Font stack or glyph range not found');

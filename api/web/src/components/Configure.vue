@@ -123,7 +123,7 @@
                                                 type='password'
                                                 label='Initial Administrator Password'
                                                 description='An existing TAK user to use as an initial CloudTAK System Administrator - The TAK Server must respond with a cert for this username/password combo'
-                                                autocomplete='password'
+                                                autocomplete='new-password'
                                                 :error='errors.password'
                                                 @keyup.enter='updateServer'
                                             />
@@ -151,9 +151,10 @@
 
 <script setup lang='ts'>
 import { ref, onMounted } from 'vue';
+import { Preferences } from '@capacitor/preferences';
 import { useRouter } from 'vue-router';
-import { std } from '../std.ts';
-import type { Server, Server_Update } from '../types.ts';
+import type { Server_Update } from '../types.ts';
+import ServerManager from '../base/server.ts';
 import CertificateP12 from './ETL/Connection/CertificateP12.vue';
 import {
     TablerLoading,
@@ -198,13 +199,13 @@ const body = ref<Server_Update>({
 onMounted(async () => {
     let server;
     try {
-        server = await std('/api/server') as Server;
+        server = await ServerManager.get();
     } catch (err) {
         console.error(err);
     }
 
     if (!server || server.status === 'configured') {
-        delete localStorage.token;
+        await Preferences.remove({ key: 'token' });
         window.location.href = '/login';
     }
 });
@@ -245,10 +246,7 @@ async function updateServer() {
     loading.value = true;
 
     try {
-        await std('/api/server', {
-            method: 'PATCH',
-            body: body.value
-        })
+        await ServerManager.update(body.value);
 
         router.push('/login');
     } catch (err) {

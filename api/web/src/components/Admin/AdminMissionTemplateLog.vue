@@ -61,15 +61,24 @@
                         />
                     </div>
                     <div class='col-12'>
-                        <UploadLogo
+                        <label class='form-label mx-2'>Keywords</label>
+                        <Keywords
+                            :keywords='log.keywords'
+                            :relevant='[]'
+                            placeholder='Keywords'
+                            @update:keywords='log.keywords = $event'
+                        />
+                    </div>
+                    <div class='col-12'>
+                        <TablerUploadLogo
                             v-model='log.icon'
                             label='Log Icon'
                         />
                     </div>
                     <div class='col-12'>
                         <TablerSchemaBuilder
-                            title='Log Schema'
                             v-model='log.schema'
+                            title='Log Schema'
                         />
                     </div>
                     <div class='col-12 d-flex'>
@@ -99,21 +108,43 @@
                     <div class='flex-fill'>
                         <div class='datagrid'>
                             <div class='datagrid-item'>
-                                <div class='datagrid-title'>Name</div>
-                                <div class='datagrid-content' v-text='log.name' />
+                                <div class='datagrid-title'>
+                                    Name
+                                </div>
+                                <div
+                                    class='datagrid-content'
+                                    v-text='log.name'
+                                />
                             </div>
                             <div class='datagrid-item'>
-                                <div class='datagrid-title'>Description</div>
-                                <div class='datagrid-content' v-text='log.description' />
+                                <div class='datagrid-title'>
+                                    Description
+                                </div>
+                                <div
+                                    class='datagrid-content'
+                                    v-text='log.description'
+                                />
                             </div>
                             <div class='datagrid-item'>
-                                <div class='datagrid-title'>Created</div>
+                                <div class='datagrid-title'>
+                                    Keywords
+                                </div>
+                                <div class='datagrid-content'>
+                                    <Keywords :keywords='log.keywords' />
+                                </div>
+                            </div>
+                            <div class='datagrid-item'>
+                                <div class='datagrid-title'>
+                                    Created
+                                </div>
                                 <div class='datagrid-content'>
                                     <TablerEpoch :date='log.created' />
                                 </div>
                             </div>
                             <div class='datagrid-item'>
-                                <div class='datagrid-title'>Updated</div>
+                                <div class='datagrid-title'>
+                                    Updated
+                                </div>
                                 <div class='datagrid-content'>
                                     <TablerEpoch :date='log.updated' />
                                 </div>
@@ -123,8 +154,18 @@
                 </div>
 
                 <div class='mt-3'>
-                    <div class='datagrid-title mb-2'>Schema Preview</div>
-                    <div class='border border-secondary border-opacity-25 rounded'>
+                    <div class='datagrid-title mb-2'>
+                        Schema Preview
+                    </div>
+                    <TablerNone
+                        v-if='!log.schema.properties || !Object.keys(log.schema.properties).length'
+                        label='No Schema Properties'
+                        :create='false'
+                    />
+                    <div
+                        v-else
+                        class='border border-secondary border-opacity-25 rounded'
+                    >
                         <TablerSchema
                             :schema='log.schema'
                             :model-value='{}'
@@ -141,7 +182,7 @@
 import { v4 as randomUUID } from 'uuid';
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { std } from '../../../src/std.ts';
+import { server } from '../../../src/std.ts';
 import {
     TablerInput,
     TablerAlert,
@@ -150,19 +191,22 @@ import {
     TablerLoading,
     TablerEpoch,
     TablerSchemaBuilder,
-    TablerSchema
+    TablerSchema,
+    TablerNone,
+    TablerUploadLogo
 } from '@tak-ps/vue-tabler';
 import {
     IconCircleArrowLeft,
     IconPencil,
 } from '@tabler/icons-vue'
-import UploadLogo from '../util/UploadLogo.vue';
+import Keywords from '../CloudTAK/util/Keywords.vue';
 
 interface MissionTemplateLog {
     id: string;
     template: string;
     name: string;
     description: string;
+    keywords: string[];
     icon?: string | null;
     created: string;
     updated: string;
@@ -182,6 +226,7 @@ const log = ref<MissionTemplateLog>({
     template: String(route.params.template),
     name: '',
     description: '',
+    keywords: [],
     icon: null,
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
@@ -207,18 +252,28 @@ async function saveLog() {
 
     try {
         if (route.params.log === "new") {
-            log.value = await std(`/api/template/mission/${route.params.template}/log`, {
-                method: 'POST',
-                body: log.value
-            }) as MissionTemplateLog;
+            const res = await server.POST('/api/template/mission/{:mission}/log', {
+                params: { path: { ':mission': route.params.template as string } },
+                body: {
+                    name: log.value.name,
+                    icon: log.value.icon ?? undefined,
+                    keywords: log.value.keywords,
+                    description: log.value.description,
+                    schema: log.value.schema,
+                },
+            });
+            if (res.error) throw new Error(res.error.message);
+            log.value = res.data as MissionTemplateLog;
 
             disabled.value = true;
             router.push(`/admin/template/${route.params.template}/log/${log.value.id}`);
         } else {
-            log.value = await std(`/api/template/mission/${route.params.template}/log/${route.params.log}`, {
-                method: 'PATCH',
-                body: log.value
-            }) as MissionTemplateLog;
+            const res = await server.PATCH('/api/template/mission/{:mission}/log/{:log}', {
+                params: { path: { ':mission': route.params.template as string, ':log': route.params.log as string } },
+                body: log.value,
+            });
+            if (res.error) throw new Error(res.error.message);
+            log.value = res.data as MissionTemplateLog;
 
             disabled.value = true;
         }
@@ -233,9 +288,10 @@ async function deleteLog() {
     loading.value = true;
 
     try {
-        await std(`/api/template/mission/${route.params.template}/log/${route.params.log}`, {
-            method: 'DELETE'
+        const res = await server.DELETE('/api/template/mission/{:mission}/log/{:log}', {
+            params: { path: { ':mission': route.params.template as string, ':log': route.params.log as string } },
         });
+        if (res.error) throw new Error(res.error.message);
 
         router.push(`/admin/template/${route.params.template}`);
     } catch (err) {
@@ -247,7 +303,11 @@ async function deleteLog() {
 async function fetchLog() {
     loading.value = true;
     try {
-        log.value = await std(`/api/template/mission/${route.params.template}/log/${route.params.log}`) as MissionTemplateLog;
+        const res = await server.GET('/api/template/mission/{:mission}/log/{:log}', {
+            params: { path: { ':mission': route.params.template as string, ':log': route.params.log as string } },
+        });
+        if (res.error) throw new Error(res.error.message);
+        log.value = res.data as MissionTemplateLog;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     } finally {

@@ -55,6 +55,11 @@ export class SecurityGroups extends Construct {
     });
 
     this.database.addIngressRule(this.ecs, ec2.Port.tcp(5432), 'ECS to Database');
+    this.database.addIngressRule(
+      ec2.Peer.ipv6(vpcCidrIpv6),
+      ec2.Port.tcp(5432),
+      'Allow Internal IPv6 network access',
+    );
 
     // ALB outbound - only health checks to ECS
     this.alb.addEgressRule(this.ecs, ec2.Port.tcp(5000), 'Health checks to ECS');

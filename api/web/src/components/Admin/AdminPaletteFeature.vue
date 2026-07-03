@@ -7,7 +7,7 @@
             <h1 class='card-title d-flex align-items-center'>
                 <TablerIconButton
                     title='Back to Palette'
-                    @click='router.push(`/admin/palette/${route.params.palette}`)'
+                    @click='router.push(`/admin/template/${route.params.template}/palette/${route.params.palette}`)'
                 >
                     <IconCircleArrowLeft
                         :size='32'
@@ -102,7 +102,7 @@ import { v4 as randomUUID } from 'uuid';
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import CopyField from '../CloudTAK/util/CopyField.vue';
-import { std } from '../../../src/std.ts';
+import { server } from '../../../src/std.ts';
 import type { Palette, PaletteFeature } from '../../types.ts';
 import { validateJSON } from '../../base/validators.ts';
 import {
@@ -153,21 +153,35 @@ async function savePaletteFeature() {
 
     try {
         if (route.params.feature === "new") {
-            paletteFeature.value = await std(`/api/palette/${route.params.palette}/feature`, {
-                method: 'POST',
-                body: paletteFeature.value
-            }) as PaletteFeature
+            const res = await server.POST(`/api/template/mission/{:mission}/palette/{:palette}/feature`, {
+                params: { path: { ':mission': String(route.params.template), ':palette': String(route.params.palette) } },
+                body: {
+                    type: paletteFeature.value.type as "Point" | "LineString" | "Polygon",
+                    name: paletteFeature.value.name,
+                    style: paletteFeature.value.style as { [key: string]: string }
+                }
+            });
+
+            if (res.error) throw new Error(res.error.message);
+            paletteFeature.value = res.data as PaletteFeature;
 
             disabled.value = true;
 
-            router.push(`/admin/palette/${route.params.palette}`);
+            router.push(`/admin/template/${route.params.template}/palette/${route.params.palette}`);
         } else {
-            paletteFeature.value = await std(`/api/palette/${route.params.palette}/feature/${route.params.feature}`, {
-                method: 'PATCH',
-                body: paletteFeature.value
-            }) as PaletteFeature
+            const res = await server.PATCH(`/api/template/mission/{:mission}/palette/{:palette}/feature/{:feature}`, {
+                params: { path: { ':mission': String(route.params.template), ':palette': String(route.params.palette), ':feature': String(route.params.feature) } },
+                body: {
+                    type: paletteFeature.value.type as "Point" | "LineString" | "Polygon",
+                    name: paletteFeature.value.name,
+                    style: paletteFeature.value.style as { [key: string]: string }
+                }
+            });
 
-            router.push(`/admin/palette/${route.params.palette}`);
+            if (res.error) throw new Error(res.error.message);
+            paletteFeature.value = res.data as PaletteFeature;
+
+            router.push(`/admin/template/${route.params.template}/palette/${route.params.palette}`);
         }
     } catch (err) {
         loading.value = false;
@@ -179,11 +193,12 @@ async function deletePaletteFeature() {
     loading.value = true;
 
     try {
-        await std(`/api/palette/${route.params.palette}/feature/${route.params.feature}`, {
-            method: 'DELETE'
-        })
+        const res = await server.DELETE(`/api/template/mission/{:mission}/palette/{:palette}/feature/{:feature}`, {
+            params: { path: { ':mission': String(route.params.template), ':palette': String(route.params.palette), ':feature': String(route.params.feature) } }
+        });
 
-        router.push(`/admin/palette/${route.params.palette}`);
+        if (res.error) throw new Error(res.error.message);
+        router.push(`/admin/template/${route.params.template}/palette/${route.params.palette}`);
     } catch (err) {
         loading.value = false;
         throw err;
@@ -192,7 +207,12 @@ async function deletePaletteFeature() {
 
 async function fetchPalette() {
     try {
-        palette.value = await std(`/api/palette/${route.params.palette}`) as Palette;
+        const res = await server.GET(`/api/template/mission/{:mission}/palette/{:palette}`, {
+            params: { path: { ':mission': String(route.params.template), ':palette': String(route.params.palette) } }
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        palette.value = res.data as Palette;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     }
@@ -200,7 +220,12 @@ async function fetchPalette() {
 
 async function fetchPaletteFeature() {
     try {
-        paletteFeature.value = await std(`/api/palette/${route.params.palette}/feature/${route.params.feature}`) as PaletteFeature;
+        const res = await server.GET(`/api/template/mission/{:mission}/palette/{:palette}/feature/{:feature}`, {
+            params: { path: { ':mission': String(route.params.template), ':palette': String(route.params.palette), ':feature': String(route.params.feature) } }
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        paletteFeature.value = res.data as PaletteFeature;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     }

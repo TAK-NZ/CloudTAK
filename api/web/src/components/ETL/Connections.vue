@@ -54,7 +54,7 @@
                     <template v-else>
                         <TablerNone
                             v-if='!list.items.length'
-                            label='Connections'
+                            label='No Connections'
                             @create='router.push("/connection/new")'
                         />
                         <template v-else>
@@ -96,7 +96,7 @@
 import { ref, onMounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import type { ETLConnectionList } from '../../types.ts'
-import { std, stdurl } from '../../std.ts';
+import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
 import ConnectionCard from './ConnectionCard.vue';
 import {
@@ -138,11 +138,21 @@ onMounted(async () => {
 
 async function fetchList() {
     loading.value = true;
-    const url = stdurl('/api/connection');
-    url.searchParams.append('filter', paging.value.filter);
-    url.searchParams.append('limit', String(paging.value.limit));
-    url.searchParams.append('page', String(paging.value.page));
-    list.value = await std(url) as ETLConnectionList;
+    const { data, error } = await server.GET('/api/connection', {
+        params: {
+            query: {
+                filter: paging.value.filter,
+                limit: paging.value.limit,
+                page: paging.value.page,
+                order: 'asc',
+                sort: 'created',
+            }
+        }
+    });
+
+    if (error) throw new Error(error.message);
+
+    list.value = data as ETLConnectionList;
     loading.value = false;
 }
 </script>

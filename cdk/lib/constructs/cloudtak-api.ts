@@ -41,6 +41,7 @@ export interface CloudTakApiProps {
   assetBucketName: string;
   signingSecret: secretsmanager.ISecret;
   adminPasswordSecret: secretsmanager.ISecret;
+  geofenceSecret: secretsmanager.ISecret;
   serviceUrl: string;
 }
 
@@ -68,6 +69,7 @@ export class CloudTakApi extends Construct {
       assetBucketName,
       signingSecret,
       adminPasswordSecret,
+      geofenceSecret,
       serviceUrl
     } = props;
 
@@ -97,11 +99,23 @@ export class CloudTakApi extends Construct {
               ],
               resources: ['*']
             }),
-            // S3 bucket access
+            // S3 bucket access — bucket level (list/locate only)
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket', 's3:GetBucketLocation'],
-              resources: [`arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`, `arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`]
+              actions: ['s3:ListBucket', 's3:GetBucketLocation'],
+              resources: [`arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}`]
+            }),
+            // S3 bucket access — object level
+            new cdk.aws_iam.PolicyStatement({
+              effect: cdk.aws_iam.Effect.ALLOW,
+              actions: [
+                's3:GetObject',
+                's3:PutObject',
+                's3:DeleteObject',
+                's3:AbortMultipartUpload',
+                's3:ListMultipartUploadParts',
+              ],
+              resources: [`arn:${cdk.Stack.of(this).partition}:s3:::${assetBucketName}/*`]
             }),
 
             // SQS permissions for layer queues
@@ -137,6 +151,12 @@ export class CloudTakApi extends Construct {
                 `arn:${cdk.Stack.of(this).partition}:cloudformation:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:stack/TAK-${envConfig.stackName}-*`,
                 `arn:${cdk.Stack.of(this).partition}:cloudformation:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:stack/TAK-${envConfig.stackName}-layer-*`
               ]
+            }),
+            // cloudformation:ListStacks requires Resource: * (no ARN filtering possible)
+            new cdk.aws_iam.PolicyStatement({
+              effect: cdk.aws_iam.Effect.ALLOW,
+              actions: ['cloudformation:ListStacks'],
+              resources: ['*']
             }),
             // Batch job permissions
             new cdk.aws_iam.PolicyStatement({
@@ -222,7 +242,16 @@ export class CloudTakApi extends Construct {
             // EventBridge permissions for scheduled Lambda functions
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['events:PutRule', 'events:PutTargets', 'events:DeleteRule', 'events:RemoveTargets', 'events:DescribeRule'],
+              actions: [
+                'events:PutRule',
+                'events:PutTargets',
+                'events:DeleteRule',
+                'events:RemoveTargets',
+                'events:DescribeRule',
+                'events:UntagResource',
+                'events:TagResource',
+                'events:ListTagsForResource',
+              ],
               resources: [`arn:${cdk.Stack.of(this).partition}:events:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:rule/TAK-${envConfig.stackName}-CloudTAK-layer-*`]
             }),
             // API Gateway permissions for webhook functionality
@@ -246,7 +275,7 @@ export class CloudTakApi extends Construct {
             // ECR permissions (matching old CloudFormation)
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['ecr:Describe*', 'ecr:Get*', 'ecr:BatchDeleteImage', 'ecr:List*'],
+              actions: ['ecr:Describe*', 'ecr:Get*', 'ecr:BatchGetImage', 'ecr:BatchDeleteImage', 'ecr:List*'],
               resources: [etlEcrRepository.repositoryArn]
             })
           ]
@@ -333,6 +362,7 @@ export class CloudTakApi extends Construct {
     takAdminCertSecret.grantRead(taskRole); // Task role for application access
     connectionStringSecret.grantRead(executionRole);
     adminPasswordSecret.grantRead(executionRole);
+    geofenceSecret.grantRead(executionRole);
     
     // Grant access to Authentik admin secret if OIDC is enabled
     if (envConfig.cloudtak.oidcEnabled) {
@@ -404,7 +434,8 @@ export class CloudTakApi extends Construct {
         'SigningSecret': ecs.Secret.fromSecretsManager(signingSecret),
         'POSTGRES': ecs.Secret.fromSecretsManager(connectionStringSecret),
         'CLOUDTAK_ADMIN_USERNAME': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'username'),
-        'CLOUDTAK_ADMIN_PASSWORD': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'password')
+        'CLOUDTAK_ADMIN_PASSWORD': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'password'),
+        'CLOUDTAK_Config_geofence_password': ecs.Secret.fromSecretsManager(geofenceSecret),
       }
     };
 

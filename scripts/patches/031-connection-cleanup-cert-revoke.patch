@@ -1,6 +1,8 @@
---- a/api/routes/connection.ts	2026-01-05 05:04:07.186591715 +0000
-+++ b/api/routes/connection.ts	2026-01-05 05:04:23.466793010 +0000
-@@ -11,6 +11,9 @@
+diff --git a/api/routes/connection.ts b/api/routes/connection.ts
+index 62bf958fa..04940ce1c 100644
+--- a/api/routes/connection.ts
++++ b/api/routes/connection.ts
+@@ -11,6 +11,9 @@ import { MachineConnConfig, ConnectionAuth } from '../lib/connection-config.js';
  import Schema from '@openaddresses/batch-schema';
  import * as Default from '../lib/limits.js';
  import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
@@ -10,30 +12,35 @@
  
  export default async function router(schema: Schema, config: Config) {
      await schema.get('/connection', {
-@@ -332,6 +335,109 @@
-         } catch (err) {
-             Err.respond(err, res);
+@@ -433,6 +436,121 @@ export default async function router(schema: Schema, config: Config) {
          }
-+    });
-+
+     });
+ 
 +    await schema.post('/connection/:connectionid/cert/renew', {
 +        name: 'Renew Certificate',
 +        group: 'Connection',
 +        description: 'Check and renew connection certificate if needed',
 +        params: Type.Object({
-+            connectionid: Type.Integer({ minimum: 1 })
++            connectionid: Type.Integer({ minimum: 1 }),
 +        }),
 +        res: Type.Object({
 +            renewed: Type.Boolean(),
-+            message: Type.String()
-+        })
++            message: Type.String(),
++        }),
 +    }, async (req, res) => {
 +        try {
 +            const { connection } = await Auth.is_connection(config, req, {
-+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }]
++                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
 +            }, req.params.connectionid);
 +
-+            if (!(config.external instanceof AuthentikProvider)) {
++            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
++            try {
++                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                    authentik = await AuthentikProvider.init(config);
++                }
++            } catch { /* Authentik not configured */ }
++
++            if (!authentik) {
 +                return res.json({ renewed: false, message: 'Certificate renewal only supported with Authentik provider' });
 +            }
 +
@@ -41,11 +48,12 @@
 +                return res.json({ renewed: false, message: 'Certificate does not need renewal' });
 +            }
 +
-+            const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
-+            const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
++            // Look up the Authentik user by connection username to get their numeric ID
++            const machineUser = await authentik.fetchMachineUser(0, connection.username || '');
++            const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
 +
 +            await config.models.Connection.commit(req.params.connectionid, {
-+                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
++                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
 +            });
 +
 +            if (connection.enabled && config.conns.has(connection.id)) {
@@ -65,17 +73,18 @@
 +        group: 'Layer',
 +        description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
 +        params: Type.Object({
-+            layerid: Type.Integer({ minimum: 1 })
++            layerid: Type.Integer({ minimum: 1 }),
 +        }),
 +        res: Type.Object({
 +            healthy: Type.Boolean(),
 +            cert_renewed: Type.Boolean(),
-+            message: Type.Optional(Type.String())
-+        })
++            message: Type.Optional(Type.String()),
++        }),
 +    }, async (req, res) => {
 +        try {
 +            const auth = await Auth.as_user(config, req, { token: true });
-+            if (auth.access !== 'layer' || auth.id !== req.params.layerid) {
++            // Layer tokens have access='layer' (AuthResourceAccess) — check via string comparison
++            if ((auth.access as string) !== 'layer' || (auth as { id?: unknown }).id !== req.params.layerid) {
 +                throw new Err(401, null, 'Invalid layer token');
 +            }
 +
@@ -85,21 +94,24 @@
 +            }
 +
 +            const connection = await config.models.Connection.from(layer.connection);
-+            
-+            if (!(config.external instanceof AuthentikProvider)) {
-+                return res.json({ healthy: true, cert_renewed: false });
-+            }
 +
-+            if (!needsCertRenewal(connection.auth.cert)) {
++            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
++            try {
++                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                    authentik = await AuthentikProvider.init(config);
++                }
++            } catch { /* Authentik not configured */ }
++
++            if (!authentik || !needsCertRenewal(connection.auth.cert)) {
 +                return res.json({ healthy: true, cert_renewed: false });
 +            }
 +
 +            try {
-+                const takApi = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(connection.auth.cert, connection.auth.key));
-+                const renewed = await config.external.renewConnectionCertificate(connection.machine_id, takApi);
++                const machineUser2 = await authentik.fetchMachineUser(0, connection.username || '');
++                const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
 +
 +                await config.models.Connection.commit(connection.id, {
-+                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key }
++                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
 +                });
 +
 +                if (connection.enabled && config.conns.has(connection.id)) {
@@ -117,6 +129,57 @@
 +        } catch (err) {
 +            Err.respond(err, res);
 +        }
-     });
- 
++    });
++
      await schema.delete('/connection/:connectionid', {
+         name: 'Delete Connection',
+         group: 'Connection',
+@@ -443,7 +561,7 @@ export default async function router(schema: Schema, config: Config) {
+         res: StandardResponse,
+     }, async (req, res) => {
+         try {
+-            await Auth.is_connection(config, req, {}, req.params.connectionid);
++            const { connection } = await Auth.is_connection(config, req, {}, req.params.connectionid);
+ 
+             if (await config.models.Layer.count({
+                 where: sql`connection = ${req.params.connectionid}`,
+@@ -471,6 +589,39 @@ export default async function router(schema: Schema, config: Config) {
+ 
+             config.conns.delete(req.params.connectionid);
+ 
++            // Revoke the TAK server certificate so the account can no longer authenticate
++            if (connection.auth.cert && config.server.auth.cert && config.server.auth.key) {
++                try {
++                    const x509 = new X509Certificate(connection.auth.cert);
++                    // TAK Server revoke API takes the SHA-256 fingerprint without colons
++                    const certHash = x509.fingerprint256.replace(/:/g, '');
++                    const takApi = await TAKAPI.init(
++                        new URL(String(config.server.api)),
++                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
++                    );
++                    await takApi.Credentials.revoke(certHash);
++                    console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
++                } catch (err) {
++                    // Don't block deletion — log and continue
++                    console.error(`Failed to revoke TAK certificate for connection ${req.params.connectionid}:`, err);
++                }
++            }
++
++            // Delete the Authentik service account associated with this connection
++            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
++                try {
++                    const authentik = await AuthentikProvider.init(config);
++                    // Reconstruct the machine user's Authentik username from the naming convention
++                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
++                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
++                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
++                    await authentik.deleteMachineUser(machineName);
++                } catch (err) {
++                    // Don't block deletion — log and continue
++                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
++                }
++            }
++
+             const cotak = config.user?.get('cotak');
+             if (cotak && cotak.configured) {
+                 const user = await Auth.as_user(config, req);

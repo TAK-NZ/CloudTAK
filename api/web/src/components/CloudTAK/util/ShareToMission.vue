@@ -7,7 +7,7 @@
             aria-label='Close'
             @click='emit("close")'
         />
-        <div class='modal-header text-white'>
+        <div class='modal-header text-body'>
             <div class='d-flex align-items-center'>
                 <IconReplace
                     :size='28'
@@ -24,7 +24,7 @@
             </div>
         </div>
 
-        <div class='modal-body text-white'>
+        <div class='modal-body text-body'>
             <TablerLoading v-if='loading' />
             <EmptyInfo
                 v-else-if='!missions.length'
@@ -39,7 +39,7 @@
                 >
                     <div v-for='mission in missions'>
                         <div
-                            class='col-12 cursor-pointer hover py-2 rounded'
+                            class='col-12 cursor-pointer cloudtak-hover py-2 rounded'
                             @click='selected.has(mission) ? selected.delete(mission) : selected.add(mission)'
                         >
                             <div class='d-flex align-items-center'>

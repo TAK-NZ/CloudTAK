@@ -1,7 +1,7 @@
 import Err from '@openaddresses/batch-error';
 import fs from 'node:fs';
 import path from 'node:path';
-import ImportControl, { ImportSourceEnum }  from './control/import.js';
+import ImportControl, { ImportSourceEnum } from './control/import.js';
 import Sinks from './sinks.js';
 import Config from './config.js';
 import { randomUUID } from 'node:crypto';
@@ -11,7 +11,7 @@ import sleep from './sleep.js';
 import TAK, { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import CoT, { CoTParser } from '@tak-ps/node-cot';
 import type ConnectionConfig from './connection-config.js';
-import { MachineConnConfig, ProfileConnConfig } from './connection-config.js';
+import { MachineConnConfig, ProfileConnConfig, AdminConnConfig } from './connection-config.js';
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
     version: string;
@@ -20,24 +20,54 @@ const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.ur
 export class ConnectionClient {
     config: ConnectionConfig;
     tak: TAK;
+    api: TAKAPI;
     retry: number;
     initial: boolean;
 
     retrying: boolean;
 
+    /**
+     * Set of bitpos integers representing the active channels
+     * this connection is currently bound to
+     */
+    channels: Set<number>;
+
     constructor(
         config: ConnectionConfig,
         tak: TAK,
+        api: TAKAPI,
     ) {
         this.tak = tak;
+        this.api = api;
         this.config = config;
         this.retry = 0;
         this.initial = true;
         this.retrying = false;
+        this.channels = new Set();
+    }
+
+    /**
+     * Refresh the set of active channel bitpos integers
+     * by querying the group list API
+     */
+    async refreshChannels(): Promise<void> {
+        try {
+            const list = await this.api.Group.list({ useCache: true });
+            const active = new Set<number>();
+            for (const group of list.data) {
+                if (group.active) {
+                    active.add(group.bitpos);
+                }
+            }
+            this.channels = active;
+            console.log(`ok - ${this.config.id} - ${this.config.name} - refreshed channels: [${[...active].join(', ')}]`);
+        } catch (err) {
+            console.error(`not ok - ${this.config.id} - ${this.config.name} - failed to refresh channels: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     destroy(): void {
-        this.tak.destroy()
+        this.tak.destroy();
     }
 }
 
@@ -78,7 +108,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                             data: {
                                 version: pkg.version,
                                 time: new Date().toISOString(),
-                            }
+                            },
                         }));
                     }
                 }
@@ -112,8 +142,45 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
         if (!sub) return { name: name };
         return {
             name: sub.name,
-            token: sub.token || undefined
+            token: sub.token || undefined,
         };
+    }
+
+    async activeChannels(connection: number | string, fallbackApi?: TAKAPI): Promise<Set<number>> {
+        const conn = this.get(connection);
+        if (conn?.channels.size) {
+            return new Set(conn.channels);
+        }
+
+        const api = conn?.api || fallbackApi;
+        if (!api) {
+            return new Set();
+        }
+
+        const channels = new Set(
+            (await api.Group.list({ useCache: true })).data
+                .filter(group => group.active)
+                .map(group => group.bitpos),
+        );
+
+        if (conn) {
+            conn.channels = channels;
+        }
+
+        return channels;
+    }
+
+    async loadGeofences(connConfig: ConnectionConfig): Promise<void> {
+        try {
+            if (this.config.nogeofence || !await this.config.geofence.enabled()) {
+                return;
+            }
+
+            const geofences = await connConfig.geofences();
+            await this.config.geofence.load(connConfig, geofences);
+        } catch (err) {
+            console.error(`not ok - ${connConfig.id} - ${connConfig.name} - failed to load geofences: ${err instanceof Error ? err.message : String(err)}`);
+        }
     }
 
     async refresh() {
@@ -128,7 +195,16 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
      * Page through connections and start a connection for each one
      */
     async init(): Promise<void> {
-        const conns: Promise<ConnectionClient>[] = [];
+        const conns: Promise<unknown>[] = [];
+
+        // Create admin connection (connection 0) using server auth profile
+        if (this.config.server.connection && this.config.server.auth.cert && this.config.server.auth.key) {
+            conns.push(
+                this.add(new AdminConnConfig(this.config)).catch((err) => {
+                    console.error(`not ok - admin - failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+                }),
+            );
+        }
 
         const ConnectionModel = new Modeler(this.config.pg, Connection);
         for await (const conn of ConnectionModel.iter()) {
@@ -140,7 +216,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
         await Promise.all(conns);
     }
 
-    status(id: number | string): string {
+    status(id: number | string): 'live' | 'dead' | 'unknown' {
         const conn = this.get(id);
 
         if (conn) {
@@ -177,9 +253,6 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                             const myUid = `ANDROID-CloudTAK-${conn.id}`;
                             const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
                             const isOutgoing = senderUid === myUid;
-                            // For outgoing messages the chatroom field is the recipient's callsign.
-                            // For incoming messages the chatroom field is our own callsign, so we
-                            // use senderCallsign to identify the conversation partner instead.
                             const chatroom = isOutgoing
                                 ? feat.properties.chat.chatroom
                                 : feat.properties.chat.senderCallsign;
@@ -188,23 +261,23 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                 username: String(conn.id),
                                 chatroom: chatroom,
                                 sender_callsign: feat.properties.chat.senderCallsign,
-                                sender_uid: senderUid,
+                                sender_uid: feat.properties.chat.chatgrp._attributes.uid0,
                                 message_id: feat.properties.chat.messageId || randomUUID(),
-                                message: feat.properties.remarks || ''
+                                message: feat.properties.remarks || '',
                             });
                         } else if (conn instanceof ProfileConnConfig && feat.properties.fileshare) {
                             const file = new URL(feat.properties.fileshare.senderUrl);
 
                             let name = feat.properties.fileshare.name;
                             const { ext } = path.parse(name);
-                            if (!ext) name = name + '.zip'
+                            if (!ext) name = name + '.zip';
 
                             await this.importControl.create({
                                 username: String(conn.id),
                                 name,
                                 source: ImportSourceEnum.PACKAGE,
-                                source_id: file.searchParams.get('hash') || undefined
-                            })
+                                source_id: file.searchParams.get('hash') || undefined,
+                            });
                         }
                     } catch (err) {
                         console.error('Failed to save COT: ', err);
@@ -212,7 +285,11 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
 
                     for (const client of (this.config.wsClients.get(String(conn.id)) || [])) {
                         if (client.format == 'geojson') {
-                            if (feat.properties && feat.properties.chat) {
+                            if (feat.properties && feat.properties.chat && feat.properties.chat.parent === 'DataSyncMissionsList') {
+                                console.log(JSON.stringify(feat));
+                            }
+
+                            if (feat.properties && feat.properties.chat && feat.properties.chat.parent !== 'DataSyncMissionsList') {
                                 client.ws.send(JSON.stringify({
                                     type: 'chat',
                                     connection: conn.id,
@@ -220,14 +297,13 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                         chatroom: feat.properties.chat.chatroom,
                                         messageId: feat.properties.chat.messageId,
                                         from: {
-                                            uid: feat.properties.chat.chatgrp?._attributes?.uid0,
                                             callsign: feat.properties.chat.senderCallsign,
                                         },
                                         message: feat.properties.remarks,
-                                        time: feat.properties.time || new Date().toISOString()
-                                    }
+                                        time: feat.properties.time || new Date().toISOString(),
+                                    },
                                 }));
-                            } else if (feat.properties.type.startsWith("t-x")) {
+                            } else if (feat.properties.type.startsWith('t-x')) {
                                 client.ws.send(JSON.stringify({ type: 'task', connection: conn.id, data: feat }));
                             } else {
                                 client.ws.send(JSON.stringify({ type: 'cot', connection: conn.id, data: feat }));
@@ -257,38 +333,44 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                 key: connConfig.auth.key,
                 cert: connConfig.auth.cert,
                 rejectUnauthorized: false,
-                ca: this.config.server.auth.cert
-            },{
-                id: connConfig.id
+                ca: this.config.server.auth.cert,
+            }, {
+                id: connConfig.id,
             });
         } else {
             tak = await TAK.connect(new URL(this.config.server.url), {
                 key: connConfig.auth.key,
                 cert: connConfig.auth.cert,
-            },{
-                id: connConfig.id
+            }, {
+                id: connConfig.id,
             });
         }
 
-        const connClient = new ConnectionClient(connConfig, tak);
-
         const api = await TAKAPI.init(new URL(String(this.config.server.api)), new APIAuthCertificate(connConfig.auth.cert, connConfig.auth.key));
+        const connClient = new ConnectionClient(connConfig, tak, api);
         this.set(connConfig.id, connClient);
 
         tak.on('cot', async (cot: CoT) => {
             connClient.retry = 0;
             connClient.initial = false;
 
+            if (cot.type() === 't-x-g-c') {
+                await connClient.refreshChannels();
+            }
+
             this.cots(connConfig, [cot]);
         }).on('secureConnect', async () => {
+            await connClient.refreshChannels();
+            await this.loadGeofences(connConfig);
+
             for (const sub of await connConfig.subscriptions()) {
                 let retry = true;
                 do {
                     try {
                         await api.Mission.subscribe(sub.name, {
-                            uid: connConfig.uid()
-                        },{
-                            token: sub.token || undefined
+                            uid: connConfig.uid(),
+                        }, {
+                            token: sub.token || undefined,
                         });
 
                         console.log(`Connection: ${connConfig.id} - Sync: ${sub.name}: Subscribed!`);
@@ -304,26 +386,38 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                             retry = false;
                         }
                     }
-                } while (retry)
+                } while (retry);
+            }
+        }).on('close', async () => {
+            console.error(`not ok - ${connConfig.id} - ${connConfig.name} @ close`);
+            if (this.isTracked(connClient)) {
+                this.retry(connClient);
             }
         }).on('end', async () => {
             console.error(`not ok - ${connConfig.id} - ${connConfig.name} @ end`);
-            if (!tak.destroyed) {
+            if (this.isTracked(connClient)) {
                 this.retry(connClient);
             }
         }).on('timeout', async () => {
             console.error(`not ok - ${connConfig.id} - ${connConfig.name} @ timeout`);
-            if (!tak.destroyed) {
+            if (this.isTracked(connClient)) {
                 this.retry(connClient);
             }
         }).on('error', async (err) => {
             console.error(`not ok - ${connConfig.id} - ${connConfig.name} @ error:${err}`);
-            if (!tak.destroyed) {
+            if (this.isTracked(connClient)) {
                 this.retry(connClient);
             }
         });
 
         return connClient;
+    }
+
+    /**
+     * Determine whether a connection is still managed by the pool.
+     */
+    private isTracked(connClient: ConnectionClient): boolean {
+        return this.has(connClient.config.id);
     }
 
     async retry(connClient: ConnectionClient): Promise<void> {
@@ -333,26 +427,44 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
         } else if (this.closed) {
             console.error(`ok - Not Retrying: ${connClient.config.id} - ${connClient.config.name} - Connection Pool Closed`);
             return;
-        } else if (connClient.tak.destroyed) {
-            console.error(`ok - Not Retrying: ${connClient.config.id} - ${connClient.config.name} - Connection Destroyed`);
-            return;
         }
 
         connClient.retrying = true;
 
-        const retryms = Math.min(connClient.retry * 1000, 15000);
-        if (connClient.retry <= 15) connClient.retry++
-        console.log(`not ok - ${connClient.config.uid()} - ${connClient.config.name} - retrying in ${retryms}ms`)
-        await sleep(retryms);
+        const isFirstRetry = connClient.retry === 0;
+        const nextRetry = Math.min(connClient.retry + 1, 15);
+        const retryms = isFirstRetry ? 0 : Math.min(nextRetry * 1000, 15000);
+        connClient.retry = nextRetry;
 
-        if (connClient.tak.destroyed) {
-            console.log('ok - TAK Client has been closed - not retrying');
+        console.log(`not ok - ${connClient.config.uid()} - ${connClient.config.name} - retrying in ${retryms}ms`);
+        if (retryms > 0) await sleep(retryms);
+
+        if (this.closed) {
+            console.error(`ok - Not Retrying: ${connClient.config.id} - ${connClient.config.name} - Connection Pool Closed`);
             connClient.retrying = false;
             return;
-        } else {
-            connClient.retrying = false
-            await connClient.tak.reconnect();
         }
+
+        if (!this.isTracked(connClient)) {
+            console.log('ok - Connection no longer tracked - not retrying');
+            connClient.retrying = false;
+            return;
+        }
+
+        try {
+            await connClient.tak.reconnect();
+        } catch (err) {
+            console.error(`not ok - ${connClient.config.id} - ${connClient.config.name} - reconnect failed: ${err instanceof Error ? err.message : String(err)}`);
+            connClient.retrying = false;
+
+            if (!this.closed && this.isTracked(connClient)) {
+                await this.retry(connClient);
+            }
+
+            return;
+        }
+
+        connClient.retrying = false;
     }
 
     delete(id: number | string): boolean {

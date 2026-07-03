@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import Flight from './flight.js';
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 flight.user({ username: 'user1', admin: false });
@@ -31,7 +31,7 @@ test('GET: api/marti/package - impersonate', async () => {
                         SubmissionDateTime: new Date().toISOString(),
                         EXPIRATION: new Date().toISOString(),
                         Size: 123,
-                        PrimaryKey: 'pk1'
+                        PrimaryKey: 'pk1',
                     }, {
                         UID: 'uid2',
                         Name: 'Pkg2',
@@ -40,8 +40,8 @@ test('GET: api/marti/package - impersonate', async () => {
                         SubmissionDateTime: new Date().toISOString(),
                         EXPIRATION: new Date().toISOString(),
                         Size: 456,
-                        PrimaryKey: 'pk2'
-                    }]
+                        PrimaryKey: 'pk2',
+                    }],
                 }));
                 response.end();
 
@@ -55,8 +55,8 @@ test('GET: api/marti/package - impersonate', async () => {
         const res = await flight.fetch('/api/marti/package?impersonate=true', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.total, 2);
@@ -89,8 +89,8 @@ test('GET: api/marti/package - impersonate user', async () => {
                         SubmissionDateTime: new Date().toISOString(),
                         EXPIRATION: new Date().toISOString(),
                         Size: 123,
-                        PrimaryKey: 'pk1'
-                    }]
+                        PrimaryKey: 'pk1',
+                    }],
                 }));
                 response.end();
 
@@ -104,8 +104,8 @@ test('GET: api/marti/package - impersonate user', async () => {
         const res = await flight.fetch('/api/marti/package?impersonate=user1@example.com', {
             method: 'GET',
             auth: {
-                bearer: flight.token.admin
-            }
+                bearer: flight.token.admin,
+            },
         }, true);
 
         assert.equal(res.body.items.length, 1);

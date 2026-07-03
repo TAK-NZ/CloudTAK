@@ -1,13 +1,14 @@
-import Icon from './icon.ts';
 import { v4 as randomUUID } from 'uuid';
 import { std } from '../std.ts';
+import { db, withDbRetry } from '../database.ts';
+import { liveQuery } from 'dexie';
 import { bbox } from '@turf/bbox'
 import { length } from '@turf/length'
-import { isEqual } from '@react-hookz/deep-equal';
+import { isEqual } from '@ver0/deep-equal';
 import { WorkerMessageType } from'./events.ts'
-import type { Remote } from 'comlink';
-import type Atlas from '../workers/atlas.ts';
 import pointOnFeature from '@turf/point-on-feature';
+import { applyEllipseMutation } from './cot/ellipse.ts';
+import type { COTMutation, COTUpdate } from './cot/types.ts';
 import type { Feature, Subscription } from '../types.ts'
 import type {
     BBox as GeoJSONBBox,
@@ -47,6 +48,23 @@ export const RENDERED_PROPERTIES = [
     'circle-opacity'
 ]
 
+const COT_MUTATIONS: COTMutation[] = [
+    applyEllipseMutation
+];
+
+function applyCOTMutations(
+    current: Feature,
+    update: COTUpdate
+): COTUpdate {
+    let next = update;
+
+    for (const mutation of COT_MUTATIONS) {
+        next = mutation({ current, update: next }) || next;
+    }
+
+    return next;
+}
+
 export default class COT {
     id: string;
 
@@ -56,16 +74,17 @@ export default class COT {
     _properties: Feature["properties"];
     _geometry: Feature["geometry"];
 
-    _remote: BroadcastChannel | null;
+    _remote: boolean;
 
-    _atlas: Atlas | Remote<Atlas>;
+    _liveQuerySubscription: { unsubscribe: () => void } | null;
+
+    static selfUid: string | null = null;
 
     _username?: string;
 
     origin: Origin
 
     static async load(
-        atlas: Atlas,
         feat: Feature,
         origin?: Origin,
         opts?: {
@@ -73,11 +92,9 @@ export default class COT {
             remote?: boolean
         }
     ) {
-        const a = atlas as Atlas;
         await COT.style(feat);
 
         return new COT(
-            a,
             feat,
             origin,
             opts
@@ -85,7 +102,6 @@ export default class COT {
     }
 
     constructor(
-        atlas: Atlas | Remote<Atlas>,
         feat: Feature,
         origin?: Origin,
         opts?: {
@@ -99,23 +115,12 @@ export default class COT {
         this._properties = feat["properties"] || {};
         this._geometry = feat["geometry"];
 
-        this._remote = (opts && opts.remote === true) ? new BroadcastChannel('sync') : null
-        this._atlas = atlas;
+        this._remote = !!(opts && opts.remote === true)
+        this._liveQuerySubscription = null;
 
         this.instance = this._remote ? `remote:${randomUUID()}` : `db:${randomUUID()}`
 
         this.origin = origin || { mode: OriginMode.CONNECTION };
-        if (this.origin.mode === OriginMode.CONNECTION && !this._remote) {
-            const atlas = this._atlas as Atlas;
-
-            if (!atlas.db.cots.has(this.id)) {
-                atlas.db.pendingCreate.set(this.id, this);
-            } else {
-                atlas.db.pendingUpdate.set(this.id, this);
-            }
-
-            atlas.db.cots.set(this.id, this);
-        }
 
         if (!opts || (opts && opts.skipSave !== true)) {
             this.save();
@@ -123,21 +128,17 @@ export default class COT {
     }
 
     /**
-     * Begin listening for remote updates
+     * Begin listening for remote updates via a DexieDB live query
      * This is a seperate function due to the issues outlined in: https://stackoverflow.com/q/70184129
      */
     reactivity() {
         if (this._remote) {
-            // The sync BroadcastChannel will post a message anytime the underlying
-            // Atlas database has a COT update, resulting in a sync with the frontend
-            this._remote.onmessage = async (ev) => {
-                if (ev.data.id === this.id) {
-                    this._path = ev.data.path;
-                    this.origin = ev.data.origin;
-                    Object.assign(this._properties, ev.data.properties);
-                    Object.assign(this._geometry, ev.data.geometry);
-                }
-            };
+            this._liveQuerySubscription = liveQuery(() => db.feature.get(this.id)).subscribe((feat) => {
+                if (!feat) return;
+                this._path = feat.path;
+                Object.assign(this._properties, feat.properties);
+                Object.assign(this._geometry, feat.geometry);
+            });
         } else {
             throw new Error('Only Remote instances can listen for updates');
         }
@@ -171,37 +172,32 @@ export default class COT {
      * Update the COT and return a boolean as to whether the COT needs to be re-rendered
      */
     async update(
-        update: {
-            path?: string,
-            properties?: Feature["properties"],
-            geometry?: Feature["geometry"]
-        },
+        update: COTUpdate,
         opts?: {
             skipSave?: boolean;
         }
     ): Promise<boolean> {
-        if (this._remote) {
-            const atlas = this._atlas as Remote<Atlas>;
+        update = applyCOTMutations(this.as_feature(), update);
 
+        if (this._remote) {
             if (update.path) this._path = update.path;
             if (update.properties) this._properties = update.properties;
             if (update.geometry) this._geometry = update.geometry;
 
             // We do the parse/stringify to ensure that deep Proxies created with Vue3 ref/reactive are removed
             // As they cannot be Cloned accross the ComLink Bridge
-            await atlas.db.add(JSON.parse(JSON.stringify(this.as_feature())), {
-                // Changes that are remote (from the frontend are always user-authored),
-                // this is important to trigger submission for Mission Syncs
-                authored: true
+            const channel = new BroadcastChannel('cloudtak');
+            channel.postMessage({
+                type: WorkerMessageType.Feature_Update,
+                body: JSON.parse(JSON.stringify(this.as_feature()))
             });
+            channel.close();
 
             return false;
         } else {
             if (!update.geometry && !update.properties && !update.path) {
                 return false;
             }
-
-            const atlas = this._atlas as Atlas;
 
             if (update.path) {
                 this._path = update.path;
@@ -234,34 +230,31 @@ export default class COT {
                 }
             }
 
+            const updatedCenter = update.properties && Array.isArray(update.properties.center)
+                ? update.properties.center
+                : undefined;
             if (update.geometry || !this._properties.center || (this._properties.center[0] === 0 && this._properties.center[1] === 0)) {
-                this._properties.center = pointOnFeature(this._geometry).geometry.coordinates;
+                if (updatedCenter && updatedCenter.length >= 2) {
+                    this._properties.center = updatedCenter;
+                } else {
+                    this._properties.center = pointOnFeature(this._geometry).geometry.coordinates;
+
+                    if (this._geometry.type === 'Point' && this._geometry.coordinates.length > 2) {
+                        this._properties.center[2] = this._geometry.coordinates[2];
+                    }
+                }
             }
 
             if (this.origin.mode === OriginMode.CONNECTION) {
-                atlas.db.pendingUpdate.set(this.id, this);
+                await withDbRetry(() => db.feature.put({
+                    id: this.id,
+                    path: this._path,
+                    properties: this._properties,
+                    geometry: this._geometry
+                }));
             }
 
-            atlas.sync.postMessage(this.as_feature());
-
-            if (this.is_self) {
-                const getProfile = await atlas.profile.profile;
-
-                const profile = getProfile instanceof Promise ? await getProfile : getProfile;
-
-                if (
-                    profile
-                    && (
-                        this.properties.remarks !== profile.tak_remarks
-                        || this.properties.callsign !== profile.tak_callsign
-                    )
-                ) {
-                    await atlas.profile.update({
-                        tak_callsign: this.properties.callsign,
-                        tak_remarks: this.properties.remarks
-                    })
-                }
-            } else if (!opts || (opts && opts.skipSave !== false)) {
+            if (!this.is_self && (!opts || (opts && opts.skipSave !== false))) {
                 await this.save();
             }
 
@@ -279,11 +272,12 @@ export default class COT {
             && this.properties.archived
             && this.origin.mode === OriginMode.CONNECTION
         ) {
-            const atlas = this._atlas as Atlas;
+            const tokenEntry = await db.config.get('token');
+            if (!tokenEntry) return;
 
             await std('/api/profile/feature', {
                 method: 'PUT',
-                token: atlas.token,
+                token: tokenEntry.value as string,
                 body: this.as_feature()
             })
         }
@@ -294,11 +288,7 @@ export default class COT {
     }
 
     get is_self(): boolean {
-        if (this._atlas) {
-            return this._atlas.profile.uid() === this.id;
-        } else {
-            return false;
-        }
+        return COT.selfUid === this.id;
     }
 
     get is_archivable(): boolean {
@@ -330,7 +320,9 @@ export default class COT {
             try {
                 this._username = (await this.subscription()).username;
             } catch (err) {
-                console.error(err);
+                // 404 is expected for contacts that are not CloudTAK users
+                // (chatbots, external devices, etc.) — log at debug level only
+                console.debug(err);
                 this._username = '';
             }
 
@@ -407,6 +399,7 @@ export default class COT {
             properties: {
                 id: input.id,        //Vector Tiles only support integer IDs so store in props
                 callsign: input.properties.callsign,
+                path: input.path || '/',
             },
             geometry: input.geometry
         };
@@ -457,13 +450,15 @@ export default class COT {
     }
 
     async flyTo(): Promise<void> {
+        const channel = new BroadcastChannel('cloudtak');
+
         if (this.geometry.type === 'Point') {
             let zoom = 16
             if (this.properties.minzoom) {
                 zoom = this.properties.minzoom;
             }
 
-            await this._atlas.postMessage({
+            channel.postMessage({
                 type: WorkerMessageType.Map_FlyTo,
                 body: {
                     center: [this.properties.center[0], this.properties.center[1]],
@@ -472,7 +467,7 @@ export default class COT {
                 }
             })
         } else {
-            await this._atlas.postMessage({
+            channel.postMessage({
                 type: WorkerMessageType.Map_FitBounds,
                 body: {
                     bounds: this.bounds(),
@@ -489,6 +484,8 @@ export default class COT {
                 }
             })
         }
+
+        channel.close();
     }
 
     static async style(
@@ -541,6 +538,16 @@ export default class COT {
         }
 
         if (type.includes('Point')) {
+            if (
+                properties.icon
+                && (
+                    properties.icon.startsWith('COT_MAPPING_2525C')
+                    || properties.icon.startsWith('COT_MAPPING_2525B')
+                )
+            ) {
+                delete properties.icon;
+            }
+
             if (properties.group) {
                 properties['icon-opacity'] = 0;
 
@@ -583,10 +590,10 @@ export default class COT {
                     properties.icon = properties.icon.replace(/.png$/, '');
                 }
 
-                if (!await Icon.has(properties.icon)) {
-                    console.warn(`No Icon for: ${properties.icon} fallback to ${properties.type}`);
-                    properties.icon = `${properties.type}`;
-                }
+                // Resolution happens via MapLibre's `styleimagemissing` handler
+                // (see IconManager.onStyleImageMissing). Iconset icons are
+                // loaded from Dexie on demand and unknown ids fall back to a
+                // generic point bitmap, so no preflight check is required.
             } else if (properties.milsym && !isNaN(Number(properties.milsym.id))) {
                 properties.icon = `2525D:${properties.milsym.id}`;
             } else {

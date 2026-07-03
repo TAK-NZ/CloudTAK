@@ -16,7 +16,6 @@
                     />
                 </TablerIconButton>
 
-
                 <span
                     class='ms-2'
                     v-text='route.params.template === "new" ? "New Template": template.name'
@@ -65,7 +64,16 @@
                         />
                     </div>
                     <div class='col-12'>
-                        <UploadLogo
+                        <label class='form-label mx-2'>Default Keywords</label>
+                        <Keywords
+                            :keywords='template.keywords'
+                            :relevant='[]'
+                            placeholder='Default Keywords'
+                            @update:keywords='template.keywords = $event'
+                        />
+                    </div>
+                    <div class='col-12'>
+                        <TablerUploadLogo
                             v-model='template.icon'
                             label='Template Logo'
                         />
@@ -99,14 +107,42 @@
                         <div class='text-muted'>
                             {{ template.description || 'No description provided.' }}
                         </div>
+
+                        <div class='col-12 mt-1'>
+                            <label class='form-label'>Default Keywords</label>
+                            <Keywords
+                                :keywords='template.keywords'
+                            />
+                        </div>
                     </div>
                 </div>
 
                 <div class='mt-3'>
                     <div class='d-flex align-items-center mb-2'>
-                        <label class='form-label m-0'>Mission Template Logs</label>
+                        <div
+                            class='btn-group btn-group-sm'
+                            role='group'
+                        >
+                            <button
+                                type='button'
+                                class='btn'
+                                :class='tab === "logs" ? "btn-secondary" : "btn-outline-secondary"'
+                                @click='tab = "logs"'
+                            >
+                                Logs
+                            </button>
+                            <button
+                                type='button'
+                                class='btn'
+                                :class='tab === "palettes" ? "btn-secondary" : "btn-outline-secondary"'
+                                @click='tab = "palettes"'
+                            >
+                                Palettes
+                            </button>
+                        </div>
                         <div class='ms-auto'>
                             <TablerIconButton
+                                v-if='tab === "logs"'
                                 title='Create Log'
                                 @click='router.push(`/admin/template/${route.params.template}/log/new`)'
                             >
@@ -115,41 +151,122 @@
                                     stroke='1'
                                 />
                             </TablerIconButton>
+                            <TablerIconButton
+                                v-else
+                                title='Create Palette'
+                                @click='createPalette'
+                            >
+                                <IconPlus
+                                    :size='20'
+                                    stroke='1'
+                                />
+                            </TablerIconButton>
                         </div>
                     </div>
-                    <TablerNone
-                        v-if='!template.logs || !template.logs.length'
-                        label='No Mission Template Logs'
-                        :create='false'
-                    />
-                    <div
-                        v-else
-                        class='card'
-                    >
-                        <div class='table-responsive'>
-                            <table class='table table-vcenter card-table table-hover'>
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Created</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr
-                                        v-for='log in template.logs'
-                                        :key='log.id'
-                                        class='cursor-pointer'
-                                        @click='router.push(`/admin/template/${route.params.template}/log/${log.id}`)'
-                                    >
-                                        <td v-text='log.name' />
-                                        <td>
-                                            <TablerEpoch :date='log.created' />
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                    <template v-if='tab === "logs"'>
+                        <TablerNone
+                            v-if='!template.logs || !template.logs.length'
+                            label='No Mission Template Logs'
+                            :create='false'
+                        />
+                        <div
+                            v-else
+                            class='card'
+                        >
+                            <div class='table-responsive'>
+                                <table class='table table-vcenter card-table table-hover'>
+                                    <thead>
+                                        <tr>
+                                            <th />
+                                            <th>Name</th>
+                                            <th>Keywords</th>
+                                            <th>Created</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr
+                                            v-for='log in template.logs'
+                                            :key='log.id'
+                                            class='cursor-pointer'
+                                            tabindex='0'
+                                            @keyup.enter='stdclick(router, $event, `/admin/template/${route.params.template}/log/${log.id}`)'
+                                            @click='stdclick(router, $event, `/admin/template/${route.params.template}/log/${log.id}`)'
+                                        >
+                                            <td class='w-1'>
+                                                <div
+                                                    class='d-flex justify-content-center align-items-center'
+                                                    style='width: 32px; height: 32px;'
+                                                >
+                                                    <img
+                                                        v-if='log.icon'
+                                                        :src='log.icon'
+                                                        style='max-width: 100%; max-height: 100%; object-fit: contain;'
+                                                        alt='Log Icon'
+                                                    >
+                                                </div>
+                                            </td>
+                                            <td v-text='log.name' />
+                                            <td>
+                                                <Keywords :keywords='log.keywords' />
+                                            </td>
+                                            <td>
+                                                <TablerEpoch :date='log.created' />
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
+                    </template>
+
+                    <template v-else>
+                        <TablerLoading
+                            v-if='paletteLoading'
+                            desc='Loading Palettes'
+                        />
+                        <TablerAlert
+                            v-else-if='paletteError'
+                            :err='paletteError'
+                        />
+                        <TablerNone
+                            v-else-if='!palettes.items.length'
+                            label='No Palettes'
+                            :create='false'
+                        />
+                        <div
+                            v-else
+                            class='card'
+                        >
+                            <div class='table-responsive'>
+                                <table class='table table-vcenter card-table table-hover'>
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Features</th>
+                                            <th>Created</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr
+                                            v-for='p in palettes.items'
+                                            :key='p.uuid'
+                                            class='cursor-pointer'
+                                            tabindex='0'
+                                            @keyup.enter='stdclick(router, $event, `/admin/template/${route.params.template}/palette/${p.uuid}`)'
+                                            @click='stdclick(router, $event, `/admin/template/${route.params.template}/palette/${p.uuid}`)'
+                                        >
+                                            <td v-text='p.name' />
+                                            <td v-text='p.features.length' />
+                                            <td>
+                                                <TablerEpoch :date='p.created' />
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
         </div>
@@ -160,8 +277,9 @@
 import { v4 as randomUUID } from 'uuid';
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { std } from '../../../src/std.ts';
-import type { MissionTemplate } from '../../../src/types.ts';
+import { server, stdclick } from '../../../src/std.ts';
+import type { MissionTemplate, PaletteList } from '../../../src/types.ts';
+import Keywords from '../CloudTAK/util/Keywords.vue';
 import {
     TablerInput,
     TablerAlert,
@@ -169,26 +287,14 @@ import {
     TablerIconButton,
     TablerLoading,
     TablerEpoch,
-    TablerNone
+    TablerNone,
+    TablerUploadLogo
 } from '@tak-ps/vue-tabler';
 import {
     IconCircleArrowLeft,
     IconPencil,
     IconPlus
 } from '@tabler/icons-vue'
-import UploadLogo from '../util/UploadLogo.vue';
-
-interface MissionTemplateLog {
-    id: string;
-    template: string;
-    name: string;
-    created: string;
-    updated: string;
-}
-
-interface MissionTemplateWithLogs extends MissionTemplate {
-    logs?: MissionTemplateLog[];
-}
 
 const route = useRoute();
 const router = useRouter();
@@ -197,19 +303,27 @@ const error = ref<Error | undefined>();
 const disabled = ref(true);
 const loading = ref(true);
 
-const template = ref<MissionTemplateWithLogs>({
+const tab = ref<'logs' | 'palettes'>('logs');
+
+const paletteLoading = ref(false);
+const paletteError = ref<Error | undefined>();
+const palettes = ref<PaletteList>({ total: 0, items: [] });
+
+const template = ref<MissionTemplate>({
     id: randomUUID(),
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
     name: '',
     icon: '',
     description: '',
+    keywords: [],
     logs: []
 });
 
 onMounted(async () => {
     if (route.params.template !== "new") {
         await fetchTemplate();
+        await fetchPalettes();
     } else {
         disabled.value = false
         loading.value = false;
@@ -221,18 +335,37 @@ async function saveTemplate() {
 
     try {
         if (route.params.template === "new") {
-            template.value = await std(`/api/template/mission`, {
-                method: 'POST',
+            const res = await server.POST(`/api/template/mission`, {
                 body: template.value
-            }) as MissionTemplateWithLogs 
+            });
+
+            if (res.error) {
+                loading.value = false;
+                error.value = new Error(res.error.message);
+                return;
+            }
+
+            if (res.data) template.value = { ...res.data, logs: template.value.logs };
 
             disabled.value = true;
             router.push(`/admin/template/${template.value.id}`);
         } else {
-            template.value = await std(`/api/template/mission/${route.params.template}`, {
-                method: 'PATCH',
+            const res = await server.PATCH(`/api/template/mission/{:mission}`, {
+                params: {
+                    path: {
+                        ":mission": String(route.params.template)
+                    }
+                },
                 body: template.value
-            }) as MissionTemplateWithLogs
+            });
+
+            if (res.error) {
+                loading.value = false;
+                error.value = new Error(res.error.message);
+                return;
+            }
+
+            if (res.data) template.value = { ...res.data, logs: template.value.logs };
 
             disabled.value = true;
         }
@@ -247,9 +380,19 @@ async function deleteTemplate() {
     loading.value = true;
 
     try {
-        await std(`/api/template/mission/${route.params.template}`, {
-            method: 'DELETE'
-        })
+        const res = await server.DELETE(`/api/template/mission/{:mission}`, {
+            params: {
+                path: {
+                    ":mission": String(route.params.template)
+                }
+            }
+        });
+
+        if (res.error) {
+            loading.value = false;
+            error.value = new Error(res.error.message);
+            return;
+        }
 
         router.push('/admin/templates');
     } catch (err) {
@@ -261,11 +404,53 @@ async function deleteTemplate() {
 async function fetchTemplate() {
     loading.value = true;
     try {
-        template.value = await std(`/api/template/mission/${route.params.template}`) as MissionTemplateWithLogs;
+        const res = await server.GET(`/api/template/mission/{:mission}`, {
+            params: {
+                path: {
+                    ":mission": String(route.params.template)
+                }
+            }
+        });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data) template.value = res.data;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     } finally {
         loading.value = false;
+    }
+}
+
+async function fetchPalettes() {
+    paletteLoading.value = true;
+    paletteError.value = undefined;
+    try {
+        const res = await server.GET(`/api/template/mission/{:mission}/palette`, {
+            params: {
+                query: { limit: 100, page: 0, order: 'asc', sort: 'name', filter: '' },
+                path: { ':mission': String(route.params.template) }
+            }
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        palettes.value = res.data as unknown as PaletteList;
+    } catch (err) {
+        paletteError.value = err instanceof Error ? err : new Error(String(err));
+    } finally {
+        paletteLoading.value = false;
+    }
+}
+
+async function createPalette() {
+    try {
+        const res = await server.POST(`/api/template/mission/{:mission}/palette`, {
+            params: { path: { ':mission': String(route.params.template) } },
+            body: { name: 'New Palette' }
+        });
+
+        if (res.error) throw new Error(res.error.message);
+        router.push(`/admin/template/${route.params.template}/palette/${res.data.uuid}`);
+    } catch (err) {
+        error.value = err instanceof Error ? err : new Error(String(err));
     }
 }
 </script>

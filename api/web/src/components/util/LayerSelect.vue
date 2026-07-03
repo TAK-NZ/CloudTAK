@@ -43,14 +43,14 @@
                         v-else-if='list.total === 0'
                         :create='false'
                         :compact='true'
-                        label='Layers'
+                        label='No Layers'
                     />
                     <template
                         v-for='layer in list.items'
                         v-else
                     >
                         <div
-                            class='hover px-2 py-2 cursor-pointer row rounded'
+                            class='cloudtak-hover px-2 py-2 cursor-pointer row rounded'
                             @click='selected = layer'
                         >
                             <div class='col-md-4'>
@@ -82,9 +82,10 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
-import { std, stdurl } from '/src/std.ts';
+import { server } from '../../std.ts';
+import type { APIList } from '../../types.ts';
 import {
     IconTrash,
 } from '@tabler/icons-vue';
@@ -95,26 +96,25 @@ import {
     TablerNone,
 } from '@tak-ps/vue-tabler';
 
-const props = defineProps({
-    modelValue: {
-        type: Number,
-        default: undefined
-    },
+const props = withDefaults(defineProps<{
+    modelValue?: number;
+}>(), {
+    modelValue: undefined,
 });
 
-const emit = defineEmits([
-    'update:modelValue'
-]);
+const emit = defineEmits<{
+    (e: 'update:modelValue', value: string | number | undefined): void;
+}>();
 
 const loading = ref({
     main: true,
     list: true,
-})
+});
 
-const selected = ref({
+const selected = ref<{ id?: string | number; name?: string; description?: string }>({
     id: '',
     name: ''
-})
+});
 
 const paging = ref({
     filter: '',
@@ -122,7 +122,7 @@ const paging = ref({
     page: 0
 });
 
-const list = ref({
+const list = ref<APIList<{ id: number; name: string; description?: string }>>({
     total: 0,
     items: []
 });
@@ -131,7 +131,7 @@ watch(selected, async () => {
     emit('update:modelValue', selected.value.id);
 }, { deep: true });
 
-watch(props.modelValue, async () => {
+watch(() => props.modelValue, async () => {
     await fetch();
 });
 
@@ -146,16 +146,38 @@ onMounted(async () => {
 });
 
 async function fetch() {
-    selected.value = await std(`/api/layer/${props.modelValue}`);
+    const res = await server.GET('/api/layer/{:layerid}', {
+        params: {
+            path: {
+                ':layerid': Number(props.modelValue)
+            },
+            query: {
+                alarms: false
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    selected.value = res.data as typeof selected.value;
 }
 
 async function listData() {
     loading.value.list = true;
-    const url = stdurl('/api/layer');
-    url.searchParams.append('filter', paging.value.filter);
-    url.searchParams.append('limit', paging.value.limit);
-    url.searchParams.append('page', paging.value.page);
-    list.value = await std(url);
+    const res = await server.GET('/api/layer', {
+        params: {
+            query: {
+                alarms: false,
+                filter: paging.value.filter,
+                limit: paging.value.limit,
+                page: paging.value.page,
+                order: 'asc',
+                sort: 'name'
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    list.value = res.data as typeof list.value;
 
     loading.value.list = false;
 }

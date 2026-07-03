@@ -44,66 +44,37 @@
                     placeholder='Filter...'
                 />
             </div>
-            <div
-                class='px-2 py-2 round btn-group w-100'
-                role='group'
+            <TablerPillGroup
+                v-model='mode'
+                :options='[
+                    { value: "users", label: "Users" },
+                    { value: "groups", label: "Channels" },
+                    { value: "missions", label: "Data Syncs" }
+                ]'
+                :disabled='loading'
             >
-                <input
-                    id='mode-users'
-                    type='radio'
-                    class='btn-check'
-                    autocomplete='off'
-                    :checked='mode === "users"'
-                    :disabled='loading'
-                    @click='mode = "users"'
-                >
-                <label
-                    for='mode-users'
-                    type='button'
-                    class='btn btn-sm'
-                ><IconUsers
-                    v-tooltip='"Users"'
-                    :size='24'
-                    stroke='1'
-                /> <span class='ms-2'>Users</span></label>
-
-                <input
-                    id='mode-groups'
-                    type='radio'
-                    class='btn-check'
-                    autocomplete='off'
-                    :checked='mode === "groups"'
-                    :disabled='loading'
-                    @click='mode = "groups"'
-                >
-                <label
-                    for='mode-groups'
-                    type='button'
-                    class='btn btn-sm'
-                ><IconAffiliate
-                    v-tooltip='"Channels"'
-                    :size='24'
-                    stroke='1'
-                /> <span class='ms-2'>Channels</span></label>
-                <input
-                    id='mode-missions'
-                    type='radio'
-                    class='btn-check'
-                    autocomplete='off'
-                    :checked='mode === "missions"'
-                    :disabled='loading'
-                    @click='mode = "missions"'
-                >
-                <label
-                    for='mode-missions'
-                    type='button'
-                    class='btn btn-sm'
-                ><IconReplace
-                    v-tooltip='"Data Syncs"'
-                    :size='24'
-                    stroke='1'
-                /> <span class='ms-2'>Data Syncs</span></label>
-            </div>
+                <template #option='{ option }'>
+                    <IconUsers
+                        v-if='option.value === "users"'
+                        v-tooltip='"Users"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <IconAffiliate
+                        v-else-if='option.value === "groups"'
+                        v-tooltip='"Channels"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <IconReplace
+                        v-else
+                        v-tooltip='"Data Syncs"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <span class='ms-2'>{{ option.label }}</span>
+                </template>
+            </TablerPillGroup>
 
             <div
                 class='col-12 overflow-auto'
@@ -124,6 +95,7 @@
                             :contact='a'
                             :button-chat='false'
                             :button-zoom='false'
+                            :fly-to-click='false'
                             :selected='selectedUsers.has(a)'
                             class='rounded'
                             @click='selectedUsers.has(a) ? selectedUsers.delete(a) : selectedUsers.add(a)'
@@ -142,7 +114,7 @@
                         <div
                             v-for='ch in visibleChannels'
                             :key='ch.name'
-                            class='col-lg-12 py-2 px-2 hover rounded cursor-pointer user-select-none'
+                            class='col-lg-12 py-2 px-2 cloudtak-hover rounded cursor-pointer user-select-none'
                             @click='selectedGroups.has(ch) ? selectedGroups.delete(ch) : selectedGroups.add(ch)'
                         >
                             <IconAffiliate
@@ -167,14 +139,14 @@
                         v-if='loading'
                     />
                     <TablerNone
-                        v-else-if='!Object.keys(visibleChannels).length'
+                        v-else-if='!visibleMissions.length'
                         :create='false'
                     />
                     <template v-else>
                         <div
                             v-for='m in visibleMissions'
                             :key='m.name'
-                            class='col-lg-12 py-2 px-2 hover rounded cursor-pointer user-select-none'
+                            class='col-lg-12 py-2 px-2 cloudtak-hover rounded cursor-pointer user-select-none'
                             @click='selectedMissions.has(m) ? selectedMissions.delete(m) : selectedMissions.add(m)'
                         >
                             <IconReplace
@@ -236,16 +208,22 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import type { Ref } from 'vue';
+import { liveQuery } from 'dexie';
+import { useObservable } from '@vueuse/rxjs';
+import { from } from 'rxjs';
 import { OriginMode } from '../../../base/cot.ts';
 import { v4 as randomUUID } from 'uuid';
-import { std, stdurl } from '../../../std.ts';
+import { std } from '../../../std.ts';
+import ContactManager from '../../../base/contact.ts';
 import {
     TablerNone,
     TablerInput,
     TablerModal,
     TablerLoading,
     TablerButton,
+    TablerPillGroup,
 } from '@tak-ps/vue-tabler';
 import {
     IconUsers,
@@ -256,11 +234,9 @@ import {
     IconShare2
 } from '@tabler/icons-vue';
 import Subscription from '../../../base/subscription.ts';
-import type { Contact, ContactList, Feature, Group } from '../../../types.ts'
-import type { WorkerMessage } from '../../../base/events.ts';
+import type { Contact, ContactList, Feature, GroupChannel } from '../../../types.ts'
 import COTContact from '../util/Contact.vue';
 import { useMapStore } from '../../../stores/map.ts';
-import { WorkerMessageType } from '../../../base/events.ts';
 
 const mapStore = useMapStore();
 
@@ -278,21 +254,25 @@ const loading = ref(true);
 const filter = ref('');
 const mode = ref('users');
 
-const selectedGroups = ref<Set<Group>>(new Set())
+const selectedGroups = ref<Set<GroupChannel>>(new Set())
 const selectedMissions = ref<Set<{
     name: string
     guid: string
 }>>(new Set())
 const selectedUsers = ref<Set<Contact>>(new Set())
 
-const contacts = ref<ContactList>([]);
-const channels = ref<Array<Group>>([]);
+const contacts: Ref<ContactList | undefined> = useObservable(
+    from(liveQuery(async () => {
+        return await ContactManager.list();
+    }))
+);
+const channels = ref<Array<GroupChannel>>([]);
 const missions = ref<Array<{
     name: string
     guid: string
 }>>([]);
 
-const visibleChannels = computed<Array<Group>>(() => {
+const visibleChannels = computed<Array<GroupChannel>>(() => {
     return channels.value.filter((channel) => {
         return channel.name.toLowerCase().includes(filter.value.toLowerCase());
     });
@@ -308,6 +288,7 @@ const visibleMissions = computed<Array<{
 });
 
 const visibleContacts = computed<ContactList>(() => {
+    if (!contacts.value) return [];
     return contacts.value.filter((contact) => {
         return contact.callsign;
     }).filter((contact) => {
@@ -315,27 +296,9 @@ const visibleContacts = computed<ContactList>(() => {
     })
 });
 
-const channel = new BroadcastChannel("cloudtak");
-
-channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
-    const msg = event.data;
-    if (!msg || !msg.type) return;
-
-    if (msg.type === WorkerMessageType.Contact_Change) {
-        await fetchUserList();
-    }
-}
-
 onMounted(async () => {
-    await fetchUserList();
     await fetchChannelList();
     await fetchMissions();
-});
-
-onBeforeUnmount(() => {
-    if (channel) {
-        channel.close();
-    }
 });
 
 watch(mode, () => {
@@ -470,7 +433,7 @@ async function fetchChannelList() {
 
     channels.value = (await mapStore.worker.profile.loadChannels()).filter((channel) => {
         if (!channel.active) return false;
-        if (channel.direction !== 'IN') return false;
+        if (!channel.direction.includes('IN')) return false;
         return true;
     });
 
@@ -487,10 +450,4 @@ async function fetchMissions() {
     loading.value = false;
 }
 
-async function fetchUserList() {
-    loading.value = true;
-    const url = stdurl('/api/marti/api/contacts/all');
-    contacts.value = await std(url) as ContactList;
-    loading.value = false;
-}
 </script>

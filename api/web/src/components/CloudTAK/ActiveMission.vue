@@ -1,0 +1,190 @@
+<template>
+    <div
+        class='d-flex text-white align-items-center px-2'
+        style='
+            z-index: 1;
+            height: 60px;
+            max-width: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 0px 0px 6px 0px;
+        '
+    >
+        <template v-if='!mapStore.mission'>
+            <div
+                class='cloudtak-hover d-flex align-items-center user-select-none cursor-pointer rounded px-2'
+                style='height: 40px;'
+                @click='router.push("/menu/missions")'
+            >
+                <IconMap
+                    :size='32'
+                    stroke='1'
+                    class='me-2'
+                />
+                <div class='me-2 font-weight-bold'>
+                    No Active Data Sync
+                </div>
+            </div>
+        </template>
+        <template v-else>
+            <div
+                class='d-flex align-items-center user-select-none cursor-pointer cloudtak-hover rounded px-2 me-2'
+                style='height: 40px;'
+                @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}`)'
+            >
+                <IconReplace
+                    :size='32'
+                    stroke='1'
+                    class='me-2'
+                />
+
+                <span
+                    class='text-truncate fw-bold'
+                    style='max-width: 200px;'
+                    v-text='mapStore.mission.meta.name'
+                />
+            </div>
+
+            <div
+                class='d-none d-md-block border-start border-white opacity-50 mx-1'
+                style='height: 32px;'
+            />
+
+            <div class='d-none d-md-flex gap-1 ms-2'>
+                <TablerIconButton
+                    title='Layers'
+                    class='cloudtak-hover'
+                    :hover='false'
+                    @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/layers`)'
+                >
+                    <IconBoxMultiple
+                        :size='32'
+                        stroke='1'
+                    />
+                </TablerIconButton>
+
+                <TablerIconButton
+                    title='Changes'
+                    class='cloudtak-hover'
+                    :hover='false'
+                    @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/changes`)'
+                >
+                    <IconTimeline
+                        :size='32'
+                        stroke='1'
+                    />
+                </TablerIconButton>
+
+                <TablerIconButton
+                    title='Users'
+                    class='cloudtak-hover'
+                    :hover='false'
+                    @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/users`)'
+                >
+                    <IconUsers
+                        :size='32'
+                        stroke='1'
+                    />
+                </TablerIconButton>
+
+                <div class='position-relative'>
+                    <TablerIconButton
+                        title='Logs'
+                        class='cloudtak-hover'
+                        :hover='false'
+                        @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/logs`)'
+                    >
+                        <IconArticle
+                            :size='32'
+                            stroke='1'
+                        />
+                    </TablerIconButton>
+                    <span
+                        v-if='unreadLogs && unreadLogs > 0'
+                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm border border-dark'
+                        style='font-size: 0.75rem; z-index: 10;'
+                    >
+                        {{ unreadLogs > 99 ? '99+' : unreadLogs }}
+                    </span>
+                </div>
+
+                <div class='position-relative'>
+                    <TablerIconButton
+                        title='Chats'
+                        class='cloudtak-hover'
+                        :hover='false'
+                        @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/chats`)'
+                    >
+                        <IconMessage
+                            :size='32'
+                            stroke='1'
+                        />
+                    </TablerIconButton>
+                    <span
+                        v-if='unreadChats && unreadChats > 0'
+                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm border border-dark'
+                        style='font-size: 0.75rem; z-index: 10;'
+                    >
+                        {{ unreadChats > 99 ? '99+' : unreadChats }}
+                    </span>
+                </div>
+
+                <TablerIconButton
+                    title='Files'
+                    class='cloudtak-hover'
+                    :hover='false'
+                    @click='router.push(`/menu/missions/${mapStore.mission.meta.guid}/contents`)'
+                >
+                    <IconFiles
+                        :size='32'
+                        stroke='1'
+                    />
+                </TablerIconButton>
+            </div>
+        </template>
+    </div>
+</template>
+
+<script setup lang='ts'>
+import { useRouter } from 'vue-router';
+import { useMapStore } from '../../stores/map.ts';
+import { db } from '../../database.ts';
+import { liveQuery } from 'dexie';
+import { useObservable } from '@vueuse/rxjs';
+import { from } from 'rxjs';
+import { TablerIconButton } from '@tak-ps/vue-tabler';
+import {
+    IconReplace,
+    IconMap,
+    IconBoxMultiple,
+    IconTimeline,
+    IconUsers,
+    IconArticle,
+    IconFiles,
+    IconMessage,
+} from '@tabler/icons-vue';
+
+const mapStore = useMapStore();
+const router = useRouter();
+
+const unreadLogs = useObservable(
+    from(liveQuery(async () => {
+        if (!mapStore.mission) return 0;
+        return await db.subscription_log
+            .where('mission')
+            .equals(mapStore.mission.meta.guid)
+            .filter(l => l.read === false)
+            .count();
+    }))
+);
+
+const unreadChats = useObservable(
+    from(liveQuery(async () => {
+        if (!mapStore.mission) return 0;
+        return await db.subscription_chat
+            .where('mission')
+            .equals(mapStore.mission.meta.guid)
+            .filter(c => c.unread === true)
+            .count();
+    }))
+);
+</script>

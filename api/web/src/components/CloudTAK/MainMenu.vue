@@ -1,19 +1,5 @@
 <template>
-    <TablerModal
-        v-if='mapStore.isMobileDetected'
-        size='xl'
-    >
-        <div
-            ref='menu'
-            class='position-relative w-100 h-100 px-0'
-        >
-            <MainMenuContents
-                :compact='false'
-                :modal='true'
-                @close='router.push("/")'
-            />
-        </div>
-    </TablerModal>
+    <router-view v-if='appStore.isMobileDetected' />
     <template v-else>
         <div
             ref='container'
@@ -23,28 +9,36 @@
             }'
         />
         <div
-            class='position-absolute end-0 bottom-0 text-white d-flex'
+            class='position-absolute end-0 text-white d-flex'
             role='menubar'
             :class='{
-                "bg-dark": !compact,
+                "cloudtak-bg": !compact,
             }'
-            style='z-index: 1; top: 56px;'
+            style='
+                z-index: 4;
+                top: 60px;
+                bottom: var(--map-bottom-bar-size, 50px);
+            '
             :style='`
-            width: ${compact ? "60px" : `${menuWidth}px`};
-            min-width: ${compact ? "60px" : `400px`};
-            ${compact ? "background-color: rgb(0, 0, 0, 0.5)" : ""}
-        `'
+                width: ${compact ? "var(--map-compact-menu-size, 60px)" : `${menuWidth}px`};
+                min-width: ${compact ? "var(--map-compact-menu-size, 60px)" : `400px`};
+                ${compact ? "background-color: rgb(0, 0, 0, 0.5)" : ""}
+            `'
         >
             <div
                 v-if='!compact'
                 ref='resize'
-                class='resize hover cursor-drag'
+                class='resize cloudtak-bg cloudtak-hover cursor-drag'
             />
             <div
                 ref='menu'
                 class='position-relative w-100 h-100 px-0'
             >
-                <MainMenuContents :compact='compact' />
+                <MainMenuContents
+                    v-if='compact'
+                    :compact='true'
+                />
+                <router-view v-else />
             </div>
         </div>
     </template>
@@ -52,16 +46,12 @@
 
 <script setup lang='ts'>
 import { ref, watch, useTemplateRef, onMounted } from 'vue';
-import {
-    TablerModal,
-} from '@tak-ps/vue-tabler';
 import { useMapStore } from '../../stores/map.ts';
-import { useRouter } from 'vue-router';
+import { useAppStore } from '../../stores/app.ts';
 import MainMenuContents from './MainMenuContents.vue';
 
-const router = useRouter();
-
 const mapStore = useMapStore();
+const appStore = useAppStore();
 
 const resizing = ref(false);
 
@@ -71,20 +61,30 @@ const container = useTemplateRef('container');
 
 const menuWidth = ref<number>(400);
 
+const COMPACT_MENU_WIDTH = 60;
+const TOAST_OFFSET_BUFFER = 10;
+const MENU_RESIZE_HANDLE_WIDTH = 14;
+
 const props = defineProps({
     compact: Boolean,
 })
 
-watch(props, () => {
-    if (props.compact && mapStore.toastOffset.x !== 70) {
-        mapStore.toastOffset.x = 70;
-    } else if (!props.compact && mapStore.toastOffset.x !== menuWidth.value + 10) {
-        mapStore.toastOffset.x = menuWidth.value + 10;
+const syncToastOffset = () => {
+    const nextOffset = props.compact
+        ? COMPACT_MENU_WIDTH + TOAST_OFFSET_BUFFER
+        : menuWidth.value + MENU_RESIZE_HANDLE_WIDTH + TOAST_OFFSET_BUFFER;
+
+    if (mapStore.toastOffset.x !== nextOffset) {
+        mapStore.toastOffset.x = nextOffset;
     }
+};
+
+watch(() => props.compact, () => {
+    syncToastOffset();
 });
 
 watch(menuWidth, () => {
-    mapStore.toastOffset.x = menuWidth.value + 10;
+    if (!props.compact) syncToastOffset();
 });
 
 watch(resize, (newVal, oldVal, onCleanup) => {
@@ -95,7 +95,8 @@ watch(resize, (newVal, oldVal, onCleanup) => {
         let beginX = resize.value.getBoundingClientRect().x;
         let deltaX = 0;
 
-        const onStart = () => {
+        const onStart = (e?: Event) => {
+            if (e && e.type === 'touchstart') e.preventDefault();
             if (!resize.value) return;
             beginWidth = menuWidth.value;
             beginX = resize.value.getBoundingClientRect().x;
@@ -120,7 +121,7 @@ watch(resize, (newVal, oldVal, onCleanup) => {
         const onMouseMove = (e: MouseEvent) => onMove(e.clientX, e);
         const onMouseUp = () => onEnd();
 
-        const onTouchStart = () => onStart();
+        const onTouchStart = (e: TouchEvent) => onStart(e);
         const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX, e);
         const onTouchEnd = () => onEnd();
 
@@ -129,23 +130,25 @@ watch(resize, (newVal, oldVal, onCleanup) => {
         const containerEl = container.value;
 
         resizeEl.addEventListener("mousedown", onMouseDown);
-        resizeEl.addEventListener("touchstart", onTouchStart);
+        resizeEl.addEventListener("touchstart", onTouchStart, { passive: false });
+        resizeEl.addEventListener("touchmove", onTouchMove, { passive: false });
         resizeEl.addEventListener("mouseup", onMouseUp);
         resizeEl.addEventListener("touchend", onTouchEnd);
 
         menuEl.addEventListener("mousemove", onMouseMove);
-        menuEl.addEventListener("touchmove", onTouchMove);
+        menuEl.addEventListener("touchmove", onTouchMove, { passive: false });
         menuEl.addEventListener("mouseup", onMouseUp);
         menuEl.addEventListener("touchend", onTouchEnd);
 
         containerEl.addEventListener("mousemove", onMouseMove);
-        containerEl.addEventListener("touchmove", onTouchMove);
+        containerEl.addEventListener("touchmove", onTouchMove, { passive: false });
         containerEl.addEventListener("mouseup", onMouseUp);
         containerEl.addEventListener("touchend", onTouchEnd);
 
         onCleanup(() => {
             resizeEl.removeEventListener("mousedown", onMouseDown);
             resizeEl.removeEventListener("touchstart", onTouchStart);
+            resizeEl.removeEventListener("touchmove", onTouchMove);
             resizeEl.removeEventListener("mouseup", onMouseUp);
             resizeEl.removeEventListener("touchend", onTouchEnd);
 
@@ -163,19 +166,23 @@ watch(resize, (newVal, oldVal, onCleanup) => {
 })
 
 onMounted(async () => {
-    mapStore.toastOffset.x = props.compact ? 70 : menuWidth.value + 10;
+    syncToastOffset();
 })
 </script>
 
 <style scoped>
 .resize {
-   height: 100%;
+   height: 60px;
    width: 14px;
    cursor: col-resize;
    flex-shrink: 0;
-   position: relative;
+   position: absolute;
+   left: -14px;
+   top: 50%;
+   transform: translateY(-50%);
    z-index: 10;
    user-select: none;
+   border-radius: 4px 0 0 4px;
 }
 .resize::before {
    content: "";
@@ -185,6 +192,6 @@ onMounted(async () => {
    transform: translate(-50%, -50%);
    width: 3px;
    height: 15px;
-   border-inline: 1px solid #fff;
+   border-inline: 1px solid currentColor;
 }
 </style>

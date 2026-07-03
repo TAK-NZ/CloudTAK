@@ -34,8 +34,8 @@
         </template>
 
         <template #default>
-            <div class='menu-overlays d-flex flex-column gap-3'>
-                <div class='menu-overlays__controls mt-2 d-flex mx-2 align-items-center gap-3 flex-wrap'>
+            <div class='d-flex flex-column gap-3'>
+                <div class='mt-2 d-flex align-items-center gap-3 flex-wrap'>
                     <TablerInput
                         v-model='overlayFilter'
                         placeholder='Search overlays...'
@@ -57,17 +57,17 @@
                     <div
                         v-if='overlayCards.length'
                         ref='sortableRef'
-                        class='menu-overlays__list d-flex flex-column gap-3 mx-2'
+                        class='d-flex flex-column gap-3'
                     >
-                        <article
+                        <StandardItem
                             v-for='card in overlayCards'
                             :id='String(card.overlay.id)'
                             :key='card.overlay.id'
-                            class='menu-overlays__card border border-white border-opacity-25 rounded-4 bg-black bg-opacity-25 p-3 shadow-sm'
+                            class='p-3'
                             :class='{
-                                "menu-overlays__card--dragging": isDraggable,
-                                "cursor-pointer": !isDraggable && card.overlay.id !== 0
+                                "border-primary": isDraggable
                             }'
+                            :hover='!isDraggable && card.overlay.id !== 0'
                             @click='handleCardClick(card.overlay.id)'
                             @keydown.enter.prevent='handleCardKeydown(card.overlay.id)'
                             @keydown.space.prevent='handleCardKeydown(card.overlay.id)'
@@ -77,12 +77,10 @@
                             >
                                 <div
                                     class='d-flex align-items-center gap-2 flex-grow-1 w-100 overflow-hidden'
-                                    role='button'
-                                    :tabindex='!isDraggable && card.overlay.id !== 0 ? 0 : -1'
                                     :aria-disabled='isDraggable || card.overlay.id === 0'
                                 >
                                     <IconGripVertical
-                                        v-if='isDraggable && card.overlay.name !== "CoT Icons"'
+                                        v-if='isDraggable'
                                         v-tooltip='"Drag to reorder"'
                                         class='drag-handle cursor-move text-white-50'
                                         role='button'
@@ -90,26 +88,16 @@
                                         :size='20'
                                         stroke='1'
                                     />
-                                    <IconGripVertical
-                                        v-else-if='isDraggable && card.overlay.name === "CoT Icons"'
-                                        v-tooltip='"CoT Icons always stays at top"'
-                                        class='text-white-50 opacity-50'
-                                        role='button'
-                                        tabindex='-1'
-                                        :size='20'
-                                        stroke='1'
-                                        aria-disabled='true'
-                                    />
                                     <IconMap
-                                        v-if='card.overlay.mode === "basemap"'
-                                        v-tooltip='"Basemap"'
+                                        v-if='card.overlay.type === "raster"'
+                                        v-tooltip='"Raster"'
                                         :size='20'
                                         stroke='1'
                                         class='flex-shrink-0 text-white-50'
                                     />
                                     <IconMap
-                                        v-else-if='card.overlay.type === "raster"'
-                                        v-tooltip='"Raster"'
+                                        v-else-if='card.overlay.type === "raster-dem"'
+                                        v-tooltip='"Terrain"'
                                         :size='20'
                                         stroke='1'
                                         class='flex-shrink-0 text-white-50'
@@ -122,51 +110,38 @@
                                         class='flex-shrink-0 text-white-50'
                                     />
                                     <IconVector
-                                        v-else-if='card.overlay.name === "CoT Icons"'
-                                        v-tooltip='"Vector"'
-                                        :size='20'
-                                        stroke='1'
-                                        class='flex-shrink-0 text-white-50'
-                                    />
-                                    <IconStack
                                         v-else
-                                        v-tooltip='"Overlay"'
+                                        v-tooltip='"Vector"'
                                         :size='20'
                                         stroke='1'
                                         class='flex-shrink-0 text-white-50'
                                     />
 
                                     <div class='flex-grow-1 w-100 overflow-hidden'>
-                                        <div class='menu-overlays__title-row d-flex align-items-center gap-2 w-100'>
-                                            <div class='d-flex align-items-center flex-grow-1 w-100 overflow-hidden'>
+                                        <div class='d-flex align-items-center gap-2 w-100'>
+                                            <div class='d-flex align-items-center flex-grow-1 w-100'>
                                                 <a
                                                     v-if='card.overlay.mode === "mission"'
-                                                    class='menu-overlays__name menu-overlays__name--link fw-semibold text-decoration-underline d-inline-flex align-items-center'
+                                                    class='fw-semibold text-decoration-underline d-inline-flex align-items-center text-break'
                                                     @click.stop='router.push(`/menu/missions/${card.overlay.mode_id}`)'
-                                                    v-text='card.overlay.name'
-                                                />
-                                                <a
-                                                    v-else-if='card.overlay.mode === "basemap"'
-                                                    class='menu-overlays__name menu-overlays__name--link fw-semibold text-decoration-underline d-inline-flex align-items-center'
-                                                    @click.stop='router.push("/menu/basemaps")'
                                                     v-text='card.overlay.name'
                                                 />
                                                 <span
                                                     v-else
-                                                    class='menu-overlays__name fw-semibold d-inline-flex align-items-center flex-grow-1 text-truncate'
+                                                    class='fw-semibold d-inline-flex align-items-center flex-grow-1 text-break'
                                                     v-text='card.overlay.name'
                                                 />
                                             </div>
                                         </div>
                                         <div
                                             v-if='card.badges.length'
-                                            class='menu-overlays__badges d-flex flex-wrap gap-2 mt-2'
+                                            class='d-flex flex-wrap gap-2 mt-2'
                                         >
                                             <span
                                                 v-for='badge in card.badges'
                                                 :key='`${card.overlay.id}-${badge.label}`'
-                                                class='badge rounded-pill small'
-                                                :class='badgeToneClasses[badge.tone]'
+                                                class='badge rounded-pill'
+                                                :class='`text-bg-${badge.variant}`'
                                             >
                                                 {{ badge.label }}
                                             </span>
@@ -179,8 +154,8 @@
                                     class='d-flex flex-column align-items-end gap-2'
                                 >
                                     <span
-                                        class='badge rounded-pill small d-inline-flex align-items-center gap-1 px-2 py-1'
-                                        :class='statusToneClasses[card.status.tone]'
+                                        class='badge rounded-pill'
+                                        :class='`text-bg-${card.status.variant}`'
                                         :title='card.status.tooltip || ""'
                                     >
                                         {{ card.status.label }}
@@ -188,7 +163,7 @@
 
                                     <div class='d-flex align-items-center gap-2 flex-wrap justify-content-end w-100'>
                                         <TablerIconButton
-                                            v-if='card.overlay.hasBounds() && card.overlay.mode !== "basemap"'
+                                            v-if='card.overlay.hasBounds()'
                                             title='Zoom To Overlay'
                                             @click.stop.prevent='card.overlay.zoomTo()'
                                         >
@@ -199,9 +174,9 @@
                                         </TablerIconButton>
 
                                         <TablerIconButton
-                                            v-if='card.overlay.visible && card.overlay.mode !== "basemap"'
+                                            v-if='card.visible'
                                             title='Hide Layer'
-                                            @click.stop.prevent='card.overlay.update({ visible: !card.overlay.visible })'
+                                            @click.stop.prevent='void updateOverlay(card.overlay, { visible: !card.visible })'
                                         >
                                             <IconEye
                                                 :size='20'
@@ -210,9 +185,9 @@
                                         </TablerIconButton>
 
                                         <TablerIconButton
-                                            v-else-if='card.overlay.mode !== "basemap"'
+                                            v-else
                                             title='Show Layer'
-                                            @click.stop.prevent='card.overlay.update({ visible: !card.overlay.visible })'
+                                            @click.stop.prevent='void updateOverlay(card.overlay, { visible: !card.visible })'
                                         >
                                             <IconEyeOff
                                                 :size='20'
@@ -234,57 +209,63 @@
                                 </div>
                             </div>
 
-                            <transition name='menu-overlays-fade'>
+                            <div
+                                v-if='!isDraggable && opened.has(card.overlay.id)'
+                                class='mt-3 p-3 rounded-3 border border-white border-opacity-10 bg-black bg-opacity-25'
+                                @click.stop
+                            >
                                 <div
-                                    v-if='!isDraggable && opened.has(card.overlay.id)'
-                                    class='mt-3 p-3 rounded-3 border border-white border-opacity-10 bg-black bg-opacity-25'
-                                    @click.stop
+                                    v-if='card.overlay.type === "raster"'
+                                    class='mb-3'
                                 >
-                                    <div
-                                        v-if='card.overlay.type === "raster" && card.overlay.mode !== "basemap"'
-                                        class='mb-3'
-                                    >
-                                        <TablerRange
-                                            v-model='card.overlay.opacity'
-                                            label='Opacity'
-                                            :min='0'
-                                            :max='1'
-                                            :step='0.1'
-                                            @change='card.overlay.update({
-                                                opacity: card.overlay.opacity
-                                            })'
-                                        />
-                                    </div>
-                                    <div
-                                        v-if='card.overlay.type === "geojson" && card.overlay.id === -1'
-                                        class='mb-3'
-                                    >
-                                        <TreeCots
-                                            :element='card.overlay'
-                                        />
-                                    </div>
-                                    <div
-                                        v-if='card.overlay.mode === "mission"'
-                                        class='mb-3'
-                                    >
-                                        <TreeMission
-                                            :overlay='card.overlay'
-                                        />
-                                    </div>
-                                    <TreeVector
-                                        v-if='card.overlay.type === "vector"'
+                                    <TablerRange
+                                        :model-value='card.overlay.opacity'
+                                        label='Opacity'
+                                        :min='0'
+                                        :max='1'
+                                        :step='0.1'
+                                        @update:model-value='void updateOverlay(card.overlay, { opacity: $event })'
+                                    />
+                                </div>
+                                <div
+                                    v-if='card.overlay.type === "raster-dem"'
+                                    class='mb-3'
+                                >
+                                    <TablerEnum
+                                        :model-value='card.overlay.encoding || "mapbox"'
+                                        label='Terrain Encoding'
+                                        :options='["mapbox", "terrarium"]'
+                                        @update:model-value='void updateOverlay(card.overlay, { encoding: $event })'
+                                    />
+                                </div>
+                                <div
+                                    v-if='card.overlay.type === "geojson" && card.overlay.id === -1'
+                                    class='mb-3'
+                                >
+                                    <TreeCots
+                                        :element='card.overlay'
+                                    />
+                                </div>
+                                <div
+                                    v-if='card.overlay.mode === "mission"'
+                                    class='mb-3'
+                                >
+                                    <TreeMission
                                         :overlay='card.overlay'
                                     />
                                 </div>
-                            </transition>
-                        </article>
+                                <TreeVector
+                                    v-if='card.overlay.type === "vector"'
+                                    :overlay='card.overlay'
+                                />
+                            </div>
+                        </StandardItem>
                     </div>
 
                     <TablerNone
                         v-else
-                        label='overlays match your search'
+                        label='No overlays match your search'
                         :create='false'
-                        class='px-2'
                     />
                 </template>
             </div>
@@ -293,11 +274,13 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, watch, useTemplateRef, computed, onBeforeUnmount } from 'vue';
+import { ref, watch, useTemplateRef, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
+import type { Subscription } from 'dexie';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import {
     TablerDelete,
+    TablerEnum,
     TablerIconButton,
     TablerInput,
     TablerLoading,
@@ -317,36 +300,23 @@ import {
     IconPencilCheck,
     IconPlus,
     IconEye,
-    IconStack,
     IconMap
 } from '@tabler/icons-vue';
+import StandardItem from '../util/StandardItem.vue';
 import Sortable from 'sortablejs';
 import type { SortableEvent } from 'sortablejs';
 import { useMapStore } from '../../../../src/stores/map.ts';
-import type Overlay from '../../../../src/base/overlay.ts';
+import type Overlay from '../../../../src/base/overlay-class.ts';
+import type { DBOverlay } from '../../../../src/database.ts';
+import OverlayManager from '../../../../src/base/overlay.ts';
 
-type OverlayBadgeTone = 'primary' | 'neutral' | 'mission' | 'warning' | 'muted';
-type OverlayBadge = { label: string; tone: OverlayBadgeTone };
-type OverlayStatusTone = 'success' | 'warning' | 'danger';
-type OverlayStatus = { label: string; tone: OverlayStatusTone; tooltip?: string };
-type OverlayCard = { overlay: Overlay; status: OverlayStatus; badges: OverlayBadge[] };
+type OverlayBadge = { label: string; variant: string };
+type OverlayStatus = { label: string; variant: string; tooltip?: string };
+type OverlayUpdate = Parameters<Overlay['update']>[0];
+type OverlayCard = { overlay: Overlay; visible: boolean; status: OverlayStatus; badges: OverlayBadge[] };
 
 const mapStore = useMapStore();
 const router = useRouter();
-
-const statusToneClasses: Record<OverlayStatusTone, string> = {
-    success: 'bg-success-subtle text-success-emphasis border border-success border-opacity-50',
-    warning: 'bg-warning-subtle text-warning-emphasis border border-warning border-opacity-50',
-    danger: 'bg-danger-subtle text-danger-emphasis border border-danger border-opacity-50'
-};
-
-const badgeToneClasses: Record<OverlayBadgeTone, string> = {
-    mission: 'bg-primary text-white border border-primary border-opacity-50',
-    primary: 'bg-info-subtle text-info-emphasis border border-info border-opacity-50',
-    neutral: 'bg-light bg-opacity-10 text-light border border-light border-opacity-25',
-    warning: 'bg-warning-subtle text-warning-emphasis border border-warning border-opacity-50',
-    muted: 'bg-secondary-subtle text-secondary-emphasis border border-secondary border-opacity-50'
-};
 
 let sortable: Sortable | undefined;
 
@@ -354,52 +324,64 @@ const isDraggable = ref(false);
 const loading = ref(false);
 const opened = ref<Set<number>>(new Set());
 const overlayFilter = ref('');
+const overlayRenderTick = ref(0);
 
 const isLoaded = mapStore.isLoaded;
-const overlays = (mapStore as unknown as { overlays: Overlay[] }).overlays;
+const dbOverlays = ref<DBOverlay[]>([]);
 
-// Sort overlays with CoT Icons always at top
-const sortedOverlays = computed<Overlay[]>(() => {
-    return [...overlays].sort((a, b) => {
-        // CoT Icons always goes first
-        if (a.name === 'CoT Icons') return -1;
-        if (b.name === 'CoT Icons') return 1;
-        
-        // For all other overlays, maintain position order
-        return (a.pos || 0) - (b.pos || 0);
-    });
-});
+let listSubscription: Subscription | undefined;
 
 const sortableRef = useTemplateRef<HTMLElement>('sortableRef');
 
 const hasSearchTerm = computed(() => overlayFilter.value.trim().length > 0);
 
-const filteredOverlays = computed<Overlay[]>(() => {
+function overlayMatchesTerm(overlay: Overlay, term: string): boolean {
+    return (
+        (overlay.name ?? '').toLowerCase().includes(term)
+        || (overlay.type ?? '').toLowerCase().includes(term)
+        || (overlay.mode ?? '').toLowerCase().includes(term)
+    );
+}
+
+const overlayCards = computed<OverlayCard[]>(() => {
+    void overlayRenderTick.value;
+
     const term = overlayFilter.value.trim().toLowerCase();
-    if (!term) return sortedOverlays.value;
+    const seen = new Set<number>();
+    const cards: OverlayCard[] = [];
 
-    return sortedOverlays.value.filter((overlay) => {
-        const name = (overlay.name ?? '').toLowerCase();
-        const type = (overlay.type ?? '').toLowerCase();
-        const mode = (overlay.mode ?? '').toLowerCase();
+    const consider = (overlay: Overlay | undefined): void => {
+        if (!overlay || seen.has(overlay.id)) return;
+        seen.add(overlay.id);
+        if (term && !overlayMatchesTerm(overlay, term)) return;
 
-        return (
-            name.includes(term)
-            || type.includes(term)
-            || mode.includes(term)
-        );
-    });
+        cards.push({
+            overlay,
+            visible: overlay.visible,
+            status: resolveOverlayStatus(overlay),
+            badges: getOverlayBadges(overlay)
+        });
+    };
+
+    // Database-backed overlays drive membership and ordering (pos)
+    for (const record of dbOverlays.value) {
+        consider(OverlayManager.loadedFrom(record.id));
+    }
+
+    // Internal / loaded-only overlays (e.g. the "Map Features" overlay) are
+    // never persisted to the database, so merge them in from the loaded set
+    for (const overlay of OverlayManager.loaded) {
+        consider(overlay);
+    }
+
+    return cards;
 });
 
-const overlayCards = computed<OverlayCard[]>(() => filteredOverlays.value.map((overlay) => ({
-    overlay,
-    status: resolveOverlayStatus(overlay),
-    badges: getOverlayBadges(overlay)
-})));
+const overlayCount = computed(() => overlayCards.value.length);
 
-const canEditOrder = computed(() => !hasSearchTerm.value && overlays.length > 1);
+const canEditOrder = computed(() => !hasSearchTerm.value && overlayCount.value > 1);
 
-const showDragHint = computed(() => overlays.length > 1 && !isDraggable.value && !canEditOrder.value);
+const showDragHint = computed(() => overlayCount.value > 1 && !isDraggable.value && !canEditOrder.value);
 
 const dragHintCopy = computed(() => {
     if (!showDragHint.value) return '';
@@ -409,10 +391,31 @@ const dragHintCopy = computed(() => {
 const reorderButtonTitle = computed(() => {
     if (isDraggable.value) return 'Save Order';
     if (!canEditOrder.value) {
-        if (overlays.length <= 1) return 'Add another overlay to reorder';
+        if (overlayCount.value <= 1) return 'Add another overlay to reorder';
         return 'Clear the search to reorder overlays';
     }
     return 'Edit Order';
+});
+
+function subscribeList(): void {
+    listSubscription?.unsubscribe();
+    loading.value = true;
+
+    listSubscription = OverlayManager.liveList().subscribe({
+        next: (items) => {
+            dbOverlays.value = items as DBOverlay[];
+            loading.value = false;
+        },
+        error: (err: unknown) => {
+            console.error('Failed to load overlays:', err);
+            dbOverlays.value = [];
+            loading.value = false;
+        }
+    });
+}
+
+onMounted(() => {
+    subscribeList();
 });
 
 watch(overlayFilter, () => {
@@ -447,6 +450,9 @@ watch(
 );
 
 onBeforeUnmount(() => {
+    listSubscription?.unsubscribe();
+    listSubscription = undefined;
+
     if (sortable) {
         sortable.destroy();
         sortable = undefined;
@@ -486,22 +492,30 @@ function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
     if (!overlay.healthy()) {
         return {
             label: 'Issue',
-            tone: 'danger',
+            variant: 'danger',
             tooltip: overlay._error?.message ?? 'Unknown error'
+        };
+    }
+
+    if (overlay.loading) {
+        return {
+            label: 'Pending',
+            variant: 'warning',
+            tooltip: 'Overlay is still loading data from the server.'
         };
     }
 
     if (!overlay.styles?.length) {
         return {
             label: 'Pending',
-            tone: 'warning',
+            variant: 'warning',
             tooltip: 'Overlay does not contain any styles yet.'
         };
     }
 
     return {
         label: 'Ready',
-        tone: 'success'
+        variant: 'success'
     };
 }
 
@@ -516,23 +530,25 @@ function getOverlayBadges(overlay: Overlay): OverlayBadge[] {
     };
 
     if (overlay.mode === 'mission') {
-        addBadge({ label: 'Mission', tone: 'mission' });
+        addBadge({ label: 'Mission', variant: 'primary' });
     } else if (overlay.mode === 'data') {
-        addBadge({ label: 'Data', tone: 'primary' });
+        addBadge({ label: 'Data', variant: 'info' });
     } else if (overlay.mode === 'profile') {
-        addBadge({ label: 'Profile', tone: 'primary' });
+        addBadge({ label: 'Profile', variant: 'info' });
     }
 
     if (overlay.type === 'raster') {
-        addBadge({ label: 'Raster', tone: 'neutral' });
+        addBadge({ label: 'Raster', variant: 'secondary' });
+    } else if (overlay.type === 'raster-dem') {
+        addBadge({ label: 'Terrain', variant: 'secondary' });
     } else if (overlay.type === 'vector') {
-        addBadge({ label: 'Vector', tone: 'neutral' });
+        addBadge({ label: 'Vector', variant: 'secondary' });
     } else if (overlay.type === 'geojson') {
-        addBadge({ label: 'GeoJSON', tone: 'neutral' });
+        addBadge({ label: 'GeoJSON', variant: 'secondary' });
     }
 
     if (!overlay.visible) {
-        addBadge({ label: 'Hidden', tone: 'muted' });
+        addBadge({ label: 'Hidden', variant: 'dark' });
     }
 
     return badges;
@@ -545,81 +561,29 @@ async function saveOrder(sortableEv: SortableEvent) {
     const id = sortableEv.item.getAttribute('id');
     if (!id) return;
 
-    // Prevent moving CoT Icons from the top position
-    const draggedOverlay = mapStore.getOverlayById(parseInt(id));
-    if (draggedOverlay?.name === 'CoT Icons') {
-        // Reset the sortable to original position
-        if (sortable) sortable.sort(sortable.toArray());
-        return;
-    }
-
     const overlay_ids = sortable.toArray().map((i) => parseInt(i));
 
-    const overlay = mapStore.getOverlayById(parseInt(id));
-    if (!overlay) throw new Error('Could not find Overlay');
+    await OverlayManager.reorderLoaded(overlay_ids, id);
+}
 
-    const post = mapStore.getOverlayById(overlay_ids[sortableEv.newIndex + 1]);
+async function updateOverlay(overlay: Overlay, body: OverlayUpdate): Promise<void> {
+    const update = overlay.update(body);
+    overlayRenderTick.value += 1;
 
-    for (const l of overlay.styles) {
-        if (post) {
-            mapStore.map.moveLayer(l.id, post.styles[0].id);
-        } else {
-            mapStore.map.moveLayer(l.id);
-        }
-    }
-
-    for (const current of sortedOverlays.value) {
-        await current.update({
-            pos: overlay_ids.indexOf(current.id)
-        });
+    try {
+        await update;
+    } finally {
+        overlayRenderTick.value += 1;
     }
 }
 
 async function removeOverlay(id: number) {
     loading.value = true;
-    for (const overlay of overlays) {
-        if (overlay.id === id) {
-            await mapStore.removeOverlay(overlay);
-        }
+    try {
+        await OverlayManager.deleteLoaded(id);
+    } finally {
+        loading.value = false;
     }
-    loading.value = false;
 }
 </script>
 
-<style scoped>
-.menu-overlays__card {
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.menu-overlays__card--dragging {
-    border-color: rgba(99, 137, 255, 0.6) !important;
-    box-shadow: 0 0 0 1px rgba(99, 137, 255, 0.5);
-}
-
-.menu-overlays__card:hover,
-.menu-overlays__card:focus-within {
-    transform: translateY(-1px);
-    border-color: rgba(255, 255, 255, 0.4) !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
-}
-
-.menu-overlays__name {
-    min-width: 0;
-    display: inline-flex;
-    align-items: center;
-}
-
-.menu-overlays__name--link {
-    width: fit-content;
-}
-
-.menu-overlays-fade-enter-active,
-.menu-overlays-fade-leave-active {
-    transition: opacity 0.15s ease;
-}
-
-.menu-overlays-fade-enter-from,
-.menu-overlays-fade-leave-to {
-    opacity: 0;
-}
-</style>

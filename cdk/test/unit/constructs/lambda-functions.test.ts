@@ -106,8 +106,9 @@ describe('LambdaFunctions Construct', () => {
     });
 
     const template = Template.fromStack(stack);
-    template.hasResourceProperties('AWS::ApiGateway::RestApi', {
-      Name: 'TAK-DevTest-CloudTAK-pmtiles'
+    template.hasResourceProperties('AWS::ApiGatewayV2::Api', {
+      Name: 'TAK-DevTest-CloudTAK-pmtiles',
+      ProtocolType: 'HTTP',
     });
   });
 });

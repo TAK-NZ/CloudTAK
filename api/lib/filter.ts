@@ -1,15 +1,16 @@
-import { Type, Static } from '@sinclair/typebox'
+import { Type, Static } from '@sinclair/typebox';
 import jsonata from 'jsonata';
 import CoT, { CoTParser } from '@tak-ps/node-cot';
 import Err from '@openaddresses/batch-error';
 
 export const FilterContainerQuery = Type.Object({
-    query: Type.String()
+    name: Type.Optional(Type.String()),
+    query: Type.String(),
 });
 
 export const FilterContainer = Type.Object({
-    queries: Type.Optional(Type.Array(FilterContainerQuery))
-})
+    queries: Type.Optional(Type.Array(FilterContainerQuery)),
+});
 
 /**
  * Filter COT markers by a given set of filters
@@ -25,7 +26,7 @@ export default class Filter {
      */
     static async test(
         filters: Static<typeof FilterContainer>,
-        cot: CoT
+        cot: CoT,
     ): Promise<boolean> {
         if (!filters.queries) return false;
 
@@ -39,9 +40,7 @@ export default class Filter {
                     if (await expression.evaluate(feature) === true) {
                         return true;
                     }
-
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                } catch (err) {
+                } catch {
                     // Ignore queries that result in invalid output - this is explicitly allowed
                 }
             }

@@ -17,6 +17,16 @@
                 </TablerIconButton>
 
                 <TablerIconButton
+                    title='Update Management'
+                    @click='router.push("/admin/layer/updates")'
+                >
+                    <IconListDetails
+                        :size='32'
+                        stroke='1'
+                    />
+                </TablerIconButton>
+
+                <TablerIconButton
                     title='Redeploy'
                     @click='redeploy'
                 >
@@ -72,7 +82,7 @@
             />
             <div
                 v-else
-                class='table-responsive'
+                class='table-responsive pb-5'
             >
                 <table class='table card-table table-hover table-vcenter datatable'>
                     <TableHeader
@@ -89,8 +99,8 @@
                             class='cursor-pointer'
                             role='menuitem'
                             tabindex='0'
-                            @keyup.enter='external(`/connection/${layer.connection || "template"}/layer/${layer.id}`)'
-                            @click='external(`/connection/${layer.connection || "template"}/layer/${layer.id}`)'
+                            @keyup.enter='navTo(`/connection/${layer.connection || 0}/layer/${layer.id}`, $event)'
+                            @click='navTo(`/connection/${layer.connection || 0}/layer/${layer.id}`, $event)'
                         >
                             <template v-for='h in header'>
                                 <template v-if='h.display && h.name === "name"'>
@@ -169,7 +179,8 @@
 <script setup lang='ts'>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router';
-import { std, stdurl } from '../../std.ts';
+import { openSecondaryView } from '../../base/capacitor.ts';
+import { server } from '../../std.ts';
 import type { ETLLayerList, ETLLayer } from '../../types.ts';
 import TableHeader from '../util/TableHeader.vue'
 import TableFooter from '../util/TableFooter.vue'
@@ -189,6 +200,7 @@ import {
     IconStackPop,
     IconStackPush,
     IconCloudUpload,
+    IconListDetails,
 } from '@tabler/icons-vue'
 
 const router = useRouter();
@@ -235,37 +247,66 @@ onMounted(async () => {
 async function redeploy() {
     loading.value = true;
 
-    await std(`/api/layer/redeploy`, {
-        method: 'POST'
-    });
-
-    loading.value = false;
+    try {
+        const res = await server.POST('/api/layer/redeploy');
+        if (res.error) throw new Error(String(res.error));
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+            error.value = err;
+        } else {
+            error.value = new Error(String(err));
+        }
+    } finally {
+        loading.value = false;
+    }
 }
 
-function external(url: string) {
-    window.open(url, '_blank');
-}
+
 
 async function listLayerSchema() {
-    const schema = await std('/api/schema?method=GET&url=/layer');
+    const res = await server.GET('/api/schema', {
+        params: {
+            query: {
+                method: 'GET',
+                url: '/layer'
+            }
+        }
+    });
+
+    if (res.error) {
+        error.value = new Error(res.error.message);
+        return;
+    }
+    if (!res.data) return;
+
+    const schema = res.data as { query?: { properties?: { sort?: { enum?: string[] } } } };
 
     const defaults: Array<keyof ETLLayer> = ['id', 'name', 'task'];
     header.value = defaults.map((h) => {
         return { name: h, display: true };
     });
 
-    // @ts-expect-error Worth trying to type at some point maybe but not now
-    header.value.push(...schema.query.properties.sort.enum.map((h) => {
-        return {
-            name: h,
-            display: false
-        }
-    }).filter((h: Header) => {
-        for (const hknown of header.value) {
-            if (hknown.name === h.name) return false;
-        }
-        return true;
-    }));
+    if (schema?.query?.properties?.sort?.enum) {
+        header.value.push(...schema.query.properties.sort.enum.map((h: string) => {
+            return {
+                name: h as keyof ETLLayer,
+                display: false
+            }
+        }).filter((h: Header) => {
+            for (const hknown of header.value) {
+                if (hknown.name === h.name) return false;
+            }
+            return true;
+        }));
+    }
+}
+
+function navTo(path: string, event: MouseEvent | KeyboardEvent) {
+    if (event?.ctrlKey) {
+        void openSecondaryView(path);
+    } else {
+        window.location.href = path;
+    }
 }
 
 async function fetchList() {
@@ -273,25 +314,31 @@ async function fetchList() {
     error.value = undefined;
 
     try {
-        const url = stdurl('/api/layer');
-        url.searchParams.append('alarms', 'true');
-        url.searchParams.append('filter', paging.value.filter);
-        url.searchParams.append('limit', String(paging.value.limit));
-        url.searchParams.append('page', String(paging.value.page));
-        url.searchParams.append('sort', paging.value.sort);
-        url.searchParams.append('order', paging.value.order);
+        const query: Record<string, unknown> = {
+            alarms: true,
+            filter: paging.value.filter,
+            limit: paging.value.limit,
+            page: paging.value.page,
+            sort: paging.value.sort,
+            order: paging.value.order
+        };
 
         if (paging.value.task !== 'All Tasks') {
-            url.searchParams.append('task', paging.value.task);
+            query.task = paging.value.task;
         }
 
         if (paging.value.template === 'Connection') {
-            url.searchParams.append('template', String(false));
+            query.template = false;
         } else if (paging.value.template === 'Template') {
-            url.searchParams.append('template', String(true));
+            query.template = true;
         }
 
-        list.value = await std(url) as ETLLayerList;
+        const res = await server.GET('/api/layer', {
+            // @ts-expect-error Paging Object
+            params: { query }
+        });
+        if (res.error) throw new Error(String(res.error));
+        list.value = res.data as unknown as ETLLayerList;
         loading.value = false;
     } catch (err) {
         loading.value = false;

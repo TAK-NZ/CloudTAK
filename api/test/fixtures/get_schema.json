@@ -26,7 +26,7 @@
     },
     "PUT /attachment": {
         "body": false,
-        "query": false,
+        "query": true,
         "res": true
     },
     "GET /attachment/:hash": {
@@ -35,7 +35,7 @@
         "res": false
     },
     "PUT /basemap": {
-        "body": false,
+        "body": true,
         "query": false,
         "res": true
     },
@@ -109,23 +109,13 @@
         "query": false,
         "res": true
     },
-    "GET /config/group": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /config/map": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /connection/:connectionid/asset": {
         "body": false,
         "query": false,
         "res": true
     },
     "POST /connection/:connectionid/asset": {
-        "body": false,
+        "body": true,
         "query": false,
         "res": true
     },
@@ -150,7 +140,7 @@
         "res": true
     },
     "POST /connection/:connectionid/data/:dataid/asset": {
-        "body": false,
+        "body": true,
         "query": false,
         "res": true
     },
@@ -160,11 +150,6 @@
         "res": true
     },
     "GET /connection/:connectionid/data/:dataid/asset/:asset.:ext": {
-        "body": false,
-        "query": false,
-        "res": false
-    },
-    "GET /connection/:connectionid/data/:dataid/asset/:asset.pmtiles/tile": {
         "body": false,
         "query": false,
         "res": false
@@ -207,6 +192,11 @@
     "DELETE /connection/:connectionid/feature": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "PUT /connection/:connectionid/feature": {
+        "body": true,
+        "query": false,
         "res": true
     },
     "DELETE /connection/:connectionid/feature/:id": {
@@ -275,6 +265,11 @@
         "res": true
     },
     "POST /layer/redeploy": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer/update-management": {
         "body": false,
         "query": false,
         "res": true
@@ -399,8 +394,18 @@
         "query": false,
         "res": true
     },
+    "POST /connection/refresh": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "PATCH /connection/:connectionid": {
         "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/0": {
+        "body": false,
         "query": false,
         "res": true
     },
@@ -429,9 +434,24 @@
         "query": true,
         "res": true
     },
+    "GET /error/:errorid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "POST /error": {
         "body": true,
         "query": false,
+        "res": true
+    },
+    "DELETE /error/:errorid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /error": {
+        "body": false,
+        "query": true,
         "res": true
     },
     "POST /esri": {
@@ -484,42 +504,7 @@
         "query": false,
         "res": false
     },
-    "GET /import": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "PUT /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PUT /import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /import/:import/raw": {
-        "body": false,
-        "query": true,
-        "res": false
-    },
-    "PATCH /import/:import": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /import/:import": {
+    "GET /geofence": {
         "body": false,
         "query": false,
         "res": true
@@ -589,6 +574,56 @@
         "query": true,
         "res": false
     },
+    "GET /import": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import/raw": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "POST /import/:import/result": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /import/:import/retry": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /layer": {
         "body": false,
         "query": true,
@@ -629,6 +664,36 @@
         "query": false,
         "res": true
     },
+    "GET /login/passkey": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/register/options": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/register": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/authenticate/options": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/authenticate": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /login/passkey/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "POST /login": {
         "body": true,
         "query": false,
@@ -643,6 +708,11 @@
         "body": false,
         "query": false,
         "res": true
+    },
+    "GET /manifest.webmanifest/logos/:size": {
+        "body": false,
+        "query": false,
+        "res": false
     },
     "POST /marti/export": {
         "body": true,
@@ -799,8 +869,28 @@
         "query": false,
         "res": true
     },
-    "POST /marti/package": {
+    "GET /marti/missions/:guid/invite": {
         "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/missions/:guid/invite": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/invite": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/user": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /marti/package": {
+        "body": true,
         "query": true,
         "res": true
     },
@@ -816,6 +906,11 @@
     },
     "GET /marti/package/:uid": {
         "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/package/:uid": {
+        "body": true,
         "query": false,
         "res": true
     },
@@ -869,6 +964,11 @@
         "query": true,
         "res": true
     },
+    "GET /marti/clients": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /marti/api/contacts/all": {
         "body": false,
         "query": false,
@@ -889,31 +989,6 @@
         "query": false,
         "res": true
     },
-    "GET /template/mission/:mission/log": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /template/mission/:mission/log": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /template/mission/:mission/log/:log": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PATCH /template/mission/:mission/log/:log": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /template/mission/:mission/log/:log": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "POST /template/mission": {
         "body": true,
         "query": false,
@@ -929,52 +1004,77 @@
         "query": false,
         "res": true
     },
-    "GET /palette": {
+    "GET /template/mission/:mission/log": {
         "body": false,
         "query": true,
         "res": true
     },
-    "GET /palette/:palette": {
+    "GET /template/mission/:mission/log/:log": {
         "body": false,
         "query": false,
         "res": true
     },
-    "POST /palette": {
+    "POST /template/mission/:mission/log": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PATCH /palette/:palette": {
+    "PATCH /template/mission/:mission/log/:log": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /palette/:palette": {
+    "DELETE /template/mission/:mission/log/:log": {
         "body": false,
         "query": false,
         "res": true
     },
-    "GET /palette/:palette/feature": {
+    "GET /template/mission/:mission/palette": {
         "body": false,
         "query": true,
         "res": true
     },
-    "GET /palette/:palette/feature/:feature": {
+    "GET /template/mission/:mission/palette/:palette": {
         "body": false,
         "query": false,
         "res": true
     },
-    "POST /palette/:palette/feature": {
+    "POST /template/mission/:mission/palette": {
         "body": true,
         "query": false,
         "res": true
     },
-    "PATCH /palette/:palette/feature/:feature": {
+    "PATCH /template/mission/:mission/palette/:palette": {
         "body": true,
         "query": false,
         "res": true
     },
-    "DELETE /palette/:palette/feature/:feature": {
+    "DELETE /template/mission/:mission/palette/:palette": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette/:palette/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette/:palette/feature/:feature": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission/:mission/palette/:palette/feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission/palette/:palette/feature/:feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission/palette/:palette/feature/:feature": {
         "body": false,
         "query": false,
         "res": true
@@ -1079,6 +1179,11 @@
         "query": false,
         "res": true
     },
+    "PUT /profile/location": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /profile/overlay": {
         "body": false,
         "query": true,
@@ -1102,6 +1207,41 @@
     "DELETE /profile/overlay": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "GET /profile/paging": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/paging": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/paging/:pagingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/paging/:pagingid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/paging/:pagingid/verify": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/paging/:pagingid/resend": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/paging/:pagingid": {
+        "body": false,
+        "query": false,
         "res": true
     },
     "GET /profile/token": {
@@ -1154,6 +1294,11 @@
         "query": false,
         "res": true
     },
+    "POST /proxy": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /server/injector": {
         "body": false,
         "query": false,
@@ -1169,6 +1314,11 @@
         "query": true,
         "res": true
     },
+    "POST /retention": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /server/repeater": {
         "body": false,
         "query": false,
@@ -1179,17 +1329,37 @@
         "query": false,
         "res": true
     },
-    "GET /server/video": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
     "GET /search": {
         "body": false,
         "query": false,
         "res": true
     },
     "GET /search/reverse/:longitude/:latitude": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/sun": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/magnetic": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/weather": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/reverse": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/elevation": {
         "body": false,
         "query": true,
         "res": true
@@ -1205,6 +1375,16 @@
         "res": true
     },
     "GET /search/suggest": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /server/tileset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /server/video": {
         "body": false,
         "query": true,
         "res": true
@@ -1254,6 +1434,11 @@
         "query": false,
         "res": true
     },
+    "GET /task/:task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "PATCH /task/:task": {
         "body": true,
         "query": false,
@@ -1287,6 +1472,11 @@
     "GET /user/:username": {
         "body": false,
         "query": false,
+        "res": true
+    },
+    "GET /user/:username/session": {
+        "body": false,
+        "query": true,
         "res": true
     },
     "POST /video/auth": {

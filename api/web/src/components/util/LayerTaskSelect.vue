@@ -71,7 +71,7 @@
                         v-else-if='list.total === 0'
                         :create='false'
                         :compact='true'
-                        label='Tasks'
+                        label='No Tasks'
                     />
                     <div
                         v-else
@@ -82,8 +82,8 @@
                         >
                             <div class='col-sm-6 col-lg-3'>
                                 <div
-                                    class='card card-link cursor-pointer hover'
-                                    @click='selected = select(task)'
+                                    class='card card-link cursor-pointer cloudtak-hover'
+                                    @click='select(task)'
                                 >
                                     <div class='card-header d-flex align-items-center user-select-none'>
                                         <IconStar
@@ -186,9 +186,10 @@
     </TablerModal>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
-import { std, stdurl } from '/src/std.ts';
+import { server } from '../../std.ts';
+import type { APIList } from '../../types.ts';
 import {
     IconStar,
     IconTrash,
@@ -206,45 +207,86 @@ import {
     TablerNone,
 } from '@tak-ps/vue-tabler';
 
-const props = defineProps({
-    modelValue: {
-        type: String,
-        default: undefined
-    },
-    disabled: {
-        type: Boolean,
-        default: false
-    }
+interface Task {
+    id?: number;
+    name?: string;
+    prefix?: string;
+    logo?: string | null;
+    version?: string;
+    versions?: string[];
+    favorite?: boolean;
+    readme_body?: string;
+    repo?: string | null;
+    readme?: string | null;
+    [key: string]: unknown;
+}
+
+const props = withDefaults(defineProps<{
+    modelValue?: string;
+    disabled?: boolean;
+}>(), {
+    modelValue: undefined,
+    disabled: false,
 });
 
-const emit = defineEmits([
-    'update:modelValue'
-]);
+const emit = defineEmits<{
+    (e: 'update:modelValue', value: string | undefined): void;
+}>();
 
-const loading = ref({
+const loading = ref<Record<string, boolean>>({
     main: true,
     modal: true,
     list: true,
 });
 
-const infoModal = ref();
+const infoModal = ref<Task>();
 
-const selected = ref({
+const selected = ref<Task>({
     id: undefined
 });
 
 const paging = ref({
     filter: '',
     limit: 12,
-    sort: 'favorite',
-    order: 'desc',
+    sort: 'favorite' as const,
+    order: 'desc' as const,
     page: 0
 });
 
-const list = ref({
+const list = ref<APIList<Task>>({
     total: 0,
     items: []
 });
+
+function selectedModelValue(): string | undefined {
+    if (!selected.value.prefix || !selected.value.version) return undefined;
+    return `${selected.value.prefix}-v${selected.value.version}`;
+}
+
+async function resolveTask(task: Task): Promise<Task> {
+    if (task.id) return task;
+
+    const existing = list.value.items.find((item) => item.prefix === task.prefix);
+    if (existing) return existing;
+
+    const res = await server.GET('/api/task', {
+        params: {
+            query: {
+                filter: String(task.prefix || ''),
+                limit: 1,
+                page: 0,
+                order: paging.value.order,
+                sort: paging.value.sort
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+
+    const match = res.data.items.find((item) => item.prefix === task.prefix);
+
+    return match || task;
+}
 
 watch(selected, () => {
     if (selected.value.id) {
@@ -259,15 +301,32 @@ watch(selected, () => {
 watch(infoModal, async function() {
     if (!infoModal.value) return;
 
-    const readme = await std(`/api/task/${infoModal.value.id}/readme`);
+    const res = await server.GET('/api/task/{:task}/readme', {
+        params: {
+            path: {
+                ':task': Number(infoModal.value.id)
+            }
+        }
+    });
 
-    infoModal.value.readme_body = readme.body;
+    if (res.error) throw new Error(res.error.message);
+
+    infoModal.value.readme_body = res.data.body;
 })
 
-watch(props.modelValue, async function() {
-    if (props.modelValue) {
-        select.value  = await select(props.modelValue.split('-v')[0], props.modelValue.split('-v')[1])
+watch(() => props.modelValue, async function() {
+    if (!props.modelValue) {
+        selected.value = {
+            id: undefined
+        };
+        return;
     }
+
+    if (props.modelValue === selectedModelValue()) {
+        return;
+    }
+
+    await select({ prefix: props.modelValue.split('-v')[0] } as Task, props.modelValue.split('-v')[1])
 });
 
 watch(paging.value, async () => {
@@ -276,21 +335,32 @@ watch(paging.value, async () => {
 
 onMounted(async () => {
     if (props.modelValue) {
-        await select(props.modelValue.split('-v')[0], props.modelValue.split('-v')[1])
+        await select({ prefix: props.modelValue.split('-v')[0] } as Task, props.modelValue.split('-v')[1])
     }
 
     await listTasks();
     loading.value.main = false;
 });
 
-async function select(task, version) {
+async function select(task: Task, version?: string) {
     loading.value.task = true;
 
-    const detail = await std(`/api/task/raw/${task.prefix}`);
+    const resolvedTask = await resolveTask(task);
+    const res = await server.GET('/api/task/raw/{:task}', {
+        params: {
+            path: {
+                ':task': String(task.prefix)
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+
+    const versions = res.data.versions.map((v) => v.version);
     selected.value = {
-        versions: detail.versions,
-        version: version || detail.versions[0],
-        ...task
+        versions,
+        version: version || versions[0],
+        ...resolvedTask
     }
 
     loading.value.task = false;
@@ -298,13 +368,20 @@ async function select(task, version) {
 
 async function listTasks() {
     loading.value.list = true;
-    const url = stdurl('/api/task');
-    url.searchParams.append('filter', paging.value.filter);
-    url.searchParams.append('limit', paging.value.limit);
-    url.searchParams.append('order', paging.value.order);
-    url.searchParams.append('sort', paging.value.sort);
-    url.searchParams.append('page', paging.value.page);
-    list.value = await std(url);
+    const res = await server.GET('/api/task', {
+        params: {
+            query: {
+                filter: paging.value.filter,
+                limit: paging.value.limit,
+                order: paging.value.order,
+                sort: paging.value.sort,
+                page: paging.value.page
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    list.value = res.data as APIList<Task>;
 
     loading.value.list = false;
 }

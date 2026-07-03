@@ -1,17 +1,37 @@
 <template>
     <div
-        class='text-white bg-dark rounded position-relative'
+        class='text-white cloudtak-bg rounded position-relative'
     >
-        <TablerInput
-            ref='searchBoxRef'
-            v-model='query.filter'
-            :label='props.label'
-            :autofocus='props.autofocus'
-            class='mt-0'
-            :placeholder='props.placeholder'
-            icon='search'
-            @focus='selected = false'
-        />
+        <div class='d-flex align-items-end gap-1'>
+            <TablerInput
+                ref='searchBoxRef'
+                v-model='query.filter'
+                :label='props.label'
+                :autofocus='props.autofocus'
+                class='mt-0 flex-grow-1'
+                :placeholder='props.placeholder'
+                icon='search'
+                @focus='selected = false'
+            />
+            <TablerIconButton
+                v-if='props.locationPicker'
+                class='location-picker-btn mb-1 d-flex align-items-center justify-content-center flex-shrink-0'
+                :color='pickingLocation ? "var(--tblr-primary)" : undefined'
+                :title='pickingLocation ? "Click on map to select location" : "Select location on map"'
+                @click='pickingLocation ? cancelPickingLocation() : startPickingLocation()'
+            >
+                <IconCrosshair
+                    :size='20'
+                    stroke='1'
+                />
+            </TablerIconButton>
+        </div>
+        <div
+            v-if='pickingLocation'
+            class='text-muted small mt-1 px-1'
+        >
+            Click on the map to select a location
+        </div>
 
         <div
             class='dropdown-menu w-100 mt-2 p-2'
@@ -67,23 +87,24 @@
 </template>
 
 <script setup lang='ts'>
-import type { SearchForward, SearchSuggest } from '../../../types.ts';
 import { convert } from 'geo-coordinates-parser'
 import { v4 as randomUUID } from 'uuid';
 import Feature from './FeatureRow.vue';
 import StandardItem from './StandardItem.vue';
-import { std, stdurl } from '../../../std.ts'
+import { server } from '../../../std.ts'
 import { useMapStore } from '../../../stores/map.ts';
 import COT from '../../../base/cot.ts';
 import {
     TablerNone,
     TablerInput,
-    TablerLoading
+    TablerLoading,
+    TablerIconButton
 } from '@tak-ps/vue-tabler';
 import {
-    IconMapPin
+    IconMapPin,
+    IconCrosshair
 } from '@tabler/icons-vue';
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 
 const props = defineProps({
     label: {
@@ -97,6 +118,14 @@ const props = defineProps({
     placeholder: {
         type: String,
         default: 'Search...'
+    },
+    locationPicker: {
+        type: Boolean,
+        default: false
+    },
+    initialValue: {
+        type: String,
+        default: ''
     }
 });
 
@@ -106,6 +135,50 @@ const emit = defineEmits(['select']);
 
 const selected = ref(false);
 const partialLoading = ref(false);
+const pickingLocation = ref(false);
+
+onMounted(() => {
+    if (props.initialValue) {
+        query.value.filter = props.initialValue;
+        selected.value = true;
+    }
+});
+
+function startPickingLocation(): void {
+    pickingLocation.value = true;
+    selected.value = true;
+    mapStore.map.getCanvas().style.cursor = 'crosshair';
+
+    mapStore.map.once('click', onMapClick);
+}
+
+function cancelPickingLocation(): void {
+    pickingLocation.value = false;
+    mapStore.map.getCanvas().style.cursor = '';
+    mapStore.map.off('click', onMapClick);
+}
+
+function onMapClick(e: { lngLat: { lng: number, lat: number } }): void {
+    pickingLocation.value = false;
+    mapStore.map.getCanvas().style.cursor = '';
+
+    const { lng, lat } = e.lngLat;
+    const label = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    query.value.filter = label;
+    selected.value = true;
+
+    emit('select', {
+        name: label,
+        coordinates: [lng, lat]
+    });
+}
+
+onUnmounted(() => {
+    if (pickingLocation.value) {
+        mapStore.map.getCanvas().style.cursor = '';
+        mapStore.map.off('click', onMapClick);
+    }
+});
 
 const shown = computed(() => {
     if (query.value.filter.length > 0 && !selected.value) {
@@ -177,15 +250,22 @@ async function fetchSearch(
                 limit: 5
             })
 
-        const url = stdurl('/api/search/suggest');
-        url.searchParams.append('query', query.value.filter);
-        url.searchParams.append('limit', '5');
         const center = mapStore.map.getCenter();
-        url.searchParams.append('longitude', String(center.lng));
-        url.searchParams.append('latitude', String(center.lat));
+        const { data, error } = await server.GET('/api/search/suggest', {
+            params: {
+                query: {
+                    query: query.value.filter,
+                    limit: 5,
+                    longitude: center.lng,
+                    latitude: center.lat
+                }
+            }
+        });
+
+        if (error) throw new Error(error.message);
 
         results.value = [];
-        results.value.push(...((await std(url)) as SearchSuggest).items)
+        results.value.push(...(data?.items || []));
         partialLoading.value = false;
    } else {
         selected.value = true;
@@ -235,13 +315,21 @@ async function fetchSearch(
                 coordinates: [ lon, lat ]
             });
         } else {
-            const url = stdurl('/api/search/forward');
-            url.searchParams.append('query', queryText);
-            url.searchParams.append('magicKey', magicKey);
             const center = mapStore.map.getCenter();
-            url.searchParams.append('longitude', String(center.lng));
-            url.searchParams.append('latitude', String(center.lat));
-            const items = ((await std(url)) as SearchForward).items;
+            const { data, error } = await server.GET('/api/search/forward', {
+                params: {
+                    query: {
+                        query: queryText,
+                        magicKey,
+                        longitude: center.lng,
+                        latitude: center.lat
+                    }
+                }
+            });
+
+            if (error) throw new Error(error.message);
+
+            const items = data?.items || [];
 
             if (!items.length) return;
 
@@ -311,4 +399,11 @@ async function fetchSearch(
     min-height: 3rem;
     flex-shrink: 0;
 }
+
+.location-picker-btn {
+    width: 2.375rem;
+    height: 2.375rem;
+    min-width: 2.375rem;
+}
+
 </style>

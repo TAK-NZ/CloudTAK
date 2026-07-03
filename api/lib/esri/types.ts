@@ -1,13 +1,21 @@
 import { Type } from '@sinclair/typebox';
 
-export const EsriSpatialReference = Type.Object({
-    wkid: Type.Integer(),
-    latestWkid: Type.Integer()
-});
+export const EsriSpatialReference = Type.Union([
+    Type.Object({
+        wkid: Type.Integer(),
+        latestWkid: Type.Optional(Type.Integer()),
+        wkt: Type.Optional(Type.String()),
+    }),
+    Type.Object({
+        wkt: Type.String(),
+        wkid: Type.Optional(Type.Integer()),
+        latestWkid: Type.Optional(Type.Integer()),
+    }),
+]);
 
 export const EsriPolygon = Type.Object({
     rings: Type.Array(Type.Array(Type.Array(Type.Number()))),
-    spatialReference: EsriSpatialReference
+    spatialReference: EsriSpatialReference,
 });
 
 // TODO Convert all extents to 4326
@@ -16,8 +24,8 @@ export const EsriExtent = Type.Object({
     ymin: Type.Number(),
     xmax: Type.Number(),
     ymax: Type.Number(),
-    spatialReference: Type.Optional(EsriSpatialReference)
-})
+    spatialReference: Type.Optional(EsriSpatialReference),
+});
 
 export const ESRIField = Type.Object({
     name: Type.String(),
@@ -29,8 +37,8 @@ export const ESRIField = Type.Object({
     nullable: Type.Boolean(),
     editable: Type.Boolean(),
     domain: Type.Any(),
-    defaultValue: Type.Any()
-})
+    defaultValue: Type.Any(),
+});
 
 export const ESRILayer = Type.Object({
     id: Type.Integer(),
@@ -49,12 +57,11 @@ export const ESRILayer = Type.Object({
     extent: EsriExtent,
     uniqueIdField: Type.Optional(Type.Object({
         name: Type.String(),
-        isSystemMaintained: Type.Boolean()
+        isSystemMaintained: Type.Boolean(),
     })),
-    fields: Type.Array(ESRIField)
-})
+    fields: Type.Array(ESRIField),
+});
 
 export const ESRILayerList = Type.Object({
-    layers: Type.Array(ESRILayer)
-})
-
+    layers: Type.Array(ESRILayer),
+});

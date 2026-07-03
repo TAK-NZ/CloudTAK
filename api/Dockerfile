@@ -10,6 +10,7 @@ WORKDIR $HOME
 ARG DATA_SOURCE_URL=https://github.com/dfpc-coe/CloudTAK-Data/archive/refs/tags/v1.1.0.zip
 ARG API_URL
 ARG USE_LOCAL_ZIP=false
+ARG WEB_PLUGINS
 
 RUN apk add --no-cache git nodejs-current npm python3 make bash g++ openssl postgresql-client grep wget unzip
 
@@ -22,8 +23,15 @@ RUN npm install
 
 COPY ./ $HOME/api
 
+RUN if [ ! -z "$WEB_PLUGINS" ]; then \
+        mkdir -p web/plugins; \
+        for url in $(echo $WEB_PLUGINS | tr "," " "); do \
+            git clone $url web/plugins/$(basename $url .git); \
+        done \
+    fi
+
 RUN cd web \
-    && npm install \
+    && npm install --legacy-peer-deps \
     && npm run lint \
     && npm run check \
     && npm run build \

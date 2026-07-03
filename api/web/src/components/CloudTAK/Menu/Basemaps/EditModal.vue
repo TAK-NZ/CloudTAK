@@ -14,43 +14,25 @@
                 stroke='1'
                 class='me-2'
             />
-            <div
-                v-if='basemap.id'
-                class='strong d-flex align-items-center'
-                v-text='basemap.name'
-            />
-            <div
-                v-else
-                class='strong align-items-center'
-            >
-                New Basemap
+            <div class='d-flex flex-column'>
+                <div class='strong d-flex align-items-center'>
+                    Basemaps &amp; Overlays
+                </div>
+                <div
+                    v-if='basemap.id'
+                    class='small text-white-50'
+                    v-text='basemap.name'
+                />
+                <div
+                    v-else
+                    class='small text-white-50'
+                >
+                    New Entry
+                </div>
             </div>
 
             <div
-                v-if='!loading && !mode.upload && !mode.tilejson && !basemap.id'
-                class='ms-auto btn-list'
-            >
-                <TablerIconButton
-                    title='XML Upload'
-                    @click='mode.upload = true'
-                >
-                    <IconFileUpload
-                        :size='32'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-                <TablerIconButton
-                    title='TileJSON Import'
-                    @click='mode.tilejson = true'
-                >
-                    <IconFileImport
-                        :size='32'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-            </div>
-            <div
-                v-else-if='basemap.id'
+                v-if='basemap.id'
                 class='ms-auto btn-list'
             >
                 <TablerIconButton
@@ -64,236 +46,112 @@
                 </TablerIconButton>
             </div>
         </div>
-        <div class='modal-body'>
+        <div class='modal-body basemap-modal-body'>
             <TablerLoading v-if='loading' />
-            <template v-else-if='mode.upload'>
-                <Upload
-                    method='PUT'
-                    :url='uploadURL()'
-                    :headers='uploadHeaders()'
-                    @done='processUpload($event)'
-                    @cancel='mode.upload = false'
-                    @err='err = $event'
+            <BasemapTypeSelector
+                v-else-if='showTypeSelector'
+                :is-system-admin='isSystemAdmin'
+                @select='setBasemapType'
+            />
+            <component
+                :is='activeSelectorComponent'
+                v-else-if='activeSelectorComponent'
+                v-model:editing='editing'
+                :basemap-id='props.basemap.id'
+                :vector-layers='vectorLayers'
+                :errors='errors'
+                :scope='scope'
+                :warn-sharing='warnSharing'
+                :is-system-admin='isSystemAdmin'
+                :url='tilejson.url'
+                :upload-url='uploadUrl'
+                @change-type='resetBasemapType'
+                @update:scope='scope = $event'
+                @update:warn-sharing='warnSharing = $event'
+                @update:url='tilejson.url = $event'
+                @fetch='fetchTileJSON'
+                @done='processUpload($event)'
+            />
+        </div>
+
+        <div
+            v-if='showFormFooter'
+            class='modal-footer'
+        >
+            <div v-if='basemap.id'>
+                <TablerDelete
+                    label='Delete Basemap / Overlay'
+                    @delete='deleteBasemap'
                 />
-            </template>
-            <template v-else-if='mode.tilejson'>
-                <div class='row row-cards'>
-                    <div class='col-md-12 mt-3'>
-                        <TablerInput
-                            v-model='tilejson.url'
-                            label='TileJSON URL'
-                        />
-                    </div>
-                    <div class='col-md-12 mt-3'>
-                        <div class='d-flex'>
-                            <button
-                                class='cursor-pointer btn btn-secondary'
-                                @click='mode.tilejson = false'
-                            >
-                                Cancel
-                            </button>
-                            <div class='ms-auto'>
-                                <a
-                                    class='cursor-pointer btn btn-primary'
-                                    @click='fetchTileJSON'
-                                >Fetch TileJSON</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </template>
-            <template v-else>
-                <div class='row row-cards'>
-                    <TablerInlineAlert
-                        v-if='warnSharing'
-                        severity='danger'
-                        title='You are disabling sharing'
-                        description='Disabling sharing will prevent other users from sharing the basemap and will also disable their access if they basemap has already been shared'
-                        :dismissable='true'
-                    />
+            </div>
 
-                    <div class='col-12 col-lg-6 mt-3'>
-                        <TablerInput
-                            v-model='editing.name'
-                            required
-                            label='Name'
-                            :error='errors.name'
-                        >
-                            <TablerToggle
-                                v-model='editing.sharing_enabled'
-                                label='Enable Sharing'
-                                @change='editing.sharing_enabled ? warnSharing = false : warnSharing = true'
-                            />
-                        </TablerInput>
-                    </div>
-                    <div class='col-12 col-lg-3 mt-3'>
-                        <TablerEnum
-                            v-model='editing.type'
-                            required
-                            label='Type'
-                            :options='["raster", "raster-dem", "vector"]'
-                        />
-                    </div>
-                    <div class='col-12 col-lg-3 mt-3'>
-                        <TablerEnum
-                            v-model='scope'
-                            required
-                            label='Access Scope'
-                            :disabled='(props.basemap.id && !isSystemAdmin)'
-                            :options='["user", "server"]'
-                        />
-                    </div>
-                    <div class='col-md-12'>
-                        <TablerInput
-                            v-model='editing.url'
-                            required
-                            label='Tile Url'
-                            :error='errors.url'
-                        >
-                            <div class='btn-list'>
-                                <span
-                                    v-tooltip='"Insert Zoom Variable"'
-                                    class='badge bg-cyan-lt cursor-pointer'
-                                    @click='editing.url = editing.url + "{$z}"'
-                                >{$z}</span>
-                                <span
-                                    v-tooltip='"Insert X Variable"'
-                                    class='badge bg-cyan-lt cursor-pointer'
-                                    @click='editing.url = editing.url + "{$x}"'
-                                >{$x}</span>
-                                <span
-                                    v-tooltip='"Insert Y Variable"'
-                                    class='badge bg-cyan-lt cursor-pointer'
-                                    @click='editing.url = editing.url + "{$y}"'
-                                >{$y}</span>
-                                <span
-                                    v-tooltip='"Insert Quadkey Variable"'
-                                    class='badge bg-cyan-lt cursor-pointer'
-                                    @click='editing.url = editing.url + "{$q}"'
-                                >{$q}</span>
-                            </div>
-                        </TablerInput>
-                    </div>
-                    <div class='col-md-3'>
-                        <TablerInput
-                            v-model='editing.minzoom'
-                            required
-                            label='MinZoom'
-                        />
-                    </div>
-                    <div class='col-md-3'>
-                        <TablerInput
-                            v-model='editing.maxzoom'
-                            required
-                            label='MaxZoom'
-                        />
-                    </div>
-                    <div class='col-12 col-md-3'>
-                        <TablerInput
-                            v-model='editing.tilesize'
-                            label='Tile Size'
-                        />
-                    </div>
-                    <div class='col-12 col-md-3'>
-                        <TablerEnum
-                            v-model='editing.format'
-                            required
-                            label='Format'
-                            :options='["png", "jpeg", "mvt"]'
-                        />
-                    </div>
-                    <div class='col-12'>
-                        <TablerInput
-                            v-model='editing.collection'
-                            label='Collection Folder'
-                            placeholder='Optional Collection Folder'
-                        />
-                    </div>
-                    <div class='col-12'>
-                        <TablerInput
-                            v-model='editing.attribution'
-                            label='Attribution'
-                            placeholder='Optional Attribution'
-                        />
-                    </div>
-                    <div class='col-md-12 mt-3'>
-                        <div class='d-flex'>
-                            <div v-if='basemap.id'>
-                                <TablerDelete
-                                    label='Delete Basemap'
-                                    @delete='deleteBasemap'
-                                />
-                            </div>
-
-                            <div class='ms-auto'>
-                                <a
-                                    class='cursor-pointer btn btn-primary'
-                                    @click='create'
-                                >Save Basemap</a>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </template>
+            <div class='ms-auto'>
+                <a
+                    class='cursor-pointer btn btn-primary'
+                    @click='create'
+                >Save Basemap / Overlay</a>
+            </div>
         </div>
     </TablerModal>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue';
-import { std, stdurl } from '../../../../std.ts';
-import Upload from '../../../util/Upload.vue';
+<script setup lang="ts">
+import { computed, ref, onMounted } from 'vue';
+import { Preferences } from '@capacitor/preferences';
+import type { paths } from '@cloudtak/api-types';
+import { server, std, stdurl } from '../../../../std.ts';
+import ProfileConfig from '../../../../base/profile.ts';
+import BasemapTypeSelector from './TypeSelector.vue';
+import TypeSelectorFeatureServer from './TypeSelectorFeatureServer.vue';
+import TypeSelectorImageServer from './TypeSelectorImageServer.vue';
+import TypeSelectorMapServer from './TypeSelectorMapServer.vue';
+import TypeSelectorZxy_Tilejson from './TypeSelectorZxy_Tilejson.vue';
+import TypeSelectorZxy_Upload from './TypeSelectorZxy_Upload.vue';
+import TypeSelectorZxy from './TypeSelectorZxy.vue';
+import TypeSelectorHosted from './TypeSelectorHosted.vue';
+import { BasemapTypeConfig, inferBasemapType, normalizeEditing } from './types.ts';
+import type { BasemapListItem, BasemapImport, BasemapSourceType, EditingBasemap, VectorLayerDescriptor } from './types.ts';
 import {
     IconMap,
     IconDownload,
-    IconFileImport,
-    IconFileUpload
 } from '@tabler/icons-vue';
 import {
     TablerModal,
     TablerDelete,
     TablerLoading,
-    TablerInlineAlert,
     TablerIconButton,
-    TablerToggle,
-    TablerEnum,
-    TablerInput
 } from '@tak-ps/vue-tabler';
-import { useMapStore } from '../../../../stores/map.ts';
 
 const emit = defineEmits(['close']);
 
-const props = defineProps({
-    basemap: {
-        type: Object,
-        default: () => ({})
-    }
+const props = withDefaults(defineProps<{
+    basemap?: BasemapListItem;
+}>(), {
+    basemap: () => ({})
 });
 
-const mapStore = useMapStore();
 const warnSharing = ref(false);
-
 const loading = ref(false);
 
-const mode = ref({
-    upload: false,
-    tilejson: false,
-});
+const selectedBasemapType = ref<BasemapSourceType | null>(
+    props.basemap.url ? (inferBasemapType(props.basemap.url) ?? 'zxy') : null
+);
 
-const tilejson = ref({
-    url: ''
-})
+const tilejson = ref({ url: '' });
+const vectorLayers = ref<VectorLayerDescriptor[]>([]);
 
-const errors = ref({
+const errors = ref<Record<'name' | 'url', string>>({
     name: '',
     url: '',
 });
 
-const scope = ref(props.basemap.id ? (props.basemap.username ? 'user' : 'server') : 'user')
+const scope = ref<'user' | 'server'>(
+    props.basemap.id ? (props.basemap.username ? 'user' : 'server') : 'user'
+);
 
 const isSystemAdmin = ref(false);
 
-const editing = ref({
+const editing = ref<EditingBasemap>({
     name: '',
     url: '',
     type: 'raster',
@@ -303,36 +161,141 @@ const editing = ref({
     attribution: '',
     sharing_enabled: true,
     format: 'png',
-    bounds: [-180, -90, 180, 90 ],
+    bounds: [-180, -90, 180, 90],
     center: [0, 0],
-    collection: ''
-})
+    collection: '',
+    title: 'callsign',
+    overlay: false,
+    hidden: false,
+    frequency: null,
+    snapping_enabled: false,
+    snapping_layer: '',
+    styles: [],
+    tilejson: '',
+    encoding: null,
+});
 
-onMounted(async () => {
-    isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();
+const showTypeSelector = computed(() => {
+    return !props.basemap.id && !selectedBasemapType.value;
+});
 
-    if (props.basemap.id) {
-        await fetch();
+const metadataImportTypes: BasemapSourceType[] = ['imageserver', 'mapserver', 'featureserver'];
+
+const showMetadataImportPrompt = computed(() => {
+    return !props.basemap.id
+        && !!selectedBasemapType.value
+        && metadataImportTypes.includes(selectedBasemapType.value)
+        && !editing.value.url;
+});
+
+const showFormFooter = computed(() => {
+    return !loading.value
+        && !showTypeSelector.value
+        && !showMetadataImportPrompt.value
+        && !!selectedBasemapType.value
+        && selectedBasemapType.value !== 'upload'
+        && selectedBasemapType.value !== 'tilejson'
+        && selectedBasemapType.value !== 'hosted';
+});
+
+const activeSelectorComponent = computed(() => {
+    switch (selectedBasemapType.value) {
+    case 'zxy': return TypeSelectorZxy;
+    case 'imageserver': return TypeSelectorImageServer;
+    case 'mapserver': return TypeSelectorMapServer;
+    case 'featureserver': return TypeSelectorFeatureServer;
+    case 'tilejson': return TypeSelectorZxy_Tilejson;
+    case 'upload': return TypeSelectorZxy_Upload;
+    case 'hosted': return TypeSelectorHosted;
+    default: return null;
     }
 });
 
-async function download() {
-    await std(`api/basemap/${props.basemap.id}?format=xml&download=true&token=${localStorage.token}`, {
-        download: true
+const uploadUrl = computed(() => stdurl('/api/basemap'));
+
+type BasemapImportBody = paths['/api/basemap']['put']['requestBody']['content']['application/json'];
+type BasemapCreateBody = paths['/api/basemap']['post']['requestBody']['content']['application/json'];
+type BasemapUpdateBody = paths['/api/basemap/{:basemapid}']['patch']['requestBody']['content']['application/json'];
+
+onMounted(async () => {
+    const isSysAdmin = await ProfileConfig.get('system_admin');
+    isSystemAdmin.value = isSysAdmin?.value ?? false;
+
+    if (props.basemap.id) {
+        await fetchBasemap();
+    }
+});
+
+async function download(): Promise<void> {
+    const url = stdurl(`/api/basemap/${props.basemap.id}`);
+    const { value: token } = await Preferences.get({ key: 'token' });
+
+    url.searchParams.set('format', 'xml');
+    url.searchParams.set('download', 'true');
+
+    if (token) {
+        url.searchParams.set('token', token);
+    }
+
+    await std(url.toString(), {
+        download: true,
     });
 }
 
-async function fetchTileJSON() {
+function setBasemapType(type: string): void {
+    selectedBasemapType.value = type as BasemapSourceType;
+    tilejson.value.url = '';
+    vectorLayers.value = [];
+
+    if (selectedBasemapType.value === 'tilejson' || selectedBasemapType.value === 'upload') {
+        return;
+    }
+
+    const inferred = inferBasemapType(editing.value.url);
+    if (props.basemap.id && inferred === selectedBasemapType.value) return;
+
+    Object.assign(editing.value, BasemapTypeConfig[selectedBasemapType.value].defaults);
+    editing.value.url = '';
+}
+
+function resetBasemapType(): void {
+    selectedBasemapType.value = null;
+    tilejson.value.url = '';
+    vectorLayers.value = [];
+}
+
+async function fetchTileJSON(): Promise<void> {
     loading.value = true;
     try {
-        editing.value = await std('/api/basemap', {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'text/plain'
-            },
-            body: tilejson.value.url
-        });
-        mode.value.tilejson = false;
+        const importType = selectedBasemapType.value;
+        if (!importType) throw new Error('Basemap type not selected');
+
+        const isArcGISImport = importType === 'featureserver'
+            || importType === 'mapserver'
+            || importType === 'imageserver';
+
+        const res = await server.PUT('/api/basemap', isArcGISImport
+            ? {
+                headers: { 'Content-Type': 'application/json' },
+                body: {
+                    type: importType,
+                    url: tilejson.value.url,
+                } satisfies BasemapImportBody,
+            }
+            : {
+                headers: { 'Content-Type': 'text/plain' },
+                body: tilejson.value.url,
+            });
+
+        if (res.error) throw new Error(res.error.message);
+
+        const data = res.data as BasemapImport;
+
+        editing.value = normalizeEditing(data);
+        vectorLayers.value = Array.isArray(data.vector_layers)
+            ? data.vector_layers as VectorLayerDescriptor[]
+            : [];
+        selectedBasemapType.value = inferBasemapType(editing.value.url) ?? 'zxy';
         loading.value = false;
     } catch (err) {
         loading.value = false;
@@ -340,84 +303,147 @@ async function fetchTileJSON() {
     }
 }
 
-function processUpload(body) {
-    mode.value.upload = false;
-    editing.value = body;
+function processUpload(body: unknown): void {
+    editing.value = normalizeEditing(body as BasemapImport);
+    vectorLayers.value = Array.isArray((body as BasemapImport).vector_layers)
+        ? (body as BasemapImport).vector_layers as VectorLayerDescriptor[]
+        : [];
+    selectedBasemapType.value = inferBasemapType(editing.value.url) ?? 'zxy';
 }
 
-function uploadHeaders() {
-    return {
-        Authorization: `Bearer ${localStorage.token}`
-    };
-}
+async function fetchBasemap(): Promise<void> {
+    const basemapId = props.basemap.id;
+    if (basemapId === undefined) throw new Error('Missing basemap id');
 
-function uploadURL() {
-    return stdurl(`/api/basemap`);
-}
-
-async function fetch() {
     loading.value = true;
-    editing.value = await std(`/api/basemap/${props.basemap.id}`);
+    const res = await server.GET('/api/basemap/{:basemapid}', {
+        params: {
+            path: {
+                ':basemapid': basemapId,
+            }
+        }
+    });
+
+    if (res.error) throw new Error(res.error.message);
+    if (typeof res.data === 'string') throw new Error('Unexpected basemap download response');
+
+    const data = res.data as BasemapListItem;
+
+    editing.value = normalizeEditing(data);
+    selectedBasemapType.value = inferBasemapType(editing.value.url) ?? 'zxy';
+
+    vectorLayers.value = [];
+    if (editing.value.type === 'vector') {
+        const tileRes = await server.GET('/api/basemap/{:basemapid}/tiles', {
+            params: {
+                path: {
+                    ':basemapid': basemapId,
+                }
+            }
+        });
+
+        if (tileRes.error) throw new Error(tileRes.error.message);
+
+        const tileData = tileRes.data;
+        vectorLayers.value = Array.isArray(tileData.vector_layers)
+            ? tileData.vector_layers as VectorLayerDescriptor[]
+            : [];
+    }
+
     loading.value = false;
 }
 
-async function create() {
-    for (const field of ['name', 'url' ]) {
-        if (!editing.value[field]) errors.value[field] = 'Cannot be empty';
-        else errors.value[field] = '';
-    }
+async function create(): Promise<void> {
+    errors.value.name = editing.value.name ? '' : 'Cannot be empty';
+    errors.value.url = editing.value.url ? '' : 'Cannot be empty';
 
-    for (const e in errors.value) {
-        if (errors.value[e]) return;
-    }
+    if (errors.value.name || errors.value.url) return;
 
     loading.value = true;
     try {
-        const body = JSON.parse(JSON.stringify(editing.value));
-
-        if (!body.bounds || !body.bounds.length) delete body.bounds;
-        if (!body.center || !body.center.length) delete body.center;
-
-        if (!body.collection || body.collection.trim().length === 0) {
-            body.collection = null;
+        const protocol = selectedBasemapType.value;
+        if (!protocol || protocol === 'tilejson' || protocol === 'upload') {
+            throw new Error('Unsupported basemap protocol');
         }
 
-        if (!body.attribution || body.attribution.trim().length === 0) {
-            body.attribution = null;
-        }
+        const body: Omit<BasemapCreateBody, 'scope' | 'protocol'> = {
+            name: editing.value.name,
+            sharing_enabled: editing.value.sharing_enabled,
+            snapping_enabled: editing.value.snapping_enabled,
+            url: editing.value.url,
+            overlay: editing.value.overlay,
+            hidden: editing.value.hidden,
+            tilesize: editing.value.tilesize,
+            collection: editing.value.collection.trim().length ? editing.value.collection : null,
+            attribution: editing.value.attribution.trim().length ? editing.value.attribution : null,
+            frequency: editing.value.frequency,
+            minzoom: editing.value.minzoom,
+            maxzoom: editing.value.maxzoom,
+            format: editing.value.format,
+            type: editing.value.type,
+            styles: editing.value.styles,
+            ...(editing.value.snapping_layer.trim().length ? { snapping_layer: editing.value.snapping_layer } : {}),
+            ...(editing.value.encoding ? { encoding: editing.value.encoding } : {}),
+            ...(editing.value.bounds.length ? { bounds: editing.value.bounds } : {}),
+            ...(editing.value.center.length ? { center: editing.value.center } : {}),
+            ...(editing.value.type === 'vector' && editing.value.title.trim().length ? { title: editing.value.title } : {}),
+            ...(editing.value.tilejson.trim().length ? { tilejson: editing.value.tilejson } : {}),
+        };
 
         if (props.basemap.id) {
-            await std(`/api/basemap/${props.basemap.id}`, {
-                method: 'PATCH',
+            const basemapId = props.basemap.id;
+            if (basemapId === undefined) throw new Error('Missing basemap id');
+
+            const res = await server.PATCH('/api/basemap/{:basemapid}', {
+                params: {
+                    path: {
+                        ':basemapid': basemapId,
+                    }
+                },
                 body: {
                     scope: scope.value,
-                    ...body
-                }
+                    protocol,
+                    ...body,
+                } satisfies BasemapUpdateBody,
             });
-            emit('close');
+
+            if (res.error) throw new Error(res.error.message);
         } else {
-            await std('/api/basemap', {
-                method: 'POST',
+            const res = await server.POST('/api/basemap', {
                 body: {
                     scope: scope.value,
-                    ...body
-                }
+                    protocol,
+                    ...body,
+                } satisfies BasemapCreateBody,
             });
-            emit('close');
+
+            if (res.error) throw new Error(res.error.message);
         }
+
         loading.value = false;
+        emit('close');
     } catch (err) {
         loading.value = false;
         throw err;
     }
 }
 
-async function deleteBasemap() {
+async function deleteBasemap(): Promise<void> {
+    const basemapId = props.basemap.id;
+    if (basemapId === undefined) throw new Error('Missing basemap id');
+
     loading.value = true;
     try {
-        await std(`/api/basemap/${props.basemap.id}`, {
-            method: 'DELETE'
+        const res = await server.DELETE('/api/basemap/{:basemapid}', {
+            params: {
+                path: {
+                    ':basemapid': basemapId,
+                }
+            }
         });
+
+        if (res.error) throw new Error(res.error.message);
+
         emit('close');
     } catch (err) {
         loading.value = false;
@@ -425,3 +451,9 @@ async function deleteBasemap() {
     }
 }
 </script>
+
+<style scoped>
+.basemap-modal-body {
+    min-height: 34rem;
+}
+</style>

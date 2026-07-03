@@ -1,11 +1,11 @@
-import { Type } from '@sinclair/typebox'
+import { Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth, { AuthUserAccess } from '../lib/auth.js';
 import Config from '../lib/config.js';
 import { sql } from 'drizzle-orm';
 import { Layer } from '../lib/schema.js';
-import LayerControl from '../lib/control/layer.js'
+import LayerControl from '../lib/control/layer.js';
 import { LayerResponse } from '../lib/types.js';
 import * as Default from '../lib/limits.js';
 
@@ -22,15 +22,15 @@ export default async function router(schema: Schema, config: Config) {
             order: Default.Order,
             sort: Type.String({
                 default: 'created',
-                enum: Object.keys(Layer)
+                enum: Object.keys(Layer),
             }),
             filter: Default.Filter,
             data: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
         res: Type.Object({
             total: Type.Integer(),
-            items: Type.Array(LayerResponse)
-        })
+            items: Type.Array(LayerResponse),
+        }),
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req);
@@ -43,10 +43,10 @@ export default async function router(schema: Schema, config: Config) {
                 where: sql`
                     layers.name ~* ${req.query.filter}
                     AND template = true
-                `
+                `,
             });
 
-            res.json(list)
+            res.json(list);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -60,11 +60,11 @@ export default async function router(schema: Schema, config: Config) {
             name: Default.NameField,
             description: Default.DescriptionField,
             id: Type.Integer({
-                description: 'Layer ID to create template from'
+                description: 'Layer ID to create template from',
             }),
-            connection: Type.Optional(Type.Integer())
+            connection: Type.Optional(Type.Integer()),
         }),
-        res: LayerResponse
+        res: LayerResponse,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -93,22 +93,26 @@ export default async function router(schema: Schema, config: Config) {
                 alarm_evals: baseLayer.alarm_evals,
                 alarm_points: baseLayer.alarm_points,
             }, {
-                incoming: baseLayer.incoming ? {
-                    config: baseLayer.incoming.config,
-                    cron: baseLayer.incoming.cron,
-                    webhooks: baseLayer.incoming.webhooks,
-                    enabled_styles: baseLayer.incoming.enabled_styles,
-                    styles: baseLayer.incoming.styles,
-                    environment: {},
-                    ephemeral: {}
-                } : undefined,
-                outgoing: baseLayer.outgoing ? {
-                    environment: {},
-                    ephemeral: {}
-                } : undefined
+                incoming: baseLayer.incoming
+                    ? {
+                            config: baseLayer.incoming.config,
+                            cron: baseLayer.incoming.cron,
+                            webhooks: baseLayer.incoming.webhooks,
+                            enabled_styles: baseLayer.incoming.enabled_styles,
+                            styles: baseLayer.incoming.styles,
+                            environment: {},
+                            ephemeral: {},
+                        }
+                    : undefined,
+                outgoing: baseLayer.outgoing
+                    ? {
+                            environment: {},
+                            ephemeral: {},
+                        }
+                    : undefined,
             });
 
-            res.json(layer)
+            res.json(layer);
         } catch (err) {
             Err.respond(err, res);
         }

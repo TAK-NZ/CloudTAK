@@ -9,9 +9,9 @@ test('Style: Basic Point', async () => {
             stale: 123,
             point: {
                 'marker-color': '#ffffff',
-                remarks: 'Test Remarks'
-            }
-        }
+                'remarks': 'Test Remarks',
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -19,20 +19,20 @@ test('Style: Basic Point', async () => {
         properties: {},
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
             'marker-color': '#ffffff',
-            remarks: 'Test Remarks',
-            metadata: {},
-            stale: 123000
+            'remarks': 'Test Remarks',
+            'metadata': {},
+            'stale': 123000,
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 });
 
@@ -43,9 +43,9 @@ test('Style: Basic Point: Disabled', async () => {
             stale: 123,
             point: {
                 'marker-color': '#ffffff',
-                remarks: 'Test Remarks'
-            }
-        }
+                'remarks': 'Test Remarks',
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -53,16 +53,16 @@ test('Style: Basic Point: Disabled', async () => {
         properties: {},
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 });
 
@@ -73,33 +73,33 @@ test('Style: Basic Callsign', async () => {
             stale: 123,
             point: {
                 'marker-color': '#ffffff',
-                remarks: 'Test Remarks'
-            }
-        }
+                'remarks': 'Test Remarks',
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
         type: 'Feature',
         properties: {
-            callsign: 'CallSign Test'
+            callsign: 'CallSign Test',
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
-            callsign: 'CallSign Test',
+            'callsign': 'CallSign Test',
             'marker-color': '#ffffff',
-            remarks: 'Test Remarks',
-            metadata: {},
-            stale: 123000
+            'remarks': 'Test Remarks',
+            'metadata': {},
+            'stale': 123000,
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 });
 
@@ -110,40 +110,41 @@ test('Style: Basic Point: Stale only applied if stale is undefined on root featu
             stale: 123,
             point: {
                 'marker-color': '#ffffff',
-                remarks: 'Test Remarks'
-            }
-        }
+                'remarks': 'Test Remarks',
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
         type: 'Feature',
         properties: {
-            stale: 321
+            stale: 321,
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
-            stale: 321
+            stale: 321,
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 });
 
-test('Style: Global Remarks & Callsign', async () => {
+test('Style: Global Remarks & Callsign & Phone', async () => {
     const style = new Style({
         enabled_styles: true,
         styles: {
             stale: 123,
             remarks: '{{override}}',
-            callsign: '{{override_callsign}}'
-        }
+            callsign: '{{override_callsign}}',
+            phone: '{{override_phone}}',
+        },
     });
 
     const feat = await style.feat({
@@ -151,13 +152,14 @@ test('Style: Global Remarks & Callsign', async () => {
         properties: {
             metadata: {
                 override: 'OVERRIDE',
-                override_callsign: 'OVERRIDE_CALLSIGN'
-            }
+                override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-1234',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     if (!feat) assert.fail('Feature marked as null');
@@ -166,25 +168,29 @@ test('Style: Global Remarks & Callsign', async () => {
         stale: 123000,
         remarks: 'OVERRIDE',
         callsign: 'OVERRIDE_CALLSIGN',
+        contact: { phone: '+1-555-1234' },
         metadata: {
             override: 'OVERRIDE',
-            override_callsign: 'OVERRIDE_CALLSIGN'
-        }
+            override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-1234',
+        },
     });
 });
 
-test('Style: Global Remarks & Callsign - Override by Point', async () => {
+test('Style: Global Remarks & Callsign & Phone - Override by Point', async () => {
     const style = new Style({
         enabled_styles: true,
         styles: {
             stale: 123,
             remarks: '{{override}}',
             callsign: '{{override_callsign}}',
+            phone: '{{override_phone}}',
             point: {
                 remarks: '{{override_point}}',
                 callsign: '{{override_point_callsign}}',
-            }
-        }
+                phone: '{{override_point_phone}}',
+            },
+        },
     });
 
     const feat = await style.feat({
@@ -193,14 +199,16 @@ test('Style: Global Remarks & Callsign - Override by Point', async () => {
             metadata: {
                 override: 'OVERRIDE',
                 override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-0000',
                 override_point: 'OVERRIDE_POINT',
-                override_point_callsign: 'OVERRIDE_POINT_CALLSIGN'
-            }
+                override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+                override_point_phone: '+1-555-1111',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     if (!feat) assert.fail('Feature marked as null');
@@ -209,34 +217,32 @@ test('Style: Global Remarks & Callsign - Override by Point', async () => {
         stale: 123000,
         remarks: 'OVERRIDE_POINT',
         callsign: 'OVERRIDE_POINT_CALLSIGN',
+        contact: { phone: '+1-555-1111' },
         metadata: {
             override: 'OVERRIDE',
             override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-0000',
             override_point: 'OVERRIDE_POINT',
-            override_point_callsign: 'OVERRIDE_POINT_CALLSIGN'
-        }
+            override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+            override_point_phone: '+1-555-1111',
+        },
     });
 });
 
-test('Style: Global Remarks & Callsign - Override by Global Query', async () => {
+test('Style: Global Remarks & Callsign & Phone - Override by Line', async () => {
     const style = new Style({
         enabled_styles: true,
         styles: {
             stale: 123,
             remarks: '{{override}}',
             callsign: '{{override_callsign}}',
-            point: {
-                remarks: '{{override_point}}',
-                callsign: '{{override_point_callsign}}',
+            phone: '{{override_phone}}',
+            line: {
+                remarks: '{{override_line}}',
+                callsign: '{{override_line_callsign}}',
+                phone: '{{override_line_phone}}',
             },
-            queries: [{
-                query: 'properties.metadata.override = "OVERRIDE"',
-                styles: {
-                    remarks: '{{override_query}}',
-                    callsign: '{{override_query_callsign}}',
-                }
-            }]
-        }
+        },
     });
 
     const feat = await style.feat({
@@ -245,16 +251,131 @@ test('Style: Global Remarks & Callsign - Override by Global Query', async () => 
             metadata: {
                 override: 'OVERRIDE',
                 override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-0000',
+                override_line: 'OVERRIDE_LINE',
+                override_line_callsign: 'OVERRIDE_LINE_CALLSIGN',
+                override_line_phone: '+1-555-1111',
+            },
+        },
+        geometry: {
+            type: 'LineString',
+            coordinates: [[0, 0], [1, 1]],
+        },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+
+    assert.deepEqual(feat.properties, {
+        stale: 123000,
+        remarks: 'OVERRIDE_LINE',
+        callsign: 'OVERRIDE_LINE_CALLSIGN',
+        contact: { phone: '+1-555-1111' },
+        metadata: {
+            override: 'OVERRIDE',
+            override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-0000',
+            override_line: 'OVERRIDE_LINE',
+            override_line_callsign: 'OVERRIDE_LINE_CALLSIGN',
+            override_line_phone: '+1-555-1111',
+        },
+    });
+});
+
+test('Style: Global Remarks & Callsign & Phone - Override by Polygon', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            stale: 123,
+            remarks: '{{override}}',
+            callsign: '{{override_callsign}}',
+            phone: '{{override_phone}}',
+            polygon: {
+                remarks: '{{override_polygon}}',
+                callsign: '{{override_polygon_callsign}}',
+                phone: '{{override_polygon_phone}}',
+            },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {
+            metadata: {
+                override: 'OVERRIDE',
+                override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-0000',
+                override_polygon: 'OVERRIDE_POLYGON',
+                override_polygon_callsign: 'OVERRIDE_POLYGON_CALLSIGN',
+                override_polygon_phone: '+1-555-2222',
+            },
+        },
+        geometry: {
+            type: 'Polygon',
+            coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+        },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+
+    assert.deepEqual(feat.properties, {
+        stale: 123000,
+        remarks: 'OVERRIDE_POLYGON',
+        callsign: 'OVERRIDE_POLYGON_CALLSIGN',
+        contact: { phone: '+1-555-2222' },
+        metadata: {
+            override: 'OVERRIDE',
+            override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-0000',
+            override_polygon: 'OVERRIDE_POLYGON',
+            override_polygon_callsign: 'OVERRIDE_POLYGON_CALLSIGN',
+            override_polygon_phone: '+1-555-2222',
+        },
+    });
+});
+
+test('Style: Global Remarks & Callsign & Phone - Override by Global Query', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            stale: 123,
+            remarks: '{{override}}',
+            callsign: '{{override_callsign}}',
+            phone: '{{override_phone}}',
+            point: {
+                remarks: '{{override_point}}',
+                callsign: '{{override_point_callsign}}',
+                phone: '{{override_point_phone}}',
+            },
+            queries: [{
+                query: 'properties.metadata.override = "OVERRIDE"',
+                styles: {
+                    remarks: '{{override_query}}',
+                    callsign: '{{override_query_callsign}}',
+                    phone: '{{override_query_phone}}',
+                },
+            }],
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {
+            metadata: {
+                override: 'OVERRIDE',
+                override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-0000',
                 override_point: 'OVERRIDE_POINT',
                 override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+                override_point_phone: '+1-555-1111',
                 override_query: 'OVERRIDE_QUERY',
-                override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN'
-            }
+                override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN',
+                override_query_phone: '+1-555-2222',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     if (!feat) assert.fail('Feature marked as null');
@@ -263,40 +384,48 @@ test('Style: Global Remarks & Callsign - Override by Global Query', async () => 
         stale: 123000,
         remarks: 'OVERRIDE_QUERY',
         callsign: 'OVERRIDE_QUERY_CALLSIGN',
+        contact: { phone: '+1-555-2222' },
         metadata: {
             override: 'OVERRIDE',
             override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-0000',
             override_point: 'OVERRIDE_POINT',
             override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+            override_point_phone: '+1-555-1111',
             override_query: 'OVERRIDE_QUERY',
-            override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN'
-        }
+            override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN',
+            override_query_phone: '+1-555-2222',
+        },
     });
 });
 
-test('Style: Global Remarks & Callsign - Override by Query Point', async () => {
+test('Style: Global Remarks & Callsign & Phone - Override by Query Point', async () => {
     const style = new Style({
         enabled_styles: true,
         styles: {
             stale: 123,
             remarks: '{{override}}',
             callsign: '{{override_callsign}}',
+            phone: '{{override_phone}}',
             point: {
                 remarks: '{{override_point}}',
                 callsign: '{{override_point_callsign}}',
+                phone: '{{override_point_phone}}',
             },
             queries: [{
                 query: 'properties.metadata.override = "OVERRIDE"',
                 styles: {
                     remarks: '{{override_query}}',
                     callsign: '{{override_query_callsign}}',
+                    phone: '{{override_query_phone}}',
                     point: {
                         remarks: '{{override_query_point}}',
                         callsign: '{{override_query_point_callsign}}',
-                    }
-                }
-            }]
-        }
+                        phone: '{{override_query_point_phone}}',
+                    },
+                },
+            }],
+        },
     });
 
     const feat = await style.feat({
@@ -305,18 +434,22 @@ test('Style: Global Remarks & Callsign - Override by Query Point', async () => {
             metadata: {
                 override: 'OVERRIDE',
                 override_callsign: 'OVERRIDE_CALLSIGN',
+                override_phone: '+1-555-0000',
                 override_point: 'OVERRIDE_POINT',
                 override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+                override_point_phone: '+1-555-1111',
                 override_query: 'OVERRIDE_QUERY',
                 override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN',
+                override_query_phone: '+1-555-2222',
                 override_query_point: 'OVERRIDE_QUERY_POINT',
-                override_query_point_callsign: 'OVERRIDE_QUERY_POINT_CALLSIGN'
-            }
+                override_query_point_callsign: 'OVERRIDE_QUERY_POINT_CALLSIGN',
+                override_query_point_phone: '+1-555-3333',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     if (!feat) assert.fail('Feature marked as null');
@@ -325,16 +458,21 @@ test('Style: Global Remarks & Callsign - Override by Query Point', async () => {
         stale: 123000,
         remarks: 'OVERRIDE_QUERY_POINT',
         callsign: 'OVERRIDE_QUERY_POINT_CALLSIGN',
+        contact: { phone: '+1-555-3333' },
         metadata: {
             override: 'OVERRIDE',
             override_callsign: 'OVERRIDE_CALLSIGN',
+            override_phone: '+1-555-0000',
             override_point: 'OVERRIDE_POINT',
             override_point_callsign: 'OVERRIDE_POINT_CALLSIGN',
+            override_point_phone: '+1-555-1111',
             override_query: 'OVERRIDE_QUERY',
             override_query_callsign: 'OVERRIDE_QUERY_CALLSIGN',
+            override_query_phone: '+1-555-2222',
             override_query_point: 'OVERRIDE_QUERY_POINT',
-            override_query_point_callsign: 'OVERRIDE_QUERY_POINT_CALLSIGN'
-        }
+            override_query_point_callsign: 'OVERRIDE_QUERY_POINT_CALLSIGN',
+            override_query_point_phone: '+1-555-3333',
+        },
     });
 });
 
@@ -349,10 +487,11 @@ test('Style: Lowest Level Remarks', async () => {
                     point: {
                         remarks: '{{override_query_point}}',
                         callsign: '{{override_query_point_callsign}}',
-                    }
-                }
-            }]
-        }
+                        phone: '{{override_query_point_phone}}',
+                    },
+                },
+            }],
+        },
     });
 
     const feat = await style.feat({
@@ -360,13 +499,14 @@ test('Style: Lowest Level Remarks', async () => {
         properties: {
             metadata: {
                 override_query_point: 'LOWEST_REMARKS',
-                override_query_point_callsign: 'LOWEST_CALLSIGN'
-            }
+                override_query_point_callsign: 'LOWEST_CALLSIGN',
+                override_query_point_phone: '+1-555-9999',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     if (!feat) assert.fail('Feature marked as null');
@@ -375,90 +515,122 @@ test('Style: Lowest Level Remarks', async () => {
         stale: 123000,
         remarks: 'LOWEST_REMARKS',
         callsign: 'LOWEST_CALLSIGN',
+        contact: { phone: '+1-555-9999' },
         metadata: {
             override_query_point: 'LOWEST_REMARKS',
-            override_query_point_callsign: 'LOWEST_CALLSIGN'
-        }
+            override_query_point_callsign: 'LOWEST_CALLSIGN',
+            override_query_point_phone: '+1-555-9999',
+        },
     });
 });
 
 test('Style: Invalid Templates', async () => {
     assert.throws(() => {
         Style.validate({
-            remarks: '{{{test}'
-        })
+            remarks: '{{{test}',
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
-            callsign: '{{{test}'
-        })
+            callsign: '{{{test}',
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            phone: '{{{test}',
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             links: [{
                 remarks: 'TEST',
-                url: '{{{test}'
-            }]
-        })
+                url: '{{{test}',
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             links: [{
                 url: 'TEST',
-                remarks: '{{{test}'
-            }]
-        })
+                remarks: '{{{test}',
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             point: {
-                remarks: '{{{test}'
-            }
-        })
+                remarks: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             point: {
-                callsign: '{{{test}'
-            }
-        })
+                callsign: '{{{test}',
+            },
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            point: {
+                phone: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             line: {
-                remarks: '{{{test}'
-            }
-        })
+                remarks: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             line: {
-                callsign: '{{{test}'
-            }
-        })
+                callsign: '{{{test}',
+            },
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            line: {
+                phone: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             polygon: {
-                remarks: '{{{test}'
-            }
-        })
+                remarks: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
         Style.validate({
             polygon: {
-                callsign: '{{{test}'
-            }
-        })
+                callsign: '{{{test}',
+            },
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            polygon: {
+                phone: '{{{test}',
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -466,10 +638,10 @@ test('Style: Invalid Templates', async () => {
             polygon: {
                 links: [{
                     url: 'TEST',
-                    remarks: '{{{test}'
-                }]
-            }
-        })
+                    remarks: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -477,10 +649,10 @@ test('Style: Invalid Templates', async () => {
             polygon: {
                 links: [{
                     remarks: 'TEST',
-                    url: '{{{test}'
-                }]
-            }
-        })
+                    url: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -488,10 +660,10 @@ test('Style: Invalid Templates', async () => {
             point: {
                 links: [{
                     url: 'TEST',
-                    remarks: '{{{test}'
-                }]
-            }
-        })
+                    remarks: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -499,10 +671,10 @@ test('Style: Invalid Templates', async () => {
             point: {
                 links: [{
                     remarks: 'TEST',
-                    url: '{{{test}'
-                }]
-            }
-        })
+                    url: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -510,10 +682,10 @@ test('Style: Invalid Templates', async () => {
             line: {
                 links: [{
                     url: 'TEST',
-                    remarks: '{{{test}'
-                }]
-            }
-        })
+                    remarks: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -521,10 +693,10 @@ test('Style: Invalid Templates', async () => {
             line: {
                 links: [{
                     remarks: 'TEST',
-                    url: '{{{test}'
-                }]
-            }
-        })
+                    url: '{{{test}',
+                }],
+            },
+        });
     }, /Expecting/);
 
     // Query Templates
@@ -534,10 +706,10 @@ test('Style: Invalid Templates', async () => {
             queries: [{
                 query: '1 = 1',
                 styles: {
-                    remarks: '{{{test}'
-                }
-            }]
-        })
+                    remarks: '{{{test}',
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -545,10 +717,21 @@ test('Style: Invalid Templates', async () => {
             queries: [{
                 query: '1 = 1',
                 styles: {
-                    callsign: '{{{test}'
-                }
-            }]
-        })
+                    callsign: '{{{test}',
+                },
+            }],
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            queries: [{
+                query: '1 = 1',
+                styles: {
+                    phone: '{{{test}',
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -558,11 +741,11 @@ test('Style: Invalid Templates', async () => {
                 styles: {
                     links: [{
                         remarks: 'TEST',
-                        url: '{{{test}'
-                    }]
-                }
-            }]
-        })
+                        url: '{{{test}',
+                    }],
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -572,11 +755,11 @@ test('Style: Invalid Templates', async () => {
                 styles: {
                     links: [{
                         url: 'TEST',
-                        remarks: '{{{test}'
-                    }]
-                }
-            }]
-        })
+                        remarks: '{{{test}',
+                    }],
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -585,11 +768,11 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     point: {
-                        remarks: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        remarks: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -598,11 +781,24 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     point: {
-                        callsign: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        callsign: '{{{test}',
+                    },
+                },
+            }],
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            queries: [{
+                query: '1 = 1',
+                styles: {
+                    point: {
+                        phone: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -611,11 +807,11 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     line: {
-                        remarks: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        remarks: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -624,11 +820,24 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     line: {
-                        callsign: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        callsign: '{{{test}',
+                    },
+                },
+            }],
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            queries: [{
+                query: '1 = 1',
+                styles: {
+                    line: {
+                        phone: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -637,11 +846,11 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     polygon: {
-                        remarks: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        remarks: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -650,11 +859,24 @@ test('Style: Invalid Templates', async () => {
                 query: '1 = 1',
                 styles: {
                     polygon: {
-                        callsign: '{{{test}'
-                    }
-                }
-            }]
-        })
+                        callsign: '{{{test}',
+                    },
+                },
+            }],
+        });
+    }, /Expecting/);
+
+    assert.throws(() => {
+        Style.validate({
+            queries: [{
+                query: '1 = 1',
+                styles: {
+                    polygon: {
+                        phone: '{{{test}',
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -665,12 +887,12 @@ test('Style: Invalid Templates', async () => {
                     polygon: {
                         links: [{
                             url: 'TEST',
-                            remarks: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            remarks: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -681,12 +903,12 @@ test('Style: Invalid Templates', async () => {
                     polygon: {
                         links: [{
                             remarks: 'TEST',
-                            url: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            url: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -697,12 +919,12 @@ test('Style: Invalid Templates', async () => {
                     point: {
                         links: [{
                             url: 'TEST',
-                            remarks: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            remarks: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -713,12 +935,12 @@ test('Style: Invalid Templates', async () => {
                     point: {
                         links: [{
                             remarks: 'TEST',
-                            url: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            url: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -729,12 +951,12 @@ test('Style: Invalid Templates', async () => {
                     line: {
                         links: [{
                             url: 'TEST',
-                            remarks: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            remarks: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 
     assert.throws(() => {
@@ -745,12 +967,12 @@ test('Style: Invalid Templates', async () => {
                     line: {
                         links: [{
                             remarks: 'TEST',
-                            url: '{{{test}'
-                        }]
-                    }
-                }
-            }]
-        })
+                            url: '{{{test}',
+                        }],
+                    },
+                },
+            }],
+        });
     }, /Expecting/);
 });
 
@@ -759,8 +981,8 @@ test('Style: {{fallback p1 p2 ...}}', async () => {
         enabled_styles: true,
         styles: {
             stale: 123,
-            callsign: '{{fallback none1 none2 yes1 none3 yes2}}'
-        }
+            callsign: '{{fallback none1 none2 yes1 none3 yes2}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -768,29 +990,29 @@ test('Style: {{fallback p1 p2 ...}}', async () => {
         properties: {
             metadata: {
                 yes1: 'I exist',
-                yes2: 'I exist but shouldn\'t be picked'
-            }
+                yes2: 'I exist but shouldn\'t be picked',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
             callsign: 'I exist',
             metadata: {
                 yes1: 'I exist',
-                yes2: "I exist but shouldn't be picked"
+                yes2: 'I exist but shouldn\'t be picked',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [
                 0,
-                0
+                0,
             ],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -800,8 +1022,8 @@ test('Style: {{htmlstrip remarks}}', async () => {
         enabled_styles: true,
         styles: {
             stale: 123,
-            callsign: '{{htmlstrip remarks}}'
-        }
+            callsign: '{{htmlstrip remarks}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -809,12 +1031,12 @@ test('Style: {{htmlstrip remarks}}', async () => {
         properties: {
             metadata: {
                 remarks: '<h1>I exist</h1>',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -822,14 +1044,14 @@ test('Style: {{htmlstrip remarks}}', async () => {
             metadata: {
                 remarks: '<h1>I exist</h1>',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [
                 0,
-                0
+                0,
             ],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -839,8 +1061,8 @@ test('Style: {{htmlstrip remarks}} (NewLine Creation)', async () => {
         enabled_styles: true,
         styles: {
             stale: 123,
-            remarks: '{{htmlstrip popupinfo}}'
-        }
+            remarks: '{{htmlstrip popupinfo}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -848,12 +1070,12 @@ test('Style: {{htmlstrip remarks}} (NewLine Creation)', async () => {
         properties: {
             metadata: {
                 popupinfo: '<table><tr><td>Date</td><td data-field="Date">05/26/2025</td></tr><tr><td>Time</td><td data-field="Time">09:49</td></tr><tr><td>Tail Number</td><td data-field="TailNumber">N328SF</td></tr><tr><td>Detection Name</td><td data-field="DetectionName">N327SF-CO-GJC-DET-05260946_20250526_1546Z</td></tr><tr><td>Latitude</td><td data-field="Latitude">N039 41.1167</td></tr><tr><td>Longitude</td><td data-field="Longitude">W106 54.6474</td></tr><tr><td>Size</td><td data-field="Size">0.1 ac</td></tr><tr><td>Elevation</td><td data-field="Elevation">7,491 ft</td></tr><tr><td>Character Of Fire</td><td data-field="CharacterOfFire">Smoldering</td></tr><tr><td>Position On Slope</td><td data-field="PositionOnSlope">Lower 1/3</td></tr><tr><td>Fuel Type</td><td data-field="FuelType">Timber</td></tr><tr><td>Adjacent Fuels</td><td data-field="AdjacentFuels">Brush</td></tr><tr><td>Proximity To Values</td><td data-field="ProximityToValues">.25 Mile to East</td></tr><tr><td>Aspect</td><td data-field="Aspect">N</td></tr></table>',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -871,19 +1093,19 @@ test('Style: {{htmlstrip remarks}} (NewLine Creation)', async () => {
                 'Fuel Type: Timber',
                 'Adjacent Fuels: Brush',
                 'Proximity To Values: .25 Mile to East',
-                'Aspect: N'
+                'Aspect: N',
             ].join('\n'),
             metadata: {
                 popupinfo: '<table><tr><td>Date</td><td data-field="Date">05/26/2025</td></tr><tr><td>Time</td><td data-field="Time">09:49</td></tr><tr><td>Tail Number</td><td data-field="TailNumber">N328SF</td></tr><tr><td>Detection Name</td><td data-field="DetectionName">N327SF-CO-GJC-DET-05260946_20250526_1546Z</td></tr><tr><td>Latitude</td><td data-field="Latitude">N039 41.1167</td></tr><tr><td>Longitude</td><td data-field="Longitude">W106 54.6474</td></tr><tr><td>Size</td><td data-field="Size">0.1 ac</td></tr><tr><td>Elevation</td><td data-field="Elevation">7,491 ft</td></tr><tr><td>Character Of Fire</td><td data-field="CharacterOfFire">Smoldering</td></tr><tr><td>Position On Slope</td><td data-field="PositionOnSlope">Lower 1/3</td></tr><tr><td>Fuel Type</td><td data-field="FuelType">Timber</td></tr><tr><td>Adjacent Fuels</td><td data-field="AdjacentFuels">Brush</td></tr><tr><td>Proximity To Values</td><td data-field="ProximityToValues">.25 Mile to East</td></tr><tr><td>Aspect</td><td data-field="Aspect">N</td></tr></table>',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [
                 0,
-                0
+                0,
             ],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -895,22 +1117,22 @@ test('Style: Delete Feature by Style', async () => {
             stale: 123,
             queries: [{
                 query: 'properties.metadata.delete = true',
-                delete: true
-            }]
-        }
+                delete: true,
+            }],
+        },
     });
 
     const feat = await style.feat({
         type: 'Feature',
         properties: {
             metadata: {
-                delete: true
-            }
+                delete: true,
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     });
 
     assert.equal(feat, null);
@@ -921,8 +1143,8 @@ test('Style: {{slice remarks}}', async () => {
         enabled_styles: true,
         styles: {
             stale: 123,
-            remarks: '{{slice remarks 5}}'
-        }
+            remarks: '{{slice remarks 5}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -930,12 +1152,12 @@ test('Style: {{slice remarks}}', async () => {
         properties: {
             metadata: {
                 remarks: 'DFPC Ingalls',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -943,14 +1165,14 @@ test('Style: {{slice remarks}}', async () => {
             metadata: {
                 remarks: 'DFPC Ingalls',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [
                 0,
-                0
+                0,
             ],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -962,8 +1184,8 @@ test('Style: {{replace}} - Single Replacement', async () => {
         styles: {
             stale: 123,
             // Replace [nl] markers with spaces in VMS message
-            remarks: '{{replace currentMessage "[nl]" " "}}'
-        }
+            remarks: '{{replace currentMessage "[nl]" " "}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -971,12 +1193,12 @@ test('Style: {{replace}} - Single Replacement', async () => {
         properties: {
             metadata: {
                 currentMessage: 'WINTER DRIVING[nl]CONDITIONS',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -984,11 +1206,11 @@ test('Style: {{replace}} - Single Replacement', async () => {
             metadata: {
                 currentMessage: 'WINTER DRIVING[nl]CONDITIONS',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1000,8 +1222,8 @@ test('Style: {{replace}} - Chained Replacements', async () => {
         styles: {
             stale: 123,
             // Chain replacements to handle both [nl] and [np] markers
-            remarks: '{{replace (replace currentMessage "[nl]" " ") "[np]" " "}}'
-        }
+            remarks: '{{replace (replace currentMessage "[nl]" " ") "[np]" " "}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1009,12 +1231,12 @@ test('Style: {{replace}} - Chained Replacements', async () => {
         properties: {
             metadata: {
                 currentMessage: 'WINTER DRIVING[nl]CONDITIONS[np]TAKE EXTRA CARE',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1022,11 +1244,11 @@ test('Style: {{replace}} - Chained Replacements', async () => {
             metadata: {
                 currentMessage: 'WINTER DRIVING[nl]CONDITIONS[np]TAKE EXTRA CARE',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1038,8 +1260,8 @@ test('Style: {{replace}} - Empty Input', async () => {
         styles: {
             stale: 123,
             // Test replace helper with empty/null input
-            remarks: '{{replace emptyField "[nl]" " "}}'
-        }
+            remarks: '{{replace emptyField "[nl]" " "}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1047,12 +1269,12 @@ test('Style: {{replace}} - Empty Input', async () => {
         properties: {
             metadata: {
                 emptyField: '',
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1060,11 +1282,11 @@ test('Style: {{replace}} - Empty Input', async () => {
             metadata: {
                 emptyField: '',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1076,8 +1298,8 @@ test('Style: {{round}} - Default Decimals', async () => {
         styles: {
             stale: 123,
             // Round earthquake depth to explicit 2 decimal places
-            remarks: 'Depth: {{round depth 2}}km'
-        }
+            remarks: 'Depth: {{round depth 2}}km',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1085,12 +1307,12 @@ test('Style: {{round}} - Default Decimals', async () => {
         properties: {
             metadata: {
                 depth: 5.9296875,
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1098,11 +1320,11 @@ test('Style: {{round}} - Default Decimals', async () => {
             metadata: {
                 depth: 5.9296875,
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1114,8 +1336,8 @@ test('Style: {{round}} - Custom Decimals', async () => {
         styles: {
             stale: 123,
             // Round earthquake magnitude to 1 decimal place
-            callsign: 'M{{round magnitude 1}}'
-        }
+            callsign: 'M{{round magnitude 1}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1123,12 +1345,12 @@ test('Style: {{round}} - Custom Decimals', async () => {
         properties: {
             metadata: {
                 magnitude: 2.7541372727277693,
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1136,11 +1358,11 @@ test('Style: {{round}} - Custom Decimals', async () => {
             metadata: {
                 magnitude: 2.7541372727277693,
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1152,8 +1374,8 @@ test('Style: {{round}} - Invalid Input', async () => {
         styles: {
             stale: 123,
             // Test round helper with null/undefined input
-            remarks: 'Value: {{round invalidNumber}}'
-        }
+            remarks: 'Value: {{round invalidNumber}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1161,12 +1383,12 @@ test('Style: {{round}} - Invalid Input', async () => {
         properties: {
             metadata: {
                 invalidNumber: null,
-            }
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1174,11 +1396,11 @@ test('Style: {{round}} - Invalid Input', async () => {
             metadata: {
                 invalidNumber: null,
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1188,9 +1410,9 @@ test('Style: Rotate', async () => {
         enabled_styles: true,
         styles: {
             point: {
-                rotate: true
-            }
-        }
+                rotate: true,
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1198,17 +1420,17 @@ test('Style: Rotate', async () => {
         properties: {},
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
             metadata: {},
-            rotate: true
+            rotate: true,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1220,35 +1442,35 @@ test('Style: MinZoom/MaxZoom', async () => {
             stale: 123,
             point: {
                 minzoom: '{{importance}}',
-                maxzoom: 10
-            }
-        }
+                maxzoom: 10,
+            },
+        },
     });
 
     assert.deepEqual(await style.feat({
         type: 'Feature',
         properties: {
             metadata: {
-                importance: 5
-            }
+                importance: 5,
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
             minzoom: 5,
             maxzoom: 10,
             metadata: {
-                importance: 5
+                importance: 5,
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
 });
@@ -1261,8 +1483,8 @@ test('Style: Combined {{replace}} and {{round}} - Earthquake Data', async () => 
             stale: 123,
             // Combine both helpers for comprehensive earthquake data formatting
             callsign: 'M{{round magnitude 1}} - {{replace locality "km" "km"}}',
-            remarks: 'Depth: {{round depth 2}}km, Quality: {{replace quality "best" "verified"}}'
-        }
+            remarks: 'Depth: {{round depth 2}}km, Quality: {{replace quality "best" "verified"}}',
+        },
     });
 
     assert.deepEqual(await style.feat({
@@ -1272,13 +1494,13 @@ test('Style: Combined {{replace}} and {{round}} - Earthquake Data', async () => 
                 magnitude: 2.7541372727277693,
                 depth: 5.9296875,
                 locality: '10 km north-west of Tokomaru Bay',
-                quality: 'best'
-            }
+                quality: 'best',
+            },
         },
         geometry: {
             type: 'Point',
-            coordinates: [0, 0]
-        }
+            coordinates: [0, 0],
+        },
     }), {
         type: 'Feature',
         properties: {
@@ -1288,13 +1510,335 @@ test('Style: Combined {{replace}} and {{round}} - Earthquake Data', async () => 
                 magnitude: 2.7541372727277693,
                 depth: 5.9296875,
                 locality: '10 km north-west of Tokomaru Bay',
-                quality: 'best'
+                quality: 'best',
             },
-            stale: 123000
+            stale: 123000,
         },
         geometry: {
             coordinates: [0, 0],
-            type: 'Point'
+            type: 'Point',
         },
     });
+});
+
+test('Style: Marti - archive:true sets marti_archive on Point (top-level marti)', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            marti: { archive: true },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - archive:false sets marti_archive on Point (top-level marti)', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            marti: { archive: false },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, false);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - no archive field leaves marti_archive absent', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            marti: { dest: [{ group: 'ops' }] },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, undefined);
+});
+
+test('Style: Marti - archive:true via point-specific marti', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            point: {
+                marti: { archive: true },
+            },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - archive:true via line-specific marti', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            line: {
+                marti: { archive: true },
+            },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - archive:true via polygon-specific marti', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            polygon: {
+                marti: { archive: true },
+            },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - archive:true via query-level top-level marti', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            queries: [{
+                query: 'properties.metadata.doArchive = true',
+                styles: {
+                    marti: { archive: true },
+                },
+            }],
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: { metadata: { doArchive: true } },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - archive:true via query-level point marti', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            queries: [{
+                query: 'properties.metadata.doArchive = true',
+                styles: {
+                    point: {
+                        marti: { archive: true },
+                    },
+                },
+            }],
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: { metadata: { doArchive: true } },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - query not matched leaves marti_archive absent', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            queries: [{
+                query: 'properties.metadata.doArchive = true',
+                styles: {
+                    marti: { archive: true },
+                },
+            }],
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: { metadata: { doArchive: false } },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, undefined);
+});
+
+test('Style: Marti - archive and dest can be set together', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            marti: {
+                archive: true,
+                dest: [{ group: 'ops' }, { mission: 'mission-1' }],
+            },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, true);
+    assert.deepEqual(feat.properties.dest, [{ group: 'ops' }, { mission: 'mission-1' }]);
+    assert.equal(feat.properties.archived, undefined, 'archived must not be set by the style engine');
+});
+
+test('Style: Marti - pre-existing client-side archived property is not overwritten', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            marti: { archive: true },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: { archived: true },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+
+    // archived is a client-side field; the style engine must not touch it
+    assert.equal(feat.properties.archived, true);
+    // server-side archive instruction goes to marti_archive
+    assert.equal(feat.properties.marti_archive, true);
+});
+
+test('Style: Marti - styles disabled prevents marti_archive from being applied', async () => {
+    const style = new Style({
+        enabled_styles: false,
+        styles: {
+            marti: { archive: true },
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.marti_archive, undefined);
+});
+
+test('Style: Template - ampersand in metadata is not HTML-encoded in callsign', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            callsign: '{{AgencyName}}',
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {
+            metadata: {
+                AgencyName: 'Colorado Parks & Wildlife Marine Evidence Recovery Team',
+            },
+        },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.callsign, 'Colorado Parks & Wildlife Marine Evidence Recovery Team');
+});
+
+test('Style: Template - apostrophe in metadata is not XML-encoded in callsign', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            callsign: '{{AgencyName}}',
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {
+            metadata: {
+                AgencyName: 'Larimer County Sheriff\'s Office',
+            },
+        },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.callsign, 'Larimer County Sheriff\'s Office');
+});
+
+test('Style: Template - special chars in remarks are not HTML-encoded', async () => {
+    const style = new Style({
+        enabled_styles: true,
+        styles: {
+            remarks: 'Agency: {{AgencyName}}\nType: {{AgencyType}}',
+        },
+    });
+
+    const feat = await style.feat({
+        type: 'Feature',
+        properties: {
+            metadata: {
+                AgencyName: 'Colorado Parks & Wildlife',
+                AgencyType: 'Sheriff\'s Office',
+            },
+        },
+        geometry: { type: 'Point', coordinates: [0, 0] },
+    });
+
+    if (!feat) assert.fail('Feature marked as null');
+    assert.equal(feat.properties.remarks, 'Agency: Colorado Parks & Wildlife\nType: Sheriff\'s Office');
 });

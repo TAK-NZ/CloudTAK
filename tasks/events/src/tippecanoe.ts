@@ -13,7 +13,7 @@ export default class Tippecanoe {
             CP.execSync('tippecanoe --version 2>&1');
             CP.execSync('which tile-join');
         } catch (err) {
-            throw new Error(`tippecanoe not installed: ${err}`);
+            throw new Error(`tippecanoe not installed`, { cause: err });
         }
     }
 
@@ -44,23 +44,23 @@ export default class Tippecanoe {
         feats: Readable,
         output_path: string,
         options?: {
-            std?: boolean,
-            quiet?: boolean,
-            name?: string,
-            attribution?: string,
-            description?: string,
-            layer?: string,
+            std?: boolean;
+            quiet?: boolean;
+            name?: string;
+            attribution?: string;
+            description?: string;
+            layer?: string;
             zoom?: {
-                base?: number,
-                max?: number,
-                min?: number
-            },
-            force?: boolean,
+                base?: number;
+                max?: number;
+                min?: number;
+            };
+            force?: boolean;
             limit?: {
-                features?: boolean,
-                size?: boolean
-            }
-        }
+                features?: boolean;
+                size?: boolean;
+            };
+        },
     ) {
         return new Promise((resolve, reject) => {
             if (!feats) return reject(new Error('feats required'));
@@ -71,7 +71,7 @@ export default class Tippecanoe {
             if (!options.limit) options.limit = {};
 
             const base = [
-                '-o', output_path
+                '-o', output_path,
             ];
 
             base.push(...['-l', options.layer || 'out']);
@@ -81,18 +81,23 @@ export default class Tippecanoe {
             if (options.limit.size === false) base.push('--no-tile-size-limit');
             if (options.zoom.max !== undefined) base.push(...['--maximum-zoom', String(options.zoom.max)]);
             if (options.zoom.min !== undefined) base.push(...['--minimum-zoom', String(options.zoom.min)]);
-            if (options.zoom.base !== undefined) base.push(...['--base-zoom', String(options.zoom.min)]);
+            if (options.zoom.base !== undefined) base.push(...['--base-zoom', String(options.zoom.base)]);
             if (options.name) base.push(...['-n', options.name]);
             if (options.attribution) base.push(...['-A', options.attribution]);
-            if (options.description) base.concat(...['-N', options.description]);
+            if (options.description) base.push(...['-N', options.description]);
             if (options.quiet) base.push('--quiet');
 
             console.log(`tippecanoe ${base.join(' ')}`);
             const tippecanoe = CP.spawn('tippecanoe', base, {
-                env: process.env
+                env: process.env,
             })
                 .on('error', reject)
-                .on('close', resolve);
+                .on('close', (code) => {
+                    if (code !== 0) {
+                        return reject(new Error(`tippecanoe exited with code ${code}`));
+                    }
+                    resolve(code);
+                });
 
             if (options.std) {
                 tippecanoe.stdout.pipe(process.stdout);
@@ -125,13 +130,13 @@ export default class Tippecanoe {
         output_path: string,
         inputs: string[],
         options?: {
-            std?: boolean,
-            force?: boolean,
+            std?: boolean;
+            force?: boolean;
             limit?: {
-                features?: boolean,
-                size?: boolean
-            }
-        }
+                features?: boolean;
+                size?: boolean;
+            };
+        },
     ) {
         return new Promise((resolve, reject) => {
             if (!output_path) return reject(new Error('output_path required'));
@@ -141,7 +146,7 @@ export default class Tippecanoe {
             if (!options.limit) options.limit = {};
 
             let base = [
-                '-o', output_path
+                '-o', output_path,
             ].concat(inputs);
 
             if (options.force) base = base.concat(['-f']);
@@ -149,7 +154,7 @@ export default class Tippecanoe {
             if (options.limit.size === false) base.concat(['--no-tile-size-limit']);
 
             const tilejoin = CP.spawn('tile-join', base, {
-                env: process.env
+                env: process.env,
             })
                 .on('error', reject)
                 .on('close', resolve);

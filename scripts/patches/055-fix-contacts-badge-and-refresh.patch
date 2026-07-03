@@ -1,0 +1,163 @@
+diff --git a/api/web/src/base/contact.ts b/api/web/src/base/contact.ts
+index 058a087c5..93bef0084 100644
+--- a/api/web/src/base/contact.ts
++++ b/api/web/src/base/contact.ts
+@@ -77,13 +77,30 @@ export default class ContactManager extends BaseInterface {
+         await db.contact.put(contact);
+     }
+ 
+-    static async sync(): Promise<void> {
++    static async sync(selfUid?: string): Promise<void> {
+         const res = await server.GET('/api/marti/api/contacts/all');
+ 
+         if (res.error) throw new Error(res.error.message);
+ 
+-        await db.contact.clear();
+-        await db.contact.bulkPut(res.data);
++        // Only update contacts already present in db.contact — those that arrived
++        // via live CoT skittle markers. Never add contacts solely because the TAK
++        // server lists them: that would admit machine users, ETL connections, and
++        // the current user, none of which should appear as human contacts. This
++        // mirrors exactly what happens on page load, where the contact list is
++        // populated only from CoT presence markers.
++        const existingUids = new Set(
++            await db.contact.toCollection().primaryKeys() as string[]
++        );
++
++        const contacts = res.data.filter((c) => {
++            if (selfUid && c.uid === selfUid) return false;
++            return existingUids.has(c.uid);
++        });
++
++        if (contacts.length > 0) {
++            await db.contact.bulkPut(contacts);
++        }
++
+         await db.cache.put({
+             key: this.listCacheKey,
+             updated: Date.now()
+diff --git a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue b/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
+index 237280200..f29f4b373 100644
+--- a/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
++++ b/api/web/src/components/CloudTAK/Menu/MenuContacts.vue
+@@ -238,7 +238,7 @@ async function updateContacts() {
+ async function refreshList() {
+     syncing.value = true;
+     try {
+-        await ContactManager.sync();
++        await ContactManager.sync(self.value);
+     } finally {
+         syncing.value = false;
+     }
+diff --git a/api/web/src/workers/atlas-database.ts b/api/web/src/workers/atlas-database.ts
+index efc74244b..d11e5b413 100644
+--- a/api/web/src/workers/atlas-database.ts
++++ b/api/web/src/workers/atlas-database.ts
+@@ -51,6 +51,11 @@ export default class AtlasDatabase {
+     pendingUnhide: Set<string>;
+     pendingDelete: Set<string>;
+ 
++    /** Set to true by Atlas after db.init() completes. Notifications for
++     *  new contacts are suppressed until then to avoid flooding the user
++     *  with presence alerts for everyone already online at login time. */
++    isInitialized: boolean;
++
+     subscriptionPending: Map<string, string>;
+ 
+     breadcrumb: AtlasBreadcrumb & Comlink.ProxyMarked;
+@@ -59,6 +64,7 @@ export default class AtlasDatabase {
+         this.atlas = atlas;
+ 
+         this.cots = new Map();
++        this.isInitialized = false;
+ 
+         this.pendingCreate = new Map();
+         this.pendingUpdate = new Map();
+@@ -767,29 +773,31 @@ export default class AtlasDatabase {
+                     throw new Error('Contact Marker must have group property');
+                 }
+ 
+-                const entry = await ContactManager.from(exists.id);
+-
+-                if (!entry) {
+-                    const contact: Contact = {
+-                        uid: exists.id,
+-                        notes: '',
+-                        filterGroups: null,
+-                        callsign: exists.properties.callsign,
+-                        team: exists.properties.group.name,
+-                        role: exists.properties.group.role,
+-                        takv: ''
+-                    }
+-
+-                    await ContactManager.put(contact);
+-
+-                    if (this.atlas.profile.uid() !== exists.id) {
+-                        await TAKNotification.create(
+-                            NotificationType.Contact,
+-                            'Online Contact',
+-                            `${exists.properties.callsign} is now Online`,
+-                            `/cot/${exists.id}`,
+-                            false
+-                        );
++        if (this.atlas.profile.uid() !== exists.id) {
++                    const entry = await ContactManager.from(exists.id);
++
++                    if (!entry) {
++                        const contact: Contact = {
++                            uid: exists.id,
++                            notes: '',
++                            filterGroups: null,
++                            callsign: exists.properties.callsign,
++                            team: exists.properties.group.name,
++                            role: exists.properties.group.role,
++                            takv: ''
++                        }
++
++                        await ContactManager.put(contact);
++
++                        if (this.isInitialized) {
++                            await TAKNotification.create(
++                                NotificationType.Contact,
++                                'Online Contact',
++                                `${exists.properties.callsign} is now Online`,
++                                `/cot/${exists.id}`,
++                                false
++                            );
++                        }
+                     }
+                 }
+             }
+diff --git a/api/web/src/workers/atlas.ts b/api/web/src/workers/atlas.ts
+index b77d9e669..3d0519afe 100644
+--- a/api/web/src/workers/atlas.ts
++++ b/api/web/src/workers/atlas.ts
+@@ -80,7 +80,7 @@ export default class Atlas {
+             await this.conn.connect(this.username)
+ 
+             await this.db.init();
+-
++            this.db.isInitialized = true;
+             this.initialized = true;
+         } catch (error) {
+             // Reset state so a future init call can retry after a transient failure
+@@ -89,7 +89,18 @@ export default class Atlas {
+             this.token = '';
+             this.username = '';
+             this.initialized = false;
+-            throw error;
++
++            // On auth/connection errors, signal the main thread to log out
++            if (error instanceof Error && (
++                error.message.includes('401') ||
++                error.message.includes('403') ||
++                error.message.includes('other side closed')
++            )) {
++                console.log('Session expired or connection failed — signalling logout');
++                this.postMessage({ type: WorkerMessageType.Session_Logout });
++            } else {
++                throw error;
++            }
+         }
+     }
+ 

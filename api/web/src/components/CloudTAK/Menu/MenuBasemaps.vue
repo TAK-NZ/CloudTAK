@@ -19,43 +19,34 @@
         <template #default>
             <div
                 v-if='!share'
-                class='col-12 px-2 py-2 d-flex flex-column gap-2'
+                class='col-12 py-2 d-flex flex-column gap-2'
             >
+                <SearchSortFilter
+                    v-model='paging.filter'
+                    v-model:sort='sort'
+                    :sort-options='sortOptions'
+                    placeholder='Filter'
+                >
+                    <template #sort-icon>
+                        <component
+                            :is='sortTypeIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                        <component
+                            :is='sortDirectionIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                </SearchSortFilter>
+
                 <div
                     v-if='paging.collection'
                     class='d-flex align-items-center gap-2'
                 >
-                    <div
-                        class='d-flex align-items-center gap-2 cursor-pointer hover-opacity'
-                    >
-                        <TablerIconButton
-                            title='Home'
-                            @click='paging.collection = ""'
-                        >
-                            <IconFolder
-                                :size='20'
-                                stroke='1'
-                            />
-                        </TablerIconButton>
-                    </div>
-
-                    <IconChevronRight
-                        :size='20'
-                        stroke='1'
-                        class='text-white-50'
-                    />
-
-                    <div class='d-flex align-items-center gap-2'>
-                        <span class='h3 mb-0'>{{ paging.collection }}</span>
-                    </div>
+                    <PathBreadcrumb v-model:collection='paging.collection' />
                 </div>
-
-                <TablerInput
-                    v-model='paging.filter'
-                    class='w-100'
-                    icon='search'
-                    placeholder='Filter'
-                />
             </div>
 
             <TablerLoading v-if='loading' />
@@ -72,52 +63,26 @@
             />
             <TablerNone
                 v-else-if='!list.items.length && !list.collections.length'
-                label='Basemaps'
+                label='No Basemaps'
                 @create='editModal = {}'
             />
             <template v-else>
-                <div class='col-12 d-flex flex-column gap-2 p-3'>
-                    <StandardItem
+                <div class='col-12 d-flex flex-column gap-2 py-3'>
+                    <StandardItemFolder
                         v-for='collection in list.collections'
                         :key='collection.name'
-                        class='d-flex align-items-center'
+                        :name='collection.name'
                         @click='setCollection(collection.name)'
-                    >
-                        <div class='icon-wrapper d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25 ms-2 my-2'>
-                            <IconFolder
-                                :size='24'
-                                stroke='1'
-                            />
-                        </div>
-                        <span class='fw-semibold ms-3'>{{ collection.name }}</span>
-                    </StandardItem>
+                    />
 
-                    <StandardItem
+                    <StandardItemBasemap
                         v-for='basemap in list.items'
                         :key='basemap.id'
-                        class='d-flex align-items-center'
+                        :basemap='basemap'
                         :class='{ "bg-blue text-white": isCurrentBasemap(basemap.id) }'
                         @click='setBasemap(basemap)'
                     >
-                        <div class='icon-wrapper d-flex align-items-center justify-content-center rounded-circle bg-black bg-opacity-25 ms-2 my-2'>
-                            <IconMap
-                                :size='24'
-                                stroke='1'
-                            />
-                        </div>
-                        <span class='fw-semibold ms-3 flex-grow-1'>{{ basemap.name }}</span>
-
-                        <div class='d-flex align-items-center me-2'>
-                            <span
-                                v-if='!basemap.username'
-                                class='mx-3 badge border'
-                                :class='isCurrentBasemap(basemap.id) ? "bg-white text-blue" : "bg-blue text-white"'
-                            >Public</span>
-                            <span
-                                v-else
-                                class='mx-3 badge border bg-red text-white'
-                            >Private</span>
-
+                        <template #actions>
                             <TablerDropdown>
                                 <TablerIconButton
                                     title='More Options'
@@ -129,10 +94,10 @@
                                 </TablerIconButton>
 
                                 <template #dropdown>
-                                    <div clas='col-12'>
+                                    <div class='col-12'>
                                         <div
                                             v-if='(!basemap.username && isSystemAdmin) || basemap.username'
-                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            class='cursor-pointer col-12 cloudtak-hover d-flex align-items-center px-2 py-2'
                                             @click.stop.prevent='editModal = basemap'
                                         >
                                             <IconSettings
@@ -143,19 +108,23 @@
                                             <span class='mx-2'>Edit Basemap</span>
                                         </div>
                                         <div
-                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
-                                            @click.stop.prevent='addOverlay(basemap)'
+                                            :class='[
+                                                "col-12 d-flex align-items-center px-2 py-2",
+                                                basemapOverlayExists(basemap) ? "opacity-50 pe-none" : "cursor-pointer cloudtak-hover"
+                                            ]'
+                                            :aria-disabled='basemapOverlayExists(basemap)'
+                                            @click.stop.prevent='!basemapOverlayExists(basemap) && addOverlay(basemap)'
                                         >
                                             <IconBoxMultiple
-                                                v-tooltip='"Add Overlay"'
+                                                v-tooltip='basemapOverlayExists(basemap) ? "Overlay already added" : "Add Overlay"'
                                                 :size='32'
                                                 stroke='1'
                                             />
-                                            <span class='mx-2'>Add as Overlay</span>
+                                            <span class='mx-2'>{{ basemapOverlayExists(basemap) ? "Overlay already added" : "Add as Overlay" }}</span>
                                         </div>
                                         <div
                                             v-if='basemap.sharing_enabled'
-                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            class='cursor-pointer col-12 cloudtak-hover d-flex align-items-center px-2 py-2'
                                             @click.stop.prevent='download(basemap)'
                                         >
                                             <IconDownload
@@ -166,7 +135,7 @@
                                         </div>
                                         <div
                                             v-if='basemap.sharing_enabled'
-                                            class='cursor-pointer col-12 hover d-flex align-items-center px-2 py-2'
+                                            class='cursor-pointer col-12 cloudtak-hover d-flex align-items-center px-2 py-2'
                                             @click.stop.prevent='basemap.sharing_enabled ? share = [basemap.id] : null'
                                         >
                                             <IconShare2
@@ -178,8 +147,8 @@
                                     </div>
                                 </template>
                             </TablerDropdown>
-                        </div>
-                    </StandardItem>
+                        </template>
+                    </StandardItemBasemap>
                 </div>
 
                 <div class='col-lg-12 d-flex'>
@@ -206,17 +175,23 @@
 </template>
 
 <script setup lang='ts'>
-import { onMounted, ref, watch } from 'vue';
-import StandardItem from '../util/StandardItem.vue';
+import { onMounted, onUnmounted, ref, watch, computed } from 'vue';
+import { Preferences } from '@capacitor/preferences';
+import StandardItemBasemap from '../util/StandardItemBasemap.vue';
+import StandardItemFolder from '../util/StandardItemFolder.vue';
+import PathBreadcrumb from '../util/PathBreadcrumb.vue';
 import type { BasemapList, Basemap } from '../../../types.ts';
+import { openExternalUrl } from '../../../base/capacitor.ts';
+import ProfileConfig from '../../../base/profile.ts';
 import { server, stdurl } from '../../../std.ts';
-import Overlay from '../../../base/overlay.ts';
+import OverlayManager from '../../../base/overlay.ts';
+import type { Subscription } from 'dexie';
 import BasemapEditModal from './Basemaps/EditModal.vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
 import Share from '../util/Share.vue';
 import {
     TablerNone,
-    TablerInput,
     TablerPager,
     TablerAlert,
     TablerLoading,
@@ -225,20 +200,47 @@ import {
     TablerDropdown
 } from '@tak-ps/vue-tabler';
 import {
-    IconMap,
     IconPlus,
-    IconFolder,
     IconShare2,
     IconDownload,
     IconSettings,
     IconBoxMultiple,
     IconDotsVertical,
-    IconChevronRight
+    IconLetterCase,
+    IconArrowUp,
+    IconArrowDown,
 } from '@tabler/icons-vue'
 import type { LayerSpecification } from 'maplibre-gl'
 import { useRouter } from 'vue-router';
-import { useMapStore } from '../../../stores/map.ts';
-const mapStore = useMapStore();
+
+const overlayBasemapIds = ref<Set<string>>(new Set());
+const currentBasemapModeIds = ref<Set<string>>(new Set());
+let overlaySubscription: Subscription | undefined;
+
+onMounted(() => {
+    overlaySubscription = OverlayManager.liveList().subscribe({
+        next: (items) => {
+            overlayBasemapIds.value = new Set(
+                items
+                    .filter((overlay) => overlay.mode === 'overlay' && overlay.mode_id)
+                    .map((overlay) => String(overlay.mode_id))
+            );
+            currentBasemapModeIds.value = new Set(
+                items
+                    .filter((overlay) => overlay.mode === 'basemap' && overlay.mode_id)
+                    .map((overlay) => String(overlay.mode_id))
+            );
+        }
+    });
+});
+
+onUnmounted(() => {
+    overlaySubscription?.unsubscribe();
+});
+
+function basemapOverlayExists(basemap: Basemap): boolean {
+    return overlayBasemapIds.value.has(String(basemap.id));
+}
 
 const router = useRouter();
 const isSystemAdmin = ref<boolean>(false);
@@ -254,6 +256,11 @@ const paging = ref({
     page: 0
 });
 
+const sort = ref('A → Z');
+const sortOptions = ['A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => IconLetterCase);
+const sortDirectionIcon = computed(() => sort.value === 'A → Z' ? IconArrowUp : IconArrowDown);
+
 const list = ref<BasemapList>({
     total: 0,
     collections: [],
@@ -262,7 +269,8 @@ const list = ref<BasemapList>({
 
 onMounted(async () => {
     await fetchList();
-    isSystemAdmin.value = await mapStore.worker.profile.isSystemAdmin();
+    const isSysAdmin = await ProfileConfig.get('system_admin');
+    isSystemAdmin.value = isSysAdmin?.value ?? false;
 });
 
 watch(editModal, async () => {
@@ -273,31 +281,40 @@ watch(paging.value, async () => {
     await fetchList();
 });
 
+watch(sort, async () => {
+    await fetchList();
+});
+
 async function setBasemap(basemap: Basemap) {
-    const hasBasemap = mapStore.overlays.some((overlay) => {
+    const overlays = OverlayManager.loaded;
+    const hasBasemap = overlays.some((overlay) => {
         return overlay.mode === 'basemap';
     });
 
     if (hasBasemap) {
-        for (let i = 0; i < mapStore.overlays.length; i++) {
-            const overlay = mapStore.overlays[i];
+        for (let i = 0; i < overlays.length; i++) {
+            const overlay = overlays[i];
 
             if (overlay.mode === 'basemap') {
-                if (mapStore.overlays[i + 1]) {
+                if (overlays[i + 1]) {
                     await overlay.replace({
                         name: basemap.name,
                         type: basemap.type,
+                        opacity: 1,
+                        visible: true,
                         url: `/api/basemap/${basemap.id}/tiles`,
                         mode: 'basemap',
                         mode_id: String(basemap.id),
                         styles: basemap.styles as Array<LayerSpecification>
                     }, {
-                        before: mapStore.overlays[i + 1].styles[0].id
+                        before: overlays[i + 1].styles[0].id
                     });
                 } else {
                     await overlay.replace({
                         name: basemap.name,
                         type: basemap.type,
+                        opacity: 1,
+                        visible: true,
                         url: `/api/basemap/${basemap.id}/tiles`,
                         mode: 'basemap',
                         mode_id: String(basemap.id),
@@ -308,23 +325,26 @@ async function setBasemap(basemap: Basemap) {
             }
         }
     } else {
-        const before = String(mapStore.overlays[0].styles[0].id);
+        const before = String(overlays[0].styles[0].id);
 
-        mapStore.overlays.unshift(await Overlay.create({
+        await OverlayManager.createLoaded({
             name: basemap.name,
             pos: -1,
             type: basemap.type,
+            opacity: 1,
+            visible: true,
             frequency: basemap.frequency,
             url: `/api/basemap/${basemap.id}/tiles`,
             mode: 'basemap',
             mode_id: String(basemap.id),
             styles: basemap.styles
-        }, { before }));
+        }, { before, position: 'prepend' });
     }
 }
 
-function download(basemap: Basemap) {
-    window.open(stdurl(`/api/basemap/${basemap.id}?format=xml&download=true&token=${localStorage.token}`), '_blank');
+async function download(basemap: Basemap) {
+    const { value: token } = await Preferences.get({ key: 'token' });
+    void openExternalUrl(stdurl(`/api/basemap/${basemap.id}?format=xml&download=true${token ? `&token=${encodeURIComponent(token)}` : ''}`));
 }
 
 function setCollection(name: string) {
@@ -333,16 +353,12 @@ function setCollection(name: string) {
 }
 
 function isCurrentBasemap(basemapId: number): boolean {
-    const currentBasemap = mapStore.overlays.find(overlay =>
-        overlay.mode === 'basemap' && overlay.mode_id === String(basemapId)
-    );
-    return !!currentBasemap;
+    return currentBasemapModeIds.value.has(String(basemapId));
 }
 
 async function addOverlay(basemap: Basemap) {
     try {
-        // Insert in 1st position after basemap where mapStore.overlays[0] is the basemap
-        mapStore.overlays.splice(1, 0, await Overlay.create({
+        await OverlayManager.createLoaded({
             url: String(stdurl(`/api/basemap/${basemap.id}/tiles`)),
             name: basemap.name,
             mode: 'overlay',
@@ -350,9 +366,7 @@ async function addOverlay(basemap: Basemap) {
             frequency: basemap.frequency,
             type: basemap.type,
             styles: basemap.styles
-        }, {
-            before: String(mapStore.overlays[1].styles[0].id)
-        }));
+        });
 
         loading.value = false;
 
@@ -372,11 +386,12 @@ async function fetchList() {
         const res = await server.GET('/api/basemap', {
             params: {
                 query: {
+                    hidden: 'false',
                     overlay: false,
                     filter: paging.value.filter,
                     collection: paging.value.collection ? paging.value.collection : undefined,
                     limit: paging.value.limit,
-                    order: 'asc',
+                    order: sort.value === 'A → Z' ? 'asc' : 'desc',
                     sort: 'name',
                     page: paging.value.page,
                     type: ['vector', 'raster']
@@ -396,14 +411,6 @@ async function fetchList() {
 </script>
 
 <style scoped>
-.icon-wrapper {
-    width: 3rem;
-    height: 3rem;
-    min-width: 3rem;
-    min-height: 3rem;
-    flex-shrink: 0;
-}
-
 .text-decoration-underline-hover:hover {
     text-decoration: underline;
 }

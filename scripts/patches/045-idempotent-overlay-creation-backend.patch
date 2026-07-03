@@ -1,82 +1,72 @@
 diff --git a/api/routes/profile-overlays.ts b/api/routes/profile-overlays.ts
-index 26ecce6e1..5ab0d0892 100644
+index 9a0e1aca0..b19427a8b 100644
 --- a/api/routes/profile-overlays.ts
 +++ b/api/routes/profile-overlays.ts
-@@ -254,13 +254,47 @@ export default async function router(schema: Schema, config: Config) {
-         }),
-         res: AugmentedProfileOverlayResponse
-     }, async (req, res) => {
-+        let user;
-         try {
--            const user = await Auth.as_user(config, req);
-+            user = await Auth.as_user(config, req);
- 
-             if (req.body.styles && req.body.styles.length) {
-                 TileJSON.isValidStyle(req.body.type || 'raster', req.body.styles);
+@@ -298,6 +298,38 @@ export default async function router(schema: Schema, config: Config) {
+                 BasemapProtocol.isValidStyle(req.body.type || 'raster', req.body.styles);
              }
  
-+            // Normalize URL
-+            if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
++            // Normalize URL early (before duplicate check)
++            if (req.body.mode === 'profile' && req.body.url && req.body.url.startsWith('http')) {
 +                const url = new URL(req.body.url);
 +                req.body.url = url.pathname;
 +            }
 +
-+            // Check if overlay already exists and unhide it
-+            const existing = await config.models.ProfileOverlay.list({
-+                limit: 1,
-+                where: sql`username = ${user.email} AND url = ${req.body.url}`
-+            });
-+
-+            if (existing.total > 0) {
-+                const overlay = await config.models.ProfileOverlay.commit(existing.items[0].id, {
-+                    visible: true
++            // Check if overlay already exists and unhide it instead of creating a duplicate
++            if (req.body.mode !== 'mission' && req.body.url) {
++                const existing = await config.models.ProfileOverlay.list({
++                    limit: 1,
++                    where: sql`username = ${user.email} AND url = ${req.body.url}`,
 +                });
 +
-+                if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
-+                    const basemap = await config.models.Basemap.from(overlay.mode_id);
-+                    return res.json({
-+                        ...overlay,
-+                        actions: TileJSON.actions(basemap.url),
-+                        opacity: Number(overlay.opacity)
++                if (existing.total > 0) {
++                    const overlay = await config.models.ProfileOverlay.commit(existing.items[0].id, {
++                        visible: true,
 +                    });
-+                } else {
-+                    return res.json({
-+                        ...overlay,
-+                        actions: TileJSON.actions(),
-+                        opacity: Number(overlay.opacity)
-+                    });
++
++                    if (overlay.mode === 'basemap' || overlay.mode === 'overlay') {
++                        if (!overlay.mode_id) throw new Err(500, null, 'Overlay missing mode_id');
++                        const basemap = await config.models.Basemap.from(parseInt(overlay.mode_id));
++                        return res.json(serializeOverlay(
++                            overlay,
++                            fromProtocol(basemap.protocol, basemap).actions(),
++                            basemap.type === 'raster-dem' ? basemap.encoding : undefined,
++                        ));
++                    } else {
++                        return res.json(serializeOverlay(overlay, fromProtocol().actions()));
++                    }
 +                }
 +            }
 +
              if (req.body.active && req.body.mode !== 'mission') {
                  throw new Err(400, null, 'Only mission overlays can be made active');
              } else if (req.body.active) {
-@@ -291,11 +325,6 @@ export default async function router(schema: Schema, config: Config) {
-                     token: sub.data.token
-                 })
+@@ -328,11 +360,6 @@ export default async function router(schema: Schema, config: Config) {
+                     token: sub.data.token,
+                 });
              } else {
 -                if (req.body.mode === 'profile' && req.body.url.startsWith('http')) {
 -                    const url = new URL(req.body.url);
 -                    req.body.url = url.pathname;
 -                }
 -
-                 overlay = await config.models.ProfileOverlay.generate({
-                     ...req.body,
-                     opacity: String(req.body.opacity || 1),
-@@ -319,11 +348,7 @@ export default async function router(schema: Schema, config: Config) {
-                 });
+                 if ((req.body.mode === 'basemap' || req.body.mode === 'overlay') && req.body.mode_id && !req.body.type) {
+                     const basemapForType = await config.models.Basemap.from(parseInt(req.body.mode_id));
+                     req.body.type = basemapForType.type;
+@@ -358,11 +385,7 @@ export default async function router(schema: Schema, config: Config) {
+                 res.json(serializeOverlay(overlay, fromProtocol().actions()));
              }
          } catch (err) {
 -            if (String(err).includes('duplicate key value violates unique constraint')) {
--                 Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'Overlay appears to exist - cannot add duplicate'), res)
+-                Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'Overlay appears to exist - cannot add duplicate'), res);
 -            } else {
--                 Err.respond(err, res);
+-                Err.respond(err, res);
 -            }
 +            return Err.respond(err, res);
          }
      });
  
-@@ -347,6 +372,16 @@ export default async function router(schema: Schema, config: Config) {
+@@ -386,6 +409,16 @@ export default async function router(schema: Schema, config: Config) {
  
              await config.models.ProfileOverlay.delete(overlay.id);
  

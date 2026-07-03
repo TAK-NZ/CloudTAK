@@ -4,7 +4,7 @@ import Flight from './flight.js';
 
 const flight = new Flight();
 
-flight.init();
+flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 
@@ -12,7 +12,7 @@ test('GET /api/search/reverse/:longitude/:latitude - success', async () => {
     try {
         const res = await flight.fetch('/api/search/reverse/-105/39.7', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.sun, 'Sun data present');
@@ -28,7 +28,7 @@ test('GET /api/search/reverse/:longitude/:latitude - with elevation', async () =
     try {
         const res = await flight.fetch('/api/search/reverse/-105/39.7?elevation=1655', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.elevation, 'Elevation data present');
@@ -42,7 +42,7 @@ test('GET /api/search/suggest - success', async () => {
     try {
         const res = await flight.fetch('/api/search/suggest?query=Denver&limit=5&longitude=-105&latitude=39.7', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.items, 'Items array present');
@@ -56,7 +56,7 @@ test('GET /api/search/forward - success', async () => {
     try {
         const res = await flight.fetch('/api/search/forward?query=Denver&magicKey=test&longitude=-105&latitude=39.7', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.items, 'Items array present');
@@ -70,7 +70,7 @@ test('GET /api/search/route - without token', async () => {
     try {
         const res = await flight.fetch('/api/search/route?start=-105,39.7&end=-104.8,39.9', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.equal(res.body.type, 'FeatureCollection', 'Returns empty FeatureCollection');
@@ -84,7 +84,7 @@ test('GET /api/search/route - with travel mode', async () => {
     try {
         const res = await flight.fetch('/api/search/route?start=-105,39.7&end=-104.8,39.9&travelMode=Walking Time', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.equal(res.body.type, 'FeatureCollection', 'Returns FeatureCollection');
@@ -98,7 +98,7 @@ test('GET /api/search/suggest - empty query', async () => {
     try {
         const res = await flight.fetch('/api/search/suggest?query=&limit=5', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.items, 'Items array present');
@@ -112,7 +112,7 @@ test('GET /api/search/forward - empty query', async () => {
     try {
         const res = await flight.fetch('/api/search/forward?query=&magicKey=test', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.items, 'Items array present');
@@ -127,7 +127,7 @@ test('GET /api/search/reverse/:longitude/:latitude - weather fallback', async ()
         // Test with London coordinates (outside US) to trigger fallback
         const res = await flight.fetch('/api/search/reverse/-0.1/51.5', {
             method: 'GET',
-            auth: { bearer: flight.token.admin }
+            auth: { bearer: flight.token.admin },
         }, true);
 
         assert.ok(res.body.sun, 'Sun data present');

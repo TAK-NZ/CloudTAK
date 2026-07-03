@@ -1,16 +1,24 @@
 <template>
     <div class='col-12 row g-0'>
         <div class='col-12'>
-            <label class='subheader mx-2'>{{ props.weather?.properties.forecastGenerator || 'National Weather Service' }}</label>
+            <label class='subheader mx-2'>{{ weather?.properties.forecastGenerator || 'National Weather Service' }}</label>
         </div>
+        <TablerLoading
+            v-if='loading'
+            desc='Loading weather...'
+        />
+        <TablerAlert
+            v-else-if='error'
+            :err='error'
+        />
         <div
-            v-if='props.weather'
+            v-else-if='weather'
             class='col-12'
         >
             <TablerSlidedown :click-anywhere-expand='true'>
                 <div class='d-flex align-items-center py-2 px-2'>
                     <component
-                        :is='getIcon(props.weather.properties.periods[0].shortForecast)'
+                        :is='getIcon(weather.properties.periods[0].shortForecast)'
                         size='40'
                         stroke='1'
                     />
@@ -18,18 +26,18 @@
                     <div class='d-flex mx-2'>
                         <div
                             style='font-size: 30px;'
-                            v-text='props.weather.properties.periods[0].temperature'
+                            v-text='weather.properties.periods[0].temperature'
                         />
                         <div
                             class='mx-1 my-1'
-                            v-text='"°" + props.weather.properties.periods[0].temperatureUnit'
+                            v-text='"°" + weather.properties.periods[0].temperatureUnit'
                         />
                     </div>
                     <div class='d-flex ms-auto'>
                         <div
                             class='mx-2'
                             style='font-size: 20px;'
-                            v-text='props.weather.properties.periods[0].shortForecast'
+                            v-text='weather.properties.periods[0].shortForecast'
                         />
                     </div>
                 </div>
@@ -44,7 +52,7 @@
                             <span class='ms-2 small'>Wind</span>
                         </div>
                         <div class='ms-4'>
-                            {{ props.weather.properties.periods[0].windSpeed }} {{ props.weather.properties.periods[0].windDirection }}
+                            {{ weather.properties.periods[0].windSpeed }} {{ weather.properties.periods[0].windDirection }}
                         </div>
                     </div>
                     <div class='col-6 mb-2'>
@@ -56,7 +64,7 @@
                             <span class='ms-2 small'>Humidity</span>
                         </div>
                         <div class='ms-4'>
-                            {{ props.weather.properties.periods[0].relativeHumidity.value }}%
+                            {{ weather.properties.periods[0].relativeHumidity.value }}%
                         </div>
                     </div>
                     <div class='col-6 mb-2'>
@@ -68,7 +76,7 @@
                             <span class='ms-2 small'>Dewpoint</span>
                         </div>
                         <div class='ms-4'>
-                            {{ Math.round(props.weather.properties.periods[0].dewpoint.value) }}°C
+                            {{ Math.round(weather.properties.periods[0].dewpoint.value) }}°C
                         </div>
                     </div>
                     <div class='col-6 mb-2'>
@@ -80,7 +88,7 @@
                             <span class='ms-2 small'>Precipitation</span>
                         </div>
                         <div class='ms-4'>
-                            {{ props.weather.properties.periods[0].probabilityOfPrecipitation.value || 0 }}%
+                            {{ weather.properties.periods[0].probabilityOfPrecipitation.value || 0 }}%
                         </div>
                     </div>
                 </div>
@@ -96,7 +104,7 @@
                                 class='px-2 py-1 font-weight-bold small text-muted border-bottom'
                                 :class='{ "mt-2": i > 0 }'
                             >
-                                {{ moment(period.startTime).format('dddd, MMM Do') }}
+                                {{ formatForecastDay(period.startTime) }}
                             </div>
                             <div
                                 class='d-flex align-items-center px-2 py-1'
@@ -110,7 +118,7 @@
                                     <div
                                         class='text-muted'
                                         style='font-size: 0.7rem'
-                                        v-text='moment(period.startTime).format("h A")'
+                                        v-text='formatForecastHour(period.startTime)'
                                     />
                                 </div>
                                 <component
@@ -147,11 +155,13 @@
 </template>
 
 <script setup lang='ts'>
-import { computed } from 'vue';
-import type { SearchReverse } from '../../../types.ts';
-import moment from 'moment';
+import { ref, computed, onMounted } from 'vue';
+import type { SearchReverseWeather } from '../../../types.ts';
+import { server } from '../../../std.ts';
 import {
-    TablerSlidedown
+    TablerSlidedown,
+    TablerLoading,
+    TablerAlert
 } from '@tak-ps/vue-tabler';
 import {
     IconSun,
@@ -168,16 +178,79 @@ import {
 } from '@tabler/icons-vue';
 
 const props = defineProps<{
-    weather: SearchReverse["weather"]
+    longitude: number;
+    latitude: number;
 }>();
 
-const forecastPeriods = computed(() => {
-    if (!props.weather) return [];
-    return props.weather.properties.periods.slice(1);
+const loading = ref(true);
+const error = ref<Error | undefined>();
+const weather = ref<SearchReverseWeather['weather']>(null);
+
+onMounted(async () => {
+    try {
+        const { data, error: reqError } = await server.GET('/api/search/reverse/{:longitude}/{:latitude}/weather', {
+            params: {
+                path: { ':longitude': props.longitude, ':latitude': props.latitude },
+            },
+        });
+
+        if (reqError) throw new Error(String(reqError));
+        weather.value = data.weather;
+    } catch (err) {
+        error.value = err instanceof Error ? err : new Error(String(err));
+    } finally {
+        loading.value = false;
+    }
 });
 
+const forecastPeriods = computed(() => {
+    if (!weather.value) return [];
+    return weather.value.properties.periods.slice(1);
+});
+
+const weekdayFormatter = new Intl.DateTimeFormat(undefined, {
+    weekday: 'long'
+});
+
+const monthFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short'
+});
+
+const hourFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    hour12: true
+});
+
+function ordinal(day: number): string {
+    const remainder = day % 100;
+
+    if (remainder >= 11 && remainder <= 13) return `${day}th`;
+
+    switch (day % 10) {
+        case 1: return `${day}st`;
+        case 2: return `${day}nd`;
+        case 3: return `${day}rd`;
+        default: return `${day}th`;
+    }
+}
+
+function formatForecastDay(time: string): string {
+    const date = new Date(time);
+
+    return `${weekdayFormatter.format(date)}, ${monthFormatter.format(date)} ${ordinal(date.getDate())}`;
+}
+
+function formatForecastHour(time: string): string {
+    return hourFormatter.format(new Date(time)).replace(/\s/g, ' ');
+}
+
 function isSameDay(d1: string, d2: string) {
-    return moment(d1).isSame(d2, 'day');
+    const first = new Date(d1);
+    const second = new Date(d2);
+
+    return first.getFullYear() === second.getFullYear()
+        && first.getMonth() === second.getMonth()
+        && first.getDate() === second.getDate();
 }
 
 function getIcon(forecast: string) {

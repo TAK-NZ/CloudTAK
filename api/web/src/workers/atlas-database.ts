@@ -1,22 +1,31 @@
+
 /*
 * AtlasConnection - Maintain the WebSocket connection with CloudTAK Server
 */
 
 import { std } from '../std.ts';
+import { db, withDbRetry } from '../database.ts';
+import type { DBSubscriptionChanges } from '../database.ts';
 import { LngLatBounds } from 'maplibre-gl'
 import jsonata from 'jsonata';
 import type Atlas from './atlas.ts';
 import Subscription from '../base/subscription.ts';
 import { coordEach } from '@turf/meta'
 import COT, { OriginMode } from '../base/cot.ts';
+import ContactManager from '../base/contact.ts';
+import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../base/events.ts';
 import type { GeoJSONSourceDiff, LngLatLike } from 'maplibre-gl';
 import { booleanWithin } from '@turf/boolean-within';
 import type { Polygon } from 'geojson';
-import type { InputFeature, Feature, APIList } from '../types.ts';
+import type { InputFeature, Feature, APIList, Contact } from '../types.ts';
+import ProfileConfig from '../base/profile.ts';
+import * as Comlink from 'comlink';
+import AtlasBreadcrumb from './atlas-breadcrumb.ts';
 
 type NestedArray = {
     path: string;
+    count: number;
     paths: Array<NestedArray>;
 }
 
@@ -28,18 +37,34 @@ export default class AtlasDatabase {
     // Stores Active Mission if present
     mission?: string;
 
+    static normalizePath(path: string): string {
+        if (!path) return '/';
+        if (!path.startsWith('/')) path = '/' + path;
+        path = path.replace(/\/+/g, '/');
+        if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
+        return path;
+    }
+
     pendingCreate: Map<string, COT>;
     pendingUpdate: Map<string, COT>;
     pendingHidden: Set<string>;
     pendingUnhide: Set<string>;
     pendingDelete: Set<string>;
 
+    /** Set to true by Atlas after db.init() completes. Notifications for
+     *  new contacts are suppressed until then to avoid flooding the user
+     *  with presence alerts for everyone already online at login time. */
+    isInitialized: boolean;
+
     subscriptionPending: Map<string, string>;
+
+    breadcrumb: AtlasBreadcrumb & Comlink.ProxyMarked;
 
     constructor(atlas: Atlas) {
         this.atlas = atlas;
 
         this.cots = new Map();
+        this.isInitialized = false;
 
         this.pendingCreate = new Map();
         this.pendingUpdate = new Map();
@@ -48,6 +73,8 @@ export default class AtlasDatabase {
         this.pendingDelete = new Set();
 
         this.subscriptionPending = new Map(); // UID, Mission Guid
+
+        this.breadcrumb = Comlink.proxy(new AtlasBreadcrumb(this));
     }
 
     async makeActiveMission(guid? : string): Promise<void> {
@@ -73,7 +100,13 @@ export default class AtlasDatabase {
     }
 
     async init(): Promise<void> {
-        await this.loadArchive()
+        COT.selfUid = this.atlas.profile.uid();
+        try {
+            await this.loadArchive();
+        } catch (err) {
+            console.error('Failed to load archived features:', err);
+        }
+        await this.breadcrumb.load();
     }
 
     /**
@@ -111,12 +144,15 @@ export default class AtlasDatabase {
         diff.add = [];
         diff.remove = [];
         diff.update = [];
+        const staleDelete = new Set<string>();
 
-        const profile = await this.atlas.profile.load();
-        const display_stale = profile.display_stale || 'Immediate';
+        const display_stale = (await ProfileConfig.get('display_stale'))?.value || 'Immediate';
 
         for (const cot of this.cots.values()) {
-            const render = cot.as_rendered();
+            // The user's own position is drawn by the GeolocateControl puck
+            // rather than as a CoT marker on the map.
+            if (cot.is_self) continue;
+
             const stale = new Date(cot.properties.stale).getTime();
 
             if (this.pendingHidden.has(String(cot.id))) {
@@ -133,13 +169,7 @@ export default class AtlasDatabase {
                 )
             ) {
                 diff.remove.push(cot.vectorId())
-                // If this was a contact (skittle), notify the Contacts panel so it
-                // can move the contact to Offline without waiting for the next
-                // presence CoT from another user to trigger Contact_Change.
-                if (cot.is_skittle) {
-                    this.atlas.team.contacts.delete(cot.id);
-                    this.atlas.postMessage({ type: WorkerMessageType.Contact_Change });
-                }
+                staleDelete.add(cot.id);
             } else if (!cot.properties.archived) {
                 if (now < stale && (cot.properties['icon-opacity'] !== 1 || cot.properties['marker-opacity'] !== 1)) {
                     cot.properties['icon-opacity'] = 1;
@@ -147,25 +177,27 @@ export default class AtlasDatabase {
 
                     if (!['Point', 'Polygon', 'LineString'].includes(cot.geometry.type)) continue;
 
+                    const fresh = cot.as_rendered();
                     diff.update.push({
-                        id: Number(render.id),
-                        addOrUpdateProperties: Object.keys(render.properties).map((key) => {
-                            return { key, value: render.properties ? render.properties[key] : '' }
+                        id: Number(fresh.id),
+                        addOrUpdateProperties: Object.keys(fresh.properties).map((key) => {
+                            return { key, value: fresh.properties ? fresh.properties[key] : '' }
                         }),
-                        newGeometry: render.geometry
+                        newGeometry: fresh.geometry
                     })
-                } else if (now > stale && (cot.properties['icon-opacity'] !== 0.5 || cot.properties['marker-opacity'] !== 127)) {
-                    render.properties['icon-opacity'] = 0.5;
-                    render.properties['marker-opacity'] = 0.5;
+                } else if (now > stale && (cot.properties['icon-opacity'] !== 0.5 || cot.properties['marker-opacity'] !== 0.5)) {
+                    cot.properties['icon-opacity'] = 0.5;
+                    cot.properties['marker-opacity'] = 0.5;
 
-                    if (!['Point', 'Polygon', 'LineString'].includes(render.geometry.type)) continue;
+                    if (!['Point', 'Polygon', 'LineString'].includes(cot.geometry.type)) continue;
 
+                    const dimmed = cot.as_rendered();
                     diff.update.push({
-                        id: Number(render.id),
-                        addOrUpdateProperties: Object.keys(render.properties).map((key) => {
-                            return { key, value: cot.properties ? render.properties[key] : '' }
+                        id: Number(dimmed.id),
+                        addOrUpdateProperties: Object.keys(dimmed.properties).map((key) => {
+                            return { key, value: dimmed.properties ? dimmed.properties[key] : '' }
                         }),
-                        newGeometry: render.geometry
+                        newGeometry: dimmed.geometry
                     })
                 }
             }
@@ -173,7 +205,7 @@ export default class AtlasDatabase {
 
         for (const id of this.pendingUnhide.values()) {
             const cot = this.cots.get(id);
-            if (!cot) continue;
+            if (!cot || cot.is_self) continue;
 
             const render = cot.as_rendered();
             diff.add.push(render);
@@ -182,6 +214,7 @@ export default class AtlasDatabase {
         this.pendingUnhide.clear();
 
         for (const cot of this.pendingCreate.values()) {
+            if (cot.is_self || staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
             const render = cot.as_rendered();
             diff.add.push(render);
         }
@@ -189,6 +222,8 @@ export default class AtlasDatabase {
         this.pendingCreate.clear();
 
         for (const cot of this.pendingUpdate.values()) {
+            if (cot.is_self || staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
+
             const render = cot.as_rendered();
 
             diff.update.push({
@@ -200,7 +235,12 @@ export default class AtlasDatabase {
             })
         }
 
-        this.pendingCreate.clear();
+        this.pendingUpdate.clear();
+
+        for (const id of staleDelete) {
+            this.cots.delete(id);
+            await withDbRetry(() => db.feature.delete(id));
+        }
 
         for (const id of this.pendingDelete) {
             const cot = await this.get(id);
@@ -209,6 +249,7 @@ export default class AtlasDatabase {
             diff.remove.push(cot.vectorId());
 
             this.cots.delete(id);
+            await withDbRetry(() => db.feature.delete(id));
         }
 
         this.pendingDelete.clear();
@@ -255,6 +296,7 @@ export default class AtlasDatabase {
         const expression = jsonata(filter);
 
         for (const cot of this.cots.values()) {
+            if (this.pendingDelete.has(cot.id)) continue;
             if (await expression.evaluate(cot.as_feature()) === true) {
                 cots.add(cot);
             }
@@ -272,7 +314,7 @@ export default class AtlasDatabase {
 
                 for (const feat of await store.feature.list()) {
                     if (await expression.evaluate(feat) === true) {
-                        cots.add(await COT.load(this.atlas, feat, {
+                        cots.add(await COT.load(feat, {
                             mode: OriginMode.MISSION,
                             mode_id: sub.guid
                         }));
@@ -315,14 +357,19 @@ export default class AtlasDatabase {
     async paths(store?: Map<string, COT>): Promise<Array<NestedArray>> {
         if (!store) store = this.cots;
 
-        const paths = new Set();
+        const paths = new Map<string, number>();
         for (const value of store.values()) {
-            if (value.path) paths.add(value.path);
+            if (value.path && value.path !== '/' && value.properties.archived) {
+                const normalized = AtlasDatabase.normalizePath(value.path);
+                if (normalized === '/') continue;
+                paths.set(normalized, (paths.get(normalized) || 0) + 1);
+            }
         }
 
-        return Array.from(paths).map((path) => {
+        return Array.from(paths.keys()).map((path) => {
             return {
                 path: path,
+                count: paths.get(path) || 0,
                 paths: []
             } as NestedArray
         });
@@ -393,29 +440,53 @@ export default class AtlasDatabase {
             return;
         }
 
+        const breadcrumbUid = cot.properties.breadcrumb
+            ? String(cot.properties.uid || cot.id).replace(/\.track$/, '')
+            : cot.id;
+        const breadcrumbId = `${breadcrumbUid}.track`;
+        const breadcrumbEntry = await db.breadcrumb.get(breadcrumbId);
+
+        if (breadcrumbEntry) {
+            await this.breadcrumb.remove(breadcrumbUid);
+
+            if (this.cots.has(breadcrumbId)) {
+                this.pendingDelete.add(breadcrumbId);
+            }
+
+            await withDbRetry(() => db.feature.delete(breadcrumbId));
+        }
+
         if (cot.origin.mode === OriginMode.CONNECTION) {
             this.pendingDelete.add(id);
 
             if (cot.properties.archived) {
-                this.atlas.postMessage({
-                    type: WorkerMessageType.Feature_Archived_Removed
-                });
-
                 if (!opts.skipNetwork) {
                     await std(`/api/profile/feature/${id}`, {
                         token: this.atlas.token,
                         method: 'DELETE'
                     });
                 }
+
+                this.atlas.postMessage({
+                    type: WorkerMessageType.Feature_Archived_Removed
+                });
             }
         } else if (cot.origin.mode === OriginMode.MISSION && cot.origin.mode_id) {
             const subscription = await Subscription.from(cot.origin.mode_id, this.atlas.token, {
                 subscribed: true
             });
+
             if (!subscription) throw new Error('Could not delete as Mission Subscription does not exist');
 
             await subscription.feature.delete(this.atlas, cot.id, {
                 skipNetwork: opts.skipNetwork
+            });
+
+            this.atlas.postMessage({
+                type: WorkerMessageType.Mission_Change_Feature,
+                body: {
+                    guid: cot.origin.mode_id
+                }
             });
         }
     }
@@ -450,6 +521,7 @@ export default class AtlasDatabase {
     async subChange(task: Feature): Promise<void> {
         if (task.properties.type === 't-x-m-c' && task.properties.mission && task.properties.mission.missionChanges) {
             let updateGuid;
+            let doMissionRefresh = false;
 
             for (const change of task.properties.mission.missionChanges) {
                 if (!task.properties.mission.guid) {
@@ -457,8 +529,18 @@ export default class AtlasDatabase {
                     continue;
                 }
 
+                await db.subscription_changes.put({
+                    serverTime: new Date().toISOString(),
+                    ...change,
+                    mission: task.properties.mission.guid,
+                } as DBSubscriptionChanges);
+
+                if (change.contentResource) {
+                    doMissionRefresh = true;
+                }
+
                 if (change.type === 'ADD_CONTENT') {
-                    this.subscriptionPending.set(change.contentUid, task.properties.mission.guid);
+                    if (change.contentUid) this.subscriptionPending.set(change.contentUid, task.properties.mission.guid);
                 } else if (change.type === 'REMOVE_CONTENT') {
                     const sub = await Subscription.from(task.properties.mission.guid, this.atlas.token, {
                         subscribed: true
@@ -468,12 +550,24 @@ export default class AtlasDatabase {
                         continue;
                     }
 
+                    if (!change.contentUid) continue;
+
                     await sub.feature.delete(this.atlas, change.contentUid, {
                         // This is critical to ensure a recursive loop of doesn't occur
                         skipNetwork: true
                     });
 
                     updateGuid = task.properties.mission.guid;
+                }
+            }
+
+            if (doMissionRefresh && task.properties.mission.guid) {
+                const sub = await Subscription.from(task.properties.mission.guid, this.atlas.token, {
+                    subscribed: true
+                });
+
+                if (sub) {
+                    await sub.fetch();
                 }
             }
 
@@ -529,7 +623,7 @@ export default class AtlasDatabase {
             skipBroadcast?: boolean;
             authored?: boolean,
         }
-    ): Promise<COT> {
+    ): Promise<COT | void> {
         if (!opts) opts = {};
 
         feature.properties.id = feature.id;
@@ -581,7 +675,7 @@ export default class AtlasDatabase {
             }
 
             if (!exists) {
-                exists = await COT.load(this.atlas, feat, {
+                exists = await COT.load(feat, {
                     mode: OriginMode.MISSION,
                     mode_id: mission_guid
                 }, opts);
@@ -604,6 +698,8 @@ export default class AtlasDatabase {
                 }
             });
 
+            await this.breadcrumb.update(exists);
+
             return exists;
         } else {
             if (exists) {
@@ -612,10 +708,58 @@ export default class AtlasDatabase {
                     properties: feat.properties,
                     geometry: feat.geometry
                 }, { skipSave: opts.skipSave })
+
+                this.pendingUpdate.set(exists.id, exists);
+
+                // Sync profile if this is the user's own COT
+                if (exists.is_self) {
+                    const remarks = this.atlas.profile.profile_remarks?.value;
+                    const callsign = this.atlas.profile.profile_callsign?.value;
+
+                    if (
+                        (remarks !== undefined && exists.properties.remarks !== remarks)
+                        || (callsign !== undefined && exists.properties.callsign !== callsign)
+                    ) {
+                        await this.atlas.profile.update({
+                            tak_callsign: exists.properties.callsign,
+                            tak_remarks: exists.properties.remarks
+                        });
+                    }
+                }
             } else {
-                exists = await COT.load(this.atlas, feat, {
+                // Don't add already-stale CoTs to the map
+                if (!feat.properties.archived) {
+                    const display_stale = (await ProfileConfig.get('display_stale'))?.value || 'Immediate';
+                    const stale = new Date(feat.properties.stale).getTime();
+                    const now = Date.now();
+
+                    if (
+                        !['Never'].includes(display_stale)
+                        && (
+                            display_stale === 'Immediate'       && now > stale
+                            || display_stale === '10 Minutes'   && now > stale + 600000
+                            || display_stale === '30 Minutes'   && now > stale + 600000 * 3
+                            || display_stale === '1 Hour'       && now > stale + 600000 * 6
+                        )
+                    ) {
+                        return;
+                    }
+                }
+
+                exists = await COT.load(feat, {
                     mode: OriginMode.CONNECTION
                 }, opts);
+
+                this.pendingCreate.set(exists.id, exists);
+                this.cots.set(exists.id, exists);
+
+                const created = exists;
+                await withDbRetry(() => db.feature.put({
+                    id: created.id,
+                    path: created.path,
+                    properties: created.properties,
+                    geometry: created.geometry
+                }));
 
                 if (opts.skipBroadcast !== true && exists.properties.archived) {
                     this.atlas.postMessage({
@@ -625,8 +769,40 @@ export default class AtlasDatabase {
             }
 
             if (exists.is_skittle) {
-                await this.atlas.team.set(exists);
+                if (!exists.properties.group) {
+                    throw new Error('Contact Marker must have group property');
+                }
+
+        if (this.atlas.profile.uid() !== exists.id) {
+                    const entry = await ContactManager.from(exists.id);
+
+                    if (!entry) {
+                        const contact: Contact = {
+                            uid: exists.id,
+                            notes: '',
+                            filterGroups: null,
+                            callsign: exists.properties.callsign,
+                            team: exists.properties.group.name,
+                            role: exists.properties.group.role,
+                            takv: ''
+                        }
+
+                        await ContactManager.put(contact);
+
+                        if (this.isInitialized) {
+                            await TAKNotification.create(
+                                NotificationType.Contact,
+                                'Online Contact',
+                                `${exists.properties.callsign} is now Online`,
+                                `/cot/${exists.id}`,
+                                false
+                            );
+                        }
+                    }
+                }
             }
+
+            await this.breadcrumb.update(exists);
 
             return exists;
         }
@@ -669,7 +845,7 @@ export default class AtlasDatabase {
 
                 if (!feat) continue;
 
-                cot = await COT.load(this.atlas, feat, {
+                cot = await COT.load(feat, {
                     mode: OriginMode.MISSION,
                     mode_id: sub.guid
                 });
@@ -702,12 +878,14 @@ export default class AtlasDatabase {
     pathFeatures(path?: string, store?: Map<string, COT>): Set<COT> {
         if (!store) store = this.cots;
 
+        const normalizedPath = path ? AtlasDatabase.normalizePath(path) : undefined;
         const feats: Set<COT> = new Set();
 
         for (const value of store.values()) {
-            if (path && value.path === path && value.properties.archived) {
-                feats.add(value);
-            } else if (!path && value.properties.archived) {
+            if (normalizedPath && value.properties.archived) {
+                const valuePath = AtlasDatabase.normalizePath(value.path);
+                if (valuePath === normalizedPath) feats.add(value);
+            } else if (!normalizedPath && value.properties.archived) {
                 feats.add(value);
             }
         }

@@ -31,7 +31,7 @@
             </div>
 
             <TablerAlert
-                v-if='err'
+                v-if='error'
                 title='ETL Server Error'
                 :err='error'
                 :compact='true'
@@ -40,7 +40,7 @@
             <TablerNone
                 v-else-if='!list.items.length'
                 :create='false'
-                label='Data Syncs'
+                label='No Data Syncs'
             />
             <div
                 v-else
@@ -107,10 +107,11 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { std, stdurl } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import type { ETLConnection, APIList, ETLData } from '../../../types.ts';
 import TableFooter from '../../util/TableFooter.vue';
 import {
     TablerNone,
@@ -129,21 +130,18 @@ import {
 const route = useRoute();
 const router = useRouter();
 
-const props = defineProps({
-    connection: {
-        type: Object,
-        required: true
-    }
-});
+const props = defineProps<{
+    connection: ETLConnection;
+}>();
 
 const loading = ref(true);
-const error = ref();
+const error = ref<Error>();
 const paging = ref({
     filter: '',
     limit: 10,
     page: 0
 })
-const list = ref({
+const list = ref<APIList<ETLData>>({
     total: 0,
     items: []
 });
@@ -158,13 +156,26 @@ onMounted(async () => {
 
 async function listData() {
     loading.value = true;
+    error.value = undefined;
     try {
-        const url = stdurl(`/api/connection/${route.params.connectionid}/data`);
-        url.searchParams.append('limit', paging.value.limit);
-        url.searchParams.append('page', paging.value.page);
-        url.searchParams.append('filter', paging.value.filter);
-        url.searchParams.append('connection', route.params.connectionid);
-        list.value = await std(url);
+        const { data, error: serverError } = await server.GET('/api/connection/{:connectionid}/data', {
+            params: {
+                path: {
+                    ':connectionid': Number(route.params.connectionid),
+                },
+                query: {
+                    limit: paging.value.limit,
+                    page: paging.value.page,
+                    filter: paging.value.filter,
+                    order: 'asc',
+                    sort: 'created',
+                }
+            }
+        });
+
+        if (serverError) throw new Error(serverError.message);
+
+        list.value = data as APIList<ETLData>;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
     }

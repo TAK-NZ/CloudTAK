@@ -1,17 +1,20 @@
-import { Static } from '@sinclair/typebox'
-import { DirectChat, CoTParser }  from '@tak-ps/node-cot';
-import type { Feature }  from '@tak-ps/node-cot';
+import { Static } from '@sinclair/typebox';
+import { randomUUID } from 'node:crypto';
+import { DirectChat, MissionChat, CoTParser } from '@tak-ps/node-cot';
+import type { Feature } from '@tak-ps/node-cot';
 import { WebSocket } from 'ws';
 import { ConnectionClient } from './connection-pool.js';
 
 export class ConnectionWebSocket {
     ws: WebSocket;
     format: string;
+    session?: string;
     client?: ConnectionClient;
 
-    constructor(ws: WebSocket, format = 'raw', client?: ConnectionClient) {
+    constructor(ws: WebSocket, format = 'raw', client?: ConnectionClient, session?: string) {
         this.ws = ws;
         this.format = format;
+        this.session = session;
 
         if (client) {
             this.client = client;
@@ -20,50 +23,79 @@ export class ConnectionWebSocket {
                     const msg = JSON.parse(String(data));
 
                     if (msg.type === 'chat') {
-                        if (!msg.data.to?.uid || !msg.data.to?.callsign) {
-                            throw new Error(`Chat message is missing recipient uid/callsign: ${JSON.stringify(msg.data.to)}`);
+                        let chat: DirectChat | MissionChat;
+
+                        if (msg.data.mission) {
+                            const serverUrl = new URL(client.config.config.server.url);
+                            const apiUrl = new URL(String(client.config.config.server.api));
+                            const protocol = serverUrl.protocol.replace(':', '');
+                            const hostname = apiUrl.hostname;
+                            const port = apiUrl.port;
+                            const missionId = `${hostname}-${port}-${protocol}-${msg.data.chatroom}`;
+
+                            chat = new MissionChat({
+                                from: {
+                                    uid: msg.data.from.uid,
+                                },
+                                mission: {
+                                    name: msg.data.chatroom,
+                                    id: missionId,
+                                    guid: msg.data.guid,
+                                },
+                                senderCallsign: msg.data.from.callsign,
+                                message: msg.data.message,
+                                messageId: msg.data.messageId,
+                                parent: msg.data.parent,
+                                groupOwner: msg.data.groupOwner,
+                            });
+                        } else {
+                            chat = new DirectChat(msg.data);
                         }
-                        const chat = new DirectChat(msg.data);
+
                         if (msg.data.location && msg.data.location[0] !== 0 && msg.data.location[1] !== 0) {
                             chat.position(msg.data.location);
                         }
-                        // TAK Server plugins (e.g. tak-gpt) are server-side entities
-                        // (endpoint *:-1:stcp) with no TCP connection. The TAK Server
-                        // routes <marti><dest uid="..."/> to connected TCP clients only,
-                        // so messages to plugins are silently dropped.
-                        // Use <marti><dest callsign="..."/> with the bot UID (matching
-                        // ATAK's wire format). The TAK Server resolves the UID to the
-                        // human-readable callsign in xmlDetail before delivering to the
-                        // plugin, so tak-gpt's llmManagers.containsKey(botName) matches.
-                        // Also inject <dest callsign="..."> directly inside <detail> as
-                        // a fallback for plugins that search xmlDetail directly.
-                        if (!chat.raw.event.detail) chat.raw.event.detail = {};
-                        if (chat.raw.event.detail.marti) {
-                            (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
-                                { _attributes: { callsign: msg.data.to.callsign } }
-                            ];
+
+                        // TAK Server plugins route by callsign in xmlDetail.
+                        // Inject dest into both <marti> and directly in <detail>
+                        // so plugins searching either location can route correctly.
+                        if (msg.data.to?.callsign && chat instanceof DirectChat) {
+                            if (!chat.raw.event.detail) chat.raw.event.detail = {};
+                            if (chat.raw.event.detail.marti) {
+                                (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
+                                    { _attributes: { callsign: msg.data.to.callsign } },
+                                ];
+                            }
+                            (chat.raw.event.detail as Record<string, unknown>).dest = {
+                                _attributes: { callsign: msg.data.to.callsign },
+                            };
                         }
-                        (chat.raw.event.detail as Record<string, unknown>).dest = {
-                            _attributes: { callsign: msg.data.to.callsign }
-                        };
-                        client.tak.write([chat]);
-                        // Do NOT store the outgoing message here. The TAK Server echoes
-                        // the CoT back on the sender's TCP connection, which triggers
-                        // connection-pool.ts cots() to store it. Storing here as well
-                        // would result in the sender seeing the message twice.
+
+                        client.tak.write([chat], { stripFlow: true });
+
+                        const feat = await CoTParser.to_geojson(chat);
+                        await client.config.config.models.ProfileChat.generate({
+                            username: String(client.config.id),
+                            chatroom: msg.data.chatroom,
+                            sender_callsign: msg.data.from.callsign,
+                            sender_uid: msg.data.from.uid,
+                            message_id: feat.properties.chat ? (feat.properties.chat.messageId || randomUUID()) : randomUUID(),
+                            message: msg.data.message,
+                        });
                     } else {
                         const feat = msg.data as Static<typeof Feature.Feature>;
 
                         const cot = await CoTParser.from_geojson(feat);
 
-                        client.tak.write([cot]);
+                        client.tak.write([cot], { stripFlow: true });
                     }
                 } catch (err) {
+                    console.warn('Warning: Validation Error on WebSocket CoT message:', String(data), err);
                     this.ws.send(JSON.stringify({
                         type: 'Error',
                         properties: {
-                            message: err instanceof Error ? err.message : String(err)
-                        }
+                            message: err instanceof Error ? err.message : String(err),
+                        },
                     }));
                 }
             });
@@ -74,5 +106,4 @@ export class ConnectionWebSocket {
         this.ws.close();
         delete this.client;
     }
-
 }

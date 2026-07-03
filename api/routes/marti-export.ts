@@ -1,12 +1,12 @@
-import { Static, Type } from '@sinclair/typebox'
+import { Static, Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import { Feature } from '@tak-ps/node-cot'
+import { Feature } from '@tak-ps/node-cot';
 import { HistoryOptions } from '@tak-ps/node-tak/lib/api/query';
 import Auth from '../lib/auth.js';
 import Config from '../lib/config.js';
 import { ExportInput } from '@tak-ps/node-tak/lib/api/export';
-import { TAKAPI, APIAuthCertificate, } from '@tak-ps/node-tak';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 export default async function router(schema: Schema, config: Config) {
     await schema.post('/marti/export', {
@@ -16,7 +16,7 @@ export default async function router(schema: Schema, config: Config) {
         query: Type.Object({
             download: Type.Optional(Type.Boolean()),
         }),
-        body: ExportInput
+        body: ExportInput,
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req, { admin: true });
@@ -32,7 +32,7 @@ export default async function router(schema: Schema, config: Config) {
 
             exp.pipe(res);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -41,9 +41,9 @@ export default async function router(schema: Schema, config: Config) {
         group: 'MartiCOTQuery',
         description: 'Helper API to get latest COT by UID',
         params: Type.Object({
-            uid: Type.String()
+            uid: Type.String(),
         }),
-        res: Feature.Feature
+        res: Feature.Feature,
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -52,9 +52,9 @@ export default async function router(schema: Schema, config: Config) {
 
             const feat = await api.Query.singleFeat(req.params.uid);
 
-            res.json(feat)
+            res.json(feat);
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 
@@ -63,21 +63,21 @@ export default async function router(schema: Schema, config: Config) {
         group: 'MartiCOTQuery',
         description: 'Helper API to list COT history',
         params: Type.Object({
-            uid: Type.String()
+            uid: Type.String(),
         }),
         query: Type.Composite([
             Type.Object({
                 track: Type.Boolean({
                     description: 'By default each historic point will be its own feature, if true this will attempt to join all points into a single Feature Collection at the cost of temporal attributes',
-                    default: true
-                })
+                    default: true,
+                }),
             }),
-            HistoryOptions
+            HistoryOptions,
         ]),
         res: Type.Object({
             type: Type.String(),
-            features: Type.Array(Feature.Feature)
-        })
+            features: Type.Array(Feature.Feature),
+        }),
     }, async (req, res) => {
         try {
             const user = await Auth.as_user(config, req);
@@ -95,7 +95,9 @@ export default async function router(schema: Schema, config: Config) {
             if (req.query.track) {
                 let composite: Static<typeof Feature.Feature> | undefined = undefined;
 
-                for (const feat of feats) {
+                // Marti returns events newest-first; reverse so the LineString
+                // coordinates run oldest → newest (chronological order).
+                for (const feat of feats.reverse()) {
                     if (feat.geometry.type !== 'Point') {
                         features.push(feat);
                     } else if (composite === undefined) {
@@ -104,9 +106,13 @@ export default async function router(schema: Schema, config: Config) {
                         composite.geometry = {
                             type: 'LineString',
                             // @ts-expect-error Need to be more explicit with Geometry Defs to lock point to number[]
-                            coordinates: [ composite.geometry.coordinates ]
-                        }
+                            coordinates: [composite.geometry.coordinates],
+                        };
                     } else if (feat.geometry.coordinates[0] !== 0 && feat.geometry.coordinates[1]) {
+                        const coords = composite.geometry.coordinates as number[][];
+                        const prev = coords[coords.length - 1];
+                        const next = feat.geometry.coordinates as number[];
+                        if (prev[0] === next[0] && prev[1] === next[1] && prev[2] === next[2]) continue;
                         // @ts-expect-error Need to be more explicit with Geometry Defs to lock point to number[]
                         composite.geometry.coordinates.push(feat.geometry.coordinates);
                     }
@@ -119,10 +125,10 @@ export default async function router(schema: Schema, config: Config) {
 
             res.json({
                 type: 'FeatureCollection',
-                features
+                features,
             });
         } catch (err) {
-             Err.respond(err, res);
+            Err.respond(err, res);
         }
     });
 }

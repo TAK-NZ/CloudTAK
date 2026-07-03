@@ -7,7 +7,7 @@
             aria-label='Close'
             @click='emit("close")'
         />
-        <div class='modal-header text-white'>
+        <div class='modal-header text-body'>
             <div class='d-flex align-items-center'>
                 <IconPackage
                     :size='28'
@@ -16,7 +16,7 @@
                 <span class='mx-2'>Create Data Package</span>
             </div>
         </div>
-        <div class='modal-body text-white'>
+        <div class='modal-body text-body'>
             <TablerLoading v-if='loading' />
             <div
                 v-else
@@ -39,7 +39,6 @@
                             ref='upload'
                             :cancel='false'
                             :url='uploadUrl'
-                            :headers='uploadHeaders()'
                             :autoupload='false'
                             @staged='stageUpload($event)'
                         />
@@ -76,7 +75,7 @@
                         v-else
                         :compact='true'
                         :create='false'
-                        label='Contents'
+                        label='No Contents'
                     />
                 </div>
 
@@ -86,15 +85,17 @@
                     direction='IN'
                 />
 
-                <TagEntry
+                <Keywords
                     placeholder='Hashtags'
-                    @tags='body.keywords = $event'
+                    :keywords='body.keywords'
+                    :relevant='[]'
+                    @update:keywords='body.keywords = $event'
                 />
 
                 <div class='col-12 pt-3'>
                     <TablerButton
                         class='w-100 btn-primary'
-                        :disabled='!body.groups.length && (!props.upload || uploaded)'
+                        :disabled='createDisabled'
                         @click='share'
                     >
                         Create
@@ -108,7 +109,7 @@
 <script setup lang='ts'>
 import { ref, computed, useTemplateRef } from 'vue';
 import type { PropType } from 'vue';
-import TagEntry from './TagEntry.vue';
+import Keywords from './Keywords.vue';
 import Upload from '../../util/Upload.vue';
 import {
     TablerNone,
@@ -164,7 +165,7 @@ const uploadRef = useTemplateRef<typeof Upload>('upload');
 
 const body = ref({
     name: props.name,
-    keywords: [],
+    keywords: [] as string[],
     groups: []
 })
 
@@ -182,15 +183,15 @@ const uploadUrl = computed(() => {
     return url;
 });
 
+const createDisabled = computed(() => {
+    if (props.upload && !uploaded.value) return true;
+
+    return !body.value.groups.length && (!props.upload || uploaded.value);
+});
+
 function stageUpload(file: { name: string }) {
     body.value.name = body.value.name || file.name;
     uploaded.value = true;
-}
-
-function uploadHeaders() {
-    return {
-        Authorization: `Bearer ${localStorage.token}`
-    };
 }
 
 async function share() {

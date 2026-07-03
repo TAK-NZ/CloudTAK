@@ -1,6 +1,5 @@
 <template>
     <div
-        data-bs-theme='dark'
         class='row'
     >
         <div class='col-12 d-flex my-1'>
@@ -16,7 +15,7 @@
                 />
                 <TablerHelp
                     v-if='help'
-                    :label='label || placeholder'
+                    :label='label'
                     :description='description'
                     @click='help = false'
                 />
@@ -37,17 +36,24 @@
         />
         <TablerNone
             v-else-if='sets.length === 0'
-            label='Iconsets Loaded'
+            label='No Iconsets Loaded'
             :compact='true'
             :create='false'
         />
         <template v-else>
+            <TablerInlineAlert
+                v-if='err'
+                severity='danger'
+                title='Icon Not Found'
+                :description='err.message'
+            />
             <div class='d-flex align-items-center'>
                 <template v-if='selected.name'>
                     <div class='d-flex align-items-center'>
                         <div>
                             <img
                                 :src='selected.data'
+                                class='img-thumbnail'
                                 style='width: 25px; height: auto; margin-right: 5px;'
                             >
                         </div>
@@ -63,7 +69,7 @@
 
                 <div
                     v-if='!disabled'
-                    class='btn-list ms-auto'
+                    class='ms-auto'
                 >
                     <IconTrash
                         v-if='selected.name'
@@ -74,229 +80,281 @@
                         @click='removeIcon'
                     />
 
-                    <TablerDropdown>
-                        <template #default>
-                            <IconPhotoSearch
-                                v-tooltip='"Select Icon"'
-                                :size='32'
-                                stroke='1'
-                                class='cursor-pointer'
-                            />
-                        </template>
-                        <template #dropdown>
-                            <div
-                                class='card'
-                                style='min-width: 300px;'
-                            >
-                                <div class='card-header d-flex align-items-center'>
-                                    <h3 class='card-title'>
-                                        Icons
-                                    </h3>
-                                    <IconSearch
-                                        :size='32'
-                                        stroke='1'
-                                        class='ms-auto cursor-pointer mx-2'
-                                        :color='params.showFilter ? "#83b7e8" : "#ffffff"'
-                                        @click.stop.prevent='params.showFilter = !params.showFilter'
-                                    />
-                                </div>
-
-                                <div class='card-body row g-2'>
-                                    <div class='col-12'>
-                                        <TablerEnum
-                                            v-model='params.iconset'
-                                            :options='setsName'
-                                        />
-                                    </div>
-                                    <div class='col-12'>
-                                        <TablerInput
-                                            v-if='params.showFilter'
-                                            v-model='params.filter'
-                                            placeholder='Icon Search'
-                                        />
-                                    </div>
-                                    <TablerLoading
-                                        v-if='loading.icons'
-                                        desc='Loading Icons'
-                                    />
-                                    <div
-                                        v-else
-                                        class='row my-2'
-                                    >
-                                        <div
-                                            v-for='icon of list.items'
-                                            :key='icon.id'
-                                            class='col-auto cursor-pointer'
-                                            @click='selected = icon'
-                                        >
-                                            <img
-                                                v-tooltip='icon.name'
-                                                :src='icon.data'
-                                                style='width: 25px; height: 25px; margin-right: 5px;'
-                                            >
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </template>
-                    </TablerDropdown>
+                    <IconPhotoSearch
+                        v-tooltip='"Select Icon"'
+                        :size='32'
+                        stroke='1'
+                        class='cursor-pointer'
+                        @click='modal = true'
+                    />
                 </div>
             </div>
         </template>
+
+        <TablerModal
+            v-if='modal'
+            size='xl'
+            @close='modal = false'
+        >
+            <div class='modal-status bg-blue' />
+            <div class='modal-body'>
+                <div class='d-flex align-items-center justify-content-between mb-3'>
+                    <h3 class='modal-title'>
+                        Select Icon
+                    </h3>
+                    <button
+                        type='button'
+                        class='btn-close'
+                        @click='modal = false'
+                    />
+                </div>
+                <div class='row g-2'>
+                    <div class='col-12'>
+                        <TablerEnum
+                            v-model='params.iconset'
+                            :options='setsName'
+                            @click.stop
+                        />
+                    </div>
+                    <div class='col-12'>
+                        <TablerInput
+                            v-model='params.filter'
+                            placeholder='Icon Search'
+                            @click.stop
+                        />
+                    </div>
+                    <div class='col-12'>
+                        <TablerToggle
+                            v-model='params.showNames'
+                            label='Show Icon Names'
+                            :off-value='false'
+                            :on-value='true'
+                        />
+                    </div>
+                </div>
+                <TablerLoading
+                    v-if='loading.icons'
+                    desc='Loading Icons'
+                />
+                <div
+                    v-else
+                    class='row mt-2'
+                    :class='{ "g-2": params.showNames }'
+                    style='max-height: 60vh; overflow-y: auto;'
+                >
+                    <div
+                        v-for='icon of list.items'
+                        :key='icon.id'
+                        class='col-6 col-md-4 col-lg-3 col-xl-2 cursor-pointer'
+                        :class='{ "text-center": params.showNames }'
+                        @click='selected = icon; err = null; modal = false'
+                    >
+                        <div class='card'>
+                            <div
+                                class='card-body text-center p-1'
+                                :class='{ "py-2": params.showNames }'
+                            >
+                                <img
+                                    :src='icon.data'
+                                    class='img-thumbnail'
+                                    :style='params.showNames ? "width: 64px; height: 64px;" : "width: 40px; height: 40px;"'
+                                >
+                                <div
+                                    v-if='params.showNames'
+                                    class='mt-1'
+                                    style='font-size: 0.85rem;'
+                                    v-text='icon.name'
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </TablerModal>
     </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue';
-import { std, stdurl } from '/src/std.ts';
+import { server } from '../../std.ts';
 import {
     IconInfoSquare,
     IconTrash,
-    IconSearch,
     IconPhotoSearch
 } from '@tabler/icons-vue';
 import {
+    TablerInlineAlert,
     TablerHelp,
     TablerEnum,
     TablerNone,
     TablerInput,
-    TablerDropdown,
-    TablerLoading
+    TablerModal,
+    TablerLoading,
+    TablerToggle
 } from '@tak-ps/vue-tabler';
+import type { Iconset, Icon, IconList } from '../../types.ts';
 
-const props = defineProps({
-    modelValue: {
-        type: String,
-        required: true
-    },
-    description: {
-        type: String,
-        default: ''
-    },
-    required: {
-        type: Boolean,
-        default: false
-    },
-    disabled: {
-        type: Boolean,
-        default: false
-    },
-    label: {
-        type: String,
-        default: 'Icon Select'
-    }
+interface Props {
+    modelValue: string;
+    description?: string;
+    required?: boolean;
+    disabled?: boolean;
+    label?: string;
+}
+
+const props = withDefaults(defineProps<Props>(), {
+    description: '',
+    required: false,
+    disabled: false,
+    label: 'Icon Select',
 });
 
-const emit = defineEmits([
-    'update:modelValue'
-]);
+const emit = defineEmits<{
+    'update:modelValue': [value: string];
+}>();
 
 const help = ref(false);
+const err = ref<Error | null>(null);
 
 const loading = ref({
-   iconsets: true,
-   icons: true
+    iconset: true,
+    icons: true,
 });
 
+const modal = ref(false);
 const params = ref({
     iconset: '',
-    showFilter: false,
     filter: '',
+    showNames: false,
 });
 
-const selected = ref({
-    iconset: false,
-    path: '',
-    name: ''
-})
+const selected = ref<Partial<Icon>>({});
+const sets = ref<Iconset[]>([]);
+const list = ref<IconList>({ total: 0, items: [] });
 
-const sets = ref([]);
-const list = ref({
-    total: 0,
-    items: []
-});
+const ICON_FILE_SUFFIX = /\.(png|svg)$/i;
 
-const setsName = computed(() => {
-    return sets.value.map((set) => { return set.name });
+const setsName = computed<string[]>(() => {
+    return sets.value.map((set) => set.name);
 });
 
 watch(selected, () => {
-    if (selected.value.path.endsWith('.png')) {
-        emit('update:modelValue', selected.value.path);
-    } else {
-        // Replace any extension with PNG for sprites
-        emit('update:modelValue', selected.value.path.replace(/\.[^/.]+$/, ".png"));
-    }
-}, { deep: true })
+    if (!selected.value.path) return;
+    emit('update:modelValue', selected.value.path);
+}, { deep: true });
 
 watch(params.value, async () => {
-    await Iconlists();
+    await fetchIcons();
 });
 
-watch(props.modelValue, async () => {
-    await fetch();
+watch(() => props.modelValue, async () => {
+    await fetchSelected();
 });
 
 onMounted(async () => {
-    await fetch();
-    await Iconlistsets();
-    await Iconlists();
+    await fetchSelected();
+    await fetchIconsets();
+    await fetchIcons();
 });
 
-function removeIcon() {
-    selected.value.path = '';
-    selected.value.iconset = false;
-    selected.value.name = '';
+function removeIcon(): void {
+    selected.value = {};
+    emit('update:modelValue', '');
 }
 
-async function fetch() {
-    // This is unfortuante but the CloudTAK Map uses the MapLibre Icon format
-    // While the backend uses the TAK Icon Format
+function normalizeIconPath(path: string): string {
+    let normalized = path;
+
+    if (normalized.includes(':')) {
+        const splitAt = normalized.indexOf(':');
+        normalized = `${normalized.slice(0, splitAt)}/${normalized.slice(splitAt + 1)}`;
+    }
+
+    return normalized.replace(ICON_FILE_SUFFIX, '');
+}
+
+async function fetchSelected(): Promise<void> {
     if (
         props.modelValue
         && !props.modelValue.startsWith('2525')
         && (
-            props.modelValue.includes(":")
+            props.modelValue.includes(':')
             || props.modelValue.split('/').length === 3
         )
     ) {
-        let path = props.modelValue;
-
-        // MapLibre needs the palette name seperated by a ":" instead of a "/"
-        if (path.includes(':')) path = path.split(':').join('/') + '.png';
+        const path = normalizeIconPath(props.modelValue);
 
         const iconset = path.split('/')[0];
         const icon = path.split('/').splice(1).join('/');
 
-        selected.value = await std(`/api/iconset/${iconset}/icon/${encodeURIComponent(icon)}`);
+        const { data, error } = await server.GET('/api/iconset/{:iconset}/icon/{:icon}', {
+            params: {
+                path: {
+                    ':iconset': iconset,
+                    ':icon': icon
+                }
+            }
+        });
+
+        if (error) {
+            if (error.status === 404) {
+                err.value = new Error(error.message);
+                return;
+            }
+            throw new Error(error.message);
+        }
+        if (!data) return;
+
+        err.value = null;
+        selected.value = data;
     }
 }
 
-async function Iconlistsets() {
-    loading.value.iconsets = true;
-    const url = stdurl('/api/iconset');
-    url.searchParams.append('limit', 50);
-    sets.value = (await std(url)).items;
+async function fetchIconsets(): Promise<void> {
+    loading.value.iconset = true;
+    const { data, error } = await server.GET('/api/iconset', {
+        params: {
+            query: {
+                limit: 50,
+                page: 0,
+                order: 'asc',
+                sort: 'name',
+                filter: ''
+            }
+        }
+    });
+
+    if (error) throw new Error(error.message);
+
+    sets.value = data?.items || [];
     if (sets.value.length) {
         params.value.iconset = sets.value[0].name;
     }
-    loading.value.iconsets = false;
+    loading.value.iconset = false;
 }
 
-async function Iconlists() {
+async function fetchIcons(): Promise<void> {
     loading.value.icons = true;
-    let url = stdurl(`/api/icon`);
-    url.searchParams.append('limit', 1000);
-    if (params.value.iconset) {
-        const id = sets.value.filter((set) => {
-            return set.name === params.value.iconset;
-        })[0];
+    const iconset = params.value.iconset
+        ? sets.value.find((set) => set.name === params.value.iconset)?.uid
+        : undefined;
 
-        if (id) url.searchParams.append('iconset', id.uid);
-    }
+    const { data, error } = await server.GET('/api/icon', {
+        params: {
+            query: {
+                limit: 1000,
+                page: 0,
+                order: 'asc',
+                iconset,
+                filter: params.value.filter
+            }
+        }
+    });
 
-    url.searchParams.append('filter', params.value.filter);
-    list.value = await std(url)
+    if (error) throw new Error(error.message);
+
+    list.value = data || { total: 0, items: [] };
     loading.value.icons = false;
 }
+
 </script>

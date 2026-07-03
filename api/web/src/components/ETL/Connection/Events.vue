@@ -37,23 +37,26 @@
         <pre v-text='eventStr' />
     </div>
 </template>
-<script setup>
+<script setup lang='ts'>
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { Preferences } from '@capacitor/preferences';
 import { useRoute } from 'vue-router';
-import { stdurl } from '/src/std.ts';
+import { stdurl } from '../../../std.ts';
 import {
     IconTrash,
     IconPlayerPlay,
     IconPlayerPause
 } from '@tabler/icons-vue';
 
-const emit = defineEmits(['err']);
+const emit = defineEmits<{
+    (e: 'err', value: Event): void;
+}>();
 
 const route = useRoute();
 
-const ws = ref(null);
+const ws = ref<WebSocket | null>(null);
 const paused = ref(false);
-const events = ref([]);
+const events = ref<string[]>([]);
 
 const eventStr = computed(() => {
     return events.value.join('\n');
@@ -63,10 +66,11 @@ onUnmounted(() => {
     if (ws.value) ws.value.close();
 });
 
-onMounted(() => {
+onMounted(async () => {
     const url = stdurl('/api');
-    url.searchParams.append('connection', route.params.connectionid);
-    url.searchParams.append('token', localStorage.token);
+    url.searchParams.set('connection', String(route.params.connectionid));
+    const { value: token } = await Preferences.get({ key: 'token' });
+    if (token) url.searchParams.set('token', token);
     if (window.location.hostname === 'localhost') {
         url.protocol = 'ws:';
     } else {
@@ -77,12 +81,12 @@ onMounted(() => {
     ws.value.addEventListener('error', (err) => { emit('err', err) });
 
     ws.value.addEventListener('message', (msg) => {
-        msg = JSON.parse(msg.data);
+        const parsed = JSON.parse(msg.data) as { type: string; connection: number; data: unknown };
         if (paused.value) return;
-        if (msg.type !== 'cot' || msg.connection !== parseInt(route.params.connectionid)) return;
+        if (parsed.type !== 'cot' || parsed.connection !== parseInt(String(route.params.connectionid))) return;
 
         if (events.value.length > 200) events.value.pop();
-        events.value.unshift(JSON.stringify(msg.data));
+        events.value.unshift(JSON.stringify(parsed.data));
     });
 });
 </script>

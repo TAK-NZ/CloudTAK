@@ -1,76 +1,118 @@
 diff --git a/api/web/src/components/Login.vue b/api/web/src/components/Login.vue
-index 657b802da..27e1a37e1 100644
+index 59ecc6ace..a7918ffa6 100644
 --- a/api/web/src/components/Login.vue
 +++ b/api/web/src/components/Login.vue
-@@ -107,6 +107,21 @@
-                                             Sign In
-                                         </button>
-                                     </div>
-+                                    <template v-if='ssoEnabled'>
-+                                        <div class='text-center my-3'>
-+                                            <div class='text-muted'>─── OR ───</div>
-+                                        </div>
-+                                        <div class='form-footer'>
-+                                            <button
-+                                                type='button'
-+                                                class='btn btn-primary w-100'
-+                                                @click='loginWithSSO'
-+                                            >
-+                                                <IconKey class='icon' :size='20' :stroke='"2"' />
-+                                                Login with SSO
-+                                            </button>
-+                                        </div>
-+                                    </template>
+@@ -175,7 +175,28 @@
+                                         Sign in with {{ brandStore.oidc.name || 'SSO' }}
+                                     </a>
                                  </template>
-                             </div>
-                         </div>
-@@ -138,6 +153,7 @@ import {
-     TablerLoading,
-     TablerInput
- } from '@tak-ps/vue-tabler'
-+import { IconKey } from '@tabler/icons-vue';
- 
- const emit = defineEmits([ 'login' ]);
- 
-@@ -146,6 +162,7 @@ const router = useRouter();
- const brandStore = useBrandStore();
+-                                <template v-if='brandStore.passkey.enabled && !loading'>
++                                <template v-if='albOidcEnabled && !loading'>
++                                    <div
++                                        v-if='!brandStore.oidc.enforced'
++                                        class='my-3 d-flex align-items-center'
++                                    >
++                                        <hr class='flex-grow-1 m-0'>
++                                        <span class='mx-2 text-muted small'>or</span>
++                                        <hr class='flex-grow-1 m-0'>
++                                    </div>
++                                    <button
++                                        type='button'
++                                        class='btn btn-primary w-100 d-flex align-items-center justify-content-center gap-2'
++                                        @click='loginWithSSO'
++                                    >
++                                        <IconKey
++                                            :size='20'
++                                            stroke='1.5'
++                                        />
++                                        Login with SSO
++                                    </button>
++                                </template>
++                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
+                                     <div
+                                         v-if='!brandStore.oidc.enabled || !brandStore.oidc.enforced'
+                                         class='my-3 d-flex align-items-center'
+@@ -359,7 +380,7 @@
+ import type { Login_Create, ConfigLogin } from '../types.ts'
+ import { ref, computed, onMounted, reactive, watch } from 'vue';
+ import { version } from '../../package.json';
+-import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser } from '@tabler/icons-vue';
++import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser, IconKey } from '@tabler/icons-vue';
+ import { Preferences } from '@capacitor/preferences';
+ import { startAuthentication } from '@simplewebauthn/browser';
+ import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
+@@ -493,6 +514,8 @@ watch(showSettings, (val) => {
+ });
  
  const loading = ref(false);
-+const ssoEnabled = ref(false);
++const albOidcEnabled = ref(false);
++const albOidcForced = ref(false);
+ const storedUsername = ref<string | null>(null);
  const body = ref<Login_Create>({
      username: '',
-     password: ''
-@@ -154,6 +171,24 @@ const body = ref<Login_Create>({
- onMounted(async () => {
-     await brandStore.init();
+@@ -509,6 +532,32 @@ const certRenewal = reactive<{
+ });
  
-+    // Check for token in URL (from OIDC redirect)
+ onMounted(async () => {
++    // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
 +    if (route.query.token) {
 +        loading.value = true;
-+        localStorage.token = String(route.query.token);
++        const token = String(route.query.token);
++        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
++        // Decode the JWT minimally to extract email and session for persistence
++        try {
++            const parts = token.split('.');
++            if (parts.length === 3) {
++                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
++                if (payload.email && payload.s) {
++                    await appStore.persistSession({ token, username: payload.email, session: payload.s });
++                } else {
++                    localStorage.token = token;
++                }
++            } else {
++                localStorage.token = token;
++            }
++        } catch {
++            localStorage.token = token;
++        }
 +        emit('login');
-+        // Small delay to let auth state settle before navigation
-+        setTimeout(() => {
-+            const redirect = route.query.redirect || '/';
-+            router.replace(String(redirect));
-+        }, 200);
++        await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
 +        return;
 +    }
 +
-+    // Check if SSO is enabled
+     const config = await Config.list([
+         'login::name',
+         'login::logo',
+@@ -550,7 +599,25 @@ onMounted(async () => {
+     brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
+     brandStore.loaded = true;
+ 
+-    if (brandStore.passkey.enabled) {
++    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
 +    try {
-+        const config = await std('/api/server/oidc') as { oidc_enabled: boolean };
-+        ssoEnabled.value = config.oidc_enabled;
-+    } catch (error) {
-+        console.error('Failed to check SSO status:', error);
++        const oidcRes = await fetch('/api/server/oidc');
++        if (oidcRes.ok) {
++            const oidcStatus = await oidcRes.json() as { oidc_enabled: boolean; oidc_forced?: boolean };
++            albOidcEnabled.value = oidcStatus.oidc_enabled;
++            albOidcForced.value = oidcStatus.oidc_forced || false;
++            // If SSO is forced and no explicit local-login override, redirect immediately
++            if (albOidcForced.value && !route.query.local) {
++                loginWithSSO();
++                return;
++            }
++        }
++    } catch (err) {
++        console.error('Failed to check ALB OIDC status:', err);
 +    }
 +
-     if ('serviceWorker' in navigator) {
-         navigator.serviceWorker.getRegistrations().then((registrations) => {
-             for (const registration of registrations) {
-@@ -195,4 +229,9 @@ async function createLogin() {
-         throw err;
++    // Only start conditional passkey autofill when ALB SSO is not active
++    if (brandStore.passkey.enabled && !albOidcEnabled.value) {
+         startConditionalPasskey();
      }
+ 
+@@ -758,6 +825,11 @@ function skipCertRenewal() {
+     certRenewal.password = '';
+     navigateAfterLogin();
  }
 +
 +function loginWithSSO() {
@@ -78,3 +120,5 @@ index 657b802da..27e1a37e1 100644
 +    window.location.href = `/api/login/oidc?redirect=${encodeURIComponent(String(redirect))}`;
 +}
  </script>
+ 
+ <style scoped>

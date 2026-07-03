@@ -34,7 +34,7 @@
             <TablerNone
                 v-else-if='!list.items.length'
                 :create='false'
-                label='Layers'
+                label='No Layers'
             />
             <div
                 v-else
@@ -79,10 +79,11 @@
     </div>
 </template>
 
-<script setup>
+<script setup lang='ts'>
 import { ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { std, stdurl } from '../../../std.ts';
+import { server } from '../../../std.ts';
+import type { ETLConnection, ETLLayerList } from '../../../types.ts';
 import TableFooter from '../../util/TableFooter.vue';
 import {
     IconPlus,
@@ -96,28 +97,25 @@ import {
 } from '@tak-ps/vue-tabler'
 import LayerStatus from '../Layer/utils/StatusDot.vue';
 
-defineProps({
-    connection: {
-        type: Object,
-        required: true
-    }
-});
+defineProps<{
+    connection: ETLConnection;
+}>();
 
 const route = useRoute();
 const router = useRouter();
 
-const loading = ref(true);
-const error = ref();
+const loading = ref<boolean>(true);
+const err = ref<Error>();
 const paging = ref({
     filter: '',
     limit: 10,
     page: 0
 });
 
-const list = ref({
+const list = ref<ETLLayerList>({
     total: 0,
     items: []
-});
+} as unknown as ETLLayerList);
 
 onMounted(async () => {
     await listLayers();
@@ -129,15 +127,27 @@ watch(paging.value, async () => {
 
 async function listLayers() {
     loading.value = true;
+    err.value = undefined;
     try {
-        const url = stdurl('/api/layer');
-        url.searchParams.append('data', route.params.dataid);
-        url.searchParams.append('limit', paging.value.limit);
-        url.searchParams.append('page', paging.value.page);
-        url.searchParams.append('filter', paging.value.filter);
-        list.value = await std(url);
-    } catch (err) {
-        error.value = err instanceof Error ? err : new Error(String(err));
+        const { data, error } = await server.GET('/api/layer', {
+            params: {
+                query: {
+                    data: Number(route.params.dataid),
+                    limit: paging.value.limit,
+                    alarms: false,
+                    page: paging.value.page,
+                    order: 'asc',
+                    sort: 'created',
+                    filter: paging.value.filter,
+                }
+            }
+        });
+
+        if (error) throw new Error(error.message);
+
+        list.value = data as typeof list.value;
+    } catch (e) {
+        err.value = e instanceof Error ? e : new Error(String(e));
     }
     loading.value = false
 }

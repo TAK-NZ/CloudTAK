@@ -63,20 +63,45 @@
                 <h3 class='card-title'>
                     Admin Certificate
                 </h3>
-                <div
-                    v-if='regen && edit'
-                    class='ms-auto btn-list'
-                >
-                    <IconPlus
-                        v-tooltip='"Upload P12"'
-                        :size='32'
-                        stroke='1'
-                        class='cursor-pointer'
-                        @click='modal.upload = true'
+                <div class='ms-auto d-flex align-items-center gap-2'>
+                    <span
+                        v-if='server.auth'
+                        class='text-muted'
+                        style='font-size: 0.85rem;'
+                        v-text='!server.connection ? "Paused" : server.connection_status === "live" ? "Connected" : server.connection_status === "dead" ? "Disconnected" : "Unknown"'
                     />
+                    <Status
+                        v-if='server.auth'
+                        :connection='{
+                            readonly: false,
+                            enabled: server.connection,
+                            status: server.connection_status,
+                        }'
+                    />
+                    <div
+                        v-if='regen && edit'
+                        class='btn-list'
+                    >
+                        <IconPlus
+                            v-tooltip='"Upload P12"'
+                            :size='32'
+                            stroke='1'
+                            class='cursor-pointer'
+                            @click='modal.upload = true'
+                        />
+                    </div>
                 </div>
             </div>
             <div class='card-body row'>
+                <div
+                    v-if='edit && server.auth'
+                    class='col-lg-12 pb-2'
+                >
+                    <TablerToggle
+                        v-model='server.connection'
+                        label='Admin Connection Enabled'
+                    />
+                </div>
                 <template v-if='regen && edit'>
                     <div class='col-md-6'>
                         <TablerInput
@@ -188,12 +213,14 @@
 
 <script setup lang='ts'>
 import { ref, onMounted } from 'vue';
-import { std } from '../../../std.ts';
 import type { Server, Server_Update } from '../../../types.ts';
+import ServerManager from '../../../base/server.ts';
 import Upload from '../../util/UploadP12.vue';
+import Status from '../../ETL/Connection/StatusDot.vue';
 import {
     TablerIconButton,
     TablerLoading,
+    TablerToggle,
     TablerInput
 } from '@tak-ps/vue-tabler';
 import {
@@ -233,6 +260,8 @@ const server = ref<Server>({
     created: new Date().toISOString(),
     updated: new Date().toISOString(),
     status: 'unconfigured',
+    connection_status: 'unknown',
+    connection: true,
     auth: false,
     name: '',
     url: '',
@@ -250,7 +279,7 @@ onMounted(async () => {
 
 async function fetch() {
     loading.value = true;
-    server.value = await std(`/api/server`) as Server;
+    server.value = await ServerManager.get();
     if (!server.value.auth) regen.value = true;
     loading.value = false;
 }
@@ -297,6 +326,7 @@ async function postServer() {
         url: server.value.url,
         api: server.value.api,
         webtak: server.value.webtak,
+        connection: server.value.connection,
     }
 
     if (auth.value.cert && auth.value.key) {
@@ -304,13 +334,9 @@ async function postServer() {
     }
 
     if (server.value.status === 'unconfigured') {
-        server.value = await std(`/api/server`, {
-            method: 'POST', body
-        }) as Server;
+        server.value = await ServerManager.create(body);
     } else {
-        server.value = await std(`/api/server`, {
-            method: 'PATCH', body
-        }) as Server;
+        server.value = await ServerManager.update(body);
     }
 
     auth.value.cert = '';
