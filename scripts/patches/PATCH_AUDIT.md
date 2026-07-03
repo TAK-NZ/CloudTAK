@@ -81,6 +81,12 @@ The following patches were removed. The reason is noted in each case.
    ```
    Replace `418bdc4be` with the new upstream baseline commit after each sync.
 
+3. **Regenerate `tasks/events/src/derived-types.d.ts`** after deploying the new version to the demo environment:
+   ```bash
+   cd tasks/events && npx openapi-typescript https://map.test.tak.nz/api/swagger --output src/derived-types.d.ts && cd ../..
+   ```
+   Run this **after** the new API is live (so the swagger schema reflects the new version), then commit the updated file to the sync branch before merging. The file tends to be multiple major versions stale between syncs.
+
 3. **Patches 050 (tab visibility), 046/047 (overlay/sprite architecture):** these were superseded by upstream before our v13 sync. If upstream regresses these features, the README files in `scripts/patches/` for each have the original implementation notes.
 
 4. **`OIDC_FORCED` system-admin bypass** (patch 036): system admins can log in locally by navigating to `/login?local=true`. The frontend skips the auto-redirect and shows the login form; the backend blocks non-admin users with a 403 that the frontend catches and converts to an SSO redirect.

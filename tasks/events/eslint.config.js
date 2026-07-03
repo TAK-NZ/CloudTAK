@@ -15,5 +15,10 @@ export default tseslint.config(
             "@typescript-eslint/no-explicit-any": "warn",
             '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: false }]
         }
+    },
+    {
+        // Exclude auto-generated type files — their style is determined by
+        // the generator, not this project's coding conventions.
+        ignores: ['src/derived-types.d.ts']
     }
 );
