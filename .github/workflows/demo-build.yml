@@ -159,7 +159,7 @@ jobs:
                   --output type=docker \
                   --provenance=false \
                   -t ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG \
-                  tasks/$task/
+                  .
                 docker push ${{ steps.tags.outputs.ecr-repo-uri }}:$TASK_TAG
               fi
             fi
