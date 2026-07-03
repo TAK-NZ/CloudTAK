@@ -174,6 +174,7 @@ jobs:
           echo "📦 CloudTAK API: ${{ steps.tags.outputs.cloudtak-tag }}"
           echo "📦 Events Task: events-${CONTENT_SHA}"
           echo "📦 PMTiles Task: pmtiles-${CONTENT_SHA}"
+          echo "📦 Retention Task: retention-${CONTENT_SHA}"
           echo ""
           echo "🚀 To deploy with these images, use:"
           echo "npm run deploy:dev -- \\"
