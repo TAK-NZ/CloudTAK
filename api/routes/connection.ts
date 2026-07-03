@@ -599,7 +599,7 @@ export default async function router(schema: Schema, config: Config) {
                         new URL(String(config.server.api)),
                         new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
                     );
-                    await takApi.Credentials.revoke(certHash);
+                    await takApi.Certificate.revoke(certHash);
                     console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
                 } catch (err) {
                     // Don't block deletion — log and continue
