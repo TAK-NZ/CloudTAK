@@ -203,8 +203,14 @@ export default class IconManager {
 
                 this.getColoredIcon(originalIconId, color);
             } else if (e.id.includes(':')) {
-                this.requestedIconsetImageIds.add(e.id);
-                await this.loadIconsetImage(e.id);
+                // Skip LINZ sprite images — these are registered from the
+                // linz-topographic named sprite and handled by MapLibre directly.
+                // Routing them to loadIconsetImage would look for a Dexie iconset
+                // named 'linz-topographic' which doesn't exist.
+                if (!e.id.startsWith('linz-topographic:')) {
+                    this.requestedIconsetImageIds.add(e.id);
+                    await this.loadIconsetImage(e.id);
+                }
             } else if (!this.loggedMissingImageIds.has(e.id)) {
                 this.loggedMissingImageIds.add(e.id);
                 console.info('Unhandled style image missing event', {
