@@ -1,0 +1,435 @@
+diff --git a/api/routes/basemap.ts b/api/routes/basemap.ts
+index dca04ddf5..dba0b5f6b 100644
+--- a/api/routes/basemap.ts
++++ b/api/routes/basemap.ts
+@@ -814,7 +814,12 @@ export default async function router(schema: Schema, config: Config) {
+                     throw new Err(400, null, 'Unable to fetch TileJSON from source URL');
+                 }
+ 
+-                const json = await tj.json();
++                const json = await tj.json() as any;
++
++                // Strip sprite/glyphs — same reason as the PMTiles branch: external
++                // URLs from upstream TileJSON can't be proxied and will 404.
++                delete json.sprite;
++                delete json.glyphs;
+ 
+                 res.json({
+                     ...json,
+@@ -836,10 +841,29 @@ export default async function router(schema: Schema, config: Config) {
+                 if (!tj.ok) {
+                     throw new Err(400, null, 'Unable to fetch TileJSON from hosted basemap');
+                 }
+-                const tjJson = await tj.json();
++                // eslint-disable-next-line @typescript-eslint/no-explicit-any
++                const tjJson = await tj.json() as any;
++
++                // Strip sprite/glyphs from the upstream PMTiles TileJSON — those
++                // reference external URLs that cannot be proxied unless the basemap
++                // record has an explicit tilejson blob overriding them. The blob
++                // spread below will restore them for basemaps that do have a sprite.
++                delete tjJson.sprite;
++                delete tjJson.glyphs;
++
++                // Merge tilejson blob (e.g. sprite) if stored as JSON on the basemap record
++                let tilejsonBlobPmtiles: Record<string, unknown> = {};
++                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
++                    try {
++                        tilejsonBlobPmtiles = JSON.parse(basemap.tilejson);
++                    } catch {
++                        // Not valid JSON — ignore
++                    }
++                }
+ 
+                 res.json({
+                     ...tjJson,
++                    ...tilejsonBlobPmtiles,
+                     type: basemap.type,
+                     tiles: [tileURL],
+                     actions: fromProtocol(basemap.protocol, basemap).actions(),
+@@ -852,8 +876,21 @@ export default async function router(schema: Schema, config: Config) {
+                     url: tileURL,
+                 });
+ 
++                // If tilejson is a JSON blob (not a URL), merge its fields into the
++                // response — this allows sprite/glyphs and other MapLibre style
++                // properties to be stored per-basemap without a schema change.
++                let tilejsonBlob: Record<string, unknown> = {};
++                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
++                    try {
++                        tilejsonBlob = JSON.parse(basemap.tilejson);
++                    } catch {
++                        // Not valid JSON — ignore
++                    }
++                }
++
+                 res.json({
+                     ...json,
++                    ...tilejsonBlob,
+                     actions: fromProtocol(basemap.protocol, basemap).actions(),
+                 });
+             }
+@@ -862,6 +899,165 @@ export default async function router(schema: Schema, config: Config) {
+         }
+     });
+ 
++    await schema.get('/basemap/sprite/:name.json', {
++        name: 'Get Named Sprite JSON',
++        group: 'BaseMap',
++        description: 'Proxy a named sprite JSON from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
++        params: Type.Object({
++            name: Type.String(),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++        res: Type.Unknown(),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, { token: true });
++
++            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.json`;
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
++
++            const json = await upstream.json();
++            res.json(json);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/sprite/:name.png', {
++        name: 'Get Named Sprite PNG',
++        group: 'BaseMap',
++        description: 'Proxy a named sprite PNG from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
++        params: Type.Object({
++            name: Type.String(),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, { token: true });
++
++            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.png`;
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
++
++            const buffer = Buffer.from(await upstream.arrayBuffer());
++            res.type('png').send(buffer);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/:basemapid/sprite{:size}.json', {
++        name: 'Get Basemap Sprite JSON',
++        group: 'BaseMap',
++        description: 'Proxy the sprite JSON for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
++        params: Type.Object({
++            basemapid: Type.Integer({ minimum: 1 }),
++            size: Type.Optional(Type.String()),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++        res: Type.Unknown(),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, {
++                token: true,
++                resources: [
++                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
++                ],
++            });
++
++            const basemap = await config.models.Basemap.from(req.params.basemapid);
++
++            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            let tilejsonBlob: Record<string, unknown> = {};
++            try {
++                tilejsonBlob = JSON.parse(basemap.tilejson);
++            } catch {
++                throw new Err(404, null, 'This basemap has no sprite configured');
++            }
++
++            const spriteBase = tilejsonBlob.sprite as string | undefined;
++            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            // req.params.size is either '' or '@2x'
++            const size = req.params.size || '';
++            const spriteUrl = `${spriteBase}${size}.json`;
++
++            if (process.env.StackName !== 'test') {
++                const { safe, reason } = await isSafeUrl(spriteUrl);
++                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
++            }
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
++
++            const json = await upstream.json();
++            res.json(json);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/:basemapid/sprite{:size}.png', {
++        name: 'Get Basemap Sprite PNG',
++        group: 'BaseMap',
++        description: 'Proxy the sprite PNG for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
++        params: Type.Object({
++            basemapid: Type.Integer({ minimum: 1 }),
++            size: Type.Optional(Type.String()),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, {
++                token: true,
++                resources: [
++                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
++                ],
++            });
++
++            const basemap = await config.models.Basemap.from(req.params.basemapid);
++
++            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            let tilejsonBlob: Record<string, unknown> = {};
++            try {
++                tilejsonBlob = JSON.parse(basemap.tilejson);
++            } catch {
++                throw new Err(404, null, 'This basemap has no sprite configured');
++            }
++
++            const spriteBase = tilejsonBlob.sprite as string | undefined;
++            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            const size = req.params.size || '';
++            const spriteUrl = `${spriteBase}${size}.png`;
++
++            if (process.env.StackName !== 'test') {
++                const { safe, reason } = await isSafeUrl(spriteUrl);
++                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
++            }
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
++
++            const buffer = Buffer.from(await upstream.arrayBuffer());
++            res.type('png').send(buffer);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
+     await schema.get('/basemap/:basemapid/tiles/:z/:x/:y', {
+         name: 'Get Basemap Tile',
+         group: 'BaseMap',
+diff --git a/api/web/src/base/overlay-class.ts b/api/web/src/base/overlay-class.ts
+index c8d517cbe..9603c1e5f 100644
+--- a/api/web/src/base/overlay-class.ts
++++ b/api/web/src/base/overlay-class.ts
+@@ -15,6 +15,7 @@ import { useMapStore } from '../stores/map.js';
+ import ProfileConfig from './profile.ts';
+ import Subscription from './subscription.ts';
+ import { FeatureVisibility } from '../stores/modules/feature-visibility.ts';
++import OverlayManager from './overlay.ts';
+ 
+ /**
+  * @class
+@@ -74,9 +75,11 @@ export default class Overlay {
+                 for (const layer of ov.styles) {
+                     const l = layer as LayerSpecification;
+                     l.id = `${ov.id}-${l.id}`;
+-                    // @ts-expect-error Special case Background Layer type
+-                    l.source = String(ov.id);
+-                }
++                    // hillshade layers reference a separate raster-dem source — preserve as-is
++                    if (l.type !== 'hillshade') {
++                        // @ts-expect-error Special case Background Layer type
++                        l.source = String(ov.id);
++                    }                }
+             }
+ 
+             ov = await std(`/api/profile/overlay/${ov.id}`, {
+@@ -231,6 +234,60 @@ export default class Overlay {
+         }
+     }
+ 
++    /**
++     * Ensure a raster-dem source exists on the map for hillshading, returning
++     * its source ID. Does NOT enable 3D terrain — hillshading is a 2D effect
++     * that only needs the raster-dem source to be registered.
++     *
++     * Resolution order:
++     *  1. Any raster-dem source already on the map (e.g. from addTerrain())
++     *  2. Query the API for any raster-dem basemap and add it as source
++     *     '__terrain__' — no setTerrain() call, no 3D mode.
++     *
++     * Returns the source ID, or null if no raster-dem basemap is available.
++     */
++    static async ensureTerrainSource(mapStore: ReturnType<typeof useMapStore>): Promise<string | null> {
++        // 1. Return any raster-dem source already on the map
++        const sources = mapStore.map.getStyle().sources;
++        for (const [id, src] of Object.entries(sources)) {
++            if ((src as { type: string }).type === 'raster-dem') return id;
++        }
++
++        // 2. Load and register the first available raster-dem basemap as a bare
++        //    raster-dem source — hillshading only, no 3D terrain.
++        try {
++            const { value: token } = await Preferences.get({ key: 'token' });
++
++            const listUrl = stdurl('/api/basemap');
++            listUrl.searchParams.set('type', 'raster-dem');
++            listUrl.searchParams.set('hidden', 'all');
++            listUrl.searchParams.set('limit', '1');
++            if (token) listUrl.searchParams.set('token', token);
++
++            const list = await std(listUrl.toString()) as { items: Array<{ id: number; tilesize?: number; encoding?: string }> };
++            if (!list.items.length) return null;
++
++            const terrainId = list.items[0].id;
++            const terrainUrl = stdurl(`/api/basemap/${terrainId}/tiles`);
++            if (token) terrainUrl.searchParams.set('token', token);
++
++            const tileJSON = await std(terrainUrl.toString()) as TileJSON;
++
++            const sourceId = '__terrain__';
++            if (!mapStore.map.getSource(sourceId)) {
++                mapStore.map.addSource(sourceId, {
++                    ...tileJSON,
++                    type: 'raster-dem',
++                });
++            }
++
++            return sourceId;
++        } catch (err) {
++            console.warn('Could not load terrain source for hillshading:', err);
++            return null;
++        }
++    }
++
+     async addLayers(before?: string): Promise<void> {
+         const mapStore = useMapStore();
+ 
+@@ -242,10 +299,32 @@ export default class Overlay {
+         }
+ 
+         for (const l of this.styles) {
++            // @ts-expect-error background layers have no source property
++            let layerSource: string | undefined = l.source;
++
++            // Resolve the __terrain__ sentinel to the actual raster-dem source.
++            // If no terrain source is available yet, skip the layer — it will be
++            // re-attempted when a raster-dem source is added to the map.
++            if (layerSource === '__terrain__') {
++                const terrainId = await Overlay.ensureTerrainSource(mapStore);
++                if (!terrainId) continue;
++                layerSource = terrainId;
++            }
++
++            // Skip layers whose source isn't loaded yet (e.g. a hillshade layer
++            // referencing a raster-dem overlay that hasn't been added to the map).
++            if (layerSource && !mapStore.map.getSource(layerSource)) continue;
++
++            // Clone the layer spec so we can substitute the resolved source
++            // without mutating the stored styles (which must keep '__terrain__').
++            const layerToAdd = layerSource !== (l as LayerSpecification & { source?: string }).source
++                ? { ...l, source: layerSource as string } as LayerSpecification
++                : l;
++
+             if (before) {
+-                mapStore.map.addLayer(l, before);
++                mapStore.map.addLayer(layerToAdd, before);
+             } else {
+-                mapStore.map.addLayer(l)
++                mapStore.map.addLayer(layerToAdd);
+             }
+         }
+ 
+@@ -253,6 +332,17 @@ export default class Overlay {
+         // without round-tripping through update()/save() which would PATCH
+         // the server with unchanged values.
+         for (const l of this.styles) {
++            // @ts-expect-error background layers have no source property
++            let layerSource: string | undefined = l.source;
++            if (layerSource === '__terrain__') {
++                const terrainId = await Overlay.ensureTerrainSource(mapStore);
++                if (!terrainId) continue;
++                layerSource = terrainId;
++            }
++            // Skip layers that were deferred above (source not yet loaded)
++            if (layerSource && !mapStore.map.getSource(layerSource)) continue;
++            if (!mapStore.map.getLayer(l.id)) continue;
++
+             if (this.type === 'raster') {
+                 mapStore.map.setPaintProperty(l.id, 'raster-opacity', Number(this.opacity));
+             }
+@@ -447,6 +537,17 @@ export default class Overlay {
+             await this.addLayers(opts.before);
+         }
+         this._loaded = true;
++
++        // If this overlay provides a raster-dem source, other overlays (e.g. a
++        // vector basemap with a hillshade layer) may have deferred layers that
++        // depend on it. Re-attempt adding their deferred layers now.
++        // This covers both explicit raster-dem overlays and the '-2' terrain source.
++        if (this.type === 'raster-dem' || String(this.id) === '-2') {
++            for (const other of OverlayManager.loaded) {
++                if (other === this || !other._loaded) continue;
++                await other.addLayers(opts.before);
++            }
++        }
+     }
+ 
+     remove() {
+@@ -532,8 +633,13 @@ export default class Overlay {
+                 for (const layer of overlay.styles) {
+                     const l = layer as LayerSpecification;
+                     l.id = `${this.id}-${l.id}`;
+-                    // @ts-expect-error Special case Background Layer type
+-                    l.source = String(this.id);
++                    // hillshade layers reference a separate raster-dem source
++                    // (a different overlay) — preserve their source as-is.
++                    // All other layer types use this overlay's own source.
++                    if (l.type !== 'hillshade') {
++                        // @ts-expect-error Special case Background Layer type
++                        l.source = String(this.id);
++                    }
+                 }
+             }
+             this.styles = overlay.styles as Array<LayerSpecification>;
+diff --git a/api/web/src/stores/map.ts b/api/web/src/stores/map.ts
+index bba4e1681..6f61ff9fc 100644
+--- a/api/web/src/stores/map.ts
++++ b/api/web/src/stores/map.ts
+@@ -772,6 +772,18 @@ export const useMapStore = defineStore('cloudtak', {
+ 
+             const sprites = IconManager.defaultSprite();
+ 
++            // Pre-load the LINZ topographic sprite unconditionally so that any
++            // LINZ vector basemap (Topographic V2, Topolite V2, etc.) can render
++            // fill-pattern, line-pattern and icon-image layers without timing
++            // issues. The sprite is proxied through CloudTAK's own domain to
++            // satisfy the browser CSP. Image references in the LINZ style JSON
++            // files are prefixed with 'linz-topographic:' to match the IDs that
++            // MapLibre assigns to non-default named sprites.
++            sprites.push({
++                id: 'linz-topographic',
++                url: `${String(stdurl('/api/basemap/sprite/topographic'))}${token ? `?token=${encodeURIComponent(token)}` : ''}`
++            });
++
+             let initCenter = '-100,40';
+             let initZoom = 4;
+             let initPitch = 0;

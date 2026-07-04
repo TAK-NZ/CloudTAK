@@ -772,6 +772,18 @@ export const useMapStore = defineStore('cloudtak', {
 
             const sprites = IconManager.defaultSprite();
 
+            // Pre-load the LINZ topographic sprite unconditionally so that any
+            // LINZ vector basemap (Topographic V2, Topolite V2, etc.) can render
+            // fill-pattern, line-pattern and icon-image layers without timing
+            // issues. The sprite is proxied through CloudTAK's own domain to
+            // satisfy the browser CSP. Image references in the LINZ style JSON
+            // files are prefixed with 'linz-topographic:' to match the IDs that
+            // MapLibre assigns to non-default named sprites.
+            sprites.push({
+                id: 'linz-topographic',
+                url: `${String(stdurl('/api/basemap/sprite/topographic'))}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+            });
+
             let initCenter = '-100,40';
             let initZoom = 4;
             let initPitch = 0;

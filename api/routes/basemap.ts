@@ -814,7 +814,12 @@ export default async function router(schema: Schema, config: Config) {
                     throw new Err(400, null, 'Unable to fetch TileJSON from source URL');
                 }
 
-                const json = await tj.json();
+                const json = await tj.json() as any;
+
+                // Strip sprite/glyphs — same reason as the PMTiles branch: external
+                // URLs from upstream TileJSON can't be proxied and will 404.
+                delete json.sprite;
+                delete json.glyphs;
 
                 res.json({
                     ...json,
@@ -836,10 +841,29 @@ export default async function router(schema: Schema, config: Config) {
                 if (!tj.ok) {
                     throw new Err(400, null, 'Unable to fetch TileJSON from hosted basemap');
                 }
-                const tjJson = await tj.json();
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const tjJson = await tj.json() as any;
+
+                // Strip sprite/glyphs from the upstream PMTiles TileJSON — those
+                // reference external URLs that cannot be proxied unless the basemap
+                // record has an explicit tilejson blob overriding them. The blob
+                // spread below will restore them for basemaps that do have a sprite.
+                delete tjJson.sprite;
+                delete tjJson.glyphs;
+
+                // Merge tilejson blob (e.g. sprite) if stored as JSON on the basemap record
+                let tilejsonBlobPmtiles: Record<string, unknown> = {};
+                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
+                    try {
+                        tilejsonBlobPmtiles = JSON.parse(basemap.tilejson);
+                    } catch {
+                        // Not valid JSON — ignore
+                    }
+                }
 
                 res.json({
                     ...tjJson,
+                    ...tilejsonBlobPmtiles,
                     type: basemap.type,
                     tiles: [tileURL],
                     actions: fromProtocol(basemap.protocol, basemap).actions(),
@@ -852,11 +876,183 @@ export default async function router(schema: Schema, config: Config) {
                     url: tileURL,
                 });
 
+                // If tilejson is a JSON blob (not a URL), merge its fields into the
+                // response — this allows sprite/glyphs and other MapLibre style
+                // properties to be stored per-basemap without a schema change.
+                let tilejsonBlob: Record<string, unknown> = {};
+                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
+                    try {
+                        tilejsonBlob = JSON.parse(basemap.tilejson);
+                    } catch {
+                        // Not valid JSON — ignore
+                    }
+                }
+
                 res.json({
                     ...json,
+                    ...tilejsonBlob,
                     actions: fromProtocol(basemap.protocol, basemap).actions(),
                 });
             }
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/basemap/sprite/:name.json', {
+        name: 'Get Named Sprite JSON',
+        group: 'BaseMap',
+        description: 'Proxy a named sprite JSON from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        query: Type.Object({
+            token: Type.Optional(Type.String()),
+        }),
+        res: Type.Unknown(),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req, { token: true });
+
+            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.json`;
+
+            const upstream = await fetch(spriteUrl);
+            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
+
+            const json = await upstream.json();
+            res.json(json);
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/basemap/sprite/:name.png', {
+        name: 'Get Named Sprite PNG',
+        group: 'BaseMap',
+        description: 'Proxy a named sprite PNG from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
+        params: Type.Object({
+            name: Type.String(),
+        }),
+        query: Type.Object({
+            token: Type.Optional(Type.String()),
+        }),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req, { token: true });
+
+            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.png`;
+
+            const upstream = await fetch(spriteUrl);
+            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
+
+            const buffer = Buffer.from(await upstream.arrayBuffer());
+            res.type('png').send(buffer);
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/basemap/:basemapid/sprite{:size}.json', {
+        name: 'Get Basemap Sprite JSON',
+        group: 'BaseMap',
+        description: 'Proxy the sprite JSON for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
+        params: Type.Object({
+            basemapid: Type.Integer({ minimum: 1 }),
+            size: Type.Optional(Type.String()),
+        }),
+        query: Type.Object({
+            token: Type.Optional(Type.String()),
+        }),
+        res: Type.Unknown(),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req, {
+                token: true,
+                resources: [
+                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
+                ],
+            });
+
+            const basemap = await config.models.Basemap.from(req.params.basemapid);
+
+            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
+
+            let tilejsonBlob: Record<string, unknown> = {};
+            try {
+                tilejsonBlob = JSON.parse(basemap.tilejson);
+            } catch {
+                throw new Err(404, null, 'This basemap has no sprite configured');
+            }
+
+            const spriteBase = tilejsonBlob.sprite as string | undefined;
+            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
+
+            // req.params.size is either '' or '@2x'
+            const size = req.params.size || '';
+            const spriteUrl = `${spriteBase}${size}.json`;
+
+            if (process.env.StackName !== 'test') {
+                const { safe, reason } = await isSafeUrl(spriteUrl);
+                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
+            }
+
+            const upstream = await fetch(spriteUrl);
+            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
+
+            const json = await upstream.json();
+            res.json(json);
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/basemap/:basemapid/sprite{:size}.png', {
+        name: 'Get Basemap Sprite PNG',
+        group: 'BaseMap',
+        description: 'Proxy the sprite PNG for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
+        params: Type.Object({
+            basemapid: Type.Integer({ minimum: 1 }),
+            size: Type.Optional(Type.String()),
+        }),
+        query: Type.Object({
+            token: Type.Optional(Type.String()),
+        }),
+    }, async (req, res) => {
+        try {
+            await Auth.is_auth(config, req, {
+                token: true,
+                resources: [
+                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
+                ],
+            });
+
+            const basemap = await config.models.Basemap.from(req.params.basemapid);
+
+            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
+
+            let tilejsonBlob: Record<string, unknown> = {};
+            try {
+                tilejsonBlob = JSON.parse(basemap.tilejson);
+            } catch {
+                throw new Err(404, null, 'This basemap has no sprite configured');
+            }
+
+            const spriteBase = tilejsonBlob.sprite as string | undefined;
+            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
+
+            const size = req.params.size || '';
+            const spriteUrl = `${spriteBase}${size}.png`;
+
+            if (process.env.StackName !== 'test') {
+                const { safe, reason } = await isSafeUrl(spriteUrl);
+                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
+            }
+
+            const upstream = await fetch(spriteUrl);
+            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
+
+            const buffer = Buffer.from(await upstream.arrayBuffer());
+            res.type('png').send(buffer);
         } catch (err) {
             Err.respond(err, res);
         }
