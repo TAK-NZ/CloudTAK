@@ -1,0 +1,58 @@
+diff --git a/api/routes/icons.ts b/api/routes/icons.ts
+index c223f2f1f..45ac8a13a 100644
+--- a/api/routes/icons.ts
++++ b/api/routes/icons.ts
+@@ -425,11 +425,27 @@ export default async function router(schema: Schema, config: Config) {
+             if (req.query.scope === ResourceCreationScope.SERVER) scope = sql`username IS NULL`;
+             else if (req.query.scope === ResourceCreationScope.USER) scope = sql`username IS NOT NULL`;
+ 
++            let iconset;
+             if (req.query.iconset) {
+-                const iconset = await config.models.Iconset.from(req.query.iconset);
++                iconset = await config.models.Iconset.from(req.query.iconset);
+                 if (iconset.username && iconset.username !== user.email && user.access === AuthUserAccess.USER) {
+                     throw new Err(400, null, 'You don\'t have permission to access this resource');
+                 }
++
++                // When scoped to a single iconset, the response is stable for a given
++                // version+updated pair, so we can return a strong ETag and allow shared
++                // caching. A 304 short-circuits the entire DB icon fetch for repeat loads.
++                const etag = `"${iconset.uid}-v${iconset.version}-${new Date(iconset.updated).getTime()}"`;
++                res.set('ETag', etag);
++                res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
++
++                if (req.headers['if-none-match'] === etag) {
++                    res.status(304).end();
++                    return;
++                }
++            } else {
++                // Without an iconset filter the result set is dynamic — don't cache.
++                res.set('Cache-Control', 'no-store');
+             }
+ 
+             const list = await config.models.Icon.list({
+@@ -630,7 +646,10 @@ export default async function router(schema: Schema, config: Config) {
+                 if (iconset.spritesheet_json) {
+                     res.json(iconset.spritesheet_json);
+                 } else {
+-                    throw new Err(400, null, 'Request regeneration of Iconset Spritesheet');
++                    // Return empty sprite JSON instead of error to prevent cascading failure
++                    // This handles KMZ imports with no custom icons
++                    console.warn(`Iconset ${req.params.iconset} has no spritesheet_json - returning empty sprite`);
++                    res.json({});
+                 }
+             }
+         } catch (err) {
+@@ -666,7 +685,11 @@ export default async function router(schema: Schema, config: Config) {
+                 if (iconset.spritesheet_data) {
+                     res.send(Buffer.from(iconset.spritesheet_data, 'base64'));
+                 } else {
+-                    throw new Err(400, null, 'Request regeneration of Iconset Spritesheet');
++                    // Return empty 1x1 transparent PNG instead of error to prevent cascading failure
++                    // This handles KMZ imports with no custom icons
++                    console.warn(`Iconset ${req.params.iconset} has no spritesheet_data - returning empty sprite`);
++                    const emptyPNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
++                    res.send(Buffer.from(emptyPNG, 'base64'));
+                 }
+             }
+         } catch (err) {

@@ -1,0 +1,603 @@
+diff --git a/api/lib/config.ts b/api/lib/config.ts
+index f0a1557ed..569866fb0 100644
+--- a/api/lib/config.ts
++++ b/api/lib/config.ts
+@@ -9,7 +9,7 @@ import ConnectionPool from './connection-pool.js';
+ import ConnectionGeofence from './connection-geofence.js';
+ import { ConnectionWebSocket } from './connection-web.js';
+ import type { Server } from './schema.js';
+-import { type InferSelectModel } from 'drizzle-orm';
++import { type InferSelectModel, sql } from 'drizzle-orm';
+ import Models from './models.js';
+ import process from 'node:process';
+ import * as pgtypes from './schema.js';
+@@ -32,10 +32,14 @@ export default class Config {
+     models: Models;
+     StackName: string;
+     SigningSecret: string;
++    MediaSecret: string;
+     user?: UserManager;
+     weather: WeatherManager;
+     API_URL: string;
+     PMTILES_URL: string;
++    /** Hostnames of external tile CDNs that are allowed to bypass the tile proxy (from CLOUDTAK_TILE_ORIGINS). */
++    tileOriginHostnames: Set<string>;
++    DynamoDB?: string;
+     wsClients: Map<string, ConnectionWebSocket[]>;
+     Bucket?: string;
+     pg: Pool<typeof pgtypes>;
+@@ -43,6 +47,10 @@ export default class Config {
+     geofence: ConnectionGeofence;
+     server: InferSelectModel<typeof Server>;
+     events: EventsPool;
++    VpcId?: string;
++    SubnetPublicA?: string;
++    SubnetPublicB?: string;
++    MediaSecurityGroup?: string;
+     arnPrefix?: string;
+ 
+     constructor(init: {
+@@ -56,9 +64,11 @@ export default class Config {
+         API_URL: string;
+         PMTILES_URL: string;
+         SigningSecret: string;
++        MediaSecret: string;
+         wsClients: Map<string, ConnectionWebSocket[]>;
+         pg: Pool<typeof pgtypes>;
+         server: InferSelectModel<typeof Server>;
++        DynamoDB?: string;
+         Bucket?: string;
+     }) {
+         this.silent = init.silent;
+@@ -69,10 +79,20 @@ export default class Config {
+         this.models = init.models;
+         this.StackName = init.StackName;
+         this.SigningSecret = init.SigningSecret;
++        this.MediaSecret = init.MediaSecret;
+         this.API_URL = init.API_URL;
+         this.PMTILES_URL = init.PMTILES_URL;
++        this.tileOriginHostnames = new Set(
++            (process.env.CLOUDTAK_TILE_ORIGINS || '')
++                .split(',')
++                .map(s => s.trim())
++                .filter(Boolean)
++                .map(s => { try { return new URL(s).hostname; } catch { return ''; } })
++                .filter(Boolean)
++        );
+         this.wsClients = init.wsClients;
+         this.pg = init.pg;
++        this.DynamoDB = init.DynamoDB;
+         this.Bucket = init.Bucket;
+         this.server = init.server;
+ 
+@@ -102,11 +122,12 @@ export default class Config {
+             process.env.AWS_REGION = 'us-east-1';
+         }
+ 
+-        let SigningSecret, API_URL, PMTILES_URL, Bucket;
++        let SigningSecret, MediaSecret, API_URL, PMTILES_URL, DynamoDB, Bucket;
+         if (!process.env.StackName || process.env.StackName === 'test') {
+             process.env.StackName = 'test';
+ 
+             SigningSecret = process.env.SigningSecret || 'coe-wildland-fire';
++            MediaSecret = process.env.MediaSecret || 'coe-wildland-fire-video';
+             Bucket = process.env.ASSET_BUCKET;
+             API_URL = process.env.API_URL || 'http://localhost:5001';
+             PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
+@@ -115,18 +136,20 @@ export default class Config {
+             if (!process.env.API_URL) throw new Error('API_URL env must be set');
+             if (!process.env.ASSET_BUCKET) throw new Error('ASSET_BUCKET env must be set');
+ 
+-            API_URL = process.env.API_URL;
+-
++            // API_URL env var already contains the full URL with scheme (set by CDK)
+             const apiUrl = new URL(process.env.API_URL);
+             if (apiUrl.hostname === 'localhost') {
++                API_URL = process.env.API_URL;
+                 PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
+             } else {
+-                const url = new URL(process.env.API_URL);
+-                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${url.host}`;
++                PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${apiUrl.host}`;
++                API_URL = process.env.API_URL;
+             }
+ 
+             Bucket = process.env.ASSET_BUCKET;
++            DynamoDB = process.env.StackName;
+             SigningSecret = process.env.SigningSecret || await Config.fetchSecret(process.env.StackName, 'secret');
++            MediaSecret = process.env.MediaSecret || await Config.fetchSecret(process.env.StackName, 'media');
+         }
+ 
+         const pg: Pool<typeof pgtypes> = await Pool.connect(args.postgres, pgtypes, {
+@@ -142,11 +165,89 @@ export default class Config {
+         } catch (err) {
+             console.log(`ok - no server config found: ${err instanceof Error ? err.message : String(err)}`);
+ 
+-            server = await models.Server.generate({
+-                name: 'Default Server',
+-                url: 'ssl://localhost:8089',
+-                api: 'https://localhost:8443',
+-            });
++            // Create server record, seeding from CLOUDTAK_Server_* env vars if present
++            const serverData: Record<string, unknown> = {
++                name: process.env.CLOUDTAK_Server_name || 'Default Server',
++                url: process.env.CLOUDTAK_Server_url || 'ssl://localhost:8089',
++                api: process.env.CLOUDTAK_Server_api || 'https://localhost:8443',
++            };
++            if (process.env.CLOUDTAK_Server_webtak) {
++                serverData.webtak = process.env.CLOUDTAK_Server_webtak;
++            }
++            if (process.env.CLOUDTAK_Server_auth_cert && process.env.CLOUDTAK_Server_auth_key) {
++                serverData.auth = {
++                    cert: process.env.CLOUDTAK_Server_auth_cert,
++                    key: process.env.CLOUDTAK_Server_auth_key,
++                };
++            } else if (process.env.CLOUDTAK_Server_auth_p12_secret_arn && process.env.CLOUDTAK_Server_auth_password) {
++                try {
++                    const secrets = new SecretsManager.SecretsManagerClient({ region: process.env.AWS_REGION });
++                    const secretValue = await secrets.send(new SecretsManager.GetSecretValueCommand({
++                        SecretId: process.env.CLOUDTAK_Server_auth_p12_secret_arn,
++                    }));
++                    if (secretValue.SecretBinary) {
++                        const pem = (await import('pem')).default;
++                        const p12Buffer = Buffer.from(secretValue.SecretBinary);
++                        const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
++                            pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
++                                if (e) {
++                                    reject(e);
++                                } else {
++                                    resolve({ pemCertificate: result.cert, pemKey: result.key });
++                                }
++                            });
++                        });
++                        serverData.auth = { cert: certs.pemCertificate, key: certs.pemKey };
++                        console.error('ok - Extracted P12 certificate from Secrets Manager');
++                    }
++                } catch (e) {
++                    console.error(`Error loading P12 from Secrets Manager: ${e instanceof Error ? e.message : String(e)}`);
++                }
++            }
++            server = await models.Server.generate(serverData as unknown as { url: string });
++        }
++
++        // Apply CLOUDTAK_Server_* env var overrides to an existing server record
++        const serverUpdates: Record<string, unknown> = {};
++        if (process.env.CLOUDTAK_Server_name) serverUpdates.name = process.env.CLOUDTAK_Server_name;
++        if (process.env.CLOUDTAK_Server_url) serverUpdates.url = process.env.CLOUDTAK_Server_url;
++        if (process.env.CLOUDTAK_Server_api) serverUpdates.api = process.env.CLOUDTAK_Server_api;
++        if (process.env.CLOUDTAK_Server_webtak) serverUpdates.webtak = process.env.CLOUDTAK_Server_webtak;
++
++        if (process.env.CLOUDTAK_Server_auth_cert && process.env.CLOUDTAK_Server_auth_key) {
++            serverUpdates.auth = {
++                ...(server.auth || {}),
++                cert: process.env.CLOUDTAK_Server_auth_cert,
++                key: process.env.CLOUDTAK_Server_auth_key,
++            };
++        } else if (process.env.CLOUDTAK_Server_auth_p12_secret_arn && process.env.CLOUDTAK_Server_auth_password) {
++            try {
++                const secrets = new SecretsManager.SecretsManagerClient({ region: process.env.AWS_REGION });
++                const secretValue = await secrets.send(new SecretsManager.GetSecretValueCommand({
++                    SecretId: process.env.CLOUDTAK_Server_auth_p12_secret_arn,
++                }));
++                if (secretValue.SecretBinary) {
++                    const pem = (await import('pem')).default;
++                    const p12Buffer = Buffer.from(secretValue.SecretBinary);
++                    const certs = await new Promise<{ pemCertificate: string; pemKey: string }>((resolve, reject) => {
++                        pem.readPkcs12(p12Buffer, { p12Password: process.env.CLOUDTAK_Server_auth_password }, (e: Error | null, result: { cert: string; key: string }) => {
++                            if (e) {
++                                reject(e);
++                            } else {
++                                resolve({ pemCertificate: result.cert, pemKey: result.key });
++                            }
++                        });
++                    });
++                    serverUpdates.auth = { ...(server.auth || {}), cert: certs.pemCertificate, key: certs.pemKey };
++                }
++            } catch (e) {
++                console.error(`Error loading P12 for server update: ${e instanceof Error ? e.message : String(e)}`);
++            }
++        }
++
++        if (Object.keys(serverUpdates).length > 0) {
++            server = await models.Server.commit(server.id, { ...serverUpdates, updated: sql`Now()` });
++            console.error(`ok - Server updated from environment variables`);
+         }
+ 
+         const config = new Config({
+@@ -157,7 +258,7 @@ export default class Config {
+             nocache: (args.nocache || false),
+             StackName: process.env.StackName,
+             wsClients: new Map(),
+-            server, SigningSecret, API_URL, Bucket, pg, models, PMTILES_URL,
++            server, SigningSecret, MediaSecret, API_URL, DynamoDB, Bucket, pg, models, PMTILES_URL,
+         });
+ 
+         if (!config.silent) {
+@@ -169,6 +270,40 @@ export default class Config {
+         config.user = new UserManager(config);
+         await config.user.init();
+ 
++        // Set optional VPC/networking config from env
++        if (process.env.VpcId) config.VpcId = process.env.VpcId;
++        if (process.env.SubnetPublicA) config.SubnetPublicA = process.env.SubnetPublicA;
++        if (process.env.SubnetPublicB) config.SubnetPublicB = process.env.SubnetPublicB;
++        if (process.env.MediaSecurityGroup) config.MediaSecurityGroup = process.env.MediaSecurityGroup;
++
++        // Ensure admin user exists with system_admin if credentials are provided
++        if (process.env.CLOUDTAK_ADMIN_USERNAME && process.env.CLOUDTAK_ADMIN_PASSWORD) {
++            try {
++                // Ensure admin profile exists with system_admin flag.
++                // In v13, auth uses certificates; the admin must login normally
++                // to enroll their cert. We just ensure the profile record exists
++                // with the correct system_admin flag.
++                try {
++                    const existing = await config.models.Profile.from(process.env.CLOUDTAK_ADMIN_USERNAME);
++                    await config.models.Profile.commit(process.env.CLOUDTAK_ADMIN_USERNAME, { system_admin: true });
++                    void existing; // mark as used
++                } catch (err) {
++                    if (err instanceof Error && err.message.includes('Item Not Found')) {
++                        await config.models.Profile.generate({
++                            username: process.env.CLOUDTAK_ADMIN_USERNAME,
++                            auth: { ca: [], key: '', cert: '' },
++                            system_admin: true,
++                        });
++                    } else {
++                        throw err;
++                    }
++                }
++                console.error('ok - Admin user ensured');
++            } catch (err) {
++                console.error(`Error ensuring admin user: ${err instanceof Error ? err.message : String(err)}`);
++            }
++        }
++
+         for (const envkey in process.env) {
+             if (!envkey.startsWith('CLOUDTAK')) continue;
+ 
+diff --git a/api/nginx.conf.js b/api/nginx.conf.js
+index a094f10e7..18f8569e5 100644
+--- a/api/nginx.conf.js
++++ b/api/nginx.conf.js
+@@ -15,15 +15,27 @@ if (url.hostname === 'localhost') {
+     // FQDN: Check if API_URL is something.example.com vs example.com
+     const isSub = process.env.API_URL.match(/.*\.*\..*?\..*?$/)
+ 
++    // Parse CLOUDTAK_TILE_ORIGINS — a comma-separated list of trusted external
++    // tile CDN origins (e.g. "https://basemaps.linz.govt.nz,https://mts1.google.com").
++    // These are added to connect-src and img-src so MapLibre can fetch tiles
++    // directly from the CDN instead of going through the CloudTAK tile proxy.
++    const tileOrigins = (process.env.CLOUDTAK_TILE_ORIGINS || '')
++        .split(',')
++        .map(s => s.trim())
++        .filter(Boolean);
++
+     const csp = {
+         'default-src': [`'self'`],
+-        'img-src': [`'self'`, 'data:', 'blob:'],
++        'img-src': [`'self'`, 'data:', 'blob:', ...tileOrigins],
+         'media-src': [`'self'`, 'blob:'],
+         'font-src': [`'self'`, 'data:'],
+         'worker-src': [`'self'`, 'blob:'],
+         'style-src-elem': [`'self'`, `'unsafe-inline'`],
+         'style-src-attr': [`'unsafe-inline'`],
+-        'connect-src': [`'self'`]
++        'connect-src': [`'self'`, ...tileOrigins],
++        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
++        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
++        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
+     }
+ 
+     cspstr = `add_header 'Content-Security-Policy' "`
+@@ -79,6 +91,10 @@ http {
+ 
+     access_log  /var/log/nginx/access.log  main;
+ 
++    # Increase buffer sizes for ALB OIDC cookies
++    large_client_header_buffers 4 32k;
++    client_header_buffer_size 32k;
++
+     server {
+         listen 5000;
+         listen [::]:5000;
+diff --git a/api/routes/basemap.ts b/api/routes/basemap.ts
+index dca04ddf5..8fc3831b4 100644
+--- a/api/routes/basemap.ts
++++ b/api/routes/basemap.ts
+@@ -763,11 +763,28 @@ export default async function router(schema: Schema, config: Config) {
+             let tileURL: string;
+ 
+             if (basemap.url.includes(new URL(config.PMTILES_URL || 'http://localhost:5001').hostname)) {
++                // Hosted PMTiles — pass the direct URL through; already on the same trusted host.
+                 tileURL = basemap.url;
+                 if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
+             } else {
+-                tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
+-                if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
++                // For external basemaps, check if the hostname is in the trusted-origins
++                // allowlist (CLOUDTAK_TILE_ORIGINS). If so, return the direct URL so the
++                // browser fetches tiles straight from the CDN instead of through the proxy.
++                // The CSP in nginx.conf.js adds these same origins to connect-src/img-src.
++                let isTrustedOrigin = false;
++                try {
++                    const storedHostname = new URL(basemap.url).hostname;
++                    isTrustedOrigin = config.tileOriginHostnames.has(storedHostname);
++                } catch {
++                    // malformed URL — fall through to proxy
++                }
++
++                if (isTrustedOrigin) {
++                    tileURL = basemap.url;
++                } else {
++                    tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
++                    if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
++                }
+             }
+ 
+             const esriMetadataURL = basemap.tilejson || basemap.url;
+@@ -814,7 +831,12 @@ export default async function router(schema: Schema, config: Config) {
+                     throw new Err(400, null, 'Unable to fetch TileJSON from source URL');
+                 }
+ 
+-                const json = await tj.json();
++                const json = await tj.json() as any;
++
++                // Strip sprite/glyphs — same reason as the PMTiles branch: external
++                // URLs from upstream TileJSON can't be proxied and will 404.
++                delete json.sprite;
++                delete json.glyphs;
+ 
+                 res.json({
+                     ...json,
+@@ -836,10 +858,29 @@ export default async function router(schema: Schema, config: Config) {
+                 if (!tj.ok) {
+                     throw new Err(400, null, 'Unable to fetch TileJSON from hosted basemap');
+                 }
+-                const tjJson = await tj.json();
++                // eslint-disable-next-line @typescript-eslint/no-explicit-any
++                const tjJson = await tj.json() as any;
++
++                // Strip sprite/glyphs from the upstream PMTiles TileJSON — those
++                // reference external URLs that cannot be proxied unless the basemap
++                // record has an explicit tilejson blob overriding them. The blob
++                // spread below will restore them for basemaps that do have a sprite.
++                delete tjJson.sprite;
++                delete tjJson.glyphs;
++
++                // Merge tilejson blob (e.g. sprite) if stored as JSON on the basemap record
++                let tilejsonBlobPmtiles: Record<string, unknown> = {};
++                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
++                    try {
++                        tilejsonBlobPmtiles = JSON.parse(basemap.tilejson);
++                    } catch {
++                        // Not valid JSON — ignore
++                    }
++                }
+ 
+                 res.json({
+                     ...tjJson,
++                    ...tilejsonBlobPmtiles,
+                     type: basemap.type,
+                     tiles: [tileURL],
+                     actions: fromProtocol(basemap.protocol, basemap).actions(),
+@@ -852,8 +893,21 @@ export default async function router(schema: Schema, config: Config) {
+                     url: tileURL,
+                 });
+ 
++                // If tilejson is a JSON blob (not a URL), merge its fields into the
++                // response — this allows sprite/glyphs and other MapLibre style
++                // properties to be stored per-basemap without a schema change.
++                let tilejsonBlob: Record<string, unknown> = {};
++                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
++                    try {
++                        tilejsonBlob = JSON.parse(basemap.tilejson);
++                    } catch {
++                        // Not valid JSON — ignore
++                    }
++                }
++
+                 res.json({
+                     ...json,
++                    ...tilejsonBlob,
+                     actions: fromProtocol(basemap.protocol, basemap).actions(),
+                 });
+             }
+@@ -862,6 +916,165 @@ export default async function router(schema: Schema, config: Config) {
+         }
+     });
+ 
++    await schema.get('/basemap/sprite/:name.json', {
++        name: 'Get Named Sprite JSON',
++        group: 'BaseMap',
++        description: 'Proxy a named sprite JSON from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
++        params: Type.Object({
++            name: Type.String(),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++        res: Type.Unknown(),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, { token: true });
++
++            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.json`;
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
++
++            const json = await upstream.json();
++            res.json(json);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/sprite/:name.png', {
++        name: 'Get Named Sprite PNG',
++        group: 'BaseMap',
++        description: 'Proxy a named sprite PNG from LINZ Basemaps. The sprite is served through CloudTAK\'s own domain so the browser CSP is satisfied. Sprite names map directly to LINZ sprite names (e.g. "topographic").',
++        params: Type.Object({
++            name: Type.String(),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, { token: true });
++
++            const spriteUrl = `https://basemaps.linz.govt.nz/v1/sprites/${encodeURIComponent(req.params.name)}.png`;
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
++
++            const buffer = Buffer.from(await upstream.arrayBuffer());
++            res.type('png').send(buffer);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/:basemapid/sprite{:size}.json', {
++        name: 'Get Basemap Sprite JSON',
++        group: 'BaseMap',
++        description: 'Proxy the sprite JSON for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
++        params: Type.Object({
++            basemapid: Type.Integer({ minimum: 1 }),
++            size: Type.Optional(Type.String()),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++        res: Type.Unknown(),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, {
++                token: true,
++                resources: [
++                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
++                ],
++            });
++
++            const basemap = await config.models.Basemap.from(req.params.basemapid);
++
++            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            let tilejsonBlob: Record<string, unknown> = {};
++            try {
++                tilejsonBlob = JSON.parse(basemap.tilejson);
++            } catch {
++                throw new Err(404, null, 'This basemap has no sprite configured');
++            }
++
++            const spriteBase = tilejsonBlob.sprite as string | undefined;
++            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            // req.params.size is either '' or '@2x'
++            const size = req.params.size || '';
++            const spriteUrl = `${spriteBase}${size}.json`;
++
++            if (process.env.StackName !== 'test') {
++                const { safe, reason } = await isSafeUrl(spriteUrl);
++                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
++            }
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite JSON returned ${upstream.status}`);
++
++            const json = await upstream.json();
++            res.json(json);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
++    await schema.get('/basemap/:basemapid/sprite{:size}.png', {
++        name: 'Get Basemap Sprite PNG',
++        group: 'BaseMap',
++        description: 'Proxy the sprite PNG for a basemap whose tilejson blob contains a sprite URL. Serves the file through CloudTAK\'s own domain so the browser CSP is satisfied without allowing external origins.',
++        params: Type.Object({
++            basemapid: Type.Integer({ minimum: 1 }),
++            size: Type.Optional(Type.String()),
++        }),
++        query: Type.Object({
++            token: Type.Optional(Type.String()),
++        }),
++    }, async (req, res) => {
++        try {
++            await Auth.is_auth(config, req, {
++                token: true,
++                resources: [
++                    { access: AuthResourceAccess.BASEMAP, id: req.params.basemapid },
++                ],
++            });
++
++            const basemap = await config.models.Basemap.from(req.params.basemapid);
++
++            if (!basemap.tilejson) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            let tilejsonBlob: Record<string, unknown> = {};
++            try {
++                tilejsonBlob = JSON.parse(basemap.tilejson);
++            } catch {
++                throw new Err(404, null, 'This basemap has no sprite configured');
++            }
++
++            const spriteBase = tilejsonBlob.sprite as string | undefined;
++            if (!spriteBase) throw new Err(404, null, 'This basemap has no sprite configured');
++
++            const size = req.params.size || '';
++            const spriteUrl = `${spriteBase}${size}.png`;
++
++            if (process.env.StackName !== 'test') {
++                const { safe, reason } = await isSafeUrl(spriteUrl);
++                if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
++            }
++
++            const upstream = await fetch(spriteUrl);
++            if (!upstream.ok) throw new Err(502, null, `Upstream sprite PNG returned ${upstream.status}`);
++
++            const buffer = Buffer.from(await upstream.arrayBuffer());
++            res.type('png').send(buffer);
++        } catch (err) {
++            Err.respond(err, res);
++        }
++    });
++
+     await schema.get('/basemap/:basemapid/tiles/:z/:x/:y', {
+         name: 'Get Basemap Tile',
+         group: 'BaseMap',
+diff --git a/api/web/src/stores/map.ts b/api/web/src/stores/map.ts
+index 43cab4521..48d410777 100644
+--- a/api/web/src/stores/map.ts
++++ b/api/web/src/stores/map.ts
+@@ -735,6 +735,8 @@ export const useMapStore = defineStore('cloudtak', {
+                     this.hasNoChannels = true;
+                 } else if (msg.type === WorkerMessageType.Channels_List) {
+                     this.hasNoChannels = false;
++                } else if (msg.type === WorkerMessageType.Session_Logout) {
++                    window.location.href = '/api/logout';
+                 } else if (msg.type === WorkerMessageType.Channel_Change) {
+                     this.channelChange = true;
+                 } else if (msg.type === WorkerMessageType.Mission_Change_Feature) {
+@@ -770,6 +772,20 @@ export const useMapStore = defineStore('cloudtak', {
+ 
+             const sprites = IconManager.defaultSprite();
+ 
++            // Pre-load the LINZ topographic sprite unconditionally so that any
++            // LINZ vector basemap (Topographic V2, Topolite V2, etc.) can render
++            // fill-pattern, line-pattern and icon-image layers without timing
++            // issues. The sprite is loaded directly from the LINZ CDN, which is a
++            // public endpoint (Access-Control-Allow-Origin: *) and must be listed
++            // in CLOUDTAK_TILE_ORIGINS so the CSP connect-src allows it.
++            // Image references in the LINZ style JSON files are prefixed with
++            // 'linz-topographic:' to match the IDs that MapLibre assigns to
++            // non-default named sprites.
++            sprites.push({
++                id: 'linz-topographic',
++                url: 'https://basemaps.linz.govt.nz/v1/sprites/topographic'
++            });
++
+             let initCenter = '-100,40';
+             let initZoom = 4;
+             let initPitch = 0;
