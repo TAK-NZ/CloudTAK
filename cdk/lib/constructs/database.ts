@@ -154,7 +154,7 @@ export class Database extends Construct {
         defaultDatabaseName: DATABASE_CONSTANTS.DEFAULT_DATABASE_NAME,
         port: DATABASE_CONSTANTS.PORT,
         networkType: rds.NetworkType.DUAL,
-        serverlessV2MinCapacity: 0.5,
+        serverlessV2MinCapacity: 2,
         serverlessV2MaxCapacity: 4,
         writer: rds.ClusterInstance.serverlessV2('writer'),
         readers: dbConfig.instanceCount > 1 ? 
