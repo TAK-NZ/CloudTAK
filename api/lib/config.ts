@@ -85,7 +85,7 @@ export default class Config {
         this.tileOriginHostnames = new Set(
             (process.env.CLOUDTAK_TILE_ORIGINS || '')
                 .split(',')
-                .map((s) => s.trim())
+                .map(s => s.trim())
                 .filter(Boolean)
                 .flatMap((s) => {
                     try {
