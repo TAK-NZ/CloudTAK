@@ -1,5 +1,5 @@
 diff --git a/api/lib/config.ts b/api/lib/config.ts
-index f0a1557ed..c3c2c1965 100644
+index f0a1557ed..907f77dc8 100644
 --- a/api/lib/config.ts
 +++ b/api/lib/config.ts
 @@ -9,7 +9,7 @@ import ConnectionPool from './connection-pool.js';
@@ -59,7 +59,7 @@ index f0a1557ed..c3c2c1965 100644
 +        this.tileOriginHostnames = new Set(
 +            (process.env.CLOUDTAK_TILE_ORIGINS || '')
 +                .split(',')
-+                .map((s) => s.trim())
++                .map(s => s.trim())
 +                .filter(Boolean)
 +                .flatMap((s) => {
 +                    try {
