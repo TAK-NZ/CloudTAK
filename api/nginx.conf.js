@@ -15,15 +15,24 @@ if (url.hostname === 'localhost') {
     // FQDN: Check if API_URL is something.example.com vs example.com
     const isSub = process.env.API_URL.match(/.*\.*\..*?\..*?$/)
 
+    // Parse CLOUDTAK_TILE_ORIGINS — a comma-separated list of trusted external
+    // tile CDN origins (e.g. "https://basemaps.linz.govt.nz,https://mts1.google.com").
+    // These are added to connect-src and img-src so MapLibre can fetch tiles
+    // directly from the CDN instead of going through the CloudTAK tile proxy.
+    const tileOrigins = (process.env.CLOUDTAK_TILE_ORIGINS || '')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
     const csp = {
         'default-src': [`'self'`],
-        'img-src': [`'self'`, 'data:', 'blob:'],
+        'img-src': [`'self'`, 'data:', 'blob:', ...tileOrigins],
         'media-src': [`'self'`, 'blob:'],
         'font-src': [`'self'`, 'data:'],
         'worker-src': [`'self'`, 'blob:'],
         'style-src-elem': [`'self'`, `'unsafe-inline'`],
         'style-src-attr': [`'unsafe-inline'`],
-        'connect-src': [`'self'`],
+        'connect-src': [`'self'`, ...tileOrigins],
         // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
         // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
         'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']

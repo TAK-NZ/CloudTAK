@@ -763,11 +763,28 @@ export default async function router(schema: Schema, config: Config) {
             let tileURL: string;
 
             if (basemap.url.includes(new URL(config.PMTILES_URL || 'http://localhost:5001').hostname)) {
+                // Hosted PMTiles — pass the direct URL through; already on the same trusted host.
                 tileURL = basemap.url;
                 if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
             } else {
-                tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
-                if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
+                // For external basemaps, check if the hostname is in the trusted-origins
+                // allowlist (CLOUDTAK_TILE_ORIGINS). If so, return the direct URL so the
+                // browser fetches tiles straight from the CDN instead of through the proxy.
+                // The CSP in nginx.conf.js adds these same origins to connect-src/img-src.
+                let isTrustedOrigin = false;
+                try {
+                    const storedHostname = new URL(basemap.url).hostname;
+                    isTrustedOrigin = config.tileOriginHostnames.has(storedHostname);
+                } catch {
+                    // malformed URL — fall through to proxy
+                }
+
+                if (isTrustedOrigin) {
+                    tileURL = basemap.url;
+                } else {
+                    tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
+                    if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
+                }
             }
 
             const esriMetadataURL = basemap.tilejson || basemap.url;
