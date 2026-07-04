@@ -1,5 +1,5 @@
 diff --git a/api/lib/config.ts b/api/lib/config.ts
-index f0a1557ed..569866fb0 100644
+index f0a1557ed..c3c2c1965 100644
 --- a/api/lib/config.ts
 +++ b/api/lib/config.ts
 @@ -9,7 +9,7 @@ import ConnectionPool from './connection-pool.js';
@@ -49,7 +49,7 @@ index f0a1557ed..569866fb0 100644
          Bucket?: string;
      }) {
          this.silent = init.silent;
-@@ -69,10 +79,20 @@ export default class Config {
+@@ -69,10 +79,25 @@ export default class Config {
          this.models = init.models;
          this.StackName = init.StackName;
          this.SigningSecret = init.SigningSecret;
@@ -59,10 +59,15 @@ index f0a1557ed..569866fb0 100644
 +        this.tileOriginHostnames = new Set(
 +            (process.env.CLOUDTAK_TILE_ORIGINS || '')
 +                .split(',')
-+                .map(s => s.trim())
++                .map((s) => s.trim())
 +                .filter(Boolean)
-+                .map(s => { try { return new URL(s).hostname; } catch { return ''; } })
-+                .filter(Boolean)
++                .flatMap((s) => {
++                    try {
++                        return [new URL(s).hostname];
++                    } catch {
++                        return [];
++                    }
++                }),
 +        );
          this.wsClients = init.wsClients;
          this.pg = init.pg;
@@ -70,7 +75,7 @@ index f0a1557ed..569866fb0 100644
          this.Bucket = init.Bucket;
          this.server = init.server;
  
-@@ -102,11 +122,12 @@ export default class Config {
+@@ -102,11 +127,12 @@ export default class Config {
              process.env.AWS_REGION = 'us-east-1';
          }
  
@@ -84,7 +89,7 @@ index f0a1557ed..569866fb0 100644
              Bucket = process.env.ASSET_BUCKET;
              API_URL = process.env.API_URL || 'http://localhost:5001';
              PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
-@@ -115,18 +136,20 @@ export default class Config {
+@@ -115,18 +141,20 @@ export default class Config {
              if (!process.env.API_URL) throw new Error('API_URL env must be set');
              if (!process.env.ASSET_BUCKET) throw new Error('ASSET_BUCKET env must be set');
  
@@ -109,7 +114,7 @@ index f0a1557ed..569866fb0 100644
          }
  
          const pg: Pool<typeof pgtypes> = await Pool.connect(args.postgres, pgtypes, {
-@@ -142,11 +165,89 @@ export default class Config {
+@@ -142,11 +170,89 @@ export default class Config {
          } catch (err) {
              console.log(`ok - no server config found: ${err instanceof Error ? err.message : String(err)}`);
  
@@ -204,7 +209,7 @@ index f0a1557ed..569866fb0 100644
          }
  
          const config = new Config({
-@@ -157,7 +258,7 @@ export default class Config {
+@@ -157,7 +263,7 @@ export default class Config {
              nocache: (args.nocache || false),
              StackName: process.env.StackName,
              wsClients: new Map(),
@@ -213,7 +218,7 @@ index f0a1557ed..569866fb0 100644
          });
  
          if (!config.silent) {
-@@ -169,6 +270,40 @@ export default class Config {
+@@ -169,6 +275,40 @@ export default class Config {
          config.user = new UserManager(config);
          await config.user.init();
  
