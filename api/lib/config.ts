@@ -37,6 +37,8 @@ export default class Config {
     weather: WeatherManager;
     API_URL: string;
     PMTILES_URL: string;
+    /** Hostnames of external tile CDNs that are allowed to bypass the tile proxy (from CLOUDTAK_TILE_ORIGINS). */
+    tileOriginHostnames: Set<string>;
     DynamoDB?: string;
     wsClients: Map<string, ConnectionWebSocket[]>;
     Bucket?: string;
@@ -80,6 +82,19 @@ export default class Config {
         this.MediaSecret = init.MediaSecret;
         this.API_URL = init.API_URL;
         this.PMTILES_URL = init.PMTILES_URL;
+        this.tileOriginHostnames = new Set(
+            (process.env.CLOUDTAK_TILE_ORIGINS || '')
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+                .flatMap((s) => {
+                    try {
+                        return [new URL(s).hostname];
+                    } catch {
+                        return [];
+                    }
+                }),
+        );
         this.wsClients = init.wsClients;
         this.pg = init.pg;
         this.DynamoDB = init.DynamoDB;
