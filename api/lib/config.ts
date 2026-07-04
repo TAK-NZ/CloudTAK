@@ -85,10 +85,15 @@ export default class Config {
         this.tileOriginHostnames = new Set(
             (process.env.CLOUDTAK_TILE_ORIGINS || '')
                 .split(',')
-                .map(s => s.trim())
+                .map((s) => s.trim())
                 .filter(Boolean)
-                .map(s => { try { return new URL(s).hostname; } catch { return ''; } })
-                .filter(Boolean)
+                .flatMap((s) => {
+                    try {
+                        return [new URL(s).hostname];
+                    } catch {
+                        return [];
+                    }
+                }),
         );
         this.wsClients = init.wsClients;
         this.pg = init.pg;
