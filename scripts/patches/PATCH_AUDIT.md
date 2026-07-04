@@ -45,6 +45,14 @@ The v13.26.0 upstream baseline commit is **418bdc4be**.
 | 050 | *(note)* | Tab visibility reconnect — **superseded by upstream v13** (`reconnect()` and `_boundOnVisibilityChange` already in baseline) | ⬜ Superseded |
 | 051 | `api/lib/authentik-provider.ts`, `api/routes/connection.ts`, `api/routes/login.ts` | Cert renewal uses password auth instead of potentially-revoked cert; removes stale cert-revocation check from login.ts | ✅ Applied & valid |
 | 053 | `api/lib/connection-web.ts`, `api/web/src/base/chatroom-chats.ts`, `api/web/src/components/CloudTAK/Menu/MenuChat.vue`, `api/web/src/components/CloudTAK/Notifications.vue`, `api/web/src/workers/atlas-connection.ts` | Chat/presence fixes: plugin dest routing, chatroom DB ops without fetch(), notification routing, markRead(), scroll-to-bottom, timestamps, Notifications layout | ✅ Applied & valid |
+| 054 | `api/web/src/stores/modules/icons.ts` | Scales down large raster icons to 32px max using canvas; prevents oversized icons from filling the whole screen | ✅ Applied & valid |
+| 055 | `api/web/src/components/CloudTAK/Menu/MenuContacts.vue` | Fixes contacts badge count and adds manual refresh button | ✅ Applied & valid |
+| 056 | `api/web/src/components/CloudTAK/Menu/MenuVideos.vue` | Hides video menu when no media server is configured | ✅ Applied & valid |
+| 057 | `api/routes/ldap.ts` | Falls through to Authentik in all three LDAP routes when CoTAK is not configured | ✅ Applied & valid |
+| 058 | `api/lib/types.ts`, `api/routes/basemap.ts`, `api/web/src/base/overlay-class.ts` | Adds `sprite`/`glyphs` fields to `TileJSON` schema; merges `tilejson` blob into PMTiles and non-URL TileJSON responses; strips upstream `sprite`/`glyphs` to prevent CSP leakage; adds `ensureTerrainSource()` static method and `__terrain__` sentinel resolution for hillshade layers; `OverlayManager` re-attempts deferred hillshade layers when raster-dem source arrives | ✅ Applied & valid |
+| 059 | `api/routes/basemap.ts`, `api/web/src/base/overlay-class.ts`, `api/web/src/stores/map.ts` | LINZ sprite proxy: adds `GET /api/basemap/sprite/:name.json` and `.png` routes (auth-only, proxies to LINZ public CDN); pre-loads `linz-topographic` sprite unconditionally in map init style (before any overlays load); removes per-overlay reactive sprite registration code that caused timing races | ✅ Applied & valid |
+
+> **Note:** The LINZ vector style JSON files (`LINZ_Vector_Map_Styles/LINZ_Topographic_V2_Hillshade.migrated.json` and `LINZ_Topolite_V2_Hillshade.migrated.json`) have all `fill-pattern`, `line-pattern`, and `icon-image` values prefixed with `linz-topographic:` to match the sprite ID MapLibre assigns to non-default named sprites. These files are untracked by git and must be updated manually when re-deploying to a fresh environment.
 
 ---
 

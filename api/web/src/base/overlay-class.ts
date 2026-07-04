@@ -15,6 +15,7 @@ import { useMapStore } from '../stores/map.js';
 import ProfileConfig from './profile.ts';
 import Subscription from './subscription.ts';
 import { FeatureVisibility } from '../stores/modules/feature-visibility.ts';
+import OverlayManager from './overlay.ts';
 
 /**
  * @class
@@ -74,9 +75,11 @@ export default class Overlay {
                 for (const layer of ov.styles) {
                     const l = layer as LayerSpecification;
                     l.id = `${ov.id}-${l.id}`;
-                    // @ts-expect-error Special case Background Layer type
-                    l.source = String(ov.id);
-                }
+                    // hillshade layers reference a separate raster-dem source — preserve as-is
+                    if (l.type !== 'hillshade') {
+                        // @ts-expect-error Special case Background Layer type
+                        l.source = String(ov.id);
+                    }                }
             }
 
             ov = await std(`/api/profile/overlay/${ov.id}`, {
@@ -231,6 +234,60 @@ export default class Overlay {
         }
     }
 
+    /**
+     * Ensure a raster-dem source exists on the map for hillshading, returning
+     * its source ID. Does NOT enable 3D terrain — hillshading is a 2D effect
+     * that only needs the raster-dem source to be registered.
+     *
+     * Resolution order:
+     *  1. Any raster-dem source already on the map (e.g. from addTerrain())
+     *  2. Query the API for any raster-dem basemap and add it as source
+     *     '__terrain__' — no setTerrain() call, no 3D mode.
+     *
+     * Returns the source ID, or null if no raster-dem basemap is available.
+     */
+    static async ensureTerrainSource(mapStore: ReturnType<typeof useMapStore>): Promise<string | null> {
+        // 1. Return any raster-dem source already on the map
+        const sources = mapStore.map.getStyle().sources;
+        for (const [id, src] of Object.entries(sources)) {
+            if ((src as { type: string }).type === 'raster-dem') return id;
+        }
+
+        // 2. Load and register the first available raster-dem basemap as a bare
+        //    raster-dem source — hillshading only, no 3D terrain.
+        try {
+            const { value: token } = await Preferences.get({ key: 'token' });
+
+            const listUrl = stdurl('/api/basemap');
+            listUrl.searchParams.set('type', 'raster-dem');
+            listUrl.searchParams.set('hidden', 'all');
+            listUrl.searchParams.set('limit', '1');
+            if (token) listUrl.searchParams.set('token', token);
+
+            const list = await std(listUrl.toString()) as { items: Array<{ id: number; tilesize?: number; encoding?: string }> };
+            if (!list.items.length) return null;
+
+            const terrainId = list.items[0].id;
+            const terrainUrl = stdurl(`/api/basemap/${terrainId}/tiles`);
+            if (token) terrainUrl.searchParams.set('token', token);
+
+            const tileJSON = await std(terrainUrl.toString()) as TileJSON;
+
+            const sourceId = '__terrain__';
+            if (!mapStore.map.getSource(sourceId)) {
+                mapStore.map.addSource(sourceId, {
+                    ...tileJSON,
+                    type: 'raster-dem',
+                });
+            }
+
+            return sourceId;
+        } catch (err) {
+            console.warn('Could not load terrain source for hillshading:', err);
+            return null;
+        }
+    }
+
     async addLayers(before?: string): Promise<void> {
         const mapStore = useMapStore();
 
@@ -242,10 +299,32 @@ export default class Overlay {
         }
 
         for (const l of this.styles) {
+            // @ts-expect-error background layers have no source property
+            let layerSource: string | undefined = l.source;
+
+            // Resolve the __terrain__ sentinel to the actual raster-dem source.
+            // If no terrain source is available yet, skip the layer — it will be
+            // re-attempted when a raster-dem source is added to the map.
+            if (layerSource === '__terrain__') {
+                const terrainId = await Overlay.ensureTerrainSource(mapStore);
+                if (!terrainId) continue;
+                layerSource = terrainId;
+            }
+
+            // Skip layers whose source isn't loaded yet (e.g. a hillshade layer
+            // referencing a raster-dem overlay that hasn't been added to the map).
+            if (layerSource && !mapStore.map.getSource(layerSource)) continue;
+
+            // Clone the layer spec so we can substitute the resolved source
+            // without mutating the stored styles (which must keep '__terrain__').
+            const layerToAdd = layerSource !== (l as LayerSpecification & { source?: string }).source
+                ? { ...l, source: layerSource as string } as LayerSpecification
+                : l;
+
             if (before) {
-                mapStore.map.addLayer(l, before);
+                mapStore.map.addLayer(layerToAdd, before);
             } else {
-                mapStore.map.addLayer(l)
+                mapStore.map.addLayer(layerToAdd);
             }
         }
 
@@ -253,6 +332,17 @@ export default class Overlay {
         // without round-tripping through update()/save() which would PATCH
         // the server with unchanged values.
         for (const l of this.styles) {
+            // @ts-expect-error background layers have no source property
+            let layerSource: string | undefined = l.source;
+            if (layerSource === '__terrain__') {
+                const terrainId = await Overlay.ensureTerrainSource(mapStore);
+                if (!terrainId) continue;
+                layerSource = terrainId;
+            }
+            // Skip layers that were deferred above (source not yet loaded)
+            if (layerSource && !mapStore.map.getSource(layerSource)) continue;
+            if (!mapStore.map.getLayer(l.id)) continue;
+
             if (this.type === 'raster') {
                 mapStore.map.setPaintProperty(l.id, 'raster-opacity', Number(this.opacity));
             }
@@ -447,6 +537,17 @@ export default class Overlay {
             await this.addLayers(opts.before);
         }
         this._loaded = true;
+
+        // If this overlay provides a raster-dem source, other overlays (e.g. a
+        // vector basemap with a hillshade layer) may have deferred layers that
+        // depend on it. Re-attempt adding their deferred layers now.
+        // This covers both explicit raster-dem overlays and the '-2' terrain source.
+        if (this.type === 'raster-dem' || String(this.id) === '-2') {
+            for (const other of OverlayManager.loaded) {
+                if (other === this || !other._loaded) continue;
+                await other.addLayers(opts.before);
+            }
+        }
     }
 
     remove() {
@@ -532,8 +633,13 @@ export default class Overlay {
                 for (const layer of overlay.styles) {
                     const l = layer as LayerSpecification;
                     l.id = `${this.id}-${l.id}`;
-                    // @ts-expect-error Special case Background Layer type
-                    l.source = String(this.id);
+                    // hillshade layers reference a separate raster-dem source
+                    // (a different overlay) — preserve their source as-is.
+                    // All other layer types use this overlay's own source.
+                    if (l.type !== 'hillshade') {
+                        // @ts-expect-error Special case Background Layer type
+                        l.source = String(this.id);
+                    }
                 }
             }
             this.styles = overlay.styles as Array<LayerSpecification>;

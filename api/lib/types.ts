@@ -120,6 +120,9 @@ export const TileJSON = Type.Object({
     center: Type.Array(Type.Number()),
     type: Type.String(),
     format: Type.Optional(Type.String()),
+    // sprite and glyphs are standard MapLibre style properties — optional since not all basemaps need them
+    sprite: Type.Optional(Type.String()),
+    glyphs: Type.Optional(Type.String()),
     vector_layers: Type.Optional(Type.Array(TileJSON_VectorLayer)),
 });
 

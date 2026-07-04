@@ -83,7 +83,15 @@ export class BasemapProtocol implements BasemapProtocolInterface {
     static isValidStyle(type: string, layers: Array<unknown>): void {
         const sources: Record<string, unknown> = {};
         for (const l of layers as Array<Record<string, string>>) {
-            if (!sources[l.source]) sources[l.source] = { type };
+            if (l.source === undefined) continue; // background layers have no source
+            if (!sources[l.source]) {
+                // hillshade layers require a raster-dem source regardless of the
+                // basemap's own type — register them correctly so validation passes.
+                // '__terrain__' is a sentinel meaning "use whatever raster-dem source
+                // is active at runtime" — always treat it as raster-dem.
+                const isHillshadeOrTerrain = l.type === 'hillshade' || l.source === '__terrain__';
+                sources[l.source] = { type: isHillshadeOrTerrain ? 'raster-dem' : type };
+            }
         }
 
         const errors = validateStyleMin({
