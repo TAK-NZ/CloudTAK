@@ -780,7 +780,14 @@ export default async function router(schema: Schema, config: Config) {
                 }
 
                 if (isTrustedOrigin) {
-                    tileURL = basemap.url;
+                    // Translate CloudTAK's {$z}/{$x}/{$y} storage notation to MapLibre's
+                    // standard {z}/{x}/{y} — the proxy handles both via regex, but the
+                    // browser receives the URL verbatim so it must use the standard form.
+                    tileURL = basemap.url
+                        .replace(/\{\$?z\}/g, '{z}')
+                        .replace(/\{\$?x\}/g, '{x}')
+                        .replace(/\{\$?y\}/g, '{y}')
+                        .replace(/\{\$?q\}/g, '{q}');
                 } else {
                     tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
                     if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
