@@ -425,11 +425,27 @@ export default async function router(schema: Schema, config: Config) {
             if (req.query.scope === ResourceCreationScope.SERVER) scope = sql`username IS NULL`;
             else if (req.query.scope === ResourceCreationScope.USER) scope = sql`username IS NOT NULL`;
 
+            let iconset;
             if (req.query.iconset) {
-                const iconset = await config.models.Iconset.from(req.query.iconset);
+                iconset = await config.models.Iconset.from(req.query.iconset);
                 if (iconset.username && iconset.username !== user.email && user.access === AuthUserAccess.USER) {
                     throw new Err(400, null, 'You don\'t have permission to access this resource');
                 }
+
+                // When scoped to a single iconset, the response is stable for a given
+                // version+updated pair, so we can return a strong ETag and allow shared
+                // caching. A 304 short-circuits the entire DB icon fetch for repeat loads.
+                const etag = `"${iconset.uid}-v${iconset.version}-${new Date(iconset.updated).getTime()}"`;
+                res.set('ETag', etag);
+                res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+
+                if (req.headers['if-none-match'] === etag) {
+                    res.status(304).end();
+                    return;
+                }
+            } else {
+                // Without an iconset filter the result set is dynamic — don't cache.
+                res.set('Cache-Control', 'no-store');
             }
 
             const list = await config.models.Icon.list({

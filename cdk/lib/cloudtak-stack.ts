@@ -363,9 +363,6 @@ export class CloudTakStack extends cdk.Stack {
       kmsKey,
       hostedZone,
       certificate,
-      vpc,
-      efsAccessPoint: pmtilesEfs.accessPoint,
-      lambdaSecurityGroup: pmtilesEfs.lambdaSecurityGroup
     });
 
     // Create ECS Fargate service for the CloudTAK API

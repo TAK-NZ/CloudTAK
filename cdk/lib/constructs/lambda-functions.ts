@@ -19,8 +19,6 @@ import * as ecrAssets from 'aws-cdk-lib/aws-ecr-assets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import * as route53 from 'aws-cdk-lib/aws-route53';
-import * as efs from 'aws-cdk-lib/aws-efs';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import { ContextEnvironmentConfig } from '../stack-config';
 
 export interface LambdaFunctionsProps {
@@ -33,9 +31,6 @@ export interface LambdaFunctionsProps {
   kmsKey: cdk.aws_kms.IKey;
   hostedZone: cdk.aws_route53.IHostedZone;
   certificate: cdk.aws_certificatemanager.ICertificate;
-  vpc: ec2.IVpc;
-  efsAccessPoint: efs.IAccessPoint;
-  lambdaSecurityGroup: ec2.ISecurityGroup;
 }
 
 export class LambdaFunctions extends Construct {
@@ -55,9 +50,6 @@ export class LambdaFunctions extends Construct {
       kmsKey,
       hostedZone,
       certificate,
-      vpc,
-      efsAccessPoint,
-      lambdaSecurityGroup,
     } = props;
 
     const cloudtakImageTag =
@@ -88,24 +80,12 @@ export class LambdaFunctions extends Construct {
                 `arn:${cdk.Stack.of(this).partition}:secretsmanager:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:secret:TAK-${envConfig.stackName}-*`,
               ],
             }),
-            new iam.PolicyStatement({
-              effect: iam.Effect.ALLOW,
-              actions: [
-                'elasticfilesystem:ClientMount',
-                'elasticfilesystem:ClientWrite',
-                'elasticfilesystem:DescribeMountTargets',
-              ],
-              resources: ['*'],
-            }),
           ],
         }),
       },
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           'service-role/AWSLambdaBasicExecutionRole',
-        ),
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          'service-role/AWSLambdaVPCAccessExecutionRole',
         ),
       ],
     });
@@ -134,7 +114,7 @@ export class LambdaFunctions extends Construct {
           }),
       handler: lambda.Handler.FROM_IMAGE,
       role: tilesLambdaRole,
-      memorySize: 256,
+      memorySize: 512,
       timeout: cdk.Duration.seconds(60),
       description: 'Return Mapbox Vector Tiles from a PMTiles Store',
       environment: {
@@ -147,13 +127,15 @@ export class LambdaFunctions extends Construct {
         SigningSecret: `{{resolve:secretsmanager:${signingSecret.secretName}:SecretString::AWSCURRENT}}`,
       },
       environmentEncryption: kmsKey,
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      securityGroups: [lambdaSecurityGroup],
-      filesystem: lambda.FileSystem.fromEfsAccessPoint(
-        efsAccessPoint,
-        '/mnt/efs',
-      ),
+    });
+
+    // Provisioned concurrency — keeps 10 containers warm to eliminate cold starts
+    // on concurrent tile bursts when a user first loads the map.
+    const version = this.tilesLambda.currentVersion;
+    new lambda.Alias(this, 'PMTilesLambdaLive', {
+      aliasName: 'live',
+      version,
+      provisionedConcurrentExecutions: 10,
     });
 
     // -------------------------------------------------------------------------
