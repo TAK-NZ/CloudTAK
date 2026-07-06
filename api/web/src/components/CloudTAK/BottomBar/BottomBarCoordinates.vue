@@ -14,13 +14,13 @@
                     :class='isNative ? "" : "cursor-pointer cloudtak-hover pe-5"'
                 >
                     <span
-                        class='d-block text-uppercase text-white-50'
-                        style='font-size: 0.65rem; line-height: 1.1; letter-spacing: 0.04em;'
-                    >{{ coordSource === 'gps' ? 'GPS Location' : 'Cursor Position' }}</span>
-                    <span
-                        class='d-block text-truncate'
-                        style='font-size: 0.85rem; line-height: 1.2; font-variant-numeric: tabular-nums;'
+                        class='d-block fw-semibold'
+                        style='line-height: 1.2; font-variant-numeric: tabular-nums;'
                     >{{ formattedCoord }}</span>
+                    <span
+                        class='d-block text-white-50'
+                        style='font-size: 0.7rem; line-height: 1.2;'
+                    >{{ coordSource === 'gps' ? 'GPS location' : 'Cursor position' }}</span>
                 </div>
             </template>
 
