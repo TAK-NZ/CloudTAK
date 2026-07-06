@@ -80,11 +80,18 @@ export default class Config<K extends keyof FullConfig = keyof FullConfig> {
                 if (result[key] === undefined && opts.defaults[key] !== undefined) {
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     result[key] = opts.defaults[key] as any;
-                    defaultsToSave.push({
-                        key: String(key),
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        value: opts.defaults[key] as any
-                    });
+
+                    // Only cache non-null defaults. A null default means "not configured",
+                    // which is a sentinel value that should not be persisted — doing so would
+                    // prevent the app from picking up a real value after an admin later sets
+                    // the config key (until the user hard-reloads to clear IndexedDB).
+                    if (opts.defaults[key] != null) {
+                        defaultsToSave.push({
+                            key: String(key),
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            value: opts.defaults[key] as any
+                        });
+                    }
                 }
             }
 
