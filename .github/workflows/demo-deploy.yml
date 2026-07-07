@@ -101,7 +101,7 @@ jobs:
       - name: Deploy Demo with Prod Profile
         run: |
           cd cdk
-          npm run cdk deploy -- --context envType=prod --context stackName=${{ vars.DEMO_STACK_NAME }} --context usePreBuiltImages=true --context cloudtakImageTag=${{ steps.images.outputs.cloudtak-tag }} --context useS3CloudTAKConfigFile=false ${{ steps.db-config.outputs.db-context }} --require-approval never
+          npm run cdk deploy -- --context envType=prod --context stackName=${{ vars.DEMO_STACK_NAME }} --context usePreBuiltImages=true --context cloudtakImageTag=${{ steps.images.outputs.cloudtak-tag }} ${{ steps.db-config.outputs.db-context }} --require-approval never
 
       - name: Wait for Testing Period
         run: sleep ${{ vars.DEMO_TEST_DURATION || '300' }}
