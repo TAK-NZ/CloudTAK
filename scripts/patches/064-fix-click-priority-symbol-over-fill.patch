@@ -1,0 +1,37 @@
+diff --git a/api/web/src/stores/map.ts b/api/web/src/stores/map.ts
+index 48d410777..c7217f7a7 100644
+--- a/api/web/src/stores/map.ts
++++ b/api/web/src/stores/map.ts
+@@ -1023,17 +1023,30 @@ export const useMapStore = defineStore('cloudtak', {
+ 
+                 // Each Visual Layer will return a Feature for a click
+                 // Since a single "feature" may exist in multiple layers (text, polygon, line) etc
+-                // dedupe them based on the ID
++                // dedupe them based on the ID. Sort by layer type first so that symbol (point/icon)
++                // layers take precedence over fill/line layers in the dedupe — this ensures a point
++                // icon's symbol representation wins over its own fill/line when a feature has both.
++                const LAYER_CLICK_PRIORITY: Record<string, number> = { symbol: 0, line: 1, fill: 2 };
+                 const dedupe: Map<string, MapGeoJSONFeature> = new Map();
+                 map.queryRenderedFeatures(e.point)
+                     .filter((feat) => {
+                         return clickMap.has(feat.layer.id);
+                     })
++                    .sort((a, b) => {
++                        return (LAYER_CLICK_PRIORITY[a.layer.type] ?? 3) - (LAYER_CLICK_PRIORITY[b.layer.type] ?? 3);
++                    })
+                     .forEach((feat) => {
+                         dedupe.set(String(feat.properties.id || feat.id), feat);
+                     })
+ 
+-                const features = Array.from(dedupe.values());
++                // If any symbol (point/icon) feature is present, suppress line and fill features
++                // from the result set. This prevents street lines or polygon fills from other
++                // overlays blocking selection of a point icon at the same map location.
++                let features = Array.from(dedupe.values());
++                const hasSymbol = features.some((f) => f.layer.type === 'symbol');
++                if (hasSymbol) {
++                    features = features.filter((f) => f.layer.type === 'symbol');
++                }
+ 
+                 if (!features.length) return;
+ 
