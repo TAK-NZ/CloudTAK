@@ -10,14 +10,22 @@ import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../base/events.ts';
 import type { Feature, Import, Chat } from '../types.ts';
 
+const RECONNECT_BACKOFF_STEP_MS = 5000;
+const RECONNECT_BACKOFF_MAX_MS = 30000;
+
 export default class AtlasConnection {
     atlas: Atlas;
 
     isDestroyed: boolean;
     isOpen: boolean;
+
+    // Halts reconnection until the user logs in again
+    authFailure: boolean;
+
     ws: WebSocket | undefined;
     reconnectAttempts: number;
-    maxReconnectAttempts: number;
+
+    private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     version: string;
 
@@ -26,19 +34,23 @@ export default class AtlasConnection {
 
         this.isDestroyed = false;
         this.isOpen = false;
+        this.authFailure = false;
         this.ws = undefined;
         this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
+        this.reconnectTimer = undefined;
 
         this.version = version;
     }
 
     reconnect(connection: string) {
         console.log('Forcing WebSocket reconnection...');
-        this.reconnectAttempts = 0;  // Reset counter
+        this.reconnectAttempts = 0;
+        this.authFailure = false;
+        this.clearReconnectTimer();
         if (this.ws) {
             this.ws.close();
         }
+        this.isDestroyed = false;
         this.connect(connection);
     }
 
@@ -57,35 +69,39 @@ export default class AtlasConnection {
             url.protocol = 'wss:';
         }
 
-        this.ws = new WebSocket(url);
+        const ws = new WebSocket(url);
+        this.ws = ws;
 
-        this.ws.addEventListener('open', () => {
+        // A socket that closes without ever opening was rejected during the
+        // HTTP upgrade (401) or never reached the server
+        let opened = false;
+
+        ws.addEventListener('open', () => {
+            if (ws !== this.ws) return;
+
+            opened = true;
+            this.reconnectAttempts = 0;
             this.atlas.postMessage({ type: WorkerMessageType.Connection_Open });
             this.isOpen = true;
-            this.reconnectAttempts = 0;
         });
 
-        this.ws.addEventListener('error', (err) => {
+        ws.addEventListener('error', (err) => {
             console.error(err);
         });
 
-        this.ws.addEventListener('close', () => {
-            this.isOpen = false;
-            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
+        ws.addEventListener('close', () => {
+            // A socket superseded by reconnect() must not touch state or
+            // spawn another connection - that's how reconnect loops multiply
+            if (ws !== this.ws) return;
 
-            if (!this.isDestroyed && this.reconnectAttempts < this.maxReconnectAttempts) {
-                this.reconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
-                console.log(`WebSocket reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-                setTimeout(() => {
-                    if (!this.isDestroyed) this.connect(connection);
-                }, delay);
-            } else if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-                console.error('WebSocket: Max reconnection attempts reached. Please refresh the page.');
-            }
+            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
+            this.isOpen = false;
+
+            if (this.isDestroyed || this.authFailure) return;
+            void this.scheduleReconnect(connection, opened);
         });
 
-        this.ws.addEventListener('message', async (msg) => {
+        ws.addEventListener('message', async (msg) => {
             try {
             const body = JSON.parse(msg.data) as {
                 type: string;
@@ -310,8 +326,62 @@ export default class AtlasConnection {
         });
     }
 
+    private async scheduleReconnect(connection: string, opened: boolean): Promise<void> {
+        if (!opened && await this.isAuthRejected()) {
+            this.handleAuthFailure('WebSocket upgrade rejected: session is no longer valid');
+            return;
+        }
+
+        this.reconnectAttempts++;
+        const delay = Math.min(this.reconnectAttempts * RECONNECT_BACKOFF_STEP_MS, RECONNECT_BACKOFF_MAX_MS);
+
+        this.clearReconnectTimer();
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = undefined;
+            if (this.isDestroyed || this.authFailure) return;
+            this.connect(connection);
+        }, delay);
+    }
+
+    private async isAuthRejected(): Promise<boolean> {
+        try {
+            const res = await fetch(stdurl('/api/login'), {
+                headers: { Authorization: `Bearer ${this.atlas.token}` }
+            });
+
+            return res.status === 401;
+        } catch {
+            // Network failure - the server is unreachable, not rejecting us
+            return false;
+        }
+    }
+
+    private handleAuthFailure(message: string): void {
+        if (this.authFailure) return;
+        this.authFailure = true;
+
+        console.error(`WebSocket auth failure: ${message}`);
+
+        this.clearReconnectTimer();
+
+        // The worker cannot clear stored credentials or navigate — the main
+        // thread must route the user to login
+        this.atlas.postMessage({
+            type: WorkerMessageType.Connection_AuthFailure,
+            body: { message }
+        });
+    }
+
+    private clearReconnectTimer(): void {
+        if (this.reconnectTimer !== undefined) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = undefined;
+        }
+    }
+
     destroy() {
         this.isDestroyed = true;
+        this.clearReconnectTimer();
 
         if (this.ws) {
             this.ws.close();
