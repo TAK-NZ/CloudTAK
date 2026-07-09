@@ -731,6 +731,9 @@ export const useMapStore = defineStore('cloudtak', {
                     this.isOpen = true;
                 } else if (msg.type === WorkerMessageType.Connection_Close) {
                     this.isOpen = false;
+                } else if (msg.type === WorkerMessageType.Connection_AuthFailure) {
+                    this.isOpen = false;
+                    window.location.href = '/login';
                 } else if (msg.type === WorkerMessageType.Channels_None) {
                     this.hasNoChannels = true;
                 } else if (msg.type === WorkerMessageType.Channels_List) {
