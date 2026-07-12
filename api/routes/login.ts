@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess, oidcParser, isOidcEnabled } from '../lib/auth.js';
+import Auth, { AuthUserAccess, AuthUser, tokenParser, oidcParser, isOidcEnabled } from '../lib/auth.js';
 import Config from '../lib/config.js';
 import Schema from '@openaddresses/batch-schema';
 import { Type } from '@sinclair/typebox';
@@ -100,6 +100,67 @@ export default async function router(schema: Schema, config: Config) {
                 email: profile.username,
                 session: session.id,
                 token: jwt.sign({ access, email: profile.username, s: session.id }, config.SigningSecret, { expiresIn: '16h' }),
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/login/token', {
+        name: 'Token Login',
+        group: 'Login',
+        description: 'Exchange a profile-scoped ETL API token for a session JWT for web interface access. Intended for dedicated display devices (war room screens, kiosks) that must authenticate without user interaction.',
+        body: Type.Object({
+            token: Type.String({
+                description: 'ETL API token in etl.<jwt> format',
+            }),
+        }),
+        res: Type.Object({
+            token: Type.String(),
+            access: Type.Enum(AuthUserAccess),
+            email: Type.String(),
+            session: Type.String(),
+        }),
+    }, async (req, res) => {
+        try {
+            const auth = await tokenParser(config, req.body.token, config.SigningSecret);
+
+            // Only profile-scoped tokens can log in to the web interface
+            if (!(auth instanceof AuthUser)) {
+                throw new Err(403, null, 'Only profile-scoped API tokens can be used for web login');
+            }
+
+            const profile = await config.models.Profile.from(auth.email);
+
+            let access = AuthUserAccess.USER;
+            if (profile.system_admin) {
+                access = AuthUserAccess.ADMIN;
+            } else if (profile.agency_admin && profile.agency_admin.length) {
+                access = AuthUserAccess.AGENCY;
+            }
+
+            const userAgent = req.headers['user-agent'] || '';
+            const ua = UAParser(userAgent);
+
+            const session = await config.models.ProfileSession.generate({
+                username: profile.username,
+                created: new Date().toISOString(),
+                ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown'),
+                device_type: ua.device.type || 'Desktop',
+                browser: [ua.browser.name, ua.browser.version].filter(Boolean).join(' ') || 'Unknown',
+                os: [ua.os.name, ua.os.version].filter(Boolean).join(' ') || 'Unknown',
+                user_agent: userAgent,
+            });
+
+            res.json({
+                access,
+                email: profile.username,
+                session: session.id,
+                token: jwt.sign(
+                    { access, email: profile.username, s: session.id },
+                    config.SigningSecret,
+                    { expiresIn: '16h' },
+                ),
             });
         } catch (err) {
             Err.respond(err, res);

@@ -533,6 +533,33 @@ const certRenewal = reactive<{
 });
 
 onMounted(async () => {
+    // Handle ETL API token passed as URL param for war room / kiosk display use.
+    // These tokens start with 'etl.' and are exchanged for a session JWT via
+    // POST /api/login/token before the normal login flow continues.
+    if (route.query.token && String(route.query.token).startsWith('etl.')) {
+        loading.value = true;
+        loadingMessage.value = 'Authenticating...';
+        const etlToken = String(route.query.token);
+        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
+        try {
+            const response = await fetch('/api/login/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: etlToken }),
+            });
+            if (!response.ok) throw new Error(`Authentication failed: ${response.status}`);
+            const login = await response.json() as { token: string; email: string; session: string };
+            await appStore.persistSession({ token: login.token, username: login.email, session: login.session });
+            emit('login');
+            await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
+        } catch (err) {
+            loading.value = false;
+            console.error('API token login failed:', err);
+            // Fall through to normal login form
+        }
+        return;
+    }
+
     // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
     if (route.query.token) {
         loading.value = true;
