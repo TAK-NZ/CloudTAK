@@ -459,6 +459,60 @@ export default class AuthentikProvider {
         };
     }
 
+    /**
+     * Create a short-lived Authentik app-password token for a human user
+     * identified by email/username, then use it to generate a TAK client
+     * certificate via the TAK Server WebTAK credentials endpoint.
+     *
+     * The app-password is set to expire in 5 minutes — long enough to complete
+     * the certificate enrollment handshake but not lingering in Authentik.
+     */
+    async enrollUserCertificate(
+        username: string,
+        takServerUrl: string,
+    ): Promise<{ cert: string; key: string; ca: string[] }> {
+        const creds = await this.auth();
+
+        // Look up the Authentik user PK by username/email
+        const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
+        userUrl.searchParams.append('username', username);
+        const userResponse = await fetch(userUrl, {
+            headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
+        });
+        if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
+
+        const userData: any = await userResponse.json();
+        const user = userData.results[0];
+        if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
+
+        // Set a random temporary password on the user account (overwritten after enrollment)
+        const tempPassword = crypto.randomBytes(32).toString('base64url');
+        const passwordUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
+        const passwordResponse = await fetch(passwordUrl, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: tempPassword }),
+        });
+        if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
+
+        try {
+            const takAuth = new APIAuthPassword(username, tempPassword);
+            const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
+            const enrollment = await takApi.Credentials.generate();
+            return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
+        } finally {
+            // Always revoke the temporary password by setting a new random one,
+            // so the account cannot be used with password auth after enrollment.
+            const revokePassword = crypto.randomBytes(32).toString('base64url');
+            const revokeUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
+            await fetch(revokeUrl, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: revokePassword }),
+            }).catch(err => console.error('Failed to revoke temporary password after cert enrollment:', err));
+        }
+    }
+
     async renewConnectionCertificate(
         machineUserId: number,
         takServerUrl: string,

@@ -7,6 +7,20 @@ import { Type } from '@sinclair/typebox';
 import Provider from '../lib/provider.js';
 import ProfileControl from '../lib/control/profile.js';
 import { UAParser } from 'ua-parser-js';
+import { X509Certificate } from 'crypto';
+
+/** Returns true when the cert PEM is missing, unparseable, or expires within 7 days. */
+function certNeedsRenewal(certPem: string | undefined): boolean {
+    if (!certPem) return true;
+    try {
+        const cert = new X509Certificate(certPem);
+        const expiresAt = new Date(cert.validTo);
+        if (Number.isNaN(expiresAt.getTime())) return true;
+        return expiresAt.getTime() < Date.now() + 7 * 24 * 60 * 60 * 1000;
+    } catch {
+        return true;
+    }
+}
 
 export default async function router(schema: Schema, config: Config) {
     await schema.post('/login', {
@@ -269,28 +283,46 @@ export default async function router(schema: Schema, config: Config) {
                 }
             }
 
-            // Sync Authentik attributes if configured
-            if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true'
-                && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN
-                && process.env.AUTHENTIK_URL) {
+            // Provision or renew TAK client certificate + sync Authentik attributes.
+            // Both operations share a single AuthentikProvider instance and commit
+            // their updates together to avoid two round-trips to the database.
+            // A failure here is non-fatal — the user still gets a JWT and can
+            // try again on the next login, but TAK-connected features won't work
+            // until the cert is present.
+            if (process.env.AUTHENTIK_API_TOKEN_SECRET_ARN
+                && process.env.AUTHENTIK_URL
+                && config.server.webtak) {
                 try {
                     const AuthentikProvider = (await import('../lib/authentik-provider.js')).default;
                     const authentik = await AuthentikProvider.init(config);
-                    const userInfo = await authentik.login(email);
-
                     const updates: Record<string, unknown> = {};
-                    if (userInfo.tak_callsign) {
-                        updates.tak_callsign = userInfo.tak_callsign;
-                        updates.tak_remarks = userInfo.tak_callsign;
+
+                    // Certificate provisioning — runs for new users (empty cert) and
+                    // existing users whose cert is expired or expiring within 7 days.
+                    if (certNeedsRenewal(profile.auth?.cert)) {
+                        console.log(`Enrolling TAK certificate for OIDC user: ${email}`);
+                        const certs = await authentik.enrollUserCertificate(email, config.server.webtak);
+                        updates.auth = certs;
+                        console.log(`TAK certificate enrolled successfully for: ${email}`);
                     }
-                    if (userInfo.tak_group) updates.tak_group = userInfo.tak_group;
+
+                    // Attribute sync — callsign, colour group, etc.
+                    if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
+                        const userInfo = await authentik.login(email);
+                        if (userInfo.tak_callsign) {
+                            updates.tak_callsign = userInfo.tak_callsign;
+                            updates.tak_remarks = userInfo.tak_callsign;
+                        }
+                        if (userInfo.tak_group) updates.tak_group = userInfo.tak_group;
+                        if (userInfo.name && userInfo.name !== 'Unknown') updates.name = userInfo.name;
+                    }
 
                     if (Object.keys(updates).length > 0) {
                         await config.models.Profile.commit(email, updates);
                         profile = await config.models.Profile.from(email);
                     }
                 } catch (err) {
-                    console.error('Authentik attribute sync error (continuing):', err);
+                    console.error(`Authentik cert/attribute sync error for ${email} (continuing):`, err);
                 }
             }
 
