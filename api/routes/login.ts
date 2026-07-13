@@ -307,7 +307,12 @@ export default async function router(schema: Schema, config: Config) {
                     }
 
                     // Attribute sync — callsign, colour group, etc.
-                    if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
+                    // Always runs on first login (profile_created === profile_updated, i.e. no
+                    // updates have been committed yet) so the "Welcome" wizard is suppressed.
+                    // On subsequent logins it is gated on SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN
+                    // so admins can opt out of overwriting user-customised callsigns.
+                    const isFirstLogin = profile.created === profile.updated;
+                    if (isFirstLogin || process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
                         const userInfo = await authentik.login(email);
                         if (userInfo.tak_callsign) {
                             updates.tak_callsign = userInfo.tak_callsign;
