@@ -306,22 +306,41 @@ export default async function router(schema: Schema, config: Config) {
                         console.log(`TAK certificate enrolled successfully for: ${email}`);
                     }
 
-                    // Attribute sync — callsign, colour group, etc.
-                    // Always runs on first login (profile_created === profile_updated, i.e. no
-                    // updates have been committed yet) so the "Welcome" wizard is suppressed.
-                    // On subsequent logins it is gated on SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN
-                    // so admins can opt out of overwriting user-customised callsigns.
+                    // Attribute sync — callsign, colour group, role, etc.
+                    // Always runs on first login (created === updated means the profile has
+                    // never been modified) so the "Welcome" wizard is suppressed.
+                    // On subsequent logins gated on SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN so
+                    // admins can opt out of overwriting user-customised values.
                     const isFirstLogin = profile.created === profile.updated;
                     if (isFirstLogin || process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
                         const userInfo = await authentik.login(email);
-                        if (userInfo.tak_callsign) {
-                            updates.tak_callsign = userInfo.tak_callsign;
-                            updates.tak_remarks = userInfo.tak_callsign;
+
+                        // name is a real column on the profile table — commit via Profile.
+                        if (userInfo.name && userInfo.name !== 'Unknown') {
+                            updates.name = userInfo.name;
                         }
-                        if (userInfo.tak_group) updates.tak_group = userInfo.tak_group;
-                        if (userInfo.name && userInfo.name !== 'Unknown') updates.name = userInfo.name;
+
+                        // tak_callsign / tak_group / tak_role / tak_remarks live in
+                        // profile_settings (ProfileConfig), NOT on the profile table.
+                        // Profile.commit() silently drops unknown columns, so these MUST
+                        // go through ProfileConfig.commit() with the tak:: key namespace.
+                        const profileConfigUpdates: Record<string, unknown> = {};
+                        if (userInfo.tak_callsign) {
+                            profileConfigUpdates['tak::callsign'] = userInfo.tak_callsign;
+                            profileConfigUpdates['tak::remarks'] = userInfo.tak_callsign;
+                        }
+                        if (userInfo.tak_group) {
+                            profileConfigUpdates['tak::group'] = userInfo.tak_group;
+                        }
+                        if (userInfo.tak_role) {
+                            profileConfigUpdates['tak::role'] = userInfo.tak_role;
+                        }
+                        if (Object.keys(profileConfigUpdates).length > 0) {
+                            await config.models.ProfileConfig.commit(email, profileConfigUpdates);
+                        }
                     }
 
+                    // Commit profile-table updates (auth cert, name) if any.
                     if (Object.keys(updates).length > 0) {
                         await config.models.Profile.commit(email, updates);
                         profile = await config.models.Profile.from(email);
