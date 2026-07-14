@@ -1,5 +1,5 @@
 diff --git a/api/routes/login.ts b/api/routes/login.ts
-index cd1abf134..7f554c153 100644
+index cd1abf134..ccde4e58e 100644
 --- a/api/routes/login.ts
 +++ b/api/routes/login.ts
 @@ -1,11 +1,26 @@
@@ -112,7 +112,7 @@ index cd1abf134..7f554c153 100644
      await schema.get('/login', {
          name: 'Get Login',
          group: 'Login',
-@@ -125,4 +208,185 @@ export default async function router(schema: Schema, config: Config) {
+@@ -125,4 +208,190 @@ export default async function router(schema: Schema, config: Config) {
              Err.respond(err, res);
          }
      });
@@ -215,7 +215,12 @@ index cd1abf134..7f554c153 100644
 +                    }
 +
 +                    // Attribute sync — callsign, colour group, etc.
-+                    if (process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
++                    // Always runs on first login (profile_created === profile_updated, i.e. no
++                    // updates have been committed yet) so the "Welcome" wizard is suppressed.
++                    // On subsequent logins it is gated on SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN
++                    // so admins can opt out of overwriting user-customised callsigns.
++                    const isFirstLogin = profile.created === profile.updated;
++                    if (isFirstLogin || process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
 +                        const userInfo = await authentik.login(email);
 +                        if (userInfo.tak_callsign) {
 +                            updates.tak_callsign = userInfo.tak_callsign;

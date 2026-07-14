@@ -389,6 +389,7 @@ export default class AuthentikProvider {
         agency_admin: Array<number>;
         tak_callsign?: string;
         tak_group?: string;
+        tak_role?: string;
     }> {
         const creds = await this.auth();
 
@@ -456,6 +457,7 @@ export default class AuthentikProvider {
             agency_admin: agencyAdminIds,
             tak_callsign: attributes.takCallsign,
             tak_group: attributes.takColor,
+            tak_role: attributes.takRole,
         };
     }
 
