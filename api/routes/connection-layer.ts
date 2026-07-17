@@ -22,7 +22,9 @@ import {
     LayerOutgoingResponse,
     LayerUpdateManagementListResponse,
 } from '../lib/types.js';
-import { LayerIncoming, LayerOutgoing } from '../lib/schema.js';
+import {
+    LayerIncoming, LayerOutgoing, ConnectionFeature,
+} from '../lib/schema.js';
 import DataMission from '../lib/data-mission.js';
 import { MAX_LAYERS_IN_DATA_SYNC } from '../lib/data-mission.js';
 import { Layer_Config } from '../lib/models/Layer.js';
@@ -966,6 +968,14 @@ export default async function router(schema: Schema, config: Config) {
             }
 
             config.events.delete(layer.id);
+
+            // Detach any COT features that were written by this layer.
+            // The layer column is nullable so we null it out rather than
+            // deleting the features — they remain on the map but are no
+            // longer associated with a layer.
+            await config.pg.update(ConnectionFeature)
+                .set({ layer: null })
+                .where(eq(ConnectionFeature.layer, layer.id));
 
             await config.models.Layer.delete(req.params.layerid);
 
