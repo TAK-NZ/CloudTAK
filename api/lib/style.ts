@@ -387,6 +387,28 @@ export default class Style {
     }
 
     /**
+     * Compile an id template and preserve any multi-geometry split suffix
+     * that the ETL task appended to the original feature id.
+     *
+     * When a source feature has a MultiLineString / MultiPolygon /
+     * GeometryCollection geometry the ETL splits it into individual
+     * simple-geometry features and appends a numeric suffix to each
+     * resulting id (e.g. `-0`, `-1`, `-gc-0`).  If we then compile the
+     * id template using only `feature.properties.metadata` — which is
+     * identical for every split part — all parts receive the same
+     * compiled id, causing a duplicate-key conflict on the batch upsert
+     * into `connection_features`.
+     *
+     * Fix: after compiling, check whether the original id already ends
+     * with a split suffix and, if so, append it to the compiled result.
+     */
+    #compileId(template: string, props: { [x: string]: unknown }, originalId: unknown): string {
+        const compiled = this.compile(template, props);
+        const suffix = String(originalId ?? '').match(/(-\d+|-gc-\d+)$/);
+        return suffix ? `${compiled}${suffix[0]}` : compiled;
+    }
+
+    /**
      * Compile and run a template or use a cached template for performance
      */
     compile(template: string, props: { [x: string]: unknown }) {
@@ -416,7 +438,7 @@ export default class Style {
             if (!feature.properties.metadata) feature.properties.metadata = {};
 
             // Properties that support Templating
-            if (this.style.styles.id) feature.id = this.compile(this.style.styles.id, feature.properties.metadata);
+            if (this.style.styles.id) feature.id = this.#compileId(this.style.styles.id, feature.properties.metadata, feature.id);
             if (this.style.styles.callsign) feature.properties.callsign = this.compile(this.style.styles.callsign, feature.properties.metadata);
             if (this.style.styles.remarks) feature.properties.remarks = this.compile(this.style.styles.remarks, feature.properties.metadata);
             if (this.style.styles.phone) {
@@ -459,7 +481,7 @@ export default class Style {
                         if (q.delete === true) return null;
 
                         if (q.styles) {
-                            if (q.styles.id) feature.id = this.compile(q.styles.id, feature.properties.metadata);
+                            if (q.styles.id) feature.id = this.#compileId(q.styles.id, feature.properties.metadata, feature.id);
                             if (q.styles.callsign) feature.properties.callsign = this.compile(q.styles.callsign, feature.properties.metadata);
                             if (q.styles.remarks) feature.properties.remarks = this.compile(q.styles.remarks, feature.properties.metadata);
                             if (q.styles.phone) {
@@ -560,7 +582,7 @@ export default class Style {
         if (!feature.properties.metadata) feature.properties.metadata = {};
 
         if (feature.geometry.type === 'Point' && style.point) {
-            if (style.point.id) feature.id = this.compile(style.point.id, feature.properties.metadata);
+            if (style.point.id) feature.id = this.#compileId(style.point.id, feature.properties.metadata, feature.id);
             if (style.point.type) feature.properties.type = this.compile(style.point.type, feature.properties.metadata);
             if (style.point.remarks) feature.properties.remarks = this.compile(style.point.remarks, feature.properties.metadata);
             if (style.point.phone) {
@@ -589,7 +611,7 @@ export default class Style {
             if (style.point.icon) feature.properties.icon = style.point.icon;
             if (style.point.marti) this.#applyMarti(style.point.marti, feature);
         } else if (feature.geometry.type === 'LineString' && style.line) {
-            if (style.line.id) feature.id = this.compile(style.line.id, feature.properties.metadata);
+            if (style.line.id) feature.id = this.#compileId(style.line.id, feature.properties.metadata, feature.id);
             if (style.line.remarks) feature.properties.remarks = this.compile(style.line.remarks, feature.properties.metadata);
             if (style.line.phone) {
                 feature.properties.contact = feature.properties.contact || {};
@@ -617,7 +639,7 @@ export default class Style {
             if (style.line['stroke-width']) feature.properties['stroke-width'] = Number(style.line['stroke-width']);
             if (style.line.marti) this.#applyMarti(style.line.marti, feature);
         } else if (feature.geometry.type === 'Polygon' && style.polygon) {
-            if (style.polygon.id) feature.id = this.compile(style.polygon.id, feature.properties.metadata);
+            if (style.polygon.id) feature.id = this.#compileId(style.polygon.id, feature.properties.metadata, feature.id);
             if (style.polygon.remarks) feature.properties.remarks = this.compile(style.polygon.remarks, feature.properties.metadata);
             if (style.polygon.phone) {
                 feature.properties.contact = feature.properties.contact || {};
