@@ -33,9 +33,9 @@ if (url.hostname === 'localhost') {
         'style-src-elem': [`'self'`, `'unsafe-inline'`],
         'style-src-attr': [`'unsafe-inline'`],
         'connect-src': [`'self'`, ...tileOrigins],
-        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
+        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net and https://adss.internal/
         // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
-        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
+        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net', 'https://adss.internal/']
     }
 
     cspstr = `add_header 'Content-Security-Policy' "`
