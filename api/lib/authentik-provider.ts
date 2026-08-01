@@ -455,7 +455,12 @@ export default class AuthentikProvider {
             phone: null,
             system_admin: isSystemAdmin,
             agency_admin: agencyAdminIds,
-            tak_callsign: attributes.takCallsign,
+            // Suffix with " (Web)" to distinguish this CloudTAK (browser) session's
+            // callsign from the same user's ATAK/WinTAK device callsign — Authentik
+            // supplies the same base callsign attribute to both, and TAK Server does
+            // not disambiguate clients by anything other than the literal callsign
+            // string, so without this two sessions for the same person would collide.
+            tak_callsign: attributes.takCallsign ? `${attributes.takCallsign} (Web)` : attributes.takCallsign,
             tak_group: attributes.takColor,
             tak_role: attributes.takRole,
         };
