@@ -1,0 +1,276 @@
+diff --git a/api/lib/interface-basemap.ts b/api/lib/interface-basemap.ts
+index 14d809ed5..7b6886b65 100644
+--- a/api/lib/interface-basemap.ts
++++ b/api/lib/interface-basemap.ts
+@@ -291,4 +291,81 @@ export class BasemapProtocol implements BasemapProtocolInterface {
+         void opts;
+         throw new Err(501, null, 'Protocol does not implement tile()');
+     }
++
++    /**
++     * Fetch a single tile's raw bytes in-process, without an HTTP round trip.
++     *
++     * Reuses tile() (and therefore each protocol's _tile() implementation)
++     * unmodified by handing it a minimal in-memory stand-in for Express's
++     * Response object. This lets any existing protocol (ZXY, Hosted,
++     * ImageServer, MapServer, FeatureServer, ...) be used for server-side
++     * tile consumption — e.g. decoding a raster-dem tile for elevation
++     * lookups — without duplicating each protocol's URL-building/fetch logic.
++     *
++     * @param z - Zoom level
++     * @param x - Tile column
++     * @param y - Tile row
++     */
++    async tileBuffer(z: number, x: number, y: number): Promise<Buffer> {
++        const chunks: Buffer[] = [];
++        let statusCode = 200;
++        let settled = false;
++
++        const capture = new Promise<Buffer>((resolve, reject) => {
++            const finish = () => {
++                if (settled) return;
++                settled = true;
++                if (statusCode >= 300) {
++                    reject(new Err(statusCode, null, `Tile fetch failed with status ${statusCode}`));
++                } else {
++                    resolve(Buffer.concat(chunks));
++                }
++            };
++
++            const fail = (err: unknown) => {
++                if (settled) return;
++                settled = true;
++                reject(err instanceof Error ? err : new Error(String(err)));
++            };
++
++            // Minimal Response stand-in: only the members every _tile()
++            // implementation in this codebase actually calls.
++            const mockRes = {
++                writeHead: (code: number) => {
++                    statusCode = code;
++                    return mockRes;
++                },
++                write: (chunk: Buffer | string) => {
++                    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
++                    return true;
++                },
++                end: (chunk?: Buffer | string) => {
++                    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
++                    finish();
++                    return mockRes;
++                },
++                status: (code: number) => {
++                    statusCode = code;
++                    return {
++                        send: (body?: unknown) => {
++                            if (body) chunks.push(Buffer.from(typeof body === 'string' ? body : JSON.stringify(body)));
++                            finish();
++                        },
++                        json: (body?: unknown) => {
++                            if (body) chunks.push(Buffer.from(JSON.stringify(body)));
++                            finish();
++                        },
++                    };
++                },
++                json: (body?: unknown) => {
++                    if (body) chunks.push(Buffer.from(JSON.stringify(body)));
++                    finish();
++                },
++            } as unknown as Response;
++
++            this.tile(z, x, y, mockRes).catch(fail);
++        });
++
++        return capture;
++    }
+ }
+diff --git a/api/lib/terrain.ts b/api/lib/terrain.ts
+new file mode 100644
+index 000000000..0838383a6
+--- /dev/null
++++ b/api/lib/terrain.ts
+@@ -0,0 +1,95 @@
++import sharp from 'sharp';
++import Config from './config.js';
++import { fromProtocol } from './factory-basemap.js';
++import { pointToTileFraction } from './tilebelt.js';
++import { Basemap_Type, BasemapTerrain_Encoding } from './enums.js';
++
++/**
++ * Decode a raster-dem pixel's RGB triplet into an elevation in meters.
++ *
++ * Supports the two encodings CloudTAK basemaps can be configured with
++ * (BasemapTerrain_Encoding). Formulas match the standard Mapbox Terrain-RGB
++ * and Terrarium encodings (the same ones MapLibre GL JS decodes internally
++ * for `raster-dem` sources) - see:
++ *   https://docs.mapbox.com/data/tilesets/reference/mapbox-terrain-rgb-v1/
++ *   https://github.com/tilezen/joerd/blob/master/docs/formats.md#terrarium
++ */
++function decodeElevation(
++    encoding: BasemapTerrain_Encoding,
++    r: number,
++    g: number,
++    b: number,
++): number {
++    if (encoding === BasemapTerrain_Encoding.TERRARIUM) {
++        return (r * 256 + g + b / 256) - 32768;
++    }
++
++    // Mapbox Terrain-RGB
++    return -10000 + (r * 256 * 256 + g * 256 + b) * 0.1;
++}
++
++/**
++ * Look up the real-world elevation (in meters) at a given lng/lat by
++ * fetching and decoding the single raster-dem tile pixel that covers it.
++ *
++ * This deliberately avoids MapLibre GL JS's queryTerrainElevation(), which
++ * only returns a value once 3D terrain rendering has been enabled via
++ * map.setTerrain() - a GPU-heavy mode that isn't otherwise needed for a
++ * one-off elevation lookup, and can be unreliable/crash-prone on constrained
++ * hardware. This reads the same underlying tile data server-side instead.
++ *
++ * Returns null if no terrain basemap is configured, the point falls outside
++ * its bounds, or the tile can't be fetched/decoded.
++ */
++export async function getElevation(
++    config: Config,
++    longitude: number,
++    latitude: number,
++): Promise<number | null> {
++    try {
++        const terrainSetting = await config.models.Setting.typed('map::terrain', null);
++        const terrainId = terrainSetting.value;
++        if (!terrainId) return null;
++
++        const basemap = await config.models.Basemap.from(Number(terrainId));
++        if (basemap.type !== Basemap_Type.TERRAIN) return null;
++
++        const zoom = Math.min(basemap.maxzoom ?? 15, 15);
++        const [xFrac, yFrac] = pointToTileFraction(longitude, latitude, zoom);
++        const x = Math.floor(xFrac);
++        const y = Math.floor(yFrac);
++
++        const protocol = fromProtocol(basemap.protocol, basemap);
++        const tile = await protocol.tileBuffer(zoom, x, y);
++
++        const tilesize = basemap.tilesize || 256;
++        const image = sharp(tile);
++        const { data, info } = await image
++            .raw()
++            .toBuffer({ resolveWithObject: true });
++
++        // Pixel coordinate within the tile that the query point falls on.
++        // xFrac/yFrac are fractional tile coordinates (0-1 within the tile,
++        // plus the integer tile index) - the fractional part maps directly
++        // to a pixel offset once scaled by the tile's pixel dimensions.
++        const px = Math.min(
++            info.width - 1,
++            Math.floor((xFrac - x) * (info.width || tilesize)),
++        );
++        const py = Math.min(
++            info.height - 1,
++            Math.floor((yFrac - y) * (info.height || tilesize)),
++        );
++
++        const idx = (py * info.width + px) * info.channels;
++        const r = data[idx];
++        const g = data[idx + 1];
++        const b = data[idx + 2];
++
++        const encoding = (basemap.encoding as BasemapTerrain_Encoding) || BasemapTerrain_Encoding.MAPBOX;
++        return decodeElevation(encoding, r, g, b);
++    } catch (err) {
++        console.warn('Elevation lookup failed:', err instanceof Error ? err.message : String(err));
++        return null;
++    }
++}
+diff --git a/api/routes/search.ts b/api/routes/search.ts
+index b14714ff8..cde7f71dd 100644
+--- a/api/routes/search.ts
++++ b/api/routes/search.ts
+@@ -9,6 +9,7 @@ import { SearchManager } from '../lib/interface-search.js';
+ import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '../lib/search/types.js';
+ import { Feature } from '@tak-ps/node-cot';
+ import Config from '../lib/config.js';
++import { getElevation } from '../lib/terrain.js';
+ 
+ function optionalISOString(date: Date | null): string | null {
+     if (date === null) return null;
+@@ -330,6 +331,14 @@ export default async function router(schema: Schema, config: Config) {
+             longitude: Type.Number(),
+         }),
+         query: Type.Object({
++            // Legacy fallback only: previously the client computed this via
++            // MapLibre GL's queryTerrainElevation(), which requires 3D terrain
++            // rendering (map.setTerrain()) to be active - a GPU-heavy mode that
++            // isn't otherwise needed for a one-off lookup, and unreliable on
++            // constrained hardware. The server now independently looks up
++            // elevation by decoding the raster-dem tile directly (getElevation()),
++            // so this is only used if that lookup can't produce a value (e.g. no
++            // terrain basemap configured).
+             elevation: Type.Optional(Type.Number()),
+         }),
+         res: Type.Object({
+@@ -340,10 +349,13 @@ export default async function router(schema: Schema, config: Config) {
+             const user = await Auth.as_user(config, req);
+             const elevationUnit = await config.models.ProfileConfig.from(user.email).then(p => p['display::elevation'] as string).catch(() => 'feet');
+ 
+-            const elevation = req.query.elevation !== undefined
++            const meters = await getElevation(config, req.params.longitude, req.params.latitude)
++                ?? (req.query.elevation !== undefined ? req.query.elevation / 1.5 : null);
++
++            const elevation = meters !== null
+                 ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
+-                        ? ((req.query.elevation / 1.5) * 3.28084).toFixed(2) + ' ft'
+-                        : (req.query.elevation / 1.5).toFixed(2) + ' m')
++                        ? (meters * 3.28084).toFixed(2) + ' ft'
++                        : meters.toFixed(2) + ' m')
+                 : null;
+ 
+             res.json({ elevation });
+diff --git a/api/web/src/components/CloudTAK/Query/Elevation.vue b/api/web/src/components/CloudTAK/Query/Elevation.vue
+index da527d8be..2d6b1ace2 100644
+--- a/api/web/src/components/CloudTAK/Query/Elevation.vue
++++ b/api/web/src/components/CloudTAK/Query/Elevation.vue
+@@ -45,7 +45,6 @@
+ import { ref, onMounted } from 'vue';
+ import type { SearchReverseElevation } from '../../../types.ts';
+ import { server } from '../../../std.ts';
+-import { useMapStore } from '../../../stores/map.ts';
+ import {
+     IconMountain
+ } from '@tabler/icons-vue';
+@@ -59,26 +58,21 @@ const props = defineProps<{
+     latitude: number;
+ }>();
+ 
+-const mapStore = useMapStore();
+-
+ const loading = ref(true);
+ const error = ref<Error | undefined>();
+ const elevation = ref<SearchReverseElevation['elevation']>(null);
+ 
++// Elevation is looked up server-side by decoding the configured terrain
++// basemap's raster-dem tile directly (see api/lib/terrain.ts). This
++// deliberately avoids MapLibre GL's queryTerrainElevation(), which only
++// returns a value once 3D terrain rendering (map.setTerrain()) is active -
++// a GPU-heavy mode not otherwise needed for a one-off lookup, and unreliable
++// on constrained hardware.
+ onMounted(async () => {
+     try {
+-        let terrainElevation: number | undefined;
+-        try {
+-            const raw = mapStore.map.queryTerrainElevation([props.longitude, props.latitude]);
+-            terrainElevation = raw !== null ? raw : undefined;
+-        } catch {
+-            // No terrain data available
+-        }
+-
+         const { data, error: reqError } = await server.GET('/api/search/reverse/{:longitude}/{:latitude}/elevation', {
+             params: {
+                 path: { ':longitude': props.longitude, ':latitude': props.latitude },
+-                query: { elevation: terrainElevation },
+             },
+         });
+ 

@@ -291,4 +291,81 @@ export class BasemapProtocol implements BasemapProtocolInterface {
         void opts;
         throw new Err(501, null, 'Protocol does not implement tile()');
     }
+
+    /**
+     * Fetch a single tile's raw bytes in-process, without an HTTP round trip.
+     *
+     * Reuses tile() (and therefore each protocol's _tile() implementation)
+     * unmodified by handing it a minimal in-memory stand-in for Express's
+     * Response object. This lets any existing protocol (ZXY, Hosted,
+     * ImageServer, MapServer, FeatureServer, ...) be used for server-side
+     * tile consumption — e.g. decoding a raster-dem tile for elevation
+     * lookups — without duplicating each protocol's URL-building/fetch logic.
+     *
+     * @param z - Zoom level
+     * @param x - Tile column
+     * @param y - Tile row
+     */
+    async tileBuffer(z: number, x: number, y: number): Promise<Buffer> {
+        const chunks: Buffer[] = [];
+        let statusCode = 200;
+        let settled = false;
+
+        const capture = new Promise<Buffer>((resolve, reject) => {
+            const finish = () => {
+                if (settled) return;
+                settled = true;
+                if (statusCode >= 300) {
+                    reject(new Err(statusCode, null, `Tile fetch failed with status ${statusCode}`));
+                } else {
+                    resolve(Buffer.concat(chunks));
+                }
+            };
+
+            const fail = (err: unknown) => {
+                if (settled) return;
+                settled = true;
+                reject(err instanceof Error ? err : new Error(String(err)));
+            };
+
+            // Minimal Response stand-in: only the members every _tile()
+            // implementation in this codebase actually calls.
+            const mockRes = {
+                writeHead: (code: number) => {
+                    statusCode = code;
+                    return mockRes;
+                },
+                write: (chunk: Buffer | string) => {
+                    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+                    return true;
+                },
+                end: (chunk?: Buffer | string) => {
+                    if (chunk) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+                    finish();
+                    return mockRes;
+                },
+                status: (code: number) => {
+                    statusCode = code;
+                    return {
+                        send: (body?: unknown) => {
+                            if (body) chunks.push(Buffer.from(typeof body === 'string' ? body : JSON.stringify(body)));
+                            finish();
+                        },
+                        json: (body?: unknown) => {
+                            if (body) chunks.push(Buffer.from(JSON.stringify(body)));
+                            finish();
+                        },
+                    };
+                },
+                json: (body?: unknown) => {
+                    if (body) chunks.push(Buffer.from(JSON.stringify(body)));
+                    finish();
+                },
+            } as unknown as Response;
+
+            this.tile(z, x, y, mockRes).catch(fail);
+        });
+
+        return capture;
+    }
 }

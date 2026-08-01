@@ -9,6 +9,7 @@ import { SearchManager } from '../lib/interface-search.js';
 import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '../lib/search/types.js';
 import { Feature } from '@tak-ps/node-cot';
 import Config from '../lib/config.js';
+import { getElevation } from '../lib/terrain.js';
 
 function optionalISOString(date: Date | null): string | null {
     if (date === null) return null;
@@ -330,6 +331,14 @@ export default async function router(schema: Schema, config: Config) {
             longitude: Type.Number(),
         }),
         query: Type.Object({
+            // Legacy fallback only: previously the client computed this via
+            // MapLibre GL's queryTerrainElevation(), which requires 3D terrain
+            // rendering (map.setTerrain()) to be active - a GPU-heavy mode that
+            // isn't otherwise needed for a one-off lookup, and unreliable on
+            // constrained hardware. The server now independently looks up
+            // elevation by decoding the raster-dem tile directly (getElevation()),
+            // so this is only used if that lookup can't produce a value (e.g. no
+            // terrain basemap configured).
             elevation: Type.Optional(Type.Number()),
         }),
         res: Type.Object({
@@ -340,10 +349,13 @@ export default async function router(schema: Schema, config: Config) {
             const user = await Auth.as_user(config, req);
             const elevationUnit = await config.models.ProfileConfig.from(user.email).then(p => p['display::elevation'] as string).catch(() => 'feet');
 
-            const elevation = req.query.elevation !== undefined
+            const meters = await getElevation(config, req.params.longitude, req.params.latitude)
+                ?? (req.query.elevation !== undefined ? req.query.elevation / 1.5 : null);
+
+            const elevation = meters !== null
                 ? (elevationUnit === 'feet' || elevationUnit === 'FEET'
-                        ? ((req.query.elevation / 1.5) * 3.28084).toFixed(2) + ' ft'
-                        : (req.query.elevation / 1.5).toFixed(2) + ' m')
+                        ? (meters * 3.28084).toFixed(2) + ' ft'
+                        : meters.toFixed(2) + ' m')
                 : null;
 
             res.json({ elevation });
