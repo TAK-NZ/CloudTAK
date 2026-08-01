@@ -285,10 +285,6 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
 
                     for (const client of (this.config.wsClients.get(String(conn.id)) || [])) {
                         if (client.format == 'geojson') {
-                            if (feat.properties && feat.properties.chat && feat.properties.chat.parent === 'DataSyncMissionsList') {
-                                console.log(JSON.stringify(feat));
-                            }
-
                             if (feat.properties && feat.properties.chat && feat.properties.chat.parent !== 'DataSyncMissionsList') {
                                 client.ws.send(JSON.stringify({
                                     type: 'chat',
@@ -298,6 +294,16 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                         messageId: feat.properties.chat.messageId,
                                         from: {
                                             callsign: feat.properties.chat.senderCallsign,
+                                            // Required by the client's Chat type (types.ts) to
+                                            // distinguish outgoing from incoming messages. Without
+                                            // this, the client's optimistic local echo (which has
+                                            // the correct sender_uid) gets overwritten by this
+                                            // WebSocket push with sender_uid === undefined, which
+                                            // GenericChat.vue treats as "not me" — rendering the
+                                            // user's own sent message as if it came from the
+                                            // recipient until the page is reloaded and re-fetches
+                                            // from the DB (where sender_uid was stored correctly).
+                                            uid: feat.properties.chat.chatgrp?._attributes?.uid0,
                                         },
                                         message: feat.properties.remarks,
                                         time: feat.properties.time || new Date().toISOString(),
