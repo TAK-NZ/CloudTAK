@@ -57,15 +57,22 @@ export class ConnectionWebSocket {
                         }
 
                         // TAK Server plugins route by callsign in xmlDetail.
-                        // Inject dest into both <marti> and directly in <detail>
-                        // so plugins searching either location can route correctly.
+                        // Add a callsign dest alongside the UID-based <marti><dest uid="..."/>
+                        // that DirectChat's constructor already set, so plugins searching
+                        // either location can route correctly.
+                        //
+                        // IMPORTANT: never *replace* the existing marti.dest array here. The
+                        // UID-based dest is what TAK Server's explicit-brokering path uses to
+                        // deliver directed chats collision-free (client UIDs are unique).
+                        // Callsigns are user-editable display strings that are not unique
+                        // (e.g. every new CloudTAK profile defaults to "CloudTAK User"), and
+                        // TAK Server resolves callsign destinations via a single global
+                        // callsign -> subscription map that gets overwritten whenever any
+                        // client sets/changes its callsign. Overwriting the dest array with a
+                        // callsign-only entry can misroute the message to an unrelated user.
                         if (msg.data.to?.callsign && chat instanceof DirectChat) {
-                            if (!chat.raw.event.detail) chat.raw.event.detail = {};
-                            if (chat.raw.event.detail.marti) {
-                                (chat.raw.event.detail.marti as Record<string, unknown>).dest = [
-                                    { _attributes: { callsign: msg.data.to.callsign } },
-                                ];
-                            }
+                            chat.addDest({ callsign: msg.data.to.callsign });
+
                             (chat.raw.event.detail as Record<string, unknown>).dest = {
                                 _attributes: { callsign: msg.data.to.callsign },
                             };
