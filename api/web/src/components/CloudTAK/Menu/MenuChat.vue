@@ -89,15 +89,29 @@ const room = shallowRef<Chatroom | undefined>(undefined);
 const chats = ref<DBChatroomChat[]>([]);
 let subscription: Subscription | undefined;
 
-watch([room, () => route.params.chatroom], ([newRoom, chatroom]) => {
+// Set just before navigating from the /new route to the named chatroom
+// route right after sending the first message. The route-param watcher
+// below always calls fetchChats() on navigation, but a network refresh()
+// at that moment can pull back a stale server-side "updated" timestamp
+// for the chatroom (the just-sent message may not have echoed back from
+// TAK Server yet), rolling back the optimistic local state set by send().
+// Consumed and reset by the watcher on the next chatroom-param change.
+let skipNextRefresh = false;
+
+watch([room, () => route.params.chatroom], ([newRoom]) => {
     if (subscription) {
         subscription.unsubscribe();
         subscription = undefined;
     }
 
-    const chatroomStr = Array.isArray(chatroom) ? (chatroom[0] ?? '') : chatroom;
-
-    if (newRoom && chatroomStr !== 'new') {
+    // Key off the resolved chatroom name, not the literal 'new' URL segment.
+    // '/menu/chats/new?callsign=...' is only a routing convention for
+    // "resolve the name from query params instead of the route param" — it
+    // does not mean no conversation history exists yet. Contacts with prior
+    // history are routed here too (e.g. from the contacts list), so gating
+    // on the URL segment instead of newRoom.name showed an empty chat until
+    // the user navigated away and back via the named route.
+    if (newRoom && newRoom.name) {
         const obs = liveQuery(() => newRoom.chats.list());
         subscription = obs.subscribe({
             next: async (val) => {
@@ -143,7 +157,10 @@ watch(() => route.params.chatroom, async (newChatroom) => {
         name.value = normalizeRouteParam(newChatroom);
     }
     room.value = new Chatroom(name.value);
-    await fetchChats();
+
+    const skipRefresh = skipNextRefresh;
+    skipNextRefresh = false;
+    await fetchChats({ skipRefresh });
 });
 
 async function sendMessage(message: string): Promise<void> {
@@ -166,6 +183,7 @@ async function sendMessage(message: string): Promise<void> {
     );
 
     if (route.params.chatroom === 'new') {
+        skipNextRefresh = true;
         await router.push({
             name: 'home-menu-chat',
             params: { chatroom: name.value }
@@ -191,7 +209,10 @@ async function deleteChats(ids: Array<string | number>): Promise<void> {
 async function fetchChats(opts: { skipRefresh?: boolean } = {}): Promise<void> {
     loading.value = true;
 
-    if (route.params.chatroom !== 'new' && room.value && !opts.skipRefresh) {
+    // Same reasoning as the watcher above: gate on the resolved chatroom
+    // name, not the literal 'new' URL segment, so existing history loads
+    // even when arriving via /menu/chats/new?callsign=....
+    if (room.value?.name && !opts.skipRefresh) {
         try {
             await Chatroom.load(room.value.name, { reload: false });
             await room.value.chats.refresh();

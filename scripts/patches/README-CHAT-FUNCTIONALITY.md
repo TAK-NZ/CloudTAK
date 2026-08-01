@@ -1,56 +1,95 @@
+
 # Chat Functionality Fixes (053)
 
 **Patch:** `053-chat-functionality-fixes.patch`
 
 ## Summary
 
-Fixes multiple interconnected issues with chat functionality and contact presence, bringing behaviour closer to parity with ATAK. See upstream bug reports in the repository root for full details.
+Fixes a handful of TAK.NZ-specific chat issues not covered by upstream v13.26.0. This patch
+originally covered a much larger set of fixes (double-stored messages, `isOutgoing` UID
+comparison, chat-delete using the wrong column, chatroom naming) but those were independently
+fixed by upstream in the meantime, so they were dropped from the patch to avoid re-applying a
+no-op diff. Contact-presence fixes (online/offline flood, non-human contacts) now live in
+patch 055, not here — see `PATCH_AUDIT.md`.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `api/lib/connection-web.ts` | Remove duplicate storage; add `dest callsign` to CoT detail for plugin routing |
-| `api/lib/connection-pool.ts` | Fix chatroom naming and `isOutgoing` UID comparison |
-| `api/routes/profile-chat.ts` | Fix delete using `message_id` instead of serial `id` |
-| `api/web/src/base/chatroom-chats.ts` | Remove unsafe display-name-as-UID fallback |
-| `api/web/src/components/CloudTAK/Menu/MenuChat.vue` | Sender labels, scroll fixes, input bar layout, recipient state preservation |
-| `api/web/src/components/CloudTAK/Menu/MenuContacts.vue` | Online check includes CoT-discovered contacts; periodic refresh |
-| `api/web/src/components/CloudTAK/util/NotificationToast.vue` | Truncate body to prevent toast overflow |
-| `api/web/src/workers/atlas-database.ts` | Fire `Contact_Change` when contact CoT goes stale |
-| `api/web/src/workers/atlas-team.ts` | Merge contacts on reconnect; notify only on first appearance |
+| `api/lib/connection-web.ts` | Add `dest callsign` alongside the existing UID-based `<marti><dest uid="..."/>` so plugins reading `xmlDetail` for a callsign can still route, without breaking TAK Server's collision-free UID-based delivery |
+| `api/web/src/base/chatroom-chats.ts` | `refresh()` merges server messages into local DB instead of delete-then-repopulate, so a locally-sent message isn't dropped if the server hasn't echoed it back yet; `send()` creates the chatroom DB row if it doesn't exist yet instead of assuming it does |
+| `api/web/src/components/CloudTAK/Menu/MenuChat.vue` | Skips the network refresh immediately after navigating from `/new` to the named chatroom post-send, so a stale server-side `updated` timestamp can't roll back the optimistic local state that `send()` just wrote |
+| `api/web/src/components/CloudTAK/Notifications.vue` | Adds `max-width: 90vw` and a `min-width: 0` flex child so the notification panel and its truncated text actually respect their container width on narrow viewports |
+| `api/web/src/workers/atlas-connection.ts` | Replaces `Chatroom.load()` (which calls `fetch()` and fails with 401 inside the worker, silently dropping every incoming chat) with direct IndexedDB writes; adds exponential-backoff reconnect and an auth-failure probe via `/api/login` |
 
 ## Issues Fixed
 
 ### Server-side Chat
-- **Double message**: `connection-web.ts` was calling `ProfileChat.generate()` immediately on send, and the TAK Server echo via `connection-pool.ts` stored it again. Removed the duplicate — the echo path is the single source of truth.
-- **Wrong chatroom**: All messages now stored under `feat.properties.chat.chatroom` (always the recipient's callsign) so all users see messages in the same chatroom, matching ATAK behaviour.
-- **`isOutgoing` broken**: Was comparing `senderUid` against the raw email (`conn.id`) instead of the full TAK UID (`ANDROID-CloudTAK-<email>`), so every message was treated as incoming.
-- **Chat delete 500**: Delete predicate used the serial `id` column (never exposed to client) instead of `message_id` (the TAK GeoChat UUID the client holds).
-- **Plugin routing**: TAK Server plugins (e.g. tak-gpt) search `xmlDetail` for `dest callsign="..."`. The TAK Server strips `<marti>` before populating `xmlDetail`, so `addDest()` is insufficient. A `<dest callsign="..."/>` element is now written directly inside `<detail>`.
+- **Plugin routing vs. collision-safe delivery**: TAK Server plugins that only read `xmlDetail`
+  (e.g. tak-gpt) look for a `dest callsign="..."` element. Naively replacing the UID-based dest
+  with a callsign-only one is unsafe: TAK Server resolves callsign destinations through a single
+  global, non-unique `callsign -> subscription` map, and every new CloudTAK profile defaults to
+  the same callsign. `connection-web.ts` now adds the callsign dest via `chat.addDest()` alongside
+  the UID dest instead of overwriting it, so TAK Server's UID match (collision-free) still governs
+  actual delivery.
+- **Removed a redundant, non-standard `<dest>` injection (Jul 2026)**: an earlier revision of this
+  patch *also* wrote a bare `<dest callsign="...">` element directly as a sibling under `<detail>`
+  (outside `<marti>`), justified by a comment claiming TAK Server strips `<marti>` before building
+  `xmlDetail` for plugins. That claim was verified against TAK Server's own source
+  (`StreamingProtoBufHelper.cot2protoBuf()` in `takserver-plugins`): it only extracts a fixed
+  allowlist of known detail elements (`contact`, `__group`, `precisionlocation`, `status`, `takv`,
+  `track`) and passes everything else — including `<marti>` and its children — straight through
+  into `xmlDetail` unmodified. So the `<marti><dest callsign="..."/></marti>` from `addDest()`
+  alone already lands inside `xmlDetail` intact, and the extra bare sibling `<dest>` was dead
+  weight from the start. Removed.
 
 ### Client-side Chat
-- **Recipient lost on navigation**: `route.query.uid` is only present on the `/new` route. After `router.push` to `/:chatroom`, subsequent messages had no recipient and were silently dropped. Recipient is now captured into component state at declaration time.
-- **Message invisible on `/new` route**: `liveQuery` subscription was skipped when `route.params.chatroom === 'new'`. Now subscribes whenever `room` is non-null.
-- **No sender labels**: Messages showed as plain bubbles with no attribution. Now shows sender callsign for incoming and `Me` for outgoing, matching ATAK convention.
-- **Input bar overlapping messages**: `position-absolute bottom-0` input bar sat on top of the message list. Restructured as a flex column with `flex-shrink-0` footer.
-- **No scroll-to-bottom indicator**: Added a floating arrow button above the input bar that appears when not at the bottom of the conversation.
-- **Silent send failures**: `sendMessage` had no error handling; failures cleared the input with no feedback. Now logs to console and preserves input on error.
+- **Existing conversation shows empty when opened via `/menu/chats/new?callsign=...` (Jul 2026)**:
+  every caller that opens a chat from elsewhere in the app (contacts list, mission users, CoT view,
+  property creator) routes to `/menu/chats/new?callsign=...&uid=...` regardless of whether that
+  contact already has message history — `/new` is only a routing convention meaning "resolve the
+  chatroom name from query params instead of the route param," not "this is a brand-new
+  conversation." `MenuChat.vue` had two checks gated on the *literal* `'new'` URL segment (the
+  local-DB `liveQuery` subscription, and the server `refresh()` call in `fetchChats()`), both of
+  which skipped loading any history whenever the URL segment was `new` — even when the resolved
+  chatroom name (from the `callsign` query param) had existing messages. Navigating directly via
+  `/menu/chats/:chatroom` (bypassing `/new`) worked correctly, since neither check was ever
+  triggered. Fixed by keying both checks on the *resolved* chatroom name (`room.value?.name` /
+  `newRoom.name`) instead of the URL segment, so history loads regardless of which route was used
+  to get there. This bug predates patch 053 (present in the v13.26.0 baseline too, unmodified) but
+  is fixed here since this file is already covered by this patch.
+- **Locally-sent message dropped on refresh**: `chatroom-chats.ts`'s `refresh()` used to delete
+  all local messages for a chatroom before repopulating from the server. If the user had just sent
+  a message that TAK Server hadn't echoed back yet, that message would vanish. `refresh()` now
+  merges instead of replacing.
+- **Wrong message picked for chatroom's "last activity" timestamp (Jul 2026)**: `refresh()` queries
+  the server with `order: 'desc', sort: 'created'`, so `list.items[0]` is the newest message and
+  `list.items[list.items.length - 1]` is the oldest one in that page. The code was indexing the
+  last element, writing the *oldest* message's timestamp into `chatroom.updated` on every refresh.
+  Since `MenuChats.vue` sorts the chat list by `updated`, this could make an actively-used
+  conversation appear stale and reorder incorrectly in the chat list until the next full
+  `Chatroom.sync()` corrected it via the server's `MAX(created)` aggregate. Fixed to index `[0]`.
+  This bug predates patch 053 (present in the v13.26.0 baseline too) but is fixed here since this
+  is the file that owns `refresh()`.
+- **Stale timestamp rollback right after sending the first message**: navigating from `/new` to
+  the named chatroom route triggers a `fetchChats()` call, which under most circumstances should
+  refresh from the server. Immediately after `send()`, though, that refresh can race the server
+  echo and pull back an `updated` timestamp older than what `send()` just wrote locally. The route
+  watcher now skips that one refresh when navigating away from `/new` post-send.
+- **Notifications panel overflow**: `min-width: 400px` with no `max-width` let the panel grow past
+  the viewport on narrow screens, and `text-truncate` alone doesn't truncate without a properly
+  constrained flex child.
 
-### Contact Presence
-- **Repeated "Online" notifications**: `load()` called `contacts.clear()` on every reconnect, causing bot/plugin contacts (absent from `/api/contacts/all`) to re-trigger "Online" notifications. Changed to merge.
-- **Offline never detected**: `diff()` removed stale CoTs from the map but never fired `Contact_Change`. Now removes the contact from `AtlasTeam.contacts` and fires `Contact_Change` when a CoT expires.
-- **Comlink property access bug**: `fetchList` accessed `team.contacts` as a raw property across the Comlink boundary (returns an unresolvable proxy). Fixed to use the return value of `team.load()`.
-- **Bot contacts not shown as Online**: Online check now tests both `db.has(uid)` and `team.get(uid)` so contacts discovered from received CoTs appear correctly.
+### Worker/Connection
+- **Incoming chat handler crashing in the worker**: `Chatroom.load()` calls `fetch()`, which
+  requires cookie/session auth not available inside a Web Worker context, so it threw a 401 and
+  aborted the entire incoming-chat handler before the message was stored or a notification fired.
+  Replaced with direct `db.chatroom` reads/writes.
+- **No reconnect backoff / no auth-failure detection**: added exponential backoff and a
+  `/api/login` probe to distinguish "server unreachable" from "session expired," signalling the
+  main thread to log the user out only in the latter case.
 
-### Notifications
-- **Toast overflow**: Long chat message bodies caused the notification toast to exceed screen width, making the close button inaccessible. Body is now truncated.
+## Related
 
-## Upstream Bug Reports
-
-- `UPSTREAM-BUG-REPORT-CONTACT-FLOOD.md`
-- `UPSTREAM-BUG-REPORT-CHAT-DELETE.md`
-- `UPSTREAM-BUG-REPORT-PRESENCE-RELIABILITY.md`
-- `UPSTREAM-BUG-REPORT-CHAT-SEND.md`
-- `UPSTREAM-BUG-REPORT-CHAT-SENDER-LABEL.md`
-- `UPSTREAM-BUG-REPORT-CHAT-PLUGIN-ROUTING.md` (filed against `dfpc-coe/node-cot`)
+Contact-presence fixes (online/offline notification flood, filtering out machine/ETL contacts) are
+tracked separately in patch `055-fix-contacts-badge-and-refresh.patch`, not in this patch.

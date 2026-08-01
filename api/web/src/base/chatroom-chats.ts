@@ -49,7 +49,9 @@ export default class ChatroomChats {
             }
         });
 
-        const activeItem = list.items[list.items.length - 1];
+        // Query is ordered desc by created, so the newest message is at
+        // index 0, not the last index.
+        const activeItem = list.items[0];
         if (activeItem) {
             await db.chatroom.update(this.chatroom, {
                 updated: (activeItem as APIProfileChat).created

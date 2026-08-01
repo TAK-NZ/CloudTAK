@@ -45,7 +45,6 @@
 import { ref, onMounted } from 'vue';
 import type { SearchReverseElevation } from '../../../types.ts';
 import { server } from '../../../std.ts';
-import { useMapStore } from '../../../stores/map.ts';
 import {
     IconMountain
 } from '@tabler/icons-vue';
@@ -59,26 +58,21 @@ const props = defineProps<{
     latitude: number;
 }>();
 
-const mapStore = useMapStore();
-
 const loading = ref(true);
 const error = ref<Error | undefined>();
 const elevation = ref<SearchReverseElevation['elevation']>(null);
 
+// Elevation is looked up server-side by decoding the configured terrain
+// basemap's raster-dem tile directly (see api/lib/terrain.ts). This
+// deliberately avoids MapLibre GL's queryTerrainElevation(), which only
+// returns a value once 3D terrain rendering (map.setTerrain()) is active -
+// a GPU-heavy mode not otherwise needed for a one-off lookup, and unreliable
+// on constrained hardware.
 onMounted(async () => {
     try {
-        let terrainElevation: number | undefined;
-        try {
-            const raw = mapStore.map.queryTerrainElevation([props.longitude, props.latitude]);
-            terrainElevation = raw !== null ? raw : undefined;
-        } catch {
-            // No terrain data available
-        }
-
         const { data, error: reqError } = await server.GET('/api/search/reverse/{:longitude}/{:latitude}/elevation', {
             params: {
                 path: { ':longitude': props.longitude, ':latitude': props.latitude },
-                query: { elevation: terrainElevation },
             },
         });
 

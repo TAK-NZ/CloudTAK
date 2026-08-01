@@ -56,10 +56,11 @@ export class ConnectionWebSocket {
                             chat.position(msg.data.location);
                         }
 
-                        // TAK Server plugins route by callsign in xmlDetail.
-                        // Add a callsign dest alongside the UID-based <marti><dest uid="..."/>
-                        // that DirectChat's constructor already set, so plugins searching
-                        // either location can route correctly.
+                        // TAK Server plugins (e.g. tak-gpt) route by callsign, searching the
+                        // whole xmlDetail string for `dest callsign="..."`. Add a callsign
+                        // dest alongside the UID-based <marti><dest uid="..."/> that
+                        // DirectChat's constructor already set, so those plugins can still
+                        // find a match.
                         //
                         // IMPORTANT: never *replace* the existing marti.dest array here. The
                         // UID-based dest is what TAK Server's explicit-brokering path uses to
@@ -70,12 +71,16 @@ export class ConnectionWebSocket {
                         // callsign -> subscription map that gets overwritten whenever any
                         // client sets/changes its callsign. Overwriting the dest array with a
                         // callsign-only entry can misroute the message to an unrelated user.
+                        //
+                        // Note: <marti> is NOT stripped before TAK Server builds xmlDetail —
+                        // confirmed against StreamingProtoBufHelper.cot2protoBuf(), which only
+                        // extracts a fixed allowlist of known detail elements (contact, __group,
+                        // precisionlocation, status, takv, track) and passes everything else,
+                        // including <marti>, straight through into xmlDetail verbatim. So
+                        // addDest() alone is sufficient; no separate bare <dest> sibling under
+                        // <detail> is needed for plugins that substring-search xmlDetail.
                         if (msg.data.to?.callsign && chat instanceof DirectChat) {
                             chat.addDest({ callsign: msg.data.to.callsign });
-
-                            (chat.raw.event.detail as Record<string, unknown>).dest = {
-                                _attributes: { callsign: msg.data.to.callsign },
-                            };
                         }
 
                         client.tak.write([chat], { stripFlow: true });
