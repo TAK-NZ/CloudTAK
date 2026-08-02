@@ -299,11 +299,22 @@ export default async function router(schema: Schema, config: Config) {
 
                     // Certificate provisioning — runs for new users (empty cert) and
                     // existing users whose cert is expired or expiring within 7 days.
+                    // This has its own try/catch, deliberately separate from attribute
+                    // sync below: cert enrollment mutates a temporary password on the
+                    // shared Authentik user account, so two concurrent OIDC callbacks
+                    // for the same user (e.g. a double-fired browser redirect) can race
+                    // and cause one enrollment attempt to fail with a stale-credential
+                    // error from TAK Server. That failure must not prevent the
+                    // callsign/group/role sync from running and committing.
                     if (certNeedsRenewal(profile.auth?.cert)) {
-                        console.log(`Enrolling TAK certificate for OIDC user: ${email}`);
-                        const certs = await authentik.enrollUserCertificate(email, config.server.webtak);
-                        updates.auth = certs;
-                        console.log(`TAK certificate enrolled successfully for: ${email}`);
+                        try {
+                            console.log(`Enrolling TAK certificate for OIDC user: ${email}`);
+                            const certs = await authentik.enrollUserCertificate(email, config.server.webtak);
+                            updates.auth = certs;
+                            console.log(`TAK certificate enrolled successfully for: ${email}`);
+                        } catch (err) {
+                            console.error(`Authentik cert enrollment error for ${email} (continuing):`, err);
+                        }
                     }
 
                     // Attribute sync — callsign, colour group, role, etc.
@@ -311,33 +322,37 @@ export default async function router(schema: Schema, config: Config) {
                     // never been modified) so the "Welcome" wizard is suppressed.
                     // On subsequent logins gated on SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN so
                     // admins can opt out of overwriting user-customised values.
-                    const isFirstLogin = profile.created === profile.updated;
-                    if (isFirstLogin || process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
-                        const userInfo = await authentik.login(email);
+                    try {
+                        const isFirstLogin = profile.created === profile.updated;
+                        if (isFirstLogin || process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true') {
+                            const userInfo = await authentik.login(email);
 
-                        // name is a real column on the profile table — commit via Profile.
-                        if (userInfo.name && userInfo.name !== 'Unknown') {
-                            updates.name = userInfo.name;
-                        }
+                            // name is a real column on the profile table — commit via Profile.
+                            if (userInfo.name && userInfo.name !== 'Unknown') {
+                                updates.name = userInfo.name;
+                            }
 
-                        // tak_callsign / tak_group / tak_role / tak_remarks live in
-                        // profile_settings (ProfileConfig), NOT on the profile table.
-                        // Profile.commit() silently drops unknown columns, so these MUST
-                        // go through ProfileConfig.commit() with the tak:: key namespace.
-                        const profileConfigUpdates: Record<string, unknown> = {};
-                        if (userInfo.tak_callsign) {
-                            profileConfigUpdates['tak::callsign'] = userInfo.tak_callsign;
-                            profileConfigUpdates['tak::remarks'] = userInfo.tak_callsign;
+                            // tak_callsign / tak_group / tak_role / tak_remarks live in
+                            // profile_settings (ProfileConfig), NOT on the profile table.
+                            // Profile.commit() silently drops unknown columns, so these MUST
+                            // go through ProfileConfig.commit() with the tak:: key namespace.
+                            const profileConfigUpdates: Record<string, unknown> = {};
+                            if (userInfo.tak_callsign) {
+                                profileConfigUpdates['tak::callsign'] = userInfo.tak_callsign;
+                                profileConfigUpdates['tak::remarks'] = userInfo.tak_callsign;
+                            }
+                            if (userInfo.tak_group) {
+                                profileConfigUpdates['tak::group'] = userInfo.tak_group;
+                            }
+                            if (userInfo.tak_role) {
+                                profileConfigUpdates['tak::role'] = userInfo.tak_role;
+                            }
+                            if (Object.keys(profileConfigUpdates).length > 0) {
+                                await config.models.ProfileConfig.commit(email, profileConfigUpdates);
+                            }
                         }
-                        if (userInfo.tak_group) {
-                            profileConfigUpdates['tak::group'] = userInfo.tak_group;
-                        }
-                        if (userInfo.tak_role) {
-                            profileConfigUpdates['tak::role'] = userInfo.tak_role;
-                        }
-                        if (Object.keys(profileConfigUpdates).length > 0) {
-                            await config.models.ProfileConfig.commit(email, profileConfigUpdates);
-                        }
+                    } catch (err) {
+                        console.error(`Authentik attribute sync error for ${email} (continuing):`, err);
                     }
 
                     // Commit profile-table updates (auth cert, name) if any.

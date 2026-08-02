@@ -3,6 +3,7 @@ import Config from './config.js';
 import { Static } from '@sinclair/typebox';
 import { Agency, MachineUser, Channel } from './interface-user.js';
 import crypto from 'crypto';
+import { sql } from 'drizzle-orm';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
 
 export default class AuthentikProvider {
@@ -473,51 +474,73 @@ export default class AuthentikProvider {
      *
      * The app-password is set to expire in 5 minutes — long enough to complete
      * the certificate enrollment handshake but not lingering in Authentik.
+     *
+     * The whole set-password / TAK-login / revoke-password sequence mutates a
+     * single shared credential (the Authentik user's password), so it is wrapped
+     * in a Postgres advisory lock keyed on the username. Without this, two
+     * concurrent enrollment attempts for the same user (e.g. a double-fired
+     * OIDC callback from the browser) can interleave: request A sets password
+     * #1 and starts logging into TAK Server, request B sets password #2 before
+     * A's login completes, and A's TAK Server login then fails with a
+     * stale-credential error because the password it's using no longer matches
+     * what's stored in Authentik. The lock is acquired via a real Postgres
+     * transaction (not an in-process mutex) so it serializes correctly across
+     * multiple ECS tasks behind the load balancer, not just within one process.
      */
     async enrollUserCertificate(
         username: string,
         takServerUrl: string,
     ): Promise<{ cert: string; key: string; ca: string[] }> {
-        const creds = await this.auth();
+        return this.config.pg.transaction(async (tx) => {
+            // Fixed namespace (arbitrary, just needs to not collide with other
+            // advisory lock usage) + a hash of the username as the two int4 lock
+            // keys. hashtext() is deterministic per-value within a session/process,
+            // which is all that's required here — occasional hash collisions
+            // between different usernames would only cause unrelated enrollments
+            // to briefly serialize, not any incorrect behavior.
+            await tx.execute(sql`SELECT pg_advisory_xact_lock(918273645, hashtext(${username}))`);
 
-        // Look up the Authentik user PK by username/email
-        const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
-        userUrl.searchParams.append('username', username);
-        const userResponse = await fetch(userUrl, {
-            headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
-        });
-        if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
+            const creds = await this.auth();
 
-        const userData: any = await userResponse.json();
-        const user = userData.results[0];
-        if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
+            // Look up the Authentik user PK by username/email
+            const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
+            userUrl.searchParams.append('username', username);
+            const userResponse = await fetch(userUrl, {
+                headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
+            });
+            if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
 
-        // Set a random temporary password on the user account (overwritten after enrollment)
-        const tempPassword = crypto.randomBytes(32).toString('base64url');
-        const passwordUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
-        const passwordResponse = await fetch(passwordUrl, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: tempPassword }),
-        });
-        if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
+            const userData: any = await userResponse.json();
+            const user = userData.results[0];
+            if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
 
-        try {
-            const takAuth = new APIAuthPassword(username, tempPassword);
-            const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
-            const enrollment = await takApi.Credentials.generate();
-            return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
-        } finally {
-            // Always revoke the temporary password by setting a new random one,
-            // so the account cannot be used with password auth after enrollment.
-            const revokePassword = crypto.randomBytes(32).toString('base64url');
-            const revokeUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
-            await fetch(revokeUrl, {
+            // Set a random temporary password on the user account (overwritten after enrollment)
+            const tempPassword = crypto.randomBytes(32).toString('base64url');
+            const passwordUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
+            const passwordResponse = await fetch(passwordUrl, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: revokePassword }),
-            }).catch(err => console.error('Failed to revoke temporary password after cert enrollment:', err));
-        }
+                body: JSON.stringify({ password: tempPassword }),
+            });
+            if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
+
+            try {
+                const takAuth = new APIAuthPassword(username, tempPassword);
+                const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
+                const enrollment = await takApi.Credentials.generate();
+                return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
+            } finally {
+                // Always revoke the temporary password by setting a new random one,
+                // so the account cannot be used with password auth after enrollment.
+                const revokePassword = crypto.randomBytes(32).toString('base64url');
+                const revokeUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
+                await fetch(revokeUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: revokePassword }),
+                }).catch(err => console.error('Failed to revoke temporary password after cert enrollment:', err));
+            }
+        });
     }
 
     async renewConnectionCertificate(

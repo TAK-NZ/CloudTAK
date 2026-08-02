@@ -1,8 +1,8 @@
 diff --git a/api/lib/authentik-provider.ts b/api/lib/authentik-provider.ts
-index 19bf620b0..2cf31e0ce 100644
+index 19bf620b0..3daa269ff 100644
 --- a/api/lib/authentik-provider.ts
 +++ b/api/lib/authentik-provider.ts
-@@ -1,16 +1,15 @@
+@@ -1,16 +1,16 @@
 -import fetch from './fetch.js';
  import Err from '@openaddresses/batch-error';
  import Config from './config.js';
@@ -11,6 +11,7 @@ index 19bf620b0..2cf31e0ce 100644
 +import { Agency, MachineUser, Channel } from './interface-user.js';
  import crypto from 'crypto';
 -import TAKAPI from '@tak-ps/node-tak';
++import { sql } from 'drizzle-orm';
 +import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
  
  export default class AuthentikProvider {
@@ -22,7 +23,7 @@ index 19bf620b0..2cf31e0ce 100644
  
      constructor(config: Config, authentikUrl: string, tokenArn: string) {
          this.config = config;
-@@ -37,12 +36,12 @@ export default class AuthentikProvider {
+@@ -37,12 +37,12 @@ export default class AuthentikProvider {
          return new AuthentikProvider(config, authentikUrl, tokenArn);
      }
  
@@ -37,7 +38,7 @@ index 19bf620b0..2cf31e0ce 100644
              );
  
              const token = response.SecretString || '';
-@@ -57,10 +56,10 @@ export default class AuthentikProvider {
+@@ -57,10 +57,10 @@ export default class AuthentikProvider {
  
      async agencies(uid: number, filter: string): Promise<{
          total: number;
@@ -50,7 +51,7 @@ index 19bf620b0..2cf31e0ce 100644
          const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
  
          const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-@@ -68,9 +67,9 @@ export default class AuthentikProvider {
+@@ -68,9 +68,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -63,7 +64,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency List Error');
-@@ -83,14 +82,14 @@ export default class AuthentikProvider {
+@@ -83,14 +83,14 @@ export default class AuthentikProvider {
              items: filteredResults.map((g: any) => ({
                  id: g.attributes?.agencyId || 0,
                  name: g.attributes?.agencyName || g.name,
@@ -81,7 +82,7 @@ index 19bf620b0..2cf31e0ce 100644
          const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
  
          const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-@@ -98,9 +97,9 @@ export default class AuthentikProvider {
+@@ -98,9 +98,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -94,7 +95,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency Fetch Error');
-@@ -113,7 +112,7 @@ export default class AuthentikProvider {
+@@ -113,7 +113,7 @@ export default class AuthentikProvider {
          return {
              id: group.attributes?.agencyId || agencyId,
              name: group.attributes?.agencyName || group.name,
@@ -103,7 +104,7 @@ index 19bf620b0..2cf31e0ce 100644
          };
      }
  
-@@ -129,9 +128,9 @@ export default class AuthentikProvider {
+@@ -129,9 +129,9 @@ export default class AuthentikProvider {
          userUrl.searchParams.append('pk', String(uid));
          const userResponse = await fetch(userUrl, {
              headers: {
@@ -116,7 +117,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik User Fetch Error');
-@@ -147,7 +146,7 @@ export default class AuthentikProvider {
+@@ -147,7 +147,7 @@ export default class AuthentikProvider {
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
                  'Content-Type': 'application/json',
@@ -125,7 +126,7 @@ index 19bf620b0..2cf31e0ce 100644
              },
              body: JSON.stringify({
                  name: username,
-@@ -157,9 +156,9 @@ export default class AuthentikProvider {
+@@ -157,9 +157,9 @@ export default class AuthentikProvider {
                      agencyId: body.agency_id || null,
                      createdBy: creatorUsername,
                      createdAt: new Date().toISOString(),
@@ -138,7 +139,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!createResponse.ok) throw new Err(500, new Error(await createResponse.text()), 'Authentik Service Account Creation Error');
-@@ -172,9 +171,9 @@ export default class AuthentikProvider {
+@@ -172,9 +172,9 @@ export default class AuthentikProvider {
              method: 'POST',
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
@@ -150,7 +151,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Authentik Password Set Error');
-@@ -182,7 +181,7 @@ export default class AuthentikProvider {
+@@ -182,7 +182,7 @@ export default class AuthentikProvider {
          return {
              id: userId,
              email: username,
@@ -159,7 +160,7 @@ index 19bf620b0..2cf31e0ce 100644
          };
      }
  
-@@ -194,9 +193,9 @@ export default class AuthentikProvider {
+@@ -194,9 +194,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -172,7 +173,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
-@@ -209,7 +208,7 @@ export default class AuthentikProvider {
+@@ -209,7 +209,7 @@ export default class AuthentikProvider {
          return {
              id: user.pk,
              email: user.username,
@@ -181,7 +182,7 @@ index 19bf620b0..2cf31e0ce 100644
          };
      }
  
-@@ -224,9 +223,9 @@ export default class AuthentikProvider {
+@@ -224,9 +224,9 @@ export default class AuthentikProvider {
                  method: 'POST',
                  headers: {
                      'Authorization': `Bearer ${creds.token}`,
@@ -193,7 +194,7 @@ index 19bf620b0..2cf31e0ce 100644
              });
  
              if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Password Update Error');
-@@ -235,7 +234,7 @@ export default class AuthentikProvider {
+@@ -235,7 +235,7 @@ export default class AuthentikProvider {
          return {
              id: mid,
              email: '',
@@ -202,7 +203,7 @@ index 19bf620b0..2cf31e0ce 100644
          };
      }
  
-@@ -244,7 +243,7 @@ export default class AuthentikProvider {
+@@ -244,7 +244,7 @@ export default class AuthentikProvider {
          agency?: number;
      }): Promise<{
          total: number;
@@ -211,7 +212,7 @@ index 19bf620b0..2cf31e0ce 100644
      }> {
          const creds = await this.auth();
          const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
-@@ -254,9 +253,9 @@ export default class AuthentikProvider {
+@@ -254,9 +254,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -224,7 +225,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Channel List Error');
-@@ -274,8 +273,8 @@ export default class AuthentikProvider {
+@@ -274,8 +274,8 @@ export default class AuthentikProvider {
                  id: g.attributes?.channelId || g.num_pk || 0,
                  rdn: g.name.replace(/^tak_/, ''),
                  name: g.attributes?.channelName || g.name.replace(/^tak_/, ''),
@@ -235,7 +236,7 @@ index 19bf620b0..2cf31e0ce 100644
          };
      }
  
-@@ -290,17 +289,17 @@ export default class AuthentikProvider {
+@@ -290,17 +290,17 @@ export default class AuthentikProvider {
          const groupsUrl = new URL('/api/v3/core/groups/', this.authentikUrl);
          const groupsResponse = await fetch(groupsUrl, {
              headers: {
@@ -259,7 +260,7 @@ index 19bf620b0..2cf31e0ce 100644
          );
  
          if (!group) throw new Err(404, null, `Channel ${body.channel_id} not found`);
-@@ -310,9 +309,9 @@ export default class AuthentikProvider {
+@@ -310,9 +310,9 @@ export default class AuthentikProvider {
              method: 'POST',
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
@@ -271,7 +272,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Group Assignment Error');
-@@ -336,9 +335,9 @@ export default class AuthentikProvider {
+@@ -336,9 +336,9 @@ export default class AuthentikProvider {
  
              const response = await fetch(url, {
                  headers: {
@@ -284,7 +285,7 @@ index 19bf620b0..2cf31e0ce 100644
              });
  
              if (!response.ok) {
-@@ -365,9 +364,9 @@ export default class AuthentikProvider {
+@@ -365,9 +365,9 @@ export default class AuthentikProvider {
              const deleteResponse = await fetch(deleteUrl, {
                  method: 'DELETE',
                  headers: {
@@ -297,7 +298,7 @@ index 19bf620b0..2cf31e0ce 100644
              });
  
              if (!deleteResponse.ok) {
-@@ -390,6 +389,7 @@ export default class AuthentikProvider {
+@@ -390,6 +390,7 @@ export default class AuthentikProvider {
          agency_admin: Array<number>;
          tak_callsign?: string;
          tak_group?: string;
@@ -305,7 +306,7 @@ index 19bf620b0..2cf31e0ce 100644
      }> {
          const creds = await this.auth();
  
-@@ -398,9 +398,9 @@ export default class AuthentikProvider {
+@@ -398,9 +399,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -318,7 +319,7 @@ index 19bf620b0..2cf31e0ce 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
-@@ -418,9 +418,9 @@ export default class AuthentikProvider {
+@@ -418,9 +419,9 @@ export default class AuthentikProvider {
                  const groupUrl = new URL(`/api/v3/core/groups/${groupUuid}/`, this.authentikUrl);
                  const groupResponse = await fetch(groupUrl, {
                      headers: {
@@ -331,7 +332,7 @@ index 19bf620b0..2cf31e0ce 100644
                  });
                  if (groupResponse.ok) {
                      const groupData: any = await groupResponse.json();
-@@ -455,50 +455,106 @@ export default class AuthentikProvider {
+@@ -455,50 +456,128 @@ export default class AuthentikProvider {
              phone: null,
              system_admin: isSystemAdmin,
              agency_admin: agencyAdminIds,
@@ -355,51 +356,73 @@ index 19bf620b0..2cf31e0ce 100644
 +     *
 +     * The app-password is set to expire in 5 minutes — long enough to complete
 +     * the certificate enrollment handshake but not lingering in Authentik.
++     *
++     * The whole set-password / TAK-login / revoke-password sequence mutates a
++     * single shared credential (the Authentik user's password), so it is wrapped
++     * in a Postgres advisory lock keyed on the username. Without this, two
++     * concurrent enrollment attempts for the same user (e.g. a double-fired
++     * OIDC callback from the browser) can interleave: request A sets password
++     * #1 and starts logging into TAK Server, request B sets password #2 before
++     * A's login completes, and A's TAK Server login then fails with a
++     * stale-credential error because the password it's using no longer matches
++     * what's stored in Authentik. The lock is acquired via a real Postgres
++     * transaction (not an in-process mutex) so it serializes correctly across
++     * multiple ECS tasks behind the load balancer, not just within one process.
 +     */
 +    async enrollUserCertificate(
 +        username: string,
 +        takServerUrl: string,
 +    ): Promise<{ cert: string; key: string; ca: string[] }> {
-+        const creds = await this.auth();
++        return this.config.pg.transaction(async (tx) => {
++            // Fixed namespace (arbitrary, just needs to not collide with other
++            // advisory lock usage) + a hash of the username as the two int4 lock
++            // keys. hashtext() is deterministic per-value within a session/process,
++            // which is all that's required here — occasional hash collisions
++            // between different usernames would only cause unrelated enrollments
++            // to briefly serialize, not any incorrect behavior.
++            await tx.execute(sql`SELECT pg_advisory_xact_lock(918273645, hashtext(${username}))`);
 +
-+        // Look up the Authentik user PK by username/email
-+        const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
-+        userUrl.searchParams.append('username', username);
-+        const userResponse = await fetch(userUrl, {
-+            headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
-+        });
-+        if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
++            const creds = await this.auth();
 +
-+        const userData: any = await userResponse.json();
-+        const user = userData.results[0];
-+        if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
++            // Look up the Authentik user PK by username/email
++            const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
++            userUrl.searchParams.append('username', username);
++            const userResponse = await fetch(userUrl, {
++                headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
++            });
++            if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
 +
-+        // Set a random temporary password on the user account (overwritten after enrollment)
-+        const tempPassword = crypto.randomBytes(32).toString('base64url');
-+        const passwordUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
-+        const passwordResponse = await fetch(passwordUrl, {
-+            method: 'POST',
-+            headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-+            body: JSON.stringify({ password: tempPassword }),
-+        });
-+        if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
++            const userData: any = await userResponse.json();
++            const user = userData.results[0];
++            if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
 +
-+        try {
-+            const takAuth = new APIAuthPassword(username, tempPassword);
-+            const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
-+            const enrollment = await takApi.Credentials.generate();
-+            return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
-+        } finally {
-+            // Always revoke the temporary password by setting a new random one,
-+            // so the account cannot be used with password auth after enrollment.
-+            const revokePassword = crypto.randomBytes(32).toString('base64url');
-+            const revokeUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
-+            await fetch(revokeUrl, {
++            // Set a random temporary password on the user account (overwritten after enrollment)
++            const tempPassword = crypto.randomBytes(32).toString('base64url');
++            const passwordUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
++            const passwordResponse = await fetch(passwordUrl, {
 +                method: 'POST',
 +                headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
-+                body: JSON.stringify({ password: revokePassword }),
-+            }).catch(err => console.error('Failed to revoke temporary password after cert enrollment:', err));
-+        }
++                body: JSON.stringify({ password: tempPassword }),
++            });
++            if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
++
++            try {
++                const takAuth = new APIAuthPassword(username, tempPassword);
++                const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
++                const enrollment = await takApi.Credentials.generate();
++                return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
++            } finally {
++                // Always revoke the temporary password by setting a new random one,
++                // so the account cannot be used with password auth after enrollment.
++                const revokePassword = crypto.randomBytes(32).toString('base64url');
++                const revokeUrl = new URL(`/api/v3/core/users/${user.pk}/set_password/`, this.authentikUrl);
++                await fetch(revokeUrl, {
++                    method: 'POST',
++                    headers: { 'Authorization': `Bearer ${creds.token}`, 'Content-Type': 'application/json' },
++                    body: JSON.stringify({ password: revokePassword }),
++                }).catch(err => console.error('Failed to revoke temporary password after cert enrollment:', err));
++            }
++        });
 +    }
 +
      async renewConnectionCertificate(
