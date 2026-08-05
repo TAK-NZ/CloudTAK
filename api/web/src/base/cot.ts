@@ -214,7 +214,7 @@ export default class COT {
             }
 
             if (update.properties) {
-                update.properties = await COT.styleProperties(this._geometry.type, update.properties);
+                update.properties = await COT.styleProperties(this._geometry.type, update.properties, this.is_self);
 
                 if (isEqual(this.properties, update.properties)) {
                     delete update.properties
@@ -491,7 +491,9 @@ export default class COT {
     static async style(
         feat: Feature
     ): Promise<Feature> {
-        feat.properties = await COT.styleProperties(feat.geometry.type, feat.properties);
+        const isSelf = COT.selfUid !== null && (feat.id === COT.selfUid || feat.properties.id === COT.selfUid);
+
+        feat.properties = await COT.styleProperties(feat.geometry.type, feat.properties, isSelf);
 
         if (!feat.properties.archived) {
             feat.properties.archived = false
@@ -517,7 +519,8 @@ export default class COT {
      */
     static async styleProperties(
         type: string,
-        properties: Feature["properties"]
+        properties: Feature["properties"],
+        isSelf = false
     ): Promise<Feature["properties"]> {
         if (!properties.time) properties.time = new Date().toISOString();
         if (!properties.start) properties.start = new Date().toISOString();
@@ -548,7 +551,18 @@ export default class COT {
                 delete properties.icon;
             }
 
-            if (properties.group) {
+            if (properties.group && !isSelf) {
+                // Team-color skittle styling for other users' contact markers.
+                // Never applied to the local user's own self-location feature:
+                // the self position is rendered via the map's GeolocateControl
+                // puck (see atlas-database.ts), not as a CoT marker, and native
+                // ATAK/WinTAK never emit a <color> detail for team members
+                // (they rely solely on <__group>). Setting marker-color here
+                // for self would leak a synthetic, semi-transparent <color
+                // argb="..."> detail into the outgoing self-location CoT
+                // (marker-opacity is never set, so node-cot's from_geojson
+                // defaults alpha to ~50%), which can cause ATAK 5.7 clients to
+                // render the team member as faded/invisible.
                 properties['icon-opacity'] = 0;
 
                 if (properties.group.name === 'Yellow') {
