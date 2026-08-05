@@ -5,6 +5,7 @@ import type { Feature, GroupChannel, Server, Profile, Profile_Update, FeaturePro
 import ProfileConfig from '../base/profile.ts';
 import ServerManager from '../base/server.ts';
 import GroupManager from '../base/group.ts';
+import COT from '../base/cot.ts';
 
 export type ProfileLocationState = {
     source: LocationState
@@ -392,7 +393,19 @@ export default class AtlasProfile {
         if (!this.username) throw new Error('Profile must be loaded before CoT is called');
 
         // Need to differentiate between servers eventually
-        return `ANDROID-CloudTAK-${this.username}`;
+        const uid = `ANDROID-CloudTAK-${this.username}`;
+
+        // Set COT.selfUid here rather than relying solely on
+        // AtlasDatabase#init (which only runs after conn.connect()
+        // resolves). setupTimer() starts sending self-location CoT
+        // updates as soon as profile.init() begins, so without this,
+        // COT.selfUid could still be unset when the first self CoT is
+        // built/added, causing styleProperties() to momentarily treat
+        // self as a regular contact and apply marker styling that then
+        // lingers on subsequent updates.
+        COT.selfUid = uid;
+
+        return uid;
     }
 
     async CoT(coords?: number[], accuracy?: number, altitude?: number | null): Promise<void> {
