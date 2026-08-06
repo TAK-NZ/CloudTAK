@@ -18,6 +18,16 @@ if [ ! -f "$SVG_SOURCE" ]; then
     exit 1
 fi
 
+if ! command -v rsvg-convert &> /dev/null; then
+    echo "Error: rsvg-convert not found (install librsvg2-bin)"
+    exit 1
+fi
+
+if ! command -v convert &> /dev/null; then
+    echo "Error: convert not found (install imagemagick)"
+    exit 1
+fi
+
 # Function to extract width from size string (e.g., "48x48" -> "48")
 get_width() {
     local size="$1"
@@ -56,17 +66,27 @@ while IFS= read -r line; do
         
         # Generate the icon
         echo "Generating: $output_path (${width}x${height})"
-        
-        if [ "$width" = "$height" ]; then
-            # Square icon - use width only
-            rsvg-convert -w "$width" "$SVG_SOURCE" > "$output_path"
-        else
-            # Non-square icon - specify both width and height
-            rsvg-convert -w "$width" -h "$height" "$SVG_SOURCE" > "$output_path"
-        fi
-        
-        # Check if the conversion was successful
-        if [ $? -eq 0 ]; then
+
+        # The source SVG's viewBox isn't perfectly square (1024x1039.657).
+        # Passing only -w (as before) let rsvg-convert derive height from
+        # the source ratio, silently producing e.g. a 512x520 image for a
+        # "512x512" icon slot - every generated icon was slightly squashed.
+        #
+        # Fix: render with --keep-aspect-ratio (-a), which scales the logo
+        # to fit within the target box without distortion, then pad the
+        # result onto a transparent canvas of the exact target size with
+        # ImageMagick. This guarantees the output canvas always matches the
+        # size declared in icons.ts, for both square and non-square targets
+        # (e.g. Windows tile logos).
+        rm -f "$output_path"
+        rsvg-convert -w "$width" -h "$height" -a "$SVG_SOURCE" | \
+            convert - -background none -gravity center -extent "${width}x${height}" "$output_path"
+
+        # This inner pipeline runs inside an outer `... | while` pipeline, so
+        # PIPESTATUS here would reflect the outer pipeline's stages, not
+        # rsvg-convert/convert. Check the output file was actually written
+        # instead.
+        if [ -s "$output_path" ]; then
             echo "✓ Successfully generated: $output_path"
         else
             echo "✗ Failed to generate: $output_path"

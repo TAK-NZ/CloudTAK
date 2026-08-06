@@ -12,7 +12,7 @@ flight.takeoff();
 flight.user();
 flight.server('admin@example.com', 'password123');
 
-test('GET: /api/manifest.webmanifest - no logo configured', async () => {
+test('GET: /api/manifest.webmanifest - no logo configured, falls back to default', async () => {
     try {
         const res = await flight.fetch('/api/manifest.webmanifest', {
             method: 'GET',
@@ -24,7 +24,10 @@ test('GET: /api/manifest.webmanifest - no logo configured', async () => {
         assert.equal(res.body.display, 'standalone');
         assert.equal(res.body.start_url, '/');
         assert.ok(Array.isArray(res.body.icons), 'icons is array');
-        assert.equal(res.body.icons.length, 0, 'no icons when logo not configured');
+        // With no 'login::logo' row in the DB, buildLogos() falls back to
+        // FullConfigDefaults['login::logo'] (CloudTAKLogo.svg), so a fresh
+        // deployment still gets a valid icon set instead of an empty array.
+        assert.equal(res.body.icons.length, 2, 'default logo produces two icons (192 and 512)');
     } catch (err) {
         assert.ifError(err);
     }

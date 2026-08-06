@@ -6,13 +6,13 @@ export const LOGO_SIZES = [192, 512];
 export async function buildLogos(config: Config): Promise<Map<number, Buffer>> {
     const logos = new Map<number, Buffer>();
 
-    let logoData: string | undefined;
-    try {
-        const setting = await config.models.Setting.from('login::logo');
-        logoData = String(setting.value);
-    } catch {
-        // No custom logo configured
-    }
+    // Setting.typed() falls back to FullConfigDefaults['login::logo'] (the
+    // build-time CloudTAKLogo.svg, which branding overwrites) when no admin
+    // override is stored in the DB. Using the raw Setting.from() here
+    // instead - as this previously did - meant a fresh deployment with no
+    // DB row got an empty icon set in the PWA manifest, since from() throws
+    // rather than applying the default.
+    const { value: logoData } = await config.models.Setting.typed('login::logo');
 
     if (!logoData) return logos;
 
