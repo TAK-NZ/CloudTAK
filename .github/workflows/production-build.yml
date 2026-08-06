@@ -97,7 +97,7 @@ jobs:
             ${{ steps.tags.outputs.ecr-repo-uri }}
       
       - name: Install Branding Dependencies
-        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin
+        run: sudo apt-get update && sudo apt-get install -y librsvg2-bin imagemagick
       
       - name: Apply Branding (Conditional)
         run: |
