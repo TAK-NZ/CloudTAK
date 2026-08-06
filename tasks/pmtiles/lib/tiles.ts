@@ -89,6 +89,47 @@ export const RasterTileSource = Type.Object({
     maxzoom: Type.Integer(),
 });
 
+// pmtiles' PMTiles#getMetadata() is typed as Promise<unknown> since the
+// PMTiles spec places no constraints on metadata contents. CloudTAK only
+// ever reads `vector_layers` off of it (mirrored into the TileJSON
+// response below), so narrow just that shape rather than casting to `any`.
+interface PMTilesMetadata {
+    vector_layers?: Static<typeof TileJSON>['vector_layers'];
+}
+
+// Minimal shape of the callback response from @mapbox/vtquery - the module
+// ships no type definitions (see the `@ts-expect-error` import above), so
+// this documents the fields this file actually reads/writes on it.
+interface VtQueryFeatureCollection {
+    type: 'FeatureCollection';
+    features: object[];
+    query?: unknown;
+    meta?: unknown;
+}
+
+/**
+ * Split a Multi* GeoJSON feature (MultiPoint/MultiLineString/MultiPolygon)
+ * into one single-geometry feature per member, used when `opts.multi ===
+ * false`. Shared by `features()` and `featuresByBounds()`.
+ */
+function splitMultiGeometryFeature(geojson: GeoJSON.Feature): GeoJSON.Feature[] {
+    const type = geojson.geometry.type.replace('Multi', '') as GeoJSON.Geometry['type'];
+    const coordinates = (geojson.geometry as GeoJSON.MultiPoint | GeoJSON.MultiLineString | GeoJSON.MultiPolygon).coordinates;
+
+    return coordinates.map((coord): GeoJSON.Feature => {
+        const feat = {
+            type: 'Feature',
+            properties: geojson.properties,
+            geometry: {
+                type: type,
+                coordinates: coord,
+            },
+        } as GeoJSON.Feature;
+        if (geojson.id) feat.id = geojson.id;
+        return feat;
+    });
+}
+
 export class FileTiles {
     path: string;
 
@@ -125,7 +166,7 @@ export class FileTiles {
     ): Promise<Static<typeof TileJSON>> {
         const p = new pmtiles.PMTiles(new S3Source(this.path), CACHE, nativeDecompress);
         const header = await p.getHeader();
-        const metadata = await p.getMetadata() as any;
+        const metadata = await p.getMetadata() as PMTilesMetadata;
         const source = await this.rasterTileSource(token);
 
         return {
@@ -201,15 +242,12 @@ export class FileTiles {
                 features: [],
             };
         } else {
-            const fc: any = await new Promise((resolve, reject) => {
+            const fc = await new Promise<VtQueryFeatureCollection>((resolve, reject) => {
                 vtquery([
                     { buffer: tile.data, z: xyz[2], x: xyz[0], y: xyz[1] },
                 ], query.lnglat, {
                     limit: query.limit,
-                }, (err: Error, fc: {
-                    type: string;
-                    features: object[];
-                }) => {
+                }, (err: Error, fc: VtQueryFeatureCollection) => {
                     if (err) return reject(err);
                     return resolve(fc);
                 });
@@ -218,7 +256,7 @@ export class FileTiles {
             fc.query = query;
             fc.meta = meta;
 
-            return fc;
+            return fc as Static<typeof QueryResponse>;
         }
     }
 
@@ -265,7 +303,7 @@ export class FileTiles {
             };
         }
 
-        const features: any[] = [];
+        const features: GeoJSON.Feature[] = [];
 
         if (header.tileType === pmtiles.TileType.Mvt) {
             const tile = new VectorTile(new Pbf(tile_result.data));
@@ -281,20 +319,7 @@ export class FileTiles {
                     const geojson = feature.toGeoJSON(x, y, z);
 
                     if (opts.multi === false && geojson.geometry.type.startsWith('Multi')) {
-                        const type = geojson.geometry.type.replace('Multi', '');
-                        const coordinates = (geojson.geometry as any).coordinates;
-
-                        for (const coord of coordinates) {
-                            const feat: any = {
-                                type: 'Feature',
-                                properties: geojson.properties,
-                                geometry: {
-                                    type: type,
-                                    coordinates: coord,
-                                },
-                            };
-                            if (geojson.id) feat.id = geojson.id;
-
+                        for (const feat of splitMultiGeometryFeature(geojson)) {
                             if (opts.type && feat.geometry.type !== opts.type) continue;
                             features.push(feat);
                         }
@@ -311,7 +336,7 @@ export class FileTiles {
         return {
             type: 'FeatureCollection',
             features: features,
-        };
+        } as Static<typeof FeaturesResponse>;
     }
 
     /**
@@ -365,7 +390,7 @@ export class FileTiles {
                 const tile_result = await p.getZxy(z, x, y);
                 if (!tile_result) return [];
 
-                const features: any[] = [];
+                const features: GeoJSON.Feature[] = [];
 
                 const tile = new VectorTile(new Pbf(tile_result.data));
 
@@ -380,20 +405,7 @@ export class FileTiles {
                         const geojson = feature.toGeoJSON(x, y, z);
 
                         if (opts.multi === false && geojson.geometry.type.startsWith('Multi')) {
-                            const type = geojson.geometry.type.replace('Multi', '');
-                            const coordinates = (geojson.geometry as any).coordinates;
-
-                            for (const coord of coordinates) {
-                                const feat: any = {
-                                    type: 'Feature',
-                                    properties: geojson.properties,
-                                    geometry: {
-                                        type: type,
-                                        coordinates: coord,
-                                    },
-                                };
-                                if (geojson.id) feat.id = geojson.id;
-
+                            for (const feat of splitMultiGeometryFeature(geojson)) {
                                 if (opts.type && feat.geometry.type !== opts.type) continue;
                                 features.push(feat);
                             }
@@ -407,7 +419,7 @@ export class FileTiles {
                 return features;
             });
 
-        const features: any[] = [];
+        const features: GeoJSON.Feature[] = [];
         for (const result of results) {
             features.push(...result);
         }
@@ -415,7 +427,7 @@ export class FileTiles {
         return {
             type: 'FeatureCollection',
             features: features,
-        };
+        } as Static<typeof FeaturesResponse>;
     }
 
     /**

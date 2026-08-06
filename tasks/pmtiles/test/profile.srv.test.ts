@@ -3,12 +3,13 @@ import assert from 'node:assert';
 import jwt from 'jsonwebtoken';
 import http from 'http';
 import type { AddressInfo } from 'net';
+import type { Express } from 'express';
 
 // Set env vars before importing app
 process.env.SigningSecret = 'test-secret';
 process.env.ASSET_BUCKET = 'test-bucket';
 
-let app: any;
+let app: Express;
 let server: http.Server;
 
 function getAddress(): string {

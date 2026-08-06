@@ -3,14 +3,16 @@ import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 import http from 'http';
 import type { AddressInfo } from 'net';
+import type { Express } from 'express';
 import { PNG } from 'pngjs';
+import type { FileTiles as FileTilesClass } from '../lib/tiles.js';
 
 process.env.SigningSecret = 'test-secret';
 process.env.ASSET_BUCKET = 'test-bucket';
 
-let app: any;
+let app: Express;
 let server: http.Server;
-let FileTiles: any;
+let FileTiles: typeof FileTilesClass;
 
 function createTile(elevation: number): Uint8Array {
     const png = new PNG({ width: 4, height: 4 });

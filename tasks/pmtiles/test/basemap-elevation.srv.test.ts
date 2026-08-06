@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
 import http from 'http';
 import type { AddressInfo } from 'net';
+import type { Express } from 'express';
 import { PNG } from 'pngjs';
 
 process.env.SigningSecret = 'test-secret';
 process.env.ASSET_BUCKET = 'test-bucket';
 process.env.API_URL = 'http://localhost:5001';
 
-let app: any;
+let app: Express;
 let server: http.Server;
 
 function createTile(elevation: number): ArrayBuffer {
