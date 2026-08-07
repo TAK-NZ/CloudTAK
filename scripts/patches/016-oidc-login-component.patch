@@ -1,5 +1,5 @@
 diff --git a/api/web/src/components/Login.vue b/api/web/src/components/Login.vue
-index 59ecc6ace..e86d8619e 100644
+index 59ecc6ace..f03fb8677 100644
 --- a/api/web/src/components/Login.vue
 +++ b/api/web/src/components/Login.vue
 @@ -64,7 +64,7 @@
@@ -60,32 +60,60 @@ index 59ecc6ace..e86d8619e 100644
  const storedUsername = ref<string | null>(null);
  const body = ref<Login_Create>({
      username: '',
-@@ -509,6 +533,60 @@ const certRenewal = reactive<{
+@@ -509,6 +533,88 @@ const certRenewal = reactive<{
  });
  
  onMounted(async () => {
-+    // Handle ETL API token passed as URL param for war room / kiosk display use.
-+    // These tokens start with 'etl.' and are exchanged for a session JWT via
-+    // POST /api/login/token before the normal login flow continues.
-+    if (route.query.token && String(route.query.token).startsWith('etl.')) {
++    // Detect an existing (un-cleared) session left behind by a previous login.
++    // This MUST run before any of the login-consuming branches below (ETL
++    // token, OIDC fragment, query-string token) - those branches call
++    // applySession()/persistSession(), which compares the newly-authenticated
++    // user against storedUsername to decide whether to wipe locally cached
++    // data from a different user. If this check ran after those branches
++    // instead, storedUsername would still be null at comparison time, so a
++    // browser previously used for one account could silently inherit that
++    // account's cached profile/WebSocket state when a different user logs in
++    // via SSO. The database is intentionally NOT deleted here - it is only
++    // cleared on an explicit sign-out or when a different user logs in via
++    // applySession()/destroySession(). This avoids a costly resync when a
++    // token simply expires.
++    try {
++        const existing = await appStore.getUsername();
++        if (existing) {
++            storedUsername.value = existing;
++            body.value.username = existing;
++        }
++    } catch (err) {
++        console.error('Failed to read existing session', err);
++    }
++
++    // Handle SSO login completion. The backend hands the session back via a
++    // URL Fragment (/login#sso=<base64url payload>) rather than a query
++    // string, so it is never sent to the server or written to access logs.
++    // Parse and clear the fragment immediately so it isn't left sitting in
++    // the address bar or browser history.
++    if (window.location.hash.startsWith('#sso=')) {
 +        loading.value = true;
-+        loadingMessage.value = 'Authenticating...';
-+        const etlToken = String(route.query.token);
-+        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
++        loadingMessage.value = 'Completing login...';
++        const payloadRaw = window.location.hash.slice('#sso='.length);
++        // Clear the fragment from the URL without triggering a navigation/reload.
++        history.replaceState(null, '', window.location.pathname + window.location.search);
 +        try {
-+            const response = await fetch('/api/login/token', {
-+                method: 'POST',
-+                headers: { 'Content-Type': 'application/json' },
-+                body: JSON.stringify({ token: etlToken }),
-+            });
-+            if (!response.ok) throw new Error(`Authentication failed: ${response.status}`);
-+            const login = await response.json() as { token: string; email: string; session: string };
-+            await appStore.persistSession({ token: login.token, username: login.email, session: login.session });
++            const padded = payloadRaw + '='.repeat((4 - payloadRaw.length % 4) % 4);
++            const json = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
++            const payload = JSON.parse(json) as {
++                token: string;
++                email: string;
++                session: string;
++                redirect?: string;
++            };
++            await applySession({ token: payload.token, email: payload.email, session: payload.session });
 +            emit('login');
-+            await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
++            const redirectPath = payload.redirect && payload.redirect.startsWith('/') ? payload.redirect : '/';
++            await router.replace(redirectPath);
 +        } catch (err) {
 +            loading.value = false;
-+            console.error('API token login failed:', err);
++            console.error('Failed to parse SSO login payload', err);
 +            // Fall through to normal login form
 +        }
 +        return;
@@ -121,13 +149,24 @@ index 59ecc6ace..e86d8619e 100644
      const config = await Config.list([
          'login::name',
          'login::logo',
-@@ -550,7 +628,27 @@ onMounted(async () => {
+@@ -550,22 +656,28 @@ onMounted(async () => {
      brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
      brandStore.loaded = true;
  
 -    if (brandStore.passkey.enabled) {
+-        startConditionalPasskey();
+-    }
+-
+-    // Detect an existing (un-cleared) session left behind by a previous login.
+-    // The database is intentionally NOT deleted here - it is only cleared on an
+-    // explicit sign-out or when a different user logs in. This avoids a costly
+-    // resync when a token simply expires.
 +    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
-+    try {
+     try {
+-        const existing = await appStore.getUsername();
+-        if (existing) {
+-            storedUsername.value = existing;
+-            body.value.username = existing;
 +        const oidcRes = await fetch('/api/server/oidc');
 +        if (oidcRes.ok) {
 +            const oidcStatus = await oidcRes.json() as { oidc_enabled: boolean; oidc_forced?: boolean };
@@ -140,17 +179,19 @@ index 59ecc6ace..e86d8619e 100644
 +                loginWithSSO();
 +                return;
 +            }
-+        }
-+    } catch (err) {
+         }
+     } catch (err) {
+-        console.error('Failed to read existing session', err);
 +        console.error('Failed to check ALB OIDC status:', err);
 +    }
 +
 +    // Only start conditional passkey autofill when ALB SSO is not active
 +    if (brandStore.passkey.enabled && !albOidcEnabled.value) {
-         startConditionalPasskey();
++        startConditionalPasskey();
      }
+ });
  
-@@ -613,7 +711,13 @@ async function createLogin() {
+@@ -613,7 +725,13 @@ async function createLogin() {
          navigateAfterLogin();
      } catch (err) {
          loading.value = false;
@@ -165,7 +206,7 @@ index 59ecc6ace..e86d8619e 100644
      }
  }
  
-@@ -758,6 +862,11 @@ function skipCertRenewal() {
+@@ -758,6 +876,11 @@ function skipCertRenewal() {
      certRenewal.password = '';
      navigateAfterLogin();
  }
