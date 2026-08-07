@@ -112,6 +112,11 @@ export const useMapStore = defineStore('cloudtak', {
 
         timer: ReturnType<typeof setInterval> | null;
 
+        // This tab's own Atlas worker's tabId, cached after init() so the
+        // channel.onmessage handler can filter connection-status broadcasts
+        // without an async round-trip to the worker on every message.
+        _tabId?: string;
+
         _rawWorker?: Worker;
         _workerReady?: Promise<void>;
         _worker?: Comlink.Remote<Atlas>;
@@ -144,6 +149,7 @@ export const useMapStore = defineStore('cloudtak', {
         }
     } => {
         return {
+            _tabId: undefined,
             _rawWorker: undefined,
             _workerReady: undefined,
             _worker: undefined,
@@ -679,6 +685,7 @@ export const useMapStore = defineStore('cloudtak', {
 
             await this._workerReady!;
             await this.worker.init(token || '');
+            this._tabId = await this.worker.tabId;
 
             this.channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                 const msg = event.data;
@@ -728,10 +735,18 @@ export const useMapStore = defineStore('cloudtak', {
                 } else if (msg.type === WorkerMessageType.Map_Projection) {
                     map.setProjection(msg.body);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
-                    this.isOpen = true;
+                    // The 'cloudtak' BroadcastChannel is shared by every tab
+                    // from the same origin - only reflect connection state
+                    // broadcast by THIS tab's own worker. Otherwise another
+                    // tab's connection dropping/reconnecting (e.g. a
+                    // backgrounded tab cycling through its reconnect
+                    // backoff) would flip this tab's indicator too, even
+                    // though this tab's own connection never changed.
+                    if (msg.tabId === this._tabId) this.isOpen = true;
                 } else if (msg.type === WorkerMessageType.Connection_Close) {
-                    this.isOpen = false;
+                    if (msg.tabId === this._tabId) this.isOpen = false;
                 } else if (msg.type === WorkerMessageType.Connection_AuthFailure) {
+                    if (msg.tabId !== this._tabId) return;
                     this.isOpen = false;
                     window.location.href = '/login';
                 } else if (msg.type === WorkerMessageType.Channels_None) {

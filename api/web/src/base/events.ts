@@ -38,6 +38,12 @@ export enum WorkerMessageType {
 
 export type WorkerMessage = {
     type: WorkerMessageType,
+    // Identifies which browser tab's Atlas worker sent this message. The
+    // 'cloudtak' BroadcastChannel is shared by every tab from the same
+    // origin, so any listener that reflects per-tab connection state (see
+    // Connection_Open/Connection_Close in stores/map.ts) must check this
+    // against its own worker's tabId before acting on the message.
+    tabId?: string,
     // TODO Strongly type this
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     body?: any

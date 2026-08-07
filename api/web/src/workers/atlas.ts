@@ -16,6 +16,15 @@ import Icon from '../base/icon.ts';
 export default class Atlas {
     channel: BroadcastChannel;
 
+    // Unique per-worker-instance (i.e. per browser tab/window) identifier.
+    // The 'cloudtak' BroadcastChannel is shared by every tab from the same
+    // origin, so connection status messages need this to let each tab's
+    // main-thread store (map.ts) tell "my worker's connection changed"
+    // apart from "some other tab's worker's connection changed" - without
+    // it, one backgrounded tab reconnecting/flapping would flip every other
+    // tab's connection indicator too.
+    tabId: string;
+
     token: string;
     username: string;
     initialized: boolean;
@@ -26,6 +35,7 @@ export default class Atlas {
 
     constructor() {
         this.channel = new BroadcastChannel('cloudtak');
+        this.tabId = self.crypto.randomUUID();
         this.token = '';
         this.username = '';
         this.initialized = false;
@@ -58,7 +68,7 @@ export default class Atlas {
     }
 
     async postMessage(msg: WorkerMessage): Promise<void> {
-        return this.channel.postMessage(msg);
+        return this.channel.postMessage({ ...msg, tabId: this.tabId });
     }
 
     async init(authToken: string) {
