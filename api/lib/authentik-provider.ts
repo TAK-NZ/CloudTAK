@@ -5,6 +5,8 @@ import { Agency, MachineUser, Channel } from './interface-user.js';
 import crypto from 'crypto';
 import { sql } from 'drizzle-orm';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
+import pem from 'pem';
+import xmljs from 'xml-js';
 
 export default class AuthentikProvider {
     config: Config;
@@ -382,6 +384,33 @@ export default class AuthentikProvider {
         }
     }
 
+    /**
+     * Look up an Authentik user by `email` first, falling back to `username`.
+     * OIDC callers pass the userinfo `email` claim, which Authentik does not
+     * guarantee equals the account's `username` field - querying by `email`
+     * first avoids silently failing (and skipping cert enrollment/attribute
+     * sync) for accounts where the two differ.
+     */
+    private async findUserByEmailOrUsername(token: string, identifier: string): Promise<any> {
+        const byEmailUrl = new URL('/api/v3/core/users/', this.authentikUrl);
+        byEmailUrl.searchParams.append('email', identifier);
+        const byEmailResponse = await fetch(byEmailUrl, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        if (!byEmailResponse.ok) throw new Err(500, new Error(await byEmailResponse.text()), 'Authentik User Fetch Error');
+        const byEmailData: any = await byEmailResponse.json();
+        if (byEmailData.results && byEmailData.results.length > 0) return byEmailData.results[0];
+
+        const byUsernameUrl = new URL('/api/v3/core/users/', this.authentikUrl);
+        byUsernameUrl.searchParams.append('username', identifier);
+        const byUsernameResponse = await fetch(byUsernameUrl, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        });
+        if (!byUsernameResponse.ok) throw new Err(500, new Error(await byUsernameResponse.text()), 'Authentik User Fetch Error');
+        const byUsernameData: any = await byUsernameResponse.json();
+        return byUsernameData.results?.[0];
+    }
+
     async login(username: string): Promise<{
         id: number;
         name: string;
@@ -394,20 +423,11 @@ export default class AuthentikProvider {
     }> {
         const creds = await this.auth();
 
-        const url = new URL('/api/v3/core/users/', this.authentikUrl);
-        url.searchParams.append('username', username);
-
-        const response = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${creds.token}`,
-                Accept: 'application/json',
-            },
-        });
-
-        if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
-
-        const data: any = await response.json();
-        const user = data.results[0];
+        // `username` here is the OIDC email claim, which is not guaranteed to
+        // equal the Authentik user's `username` field (Authentik allows those
+        // to differ) - look up by `email` instead, falling back to `username`
+        // for compatibility with any pre-existing password-auth callers.
+        const user = await this.findUserByEmailOrUsername(creds.token, username);
 
         if (!user) throw new Err(404, null, 'User not found');
 
@@ -487,10 +507,172 @@ export default class AuthentikProvider {
      * transaction (not an in-process mutex) so it serializes correctly across
      * multiple ECS tasks behind the load balancer, not just within one process.
      */
+    /**
+     * Attempt to enroll a TAK client certificate using an Authentik-issued
+     * bearer token instead of a temporary password, via the OAuth2
+     * client_credentials + JWT-bearer client-assertion exchange (RFC 7523).
+     *
+     * The `userAccessToken` (the real user's own CloudTAK-session OIDC token,
+     * NOT CloudTAK's client credentials) is passed as `client_assertion` so
+     * Authentik ties the exchanged token to that user's identity rather than
+     * to a generic client_credentials service account - see
+     * https://docs.goauthentik.io/.../machine_to_machine/#externally-issued-jwts
+     * "JWT authentication" section. Using plain client_credentials here would
+     * silently issue every enrollment to the same synthetic service account,
+     * which is wrong and was an earlier mistake in this implementation.
+     *
+     * This only works if:
+     *   1. TAK Server's CoreConfig.xml <oauth><authServer> trusts the OAuth2
+     *      provider CloudTAK authenticates against (Federated OIDC Providers)
+     *   2. That connector accepts bearer tokens (clientAuth="false", and the
+     *      request hits a port AccessTokenResolver checks - 8446/8447)
+     *   3. The exchanged token's usernameClaim/groupsClaim resolve to a real,
+     *      known TAK Server identity
+     * None of that is verified here - this is a best-effort attempt, logged
+     * clearly at every step, that throws on any failure so the caller can fall
+     * back to the existing temporary-password flow. Nothing about the
+     * fallback path changes if this fails or is never configured.
+     */
+    private async enrollUserCertificateViaM2M(
+        email: string,
+        clientId: string,
+        userAccessToken: string,
+        takServerUrl: string,
+    ): Promise<{ cert: string; key: string; ca: string[] }> {
+        console.log(`[M2M] Attempting bearer-token cert enrollment for ${email} via Authentik JWT-bearer exchange`);
+
+        // Exchange the user's own CloudTAK-issued access token for a new token,
+        // using the JWT-bearer client-assertion grant so Authentik ties the
+        // result to this user's subject rather than a generic client identity.
+        const tokenUrl = new URL('/application/o/token/', this.authentikUrl);
+        const tokenResponse = await fetch(tokenUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                grant_type: 'client_credentials',
+                client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+                client_assertion: userAccessToken,
+                client_id: clientId,
+                scope: 'openid profile email groups',
+            }),
+        });
+
+        const tokenBody = await tokenResponse.text();
+        if (!tokenResponse.ok) {
+            throw new Err(500, null, `[M2M] Authentik client_credentials exchange failed (${tokenResponse.status}): ${tokenBody}`);
+        }
+
+        let exchangedToken: string;
+        try {
+            exchangedToken = JSON.parse(tokenBody).access_token;
+        } catch {
+            throw new Err(500, null, `[M2M] Authentik token response was not valid JSON: ${tokenBody}`);
+        }
+        if (!exchangedToken) {
+            throw new Err(500, null, `[M2M] Authentik token response had no access_token: ${tokenBody}`);
+        }
+
+        console.log(`[M2M] Got exchanged token for ${email}, requesting cert from TAK Server`);
+
+        // Step 2: build the CSR ourselves - node-tak's Credentials.generate()
+        // hardcodes Basic auth (APIAuthPassword) and can't be reused for a
+        // bearer token, so the TLS config fetch + CSR + signClient/v2 POST is
+        // replicated here manually.
+        const configUrl = new URL('/Marti/api/tls/config', takServerUrl);
+        const configResponse = await fetch(configUrl, {
+            headers: { Authorization: `Bearer ${exchangedToken}` },
+        });
+        if (!configResponse.ok) {
+            throw new Err(500, null, `[M2M] TAK Server /tls/config rejected bearer token (${configResponse.status}): ${await configResponse.text()}`);
+        }
+        const configXml = await configResponse.text();
+
+        let parsedConfig: any;
+        try {
+            parsedConfig = xmljs.xml2js(configXml, { compact: true });
+        } catch (err) {
+            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${email}: ${configXml.slice(0, 500)}`);
+        }
+
+        let organization: string | undefined;
+        let organizationUnit: string | undefined;
+        const nameEntries = parsedConfig['ns2:certificateConfig']?.nameEntries;
+        if (nameEntries?.nameEntry) {
+            for (const ne of nameEntries.nameEntry) {
+                if (ne._attributes?.name === 'O') organization = ne._attributes.value;
+                if (ne._attributes?.name === 'OU') organizationUnit = ne._attributes.value;
+            }
+        }
+
+        const { csr, clientKey } = await pem.promisified.createCSR({
+            organization,
+            organizationUnit,
+            commonName: email,
+        });
+
+        const signUrl = new URL('/Marti/api/tls/signClient/v2', takServerUrl);
+        signUrl.searchParams.append('clientUid', `${email} (Web)`);
+        signUrl.searchParams.append('version', '3');
+
+        const signResponse = await fetch(signUrl, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${exchangedToken}`,
+            },
+            body: csr,
+        });
+
+        const signBody = await signResponse.text();
+        if (!signResponse.ok) {
+            throw new Err(500, null, `[M2M] TAK Server signClient/v2 rejected bearer token (${signResponse.status}): ${signBody}`);
+        }
+
+        let signed: any;
+        try {
+            signed = JSON.parse(signBody);
+        } catch {
+            throw new Err(500, null, `[M2M] TAK Server signClient/v2 response was not valid JSON: ${signBody}`);
+        }
+
+        let cert = '-----BEGIN CERTIFICATE-----\n' + signed.signedCert;
+        if (!signed.signedCert.endsWith('\n')) cert += '\n';
+        cert += '-----END CERTIFICATE-----';
+
+        const ca: string[] = [];
+        if (signed.ca0) ca.push(signed.ca0);
+        if (signed.ca1) ca.push(signed.ca1);
+
+        console.log(`[M2M] Cert enrollment succeeded for ${email} via bearer token exchange`);
+
+        return { cert, key: clientKey, ca };
+    }
+
     async enrollUserCertificate(
         username: string,
         takServerUrl: string,
+        userAccessToken?: string,
     ): Promise<{ cert: string; key: string; ca: string[] }> {
+        // Try the OAuth2 M2M bearer-token exchange first, if the caller has the
+        // user's own OIDC access token (only available right after the OIDC
+        // callback, not on password-login cert renewal paths) and CloudTAK's
+        // client ID is configured. This is a straight attempt with no feature
+        // flag - if it's not configured or TAK Server/Authentik reject it for
+        // any reason, the error is logged and the existing temporary-password
+        // flow below runs exactly as before.
+        if (userAccessToken && process.env.OIDC_CLIENT_ID) {
+            try {
+                return await this.enrollUserCertificateViaM2M(
+                    username,
+                    process.env.OIDC_CLIENT_ID,
+                    userAccessToken,
+                    takServerUrl,
+                );
+            } catch (err) {
+                console.error(`[M2M] Bearer-token cert enrollment failed for ${username}, falling back to temporary-password flow:`, err);
+            }
+        }
+
         return this.config.pg.transaction(async (tx) => {
             // Fixed namespace (arbitrary, just needs to not collide with other
             // advisory lock usage) + a hash of the username as the two int4 lock
@@ -502,16 +684,11 @@ export default class AuthentikProvider {
 
             const creds = await this.auth();
 
-            // Look up the Authentik user PK by username/email
-            const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
-            userUrl.searchParams.append('username', username);
-            const userResponse = await fetch(userUrl, {
-                headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
-            });
-            if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
-
-            const userData: any = await userResponse.json();
-            const user = userData.results[0];
+            // `username` here is the OIDC email claim, which is not guaranteed
+            // to equal the Authentik user's `username` field - look up by
+            // `email` instead, falling back to `username` for compatibility
+            // with any pre-existing password-auth callers.
+            const user = await this.findUserByEmailOrUsername(creds.token, username);
             if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
 
             // Set a random temporary password on the user account (overwritten after enrollment)
@@ -525,7 +702,10 @@ export default class AuthentikProvider {
             if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
 
             try {
-                const takAuth = new APIAuthPassword(username, tempPassword);
+                // Authenticate to the TAK Server using Authentik's actual
+                // `username` field (may differ from the OIDC email claim
+                // passed into this method).
+                const takAuth = new APIAuthPassword(user.username, tempPassword);
                 const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
                 const enrollment = await takApi.Credentials.generate();
                 return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };

@@ -147,8 +147,8 @@ export class Batch extends Construct {
     });
 
     // Add dependencies
-    this.jobDefinition.addDependency(this.computeEnvironment);
-    this.jobQueue.addDependency(this.computeEnvironment);
+    this.jobDefinition.addResourceDependency(this.computeEnvironment);
+    this.jobQueue.addResourceDependency(this.computeEnvironment);
 
     // Exclude Batch resources from environment-specific tags to prevent replacement
     // when switching between prod and dev-test environments

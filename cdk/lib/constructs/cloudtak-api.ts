@@ -43,6 +43,10 @@ export interface CloudTakApiProps {
   adminPasswordSecret: secretsmanager.ISecret;
   geofenceSecret: secretsmanager.ISecret;
   serviceUrl: string;
+  /** OIDC client ID from the Authentik OAuth2 provider (set when cloudtak.oidcEnabled is true) */
+  oidcClientId?: string;
+  /** Secret holding the OIDC client secret from the Authentik OAuth2 provider */
+  oidcClientSecret?: secretsmanager.ISecret;
 }
 
 export class CloudTakApi extends Construct {
@@ -70,7 +74,9 @@ export class CloudTakApi extends Construct {
       signingSecret,
       adminPasswordSecret,
       geofenceSecret,
-      serviceUrl
+      serviceUrl,
+      oidcClientId,
+      oidcClientSecret
     } = props;
 
     // Create CloudWatch log group for container logs
@@ -378,6 +384,13 @@ export class CloudTakApi extends Construct {
         cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN))
       );
       authentikAdminSecret.grantRead(taskRole);
+
+      // OIDC_CLIENT_SECRET is injected via ecs.Secret.fromSecretsManager() below,
+      // which is resolved by the execution role at container startup (not the
+      // task role, which is only for in-app SDK calls like the Authentik admin token).
+      if (oidcClientSecret) {
+        oidcClientSecret.grantRead(executionRole);
+      }
     }
 
 
@@ -421,12 +434,16 @@ export class CloudTakApi extends Construct {
         'ECS_CLUSTER_PREFIX': `TAK-${envConfig.stackName}-BaseInfra`,
         // Media server URL
         'MEDIA_URL': `https://${envConfig.mediainfra.mediaHostname}.${cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.HOSTED_ZONE_NAME))}:9997`,
-        // OIDC configuration
-        'ALB_OIDC_ENABLED': envConfig.cloudtak.oidcEnabled ? 'true' : 'false',
+        // OIDC configuration - CloudTAK performs the Authorization Code flow
+        // itself (GET /login/oidc, GET /login/oidc/callback); there is no ALB
+        // OIDC listener action.
+        'OIDC_ENABLED': envConfig.cloudtak.oidcEnabled ? 'true' : 'false',
         ...(envConfig.cloudtak.oidcEnabled && {
+          'OIDC_DISCOVERY_URL': `${cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_URL))}/application/o/${envConfig.cloudtak.authentikAppSlug || 'cloudtak'}/.well-known/openid-configuration`,
+          'OIDC_CLIENT_ID': oidcClientId || '',
+          'OIDC_SCOPES': 'openid profile email groups',
           'AUTHENTIK_URL': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_URL)),
           'AUTHENTIK_APP_SLUG': envConfig.cloudtak.authentikAppSlug || 'cloudtak',
-          'ALB_AUTH_SESSION_COOKIE': envConfig.cloudtak.albAuthSessionCookie || 'AWSELBAuthSessionCookieCloudTAK',
           'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN)),
           'SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN': envConfig.cloudtak.syncAuthentikAttributesOnLogin !== false ? 'true' : 'false',
           'OIDC_FORCED': envConfig.cloudtak.oidcForced !== false ? 'true' : 'false',
@@ -442,6 +459,9 @@ export class CloudTakApi extends Construct {
         'CLOUDTAK_ADMIN_USERNAME': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'username'),
         'CLOUDTAK_ADMIN_PASSWORD': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'password'),
         'CLOUDTAK_Config_geofence_password': ecs.Secret.fromSecretsManager(geofenceSecret),
+        ...(envConfig.cloudtak.oidcEnabled && oidcClientSecret && {
+          'OIDC_CLIENT_SECRET': ecs.Secret.fromSecretsManager(oidcClientSecret),
+        })
       }
     };
 

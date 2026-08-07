@@ -16,11 +16,12 @@ const pkg = JSON.parse(String(fs.readFileSync(new URL('../package.json', import.
 export default async function router(schema: Schema, config: Config) {
     const profileControl = new ProfileControl(config);
 
-    // Public endpoint — returns env-var based OIDC status for ALB OIDC integration
+    // Public endpoint — returns env-var based OIDC status so the login page
+    // can decide whether to show the SSO button before the user has a session
     await schema.get('/server/oidc', {
         name: 'Get OIDC Status',
         group: 'Server',
-        description: 'Public endpoint returning ALB OIDC configuration status',
+        description: 'Public endpoint returning in-app OIDC configuration status',
         res: Type.Object({
             oidc_enabled: Type.Boolean(),
             oidc_forced: Type.Boolean(),

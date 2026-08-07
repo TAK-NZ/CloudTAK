@@ -26,13 +26,13 @@ export class CloudTakOidcSetup extends Construct {
 
     // Create Lambda function for OIDC setup
     const oidcSetupFunction = new nodejs.NodejsFunction(this, 'OidcSetupFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, '../../src/cloudtak-oidc-setup/index.js'),
       handler: 'handler',
       bundling: {
         minify: true,
         sourceMap: true,
-        target: 'node20',
+        target: 'node24',
         externalModules: ['@aws-sdk/*'],
         forceDockerBundling: false,
         commandHooks: {
@@ -54,7 +54,9 @@ export class CloudTakOidcSetup extends Construct {
         PROVIDER_NAME: 'CloudTAK OAuth Provider',
         APPLICATION_NAME: 'CloudTAK',
         APPLICATION_SLUG: 'cloudtak',
-        REDIRECT_URIS: JSON.stringify([`${props.cloudtakUrl}/oauth2/idpresponse`]),
+        // CloudTAK performs the OIDC Authorization Code flow itself (no ALB
+        // OIDC listener action) - the IdP redirects back to our own callback route.
+        REDIRECT_URIS: JSON.stringify([`${props.cloudtakUrl}/api/login/oidc/callback`]),
         LAUNCH_URL: `${props.cloudtakUrl}/api/login/oidc`,
         GROUP_NAME: 'Team Awareness Kit',
       },

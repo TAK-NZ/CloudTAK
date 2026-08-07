@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess, AuthUser, tokenParser, oidcParser, isOidcEnabled } from '../lib/auth.js';
+import Auth, { AuthUserAccess, AuthUser, tokenParser, isOidcEnabled, isOidcForced } from '../lib/auth.js';
 import Config from '../lib/config.js';
 import Schema from '@openaddresses/batch-schema';
 import { Type } from '@sinclair/typebox';
@@ -8,6 +8,8 @@ import Provider from '../lib/provider.js';
 import ProfileControl from '../lib/control/profile.js';
 import { UAParser } from 'ua-parser-js';
 import { X509Certificate } from 'crypto';
+import { discovery, authorizationUrl, exchangeCode, userinfo } from '../lib/oidc.js';
+import type { OIDCConfig } from '../lib/oidc.js';
 
 /** Returns true when the cert PEM is missing, unparseable, or expires within 7 days. */
 function certNeedsRenewal(certPem: string | undefined): boolean {
@@ -20,6 +22,34 @@ function certNeedsRenewal(certPem: string | undefined): boolean {
     } catch {
         return true;
     }
+}
+
+/**
+ * Build the generic OIDC engine config from environment variables. The
+ * discovery/client/secret/redirect/scopes values are IdP-agnostic; Authentik-
+ * specific behaviour (role sync, cert enrollment, attribute sync, logout) is
+ * layered on top in the callback route below via AuthentikProvider.
+ */
+function oidcConfig(config: Config): OIDCConfig {
+    if (!isOidcEnabled()) {
+        throw new Err(403, null, 'OIDC authentication is not enabled');
+    }
+
+    const discoveryUrl = process.env.OIDC_DISCOVERY_URL;
+    const client = process.env.OIDC_CLIENT_ID;
+    const secret = process.env.OIDC_CLIENT_SECRET;
+
+    if (!discoveryUrl || !client || !secret) {
+        throw new Err(400, null, 'OIDC authentication is not fully configured');
+    }
+
+    return {
+        discovery: discoveryUrl,
+        client,
+        secret,
+        redirect: process.env.OIDC_REDIRECT_URI || `${config.API_URL}/api/login/oidc/callback`,
+        scopes: process.env.OIDC_SCOPES || 'openid profile email groups',
+    };
 }
 
 export default async function router(schema: Schema, config: Config) {
@@ -40,15 +70,6 @@ export default async function router(schema: Schema, config: Config) {
         }),
     }, async (req, res) => {
         try {
-            const oidc = await config.models.Setting.typedMany({
-                'oidc::enabled': false,
-                'oidc::enforced': false,
-            });
-
-            if (oidc['oidc::enabled'] && oidc['oidc::enforced']) {
-                throw new Err(403, null, 'Username/Password login is disabled - Please use SSO');
-            }
-
             let profile;
 
             if (config.server.auth.key && config.server.auth.cert && config.server.webtak) {
@@ -79,10 +100,10 @@ export default async function router(schema: Schema, config: Config) {
 
                 profile = await config.models.Profile.from(email);
 
-                // When ALB OIDC is forced, only system admins may use local username/password login.
+                // When OIDC is forced, only system admins may use local username/password login.
                 // Regular users must authenticate via SSO (/login/oidc).
                 // System admins can bypass by navigating to /login?local=true.
-                if (process.env.OIDC_FORCED === 'true' && !profile.system_admin) {
+                if (isOidcForced() && !profile.system_admin) {
                     throw new Err(403, null, 'Local login is restricted to system admins. Please use SSO.');
                 }
             } else {
@@ -210,38 +231,96 @@ export default async function router(schema: Schema, config: Config) {
     });
 
     /**
-     * ALB OIDC authentication endpoint.
-     * The ALB handles the OIDC redirect with the IdP and adds x-amzn-oidc-data
-     * headers. This route validates those headers, creates/updates the user
-     * profile, and redirects to the frontend with a signed JWT.
+     * Begin an OIDC SSO login - redirects the browser to the configured IdP's
+     * authorization endpoint. The IdP redirects back to /login/oidc/callback
+     * with an authorization code.
      */
     await schema.get('/login/oidc', {
         name: 'OIDC Login',
         group: 'Login',
-        description: 'ALB OIDC authentication - validates ALB headers and issues a JWT',
+        description: 'Redirect the browser to the configured OIDC Identity Provider to begin an SSO login',
         query: Type.Object({
-            redirect: Type.Optional(Type.String()),
-            error: Type.Optional(Type.String()),
+            redirect: Type.Optional(Type.String({
+                description: 'In-App location to navigate to after a successful login',
+            })),
         }),
     }, async (req, res) => {
-        const redirectTarget = req.query.redirect || '/';
-
         try {
-            if (!isOidcEnabled()) {
-                throw new Err(403, null, 'OIDC authentication is not enabled');
+            const oidc = oidcConfig(config);
+            const disc = await discovery(oidc.discovery);
+
+            const state = jwt.sign({
+                t: 'oidc',
+                ...(req.query.redirect ? { r: req.query.redirect } : {}),
+            }, config.SigningSecret, { expiresIn: '10m' });
+
+            res.redirect(authorizationUrl(disc, oidc, state));
+        } catch (err) {
+            console.error('OIDC login error:', err);
+            const message = err instanceof Error ? err.message : 'SSO Login Failed';
+            res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
+        }
+    });
+
+    /**
+     * OIDC Authorization Code callback. Exchanges the code for tokens directly
+     * with the IdP over TLS, fetches the userinfo claims (including group
+     * membership, used for Authentik role sync below), then runs the same
+     * profile create/update + certificate enrollment + attribute sync logic
+     * previously triggered by the ALB OIDC headers.
+     */
+    await schema.get('/login/oidc/callback', {
+        name: 'OIDC Login Callback',
+        group: 'Login',
+        description: 'OIDC Authorization Code callback - exchanges the code, validates the user and establishes a CloudTAK session',
+        query: Type.Object({
+            code: Type.Optional(Type.String()),
+            state: Type.Optional(Type.String()),
+            error: Type.Optional(Type.String()),
+            error_description: Type.Optional(Type.String()),
+        }),
+    }, async (req, res) => {
+        try {
+            if (req.query.error) {
+                throw new Err(401, null, req.query.error_description || req.query.error);
+            } else if (!req.query.code || !req.query.state) {
+                throw new Err(400, null, 'OIDC Callback is missing code or state');
             }
 
-            const { user: auth, groups } = await oidcParser(req as import('express').Request);
-            const email = auth.email;
+            let state: { t?: string; r?: string };
+            try {
+                state = jwt.verify(req.query.state, config.SigningSecret) as { t?: string; r?: string };
+            } catch (err) {
+                throw new Err(401, err instanceof Error ? err : null, 'Invalid OIDC State - Please try logging in again');
+            }
+            if (state.t !== 'oidc') throw new Err(401, null, 'Invalid OIDC State - Please try logging in again');
+
+            const oidc = oidcConfig(config);
+            const disc = await discovery(oidc.discovery);
+            const tokens = await exchangeCode(disc, oidc, req.query.code);
+            const claims = await userinfo(disc, tokens.access_token);
+
+            if (typeof claims.email !== 'string' || !claims.email) {
+                throw new Err(400, null, 'OIDC UserInfo did not return an email claim');
+            }
+            const email = claims.email.toLowerCase();
+
+            if (!config.server.auth.key || !config.server.auth.cert || !config.server.webtak) {
+                throw new Err(400, null, 'Server has not been configured');
+            }
 
             // Block accounts configured for local-only login
             const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
                 .split(',').map((a: string) => a.trim()).filter(Boolean);
             if (localOnlyAccounts.includes(email)) {
-                return res.redirect(`/login?error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
+                return res.redirect(`/login?sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
             }
 
-            // Parse group membership for role assignment
+            // Parse group membership for role assignment. Authentik includes
+            // `groups` in the userinfo response when the groups scope/claim
+            // mapping is attached to the OAuth2 provider (see the OIDC setup
+            // Lambda / CDK construct).
+            const groups: string[] = Array.isArray(claims.groups) ? claims.groups as string[] : [];
             const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
             const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
 
@@ -309,7 +388,7 @@ export default async function router(schema: Schema, config: Config) {
                     if (certNeedsRenewal(profile.auth?.cert)) {
                         try {
                             console.log(`Enrolling TAK certificate for OIDC user: ${email}`);
-                            const certs = await authentik.enrollUserCertificate(email, config.server.webtak);
+                            const certs = await authentik.enrollUserCertificate(email, config.server.webtak, tokens.access_token);
                             updates.auth = certs;
                             console.log(`TAK certificate enrolled successfully for: ${email}`);
                         } catch (err) {
@@ -390,33 +469,34 @@ export default async function router(schema: Schema, config: Config) {
                 { expiresIn: '16h' },
             );
 
-            const safeRedirect = String(redirectTarget).startsWith('/') ? String(redirectTarget) : '/';
-            return res.redirect(`/login?token=${encodeURIComponent(token)}&redirect=${encodeURIComponent(safeRedirect)}`);
+            const payload = Buffer.from(JSON.stringify({
+                access,
+                email: profile.username,
+                session: session.id,
+                token,
+                ...(state.r ? { redirect: state.r } : {}),
+            })).toString('base64url');
+
+            // The session is passed in the URL Fragment so it is never sent to the
+            // server or written to access logs - the Login page consumes and clears it
+            return res.redirect(`/login#sso=${payload}`);
         } catch (err) {
             console.error('OIDC login error:', err);
-            const errorMsg = err instanceof Error ? err.message : 'OIDC authentication failed';
-            return res.redirect(`/login?error=${encodeURIComponent(errorMsg)}`);
+            const message = err instanceof Error ? err.message : 'SSO Login Failed';
+            return res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
         }
     });
 
     /**
-     * Logout endpoint — expires ALB OIDC session cookies and redirects to the
-     * IdP end-session endpoint (if configured) or to /login.
+     * Logout endpoint — redirects to the IdP end-session endpoint (if
+     * configured) so the Authentik session is also terminated, or to /login.
      */
     await schema.get('/logout', {
         name: 'Logout',
         group: 'Login',
-        description: 'Logout and clear ALB OIDC session cookies',
+        description: 'Logout and redirect to the IdP end-session endpoint if OIDC is configured',
     }, async (req, res) => {
         try {
-            const cookieName = process.env.ALB_AUTH_SESSION_COOKIE || 'AWSELBAuthSessionCookie';
-            const cookieOptions = { path: '/', httpOnly: true, secure: true, maxAge: -1 };
-
-            // ALB can create up to 4 cookie shards (0–3)
-            for (let i = 0; i < 4; i++) {
-                res.cookie(`${cookieName}-${i}`, '', cookieOptions);
-            }
-
             if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_APP_SLUG) {
                 const authentikBase = process.env.AUTHENTIK_URL.replace(/\/$/, '');
                 return res.redirect(`${authentikBase}/application/o/${process.env.AUTHENTIK_APP_SLUG}/end-session/`);

@@ -2,60 +2,48 @@
 
 This directory contains Git patches for the OIDC authentication implementation. These patches should be applied after syncing with upstream CloudTAK to restore TAK.NZ-specific OIDC functionality.
 
+**Architecture note (Aug 2026):** OIDC authentication moved from an ALB-based
+`authenticateOidc` listener action (ALB handled the Authorization Code
+exchange and injected the result as request headers/cookies) to an in-app
+Authorization Code flow handled entirely by CloudTAK's own API
+(`GET /api/login/oidc` redirects to the IdP, `GET /api/login/oidc/callback`
+performs the code exchange, userinfo fetch, role sync, and cert enrollment).
+The ALB is now a plain TLS pass-through with no OIDC involvement. This means
+most of the descriptions below (ALB headers, ES256 signature verification of
+ALB-issued tokens, `?token=` query-string handoff) describe the *previous*
+implementation and are kept here for historical context on what changed and
+why — see each patch file's actual diff for the current behavior, and
+`PATCH_AUDIT.md` for up-to-date one-line summaries.
+
 ## Patches
 
 ### Backend (API)
 
 1. **011-oidc-auth-lib.patch** - `api/lib/auth.ts`
-   - Adds `oidcParser()` function to parse ALB OIDC headers
-   - Adds `isOidcEnabled()` helper function
-   - Feature flag controlled via `ALB_OIDC_ENABLED` environment variable
+   - `isOidcEnabled()`/`isOidcForced()` helpers, feature-flagged via `OIDC_ENABLED`/`OIDC_FORCED` env vars
+   - ALB JWT header parsing/ES256 verification (`oidcParser()`) removed — no longer needed now that CloudTAK's own API performs the Authorization Code exchange directly
 
-2. **012-oidc-auth-parser.patch** - `api/lib/auth.ts`
-   - Implements JWT signature verification using ALB public keys
-   - Handles ES256 algorithm with IEEE P1363 encoding
-   - Validates token expiration and issuer
+2. **013-oidc-login-route.patch** - `api/routes/login.ts`
+   - `GET /api/login/oidc` — redirects to the IdP's authorization endpoint
+   - `GET /api/login/oidc/callback` — exchanges the code, fetches userinfo, syncs roles from the `groups` claim, enrolls a TAK client cert (see patch 026), syncs Authentik attributes, and hands the session to the frontend via a `/login#sso=<base64url payload>` URL fragment (not a query string, to keep the session token out of server access logs and browser history)
+   - `OIDC_FORCED` system-admin bypass: blocks non-admin users from `POST /api/login` with a 403 when SSO is enforced; system admins can still log in locally via `/login?local=true`
 
-3. **013-oidc-login-route.patch** - `api/routes/login.ts`
-   - Adds GET `/api/login/oidc` endpoint
-   - Auto-creates users on first OIDC login
-   - **Automatic certificate enrollment**:
-     - Gets Authentik API token from Secrets Manager
-     - Creates application password in Authentik
-     - Requests certificate from TAK Server
-     - Stores certificate in user profile
-   - Generates JWT token and redirects to frontend
-   - Includes helper functions: `getAuthentikToken()` and `createAuthentikAppPassword()`
-
-4. **014-oidc-server-route.patch** - `api/routes/server.ts`
+3. **014-oidc-server-route.patch** - `api/routes/server.ts`
    - Adds GET `/api/server/oidc` public endpoint
-   - Returns `oidc_enabled` and `authentik_url`
-   - Adds `oidc_enabled` field to all `/api/server` responses
+   - Returns `oidc_enabled` and `oidc_forced`
 
-5. **015-oidc-types.patch** - `api/lib/types.ts`
+4. **015-oidc-types.patch** - `api/lib/types.ts`
    - Adds `oidc_enabled: Type.Boolean()` to ServerResponse type
 
 ### Frontend
 
-6. **016-oidc-login-component.patch** - `api/web/src/components/Login.vue`
-   - Adds "Login with SSO" button (conditionally displayed)
-   - Handles token from OIDC redirect in URL query params
-   - Checks OIDC status via `/api/server/oidc` endpoint
-   - Redirects to `/api/login/oidc` on SSO button click
-   - Imports IconKey from @tabler/icons-vue
+5. **016-oidc-login-component.patch** - `api/web/src/components/Login.vue`
+   - "Login with SSO" button, redirects to `/api/login/oidc`
+   - `consumeSSOLogin()` parses the session out of the `/login#sso=<payload>` URL fragment set by the callback route above (previously a `?token=` query param)
+   - `OIDC_FORCED` handling: auto-redirects to SSO unless `?local=true` is present; dynamic loading message during the redirect/completion window to avoid a login-form flash
 
-7. **017-oidc-logout-route.patch** - `api/routes/login.ts`
-   - Adds GET `/api/logout` endpoint
-   - Sets ALB cookie expiration to -1 (clears cookies)
-   - Redirects to Authentik end-session endpoint
-   - Follows AWS ALB logout documentation
-
-8. **018-oidc-app-logout.patch** - `api/web/src/App.vue`
+6. **018-oidc-app-logout.patch** - `api/web/src/App.vue`
    - Updates logout function to redirect to `/api/logout`
-   - Clears localStorage token before redirect
-
-9. **019-oidc-mainmenu-logout.patch** - `api/web/src/components/CloudTAK/MainMenuContents.vue`
-   - Updates MainMenu logout function to redirect to `/api/logout`
    - Clears localStorage token before redirect
 
 ## Applying Patches
@@ -96,16 +84,21 @@ The OIDC implementation requires these npm packages (should already be in packag
 ### Backend (`api/package.json`)
 - `@tak-ps/node-tak` - TAK Server API client
 - `@aws-sdk/client-secrets-manager` - AWS Secrets Manager
-- `axios` - HTTP client for Authentik API
+- No HTTP client dependency needed — the Authorization Code exchange, userinfo fetch, and all Authentik API calls use the native `fetch` global (Node 24+). The `axios` dependency previously required here has been removed.
 
 ### Frontend (`api/web/package.json`)
 - `@tabler/icons-vue` - Icon library (IconKey)
 
 ## Environment Variables
 
-After applying patches, ensure these environment variables are set (handled by CDK):
+After applying patches, ensure these environment variables are set (handled by CDK — see `cdk/lib/constructs/cloudtak-api.ts`):
 
-- `ALB_OIDC_ENABLED="true"` - Enable OIDC feature
+- `OIDC_ENABLED="true"` - Enable OIDC feature
+- `OIDC_FORCED="true"` - Enforce SSO login (blocks non-admin local login)
+- `OIDC_DISCOVERY_URL="https://account.test.tak.nz/application/o/cloudtak/.well-known/openid-configuration"` - OIDC discovery document URL
+- `OIDC_CLIENT_ID="..."` - OIDC client ID
+- `OIDC_CLIENT_SECRET` - resolved from Secrets Manager by the ECS execution role, not passed as plaintext
+- `OIDC_SCOPES="openid profile email groups"` - requested scopes
 - `AUTHENTIK_URL="https://account.test.tak.nz"` - Authentik instance URL
 - `AUTHENTIK_API_TOKEN_SECRET_ARN="arn:aws:..."` - Secret ARN for Authentik API token
 
@@ -129,9 +122,9 @@ If a patch fails due to upstream changes:
 
 1. Check the rejected hunks in `.rej` files
 2. Manually apply the changes
-3. Regenerate the patch:
+3. Regenerate the patch (see `PATCH_AUDIT.md` for the exact baseline commit to diff against):
    ```bash
-   git diff HEAD -- <file> > scripts/patches/01X-oidc-<name>.patch
+   git diff <baseline-commit> HEAD -- <file> > scripts/patches/0XX-<name>.patch
    ```
 
 ### Merge Conflicts
@@ -140,103 +133,17 @@ If upstream modified the same code:
 
 1. Apply patch with 3-way merge:
    ```bash
-   git apply --3way scripts/patches/01X-oidc-<name>.patch
+   git apply --3way scripts/patches/0XX-<name>.patch
    ```
 2. Resolve conflicts manually
 3. Update patch if needed
 
-### Authentik Provider Implementation
-
-10. **020-nginx-buffer-size.patch** - `api/nginx.conf.js`
-   - Increases proxy buffer size for large OIDC headers
-   - Sets `proxy_buffer_size 16k` and `proxy_buffers 8 16k`
-
-11. **021-authentik-attribute-sync.patch** - `api/lib/control/profile.ts`
-   - Syncs TAK attributes from Authentik to profile on login
-   - Updates `tak_callsign` and `tak_group` from OIDC data
-
-12. **022-icon-rotation-default.patch** - Multiple Vue files
-   - Fixes icon rotation default to respect system setting
-   - Updates CoTView, Map, MenuFiles, MenuImports, MenuOverlays, NotificationIcon, SelectFeats, Share, ShareToMission, LayerIncomingConfig
-
-13. **023-oidc-configurable-groups.patch** - `api/routes/login.ts`
-   - Makes admin group names configurable via environment variables
-   - Uses `OIDC_SYSTEM_ADMIN_GROUP` and `OIDC_AGENCY_ADMIN_GROUP_PREFIX`
-
-14. **024-icon-rotation-boolean-parse.patch** - Multiple Vue files
-   - Ensures icon rotation is parsed as boolean
-   - Prevents string "false" from being truthy
-
-15. **025-oidc-use-profile-control.patch** - `api/routes/login.ts`
-   - Uses Profile.commit() instead of direct database update
-   - Ensures proper profile management
-
-16. **026-authentik-provider-complete.patch** - `api/lib/authentik-provider.ts` (NEW FILE)
-   - **Complete AuthentikProvider Implementation**: Creates full Authentik API integration class
-   - **Agencies & Channels**: Implements agencies(), agency(), channels() with agency filtering
-   - **Machine User Management**: Complete createMachineUser(), fetchMachineUser(), updateMachineUser() implementation
-   - **Channel Assignment**: Implements attachMachineUser() to assign users to channel groups
-   - **Admin Privileges**: Fully implements login() method to fetch groups and determine system/agency admin status
-   - **Username Format**: Service accounts use `etl-agency{id}-{name}` format (e.g., `etl-agency1-fire-data`)
-   - **Simplified Logic**: Uses agency ID directly instead of fetching and sanitizing agency name
-   - **Critical Fix**: Sets both `name` and `username` fields to formatted username (Authentik uses name field)
-   - **Token Management**: AWS Secrets Manager integration with 1-hour caching
-   - **Channel Filtering**: Filters by agency attribute, removes "tak_" prefix, uses channelId or num_pk for IDs
-
-17. **027-fix-machine-user-profile-lookup.patch** - `api/routes/ldap.ts`
-   - Fixes missing profile.id by calling external.login() on demand
-   - Fetches and stores Authentik user ID when profile.id is null
-   - Applies to GET /api/ldap/channel, POST /api/ldap/user, PUT /api/ldap/user/:email
-   - Prevents "External ID must be set on profile" errors
-
-18. **028-agency-description-field.patch** - `api/routes/agency.ts`, `api/web/src/components/ETL/Connection/AgencyBadge.vue`, `api/web/src/derived-types.d.ts`
-   - Adds description field to AgencyResponse schema as optional
-   - Fixes frontend to display agency.description instead of hardcoded "No Description"
-   - Updates TypeScript type definition to include description field
-   - Maintains backward compatibility with COTAK provider using Type.Optional(Type.Any())
-
-19. **029-remove-login-modal.patch** - `api/web/src/App.vue`, `api/web/src/components/util/LoginModal.vue`
-   - Removes LoginModal component usage on session expiry
-   - Deletes unused LoginModal.vue file with hardcoded COTAK URLs
-   - Redirects to standard login page instead of showing modal
-   - Standard login page handles both traditional and OIDC SSO login
-   - See UPSTREAM-BUG-LOGIN-MODAL.md for details
-
-20. **030-fix-connection-agency-edit-permission.patch** - `api/routes/connection.ts`
-   - Fixes permission check for agency field updates
-   - Only system admins can change agency after connection creation
-   - Prevents agency admins from moving connections between agencies
-
-21. **031-connection-cleanup-cert-revoke.patch** - `api/routes/connection.ts`
-   - **Certificate Revocation**: Automatically revokes TAK Server certificates when connections are deleted
-   - **Service Account Cleanup**: Deletes Authentik service accounts (machine users) on connection deletion
-   - **Security Enhancement**: Prevents deleted connections from accessing TAK Server
-   - **Graceful Error Handling**: Connection deletion succeeds even if cleanup fails
-   - **Logging**: All cleanup operations logged for audit trail
-   - Uses `@tak-ps/node-tak` Certificate.revoke() method
-   - Only deletes Authentik users marked as `machineUser: true`
-
-22. **032-authentik-delete-machine-user.patch** - `api/lib/authentik-provider.ts`
-   - **Adds deleteMachineUser() method**: Safely deletes Authentik service accounts
-   - **Safety Checks**: Only deletes users with `machineUser: true` attribute
-   - **Error Handling**: Logs errors but doesn't throw (allows connection deletion to continue)
-   - **Audit Logging**: Success and failure messages logged
-   - **Integration**: Called by connection deletion endpoint when using Authentik provider
-
-## Applying Patches
-
-After syncing with upstream, apply patches in order:
-
-```bash
-# Navigate to CloudTAK root
-cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
-
-# Apply all patches in order
-for patch in scripts/patches/0*-*.patch; do
-    echo "Applying $patch..."
-    git apply "$patch" || echo "Failed to apply $patch"
-done
-```
+> **Note:** Patches 020–032 (nginx buffer/CSP, Authentik provider methods, agency/machine-user
+> management, connection cleanup, etc.) are documented in `PATCH_AUDIT.md`, which is the
+> single up-to-date source of truth for every patch's current status and description. This
+> file previously duplicated those descriptions with stale, ALB-era wording; see
+> `PATCH_AUDIT.md` instead of relying on anything below this point for patches outside the
+> OIDC-specific ones listed above.
 
 ## Documentation
 

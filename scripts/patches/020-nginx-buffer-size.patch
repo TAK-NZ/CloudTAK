@@ -1,27 +1,34 @@
 diff --git a/api/nginx.conf.js b/api/nginx.conf.js
-index a094f10e7..ead61a2de 100644
+index a094f10e7..f2c24d332 100644
 --- a/api/nginx.conf.js
 +++ b/api/nginx.conf.js
-@@ -23,7 +23,10 @@ if (url.hostname === 'localhost') {
+@@ -15,15 +15,27 @@ if (url.hostname === 'localhost') {
+     // FQDN: Check if API_URL is something.example.com vs example.com
+     const isSub = process.env.API_URL.match(/.*\.*\..*?\..*?$/)
+ 
++    // Parse CLOUDTAK_TILE_ORIGINS — a comma-separated list of trusted external
++    // tile CDN origins (e.g. "https://basemaps.linz.govt.nz,https://mts1.google.com").
++    // These are added to connect-src and img-src so MapLibre can fetch tiles
++    // directly from the CDN instead of going through the CloudTAK tile proxy.
++    const tileOrigins = (process.env.CLOUDTAK_TILE_ORIGINS || '')
++        .split(',')
++        .map(s => s.trim())
++        .filter(Boolean);
++
+     const csp = {
+         'default-src': [`'self'`],
+-        'img-src': [`'self'`, 'data:', 'blob:'],
++        'img-src': [`'self'`, 'data:', 'blob:', ...tileOrigins],
+         'media-src': [`'self'`, 'blob:'],
+         'font-src': [`'self'`, 'data:'],
          'worker-src': [`'self'`, 'blob:'],
          'style-src-elem': [`'self'`, `'unsafe-inline'`],
          'style-src-attr': [`'unsafe-inline'`],
 -        'connect-src': [`'self'`]
-+        'connect-src': [`'self'`],
-+        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net
++        'connect-src': [`'self'`, ...tileOrigins],
++        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net and https://adss.internal/
 +        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
-+        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net']
++        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net', 'https://adss.internal/']
      }
  
      cspstr = `add_header 'Content-Security-Policy' "`
-@@ -79,6 +82,10 @@ http {
- 
-     access_log  /var/log/nginx/access.log  main;
- 
-+    # Increase buffer sizes for ALB OIDC cookies
-+    large_client_header_buffers 4 32k;
-+    client_header_buffer_size 32k;
-+
-     server {
-         listen 5000;
-         listen [::]:5000;
