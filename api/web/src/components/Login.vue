@@ -66,7 +66,7 @@
                                     v-if='loading'
                                     :desc='loadingMessage'
                                 />
-                                <template v-else-if='brandStore.oidc.enabled && brandStore.oidc.enforced'>
+                                <template v-else-if='albOidcEnabled && albOidcForced && !route.query.local'>
                                     <div class='text-center text-muted py-3'>
                                         <div class='mb-2'>
                                             <IconLock
@@ -145,39 +145,9 @@
                                         </button>
                                     </div>
                                 </template>
-                                <template v-if='brandStore.oidc.enabled'>
-                                    <div
-                                        v-if='!brandStore.oidc.enforced'
-                                        class='my-3 d-flex align-items-center'
-                                    >
-                                        <hr class='flex-grow-1 m-0'>
-                                        <span class='mx-2 text-muted small'>or</span>
-                                        <hr class='flex-grow-1 m-0'>
-                                    </div>
-                                    <TablerInlineAlert
-                                        v-if='!brandStore.oidc.discovery'
-                                        class='mb-2'
-                                        title='OIDC Misconfigured'
-                                        description='The administrator has not configured OIDC correctly. Please contact your system administrator.'
-                                        severity='warning'
-                                    />
-                                    <a
-                                        v-else
-                                        class='btn btn-secondary w-100 d-flex align-items-center justify-content-center gap-2'
-                                        href='/api/login/oidc'
-                                    >
-                                        <img
-                                            v-if='brandStore.oidc.logo'
-                                            :src='brandStore.oidc.logo'
-                                            style='height: 20px; width: 20px; object-fit: contain;'
-                                            alt=''
-                                        >
-                                        Sign in with {{ brandStore.oidc.name || 'SSO' }}
-                                    </a>
-                                </template>
                                 <template v-if='albOidcEnabled && !loading'>
                                     <div
-                                        v-if='!brandStore.oidc.enforced'
+                                        v-if='!albOidcForced || route.query.local'
                                         class='my-3 d-flex align-items-center'
                                     >
                                         <hr class='flex-grow-1 m-0'>
@@ -197,10 +167,7 @@
                                     </button>
                                 </template>
                                 <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
-                                    <div
-                                        v-if='!brandStore.oidc.enabled || !brandStore.oidc.enforced'
-                                        class='my-3 d-flex align-items-center'
-                                    >
+                                    <div class='my-3 d-flex align-items-center'>
                                         <hr class='flex-grow-1 m-0'>
                                         <span class='mx-2 text-muted small'>or</span>
                                         <hr class='flex-grow-1 m-0'>
@@ -411,26 +378,12 @@ const brandStore = reactive<{
     passkey: {
         enabled: boolean;
     };
-    oidc: {
-        enforced: boolean;
-        enabled: boolean;
-        discovery: string;
-        name: string;
-        logo: string;
-    };
 }>({
     loaded: false,
     login: undefined,
     passkey: {
         enabled: true,
     },
-    oidc: {
-        enforced: false,
-        enabled: false,
-        discovery: '',
-        name: '',
-        logo: ''
-    }
 });
 
 const footerLogoLoaded = ref(false);
@@ -625,11 +578,6 @@ onMounted(async () => {
         'login::brand::logo',
         'login::background::enabled',
         'login::background::color',
-        'oidc::enforced',
-        'oidc::enabled',
-        'oidc::discovery',
-        'oidc::name',
-        'oidc::logo',
         'passkey::enabled' as keyof FullConfig,
     ]);
 
@@ -648,15 +596,10 @@ onMounted(async () => {
             color: config['login::background::color']
         }
     };
-    brandStore.oidc.enforced = config['oidc::enforced'] === true;
-    brandStore.oidc.enabled = config['oidc::enabled'] === true;
-    brandStore.oidc.discovery = config['oidc::discovery'] as string || '';
-    brandStore.oidc.name = config['oidc::name'] as string || '';
-    brandStore.oidc.logo = config['oidc::logo'] as string || '';
     brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
     brandStore.loaded = true;
 
-    // Check ALB-based OIDC status (separate from Settings-driven generic OIDC)
+    // Check in-app OIDC status (env-var/CDK-driven, see GET /api/server/oidc)
     try {
         const oidcRes = await fetch('/api/server/oidc');
         if (oidcRes.ok) {
