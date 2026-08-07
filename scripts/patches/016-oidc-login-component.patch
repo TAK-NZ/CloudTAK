@@ -1,7 +1,16 @@
 diff --git a/api/web/src/components/Login.vue b/api/web/src/components/Login.vue
-index 59ecc6ace..a7918ffa6 100644
+index 59ecc6ace..e86d8619e 100644
 --- a/api/web/src/components/Login.vue
 +++ b/api/web/src/components/Login.vue
+@@ -64,7 +64,7 @@
+                                 </h2>
+                                 <TablerLoading
+                                     v-if='loading'
+-                                    desc='Logging in'
++                                    :desc='loadingMessage'
+                                 />
+                                 <template v-else-if='brandStore.oidc.enabled && brandStore.oidc.enforced'>
+                                     <div class='text-center text-muted py-3'>
 @@ -175,7 +175,28 @@
                                          Sign in with {{ brandStore.oidc.name || 'SSO' }}
                                      </a>
@@ -41,22 +50,51 @@ index 59ecc6ace..a7918ffa6 100644
  import { Preferences } from '@capacitor/preferences';
  import { startAuthentication } from '@simplewebauthn/browser';
  import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
-@@ -493,6 +514,8 @@ watch(showSettings, (val) => {
+@@ -493,6 +514,9 @@ watch(showSettings, (val) => {
  });
  
  const loading = ref(false);
++const loadingMessage = ref('Logging in');
 +const albOidcEnabled = ref(false);
 +const albOidcForced = ref(false);
  const storedUsername = ref<string | null>(null);
  const body = ref<Login_Create>({
      username: '',
-@@ -509,6 +532,32 @@ const certRenewal = reactive<{
+@@ -509,6 +533,60 @@ const certRenewal = reactive<{
  });
  
  onMounted(async () => {
++    // Handle ETL API token passed as URL param for war room / kiosk display use.
++    // These tokens start with 'etl.' and are exchanged for a session JWT via
++    // POST /api/login/token before the normal login flow continues.
++    if (route.query.token && String(route.query.token).startsWith('etl.')) {
++        loading.value = true;
++        loadingMessage.value = 'Authenticating...';
++        const etlToken = String(route.query.token);
++        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
++        try {
++            const response = await fetch('/api/login/token', {
++                method: 'POST',
++                headers: { 'Content-Type': 'application/json' },
++                body: JSON.stringify({ token: etlToken }),
++            });
++            if (!response.ok) throw new Error(`Authentication failed: ${response.status}`);
++            const login = await response.json() as { token: string; email: string; session: string };
++            await appStore.persistSession({ token: login.token, username: login.email, session: login.session });
++            emit('login');
++            await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
++        } catch (err) {
++            loading.value = false;
++            console.error('API token login failed:', err);
++            // Fall through to normal login form
++        }
++        return;
++    }
++
 +    // Handle token passed back from ALB OIDC redirect (/api/login/oidc → /login?token=xxx)
 +    if (route.query.token) {
 +        loading.value = true;
++        loadingMessage.value = 'Completing login...';
 +        const token = String(route.query.token);
 +        const redirectPath = route.query.redirect ? String(route.query.redirect) : '/';
 +        // Decode the JWT minimally to extract email and session for persistence
@@ -83,7 +121,7 @@ index 59ecc6ace..a7918ffa6 100644
      const config = await Config.list([
          'login::name',
          'login::logo',
-@@ -550,7 +599,25 @@ onMounted(async () => {
+@@ -550,7 +628,27 @@ onMounted(async () => {
      brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
      brandStore.loaded = true;
  
@@ -97,6 +135,8 @@ index 59ecc6ace..a7918ffa6 100644
 +            albOidcForced.value = oidcStatus.oidc_forced || false;
 +            // If SSO is forced and no explicit local-login override, redirect immediately
 +            if (albOidcForced.value && !route.query.local) {
++                loading.value = true;
++                loadingMessage.value = 'Redirecting to SSO...';
 +                loginWithSSO();
 +                return;
 +            }
@@ -110,7 +150,22 @@ index 59ecc6ace..a7918ffa6 100644
          startConditionalPasskey();
      }
  
-@@ -758,6 +825,11 @@ function skipCertRenewal() {
+@@ -613,7 +711,13 @@ async function createLogin() {
+         navigateAfterLogin();
+     } catch (err) {
+         loading.value = false;
+-        throw err;
++        // When OIDC is forced and the backend rejects a non-admin local login,
++        // redirect to SSO instead of bubbling up a confusing error.
++        if (albOidcForced.value && err instanceof Error && err.message.includes('restricted')) {
++            loginWithSSO();
++        } else {
++            throw err;
++        }
+     }
+ }
+ 
+@@ -758,6 +862,11 @@ function skipCertRenewal() {
      certRenewal.password = '';
      navigateAfterLogin();
  }

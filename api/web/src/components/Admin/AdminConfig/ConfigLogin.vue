@@ -107,67 +107,12 @@
                             :disabled='!edit'
                         />
 
-                        <TablerToggle
-                            v-model='config["oidc::enabled"]'
+                        <TablerInlineAlert
                             class='mt-3'
-                            label='Enable OIDC SSO'
-                            :disabled='!edit'
+                            title='SSO / OIDC Configuration'
+                            description='Single Sign-On is configured via CDK deployment settings (cloudtak.oidcEnabled and related keys in cdk.json), not here. See docs/OIDC_AUTHENTICATION.md.'
+                            severity='info'
                         />
-
-                        <template v-if='config["oidc::enabled"]'>
-                            <TablerInlineAlert
-                                class='mt-2 mb-2'
-                                title='Beta Feature'
-                                description='OIDC SSO is currently in beta and may not be fully functional.'
-                                severity='warning'
-                            />
-                            <TablerToggle
-                                v-model='config["oidc::enforced"]'
-                                label='Enforce SSO (Disable Username/Password Login)'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::name"]'
-                                label='Provider Name'
-                                placeholder='SSO'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::discovery"]'
-                                label='OIDC Discovery URL'
-                                placeholder='https://...'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::client"]'
-                                label='Client ID'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::secret"]'
-                                label='Client Secret'
-                                type='password'
-                                autocomplete='new-password'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::redirect"]'
-                                label='Redirect URI'
-                                placeholder='/api/auth/callback'
-                                :disabled='!edit'
-                            />
-                            <TablerInput
-                                v-model='config["oidc::scopes"]'
-                                label='Scopes'
-                                placeholder='openid profile email'
-                                :disabled='!edit'
-                            />
-                            <TablerUploadLogo
-                                v-model='config["oidc::logo"]'
-                                label='OIDC Logo'
-                                :disabled='!edit'
-                            />
-                        </template>
 
                         <TablerToggle
                             v-model='config["passkey::enabled"]'
@@ -213,15 +158,6 @@ interface LoginConfig {
     'login::brand::logo': string;
     'login::background::enabled': boolean;
     'login::background::color': string;
-    'oidc::enabled': boolean;
-    'oidc::enforced': boolean;
-    'oidc::name': string;
-    'oidc::client': string;
-    'oidc::secret': string;
-    'oidc::discovery': string;
-    'oidc::redirect': string;
-    'oidc::scopes': string;
-    'oidc::logo': string;
     'passkey::enabled': boolean;
 }
 
@@ -240,15 +176,6 @@ const config = ref<LoginConfig>({
     'login::brand::logo': '',
     'login::background::enabled': false,
     'login::background::color': '#000000',
-    'oidc::enabled': false,
-    'oidc::enforced': false,
-    'oidc::name': '',
-    'oidc::client': '',
-    'oidc::secret': '',
-    'oidc::discovery': '',
-    'oidc::redirect': '',
-    'oidc::scopes': '',
-    'oidc::logo': '',
     'passkey::enabled': true,
 });
 
@@ -284,15 +211,6 @@ async function fetch(): Promise<void> {
             'login::brand::logo': data['login::brand::logo'] ?? '',
             'login::background::enabled': data['login::background::enabled'] ?? false,
             'login::background::color': data['login::background::color'] ?? '#000000',
-            'oidc::enabled': data['oidc::enabled'] ?? false,
-            'oidc::enforced': data['oidc::enforced'] ?? false,
-            'oidc::name': data['oidc::name'] ?? '',
-            'oidc::client': data['oidc::client'] ?? '',
-            'oidc::secret': data['oidc::secret'] ?? '',
-            'oidc::discovery': data['oidc::discovery'] ?? '',
-            'oidc::redirect': data['oidc::redirect'] ?? '',
-            'oidc::scopes': data['oidc::scopes'] ?? '',
-            'oidc::logo': data['oidc::logo'] ?? '',
             'passkey::enabled': data['passkey::enabled'] ?? true,
         };
     } catch (error) {

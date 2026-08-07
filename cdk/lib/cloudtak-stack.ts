@@ -279,8 +279,12 @@ export class CloudTakStack extends cdk.Stack {
       cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.S3_ELB_LOGS))
     );
     
-    // Configure OIDC if enabled
-    let oidcConfig: any = undefined;
+    // Configure OIDC if enabled. CloudTAK performs the Authorization Code flow
+    // itself (see api/routes/login.ts) — the ALB has no OIDC listener action,
+    // so oidcSetup only needs to provision the Authentik OAuth2 client and hand
+    // back credentials for the CloudTAK API container.
+    let oidcClientId: string | undefined;
+    let oidcClientSecret: cdk.aws_secretsmanager.ISecret | undefined;
     if (envConfig.cloudtak.oidcEnabled) {
       const authentikUrl = envConfig.cloudtak.authentikUrl || 
         cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);
@@ -302,26 +306,18 @@ export class CloudTakStack extends cdk.Stack {
         securityGroup: securityGroups.ecs,
       });
 
-      oidcConfig = {
-        enabled: true,
-        issuer: `${authentikUrl}/application/o/cloudtak/`,
-        authorizationEndpoint: `${authentikUrl}/application/o/authorize/`,
-        tokenEndpoint: `${authentikUrl}/application/o/token/`,
-        userInfoEndpoint: `${authentikUrl}/application/o/userinfo/`,
-        clientId: oidcSetup.clientId,
-        clientSecret: oidcSetup.clientSecret,
-        sessionCookieName: envConfig.cloudtak.albAuthSessionCookie || 'AWSELBAuthSessionCookieCloudTAK'
-      };
+      oidcClientId = oidcSetup.clientId;
+      oidcClientSecret = oidcSetup.clientSecret;
     }
     
-    // Create Application Load Balancer with HTTPS
+    // Create Application Load Balancer with HTTPS (plain TLS termination —
+    // OIDC authentication happens inside the CloudTAK application, not at the ALB)
     const loadBalancer = new LoadBalancer(this, 'LoadBalancer', {
       envConfig,
       vpc,
       albSecurityGroup: securityGroups.alb,
       certificate,
-      logsBucket,
-      oidcConfig
+      logsBucket
     });
 
     // Create Route53 DNS record for the service
@@ -384,7 +380,9 @@ export class CloudTakStack extends cdk.Stack {
       signingSecret: secrets.signingSecret,
       adminPasswordSecret: secrets.adminPasswordSecret,
       geofenceSecret: secrets.geofenceSecret,
-      serviceUrl: route53Records.serviceUrl
+      serviceUrl: route53Records.serviceUrl,
+      oidcClientId,
+      oidcClientSecret
     });
 
     // Create AWS Batch resources for ETL processing

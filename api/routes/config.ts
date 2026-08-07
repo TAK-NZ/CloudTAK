@@ -22,11 +22,6 @@ export const PublicConfigKeys: (keyof Static<typeof FullConfig>)[] = [
     'login::background::enabled',
     'login::background::color',
     'login::logo',
-    'oidc::enabled',
-    'oidc::enforced',
-    'oidc::name',
-    'oidc::discovery',
-    'oidc::logo',
     'passkey::enabled',
 ];
 

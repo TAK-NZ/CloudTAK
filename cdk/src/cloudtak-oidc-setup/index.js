@@ -53,12 +53,17 @@ exports.handler = async (event, context) => {
       matching_mode: 'strict'
     }));
     
-    // Get required scope mappings
+    // Get required scope mappings. `groups` is a custom mapping (not one of
+    // Authentik's built-in OpenID scopes) added so CloudTAK's OIDC callback can
+    // read group membership directly from the userinfo response, without a
+    // separate Authentik API round-trip, for system/agency admin role sync.
     const scopeMappings = [];
     for (const scope of ['email', 'openid', 'profile']) {
       const mapping = await getOrCreateScopeMapping(api, scope);
       scopeMappings.push(mapping.pk);
     }
+    const groupsMapping = await getOrCreateGroupsScopeMapping(api);
+    scopeMappings.push(groupsMapping.pk);
     
     const provider = await createOrUpdateProvider(api, {
       name: providerName,
@@ -233,6 +238,31 @@ async function getOrCreateScopeMapping(api, scopeName) {
     description: `Standard OpenID Connect scope: ${scopeName}`
   });
   
+  return response.data;
+}
+
+/**
+ * Custom scope mapping that adds the requesting user's group names to the
+ * `groups` claim in the userinfo response / ID token. CloudTAK's OIDC callback
+ * reads this claim to determine system_admin / agency_admin role assignment.
+ */
+async function getOrCreateGroupsScopeMapping(api) {
+  const scopeName = 'groups';
+  const existing = await api.get('/api/v3/propertymappings/provider/scope/', {
+    params: { scope_name: scopeName }
+  });
+
+  if (existing.data.results && existing.data.results.length > 0) {
+    return existing.data.results[0];
+  }
+
+  const response = await api.post('/api/v3/propertymappings/provider/scope/', {
+    name: `CloudTAK OAuth Mapping: '${scopeName}'`,
+    scope_name: scopeName,
+    expression: 'return {"groups": [group.name for group in request.user.ak_groups.all()]}',
+    description: 'Adds group membership to the groups claim for CloudTAK role sync'
+  });
+
   return response.data;
 }
 

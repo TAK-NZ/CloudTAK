@@ -37,7 +37,6 @@ export interface ContextEnvironmentConfig {
     oidcForced?: boolean;
     authentikUrl?: string;
     authentikAppSlug?: string;
-    albAuthSessionCookie?: string;
     syncAuthentikAttributesOnLogin?: boolean;
     oidcSystemAdminGroup?: string;
     oidcAgencyAdminGroupPrefix?: string;

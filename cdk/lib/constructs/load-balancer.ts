@@ -3,7 +3,6 @@ import { Construct } from 'constructs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { ContextEnvironmentConfig } from '../stack-config';
 
 export interface LoadBalancerProps {
@@ -12,16 +11,6 @@ export interface LoadBalancerProps {
   albSecurityGroup: ec2.SecurityGroup;
   certificate: acm.ICertificate;
   logsBucket: cdk.aws_s3.IBucket;
-  oidcConfig?: {
-    enabled: boolean;
-    issuer: string;
-    authorizationEndpoint: string;
-    tokenEndpoint: string;
-    userInfoEndpoint: string;
-    clientId: string;
-    clientSecret: secretsmanager.ISecret;
-    sessionCookieName?: string;
-  };
 }
 
 export class LoadBalancer extends Construct {
@@ -32,7 +21,7 @@ export class LoadBalancer extends Construct {
   constructor(scope: Construct, id: string, props: LoadBalancerProps) {
     super(scope, id);
 
-    const { envConfig, vpc, albSecurityGroup, certificate, logsBucket, oidcConfig } = props;
+    const { envConfig, vpc, albSecurityGroup, certificate, logsBucket } = props;
 
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
       vpc: vpc,
@@ -95,27 +84,10 @@ export class LoadBalancer extends Construct {
       })
     });
 
-    // OIDC authentication for specific paths (if enabled)
-    if (oidcConfig?.enabled) {
-      this.httpsListener.addAction('OIDCAuth', {
-        priority: 10,
-        conditions: [
-          elbv2.ListenerCondition.pathPatterns(['/api/login/oidc', '/api/enroll'])
-        ],
-        action: elbv2.ListenerAction.authenticateOidc({
-          authorizationEndpoint: oidcConfig.authorizationEndpoint,
-          clientId: oidcConfig.clientId,
-          clientSecret: oidcConfig.clientSecret.secretValue,
-          issuer: oidcConfig.issuer,
-          tokenEndpoint: oidcConfig.tokenEndpoint,
-          userInfoEndpoint: oidcConfig.userInfoEndpoint,
-          scope: 'openid profile email',
-          sessionCookieName: oidcConfig.sessionCookieName || 'AWSELBAuthSessionCookie',
-          sessionTimeout: cdk.Duration.hours(16),
-          next: elbv2.ListenerAction.forward([this.targetGroup])
-        })
-      });
-    }
+    // OIDC authentication (if enabled) is performed entirely by the CloudTAK
+    // application itself via a standard Authorization Code flow - see
+    // api/routes/login.ts (GET /login/oidc, GET /login/oidc/callback). The ALB
+    // is a plain TLS-terminating pass-through with no OIDC listener action.
 
     this.httpsListener.addTargetGroups('DefaultAction', {
       targetGroups: [this.targetGroup]

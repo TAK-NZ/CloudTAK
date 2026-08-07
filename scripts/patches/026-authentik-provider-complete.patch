@@ -1,8 +1,8 @@
 diff --git a/api/lib/authentik-provider.ts b/api/lib/authentik-provider.ts
-index 19bf620b0..3daa269ff 100644
+index 19bf620b0..fd407813b 100644
 --- a/api/lib/authentik-provider.ts
 +++ b/api/lib/authentik-provider.ts
-@@ -1,16 +1,16 @@
+@@ -1,16 +1,18 @@
 -import fetch from './fetch.js';
  import Err from '@openaddresses/batch-error';
  import Config from './config.js';
@@ -13,6 +13,8 @@ index 19bf620b0..3daa269ff 100644
 -import TAKAPI from '@tak-ps/node-tak';
 +import { sql } from 'drizzle-orm';
 +import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
++import pem from 'pem';
++import xmljs from 'xml-js';
  
  export default class AuthentikProvider {
      config: Config;
@@ -23,7 +25,7 @@ index 19bf620b0..3daa269ff 100644
  
      constructor(config: Config, authentikUrl: string, tokenArn: string) {
          this.config = config;
-@@ -37,12 +37,12 @@ export default class AuthentikProvider {
+@@ -37,12 +39,12 @@ export default class AuthentikProvider {
          return new AuthentikProvider(config, authentikUrl, tokenArn);
      }
  
@@ -38,7 +40,7 @@ index 19bf620b0..3daa269ff 100644
              );
  
              const token = response.SecretString || '';
-@@ -57,10 +57,10 @@ export default class AuthentikProvider {
+@@ -57,10 +59,10 @@ export default class AuthentikProvider {
  
      async agencies(uid: number, filter: string): Promise<{
          total: number;
@@ -51,7 +53,7 @@ index 19bf620b0..3daa269ff 100644
          const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
  
          const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-@@ -68,9 +68,9 @@ export default class AuthentikProvider {
+@@ -68,9 +70,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -64,7 +66,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency List Error');
-@@ -83,14 +83,14 @@ export default class AuthentikProvider {
+@@ -83,14 +85,14 @@ export default class AuthentikProvider {
              items: filteredResults.map((g: any) => ({
                  id: g.attributes?.agencyId || 0,
                  name: g.attributes?.agencyName || g.name,
@@ -82,7 +84,7 @@ index 19bf620b0..3daa269ff 100644
          const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
  
          const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-@@ -98,9 +98,9 @@ export default class AuthentikProvider {
+@@ -98,9 +100,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -95,7 +97,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency Fetch Error');
-@@ -113,7 +113,7 @@ export default class AuthentikProvider {
+@@ -113,7 +115,7 @@ export default class AuthentikProvider {
          return {
              id: group.attributes?.agencyId || agencyId,
              name: group.attributes?.agencyName || group.name,
@@ -104,7 +106,7 @@ index 19bf620b0..3daa269ff 100644
          };
      }
  
-@@ -129,9 +129,9 @@ export default class AuthentikProvider {
+@@ -129,9 +131,9 @@ export default class AuthentikProvider {
          userUrl.searchParams.append('pk', String(uid));
          const userResponse = await fetch(userUrl, {
              headers: {
@@ -117,7 +119,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik User Fetch Error');
-@@ -147,7 +147,7 @@ export default class AuthentikProvider {
+@@ -147,7 +149,7 @@ export default class AuthentikProvider {
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
                  'Content-Type': 'application/json',
@@ -126,7 +128,7 @@ index 19bf620b0..3daa269ff 100644
              },
              body: JSON.stringify({
                  name: username,
-@@ -157,9 +157,9 @@ export default class AuthentikProvider {
+@@ -157,9 +159,9 @@ export default class AuthentikProvider {
                      agencyId: body.agency_id || null,
                      createdBy: creatorUsername,
                      createdAt: new Date().toISOString(),
@@ -139,7 +141,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!createResponse.ok) throw new Err(500, new Error(await createResponse.text()), 'Authentik Service Account Creation Error');
-@@ -172,9 +172,9 @@ export default class AuthentikProvider {
+@@ -172,9 +174,9 @@ export default class AuthentikProvider {
              method: 'POST',
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
@@ -151,7 +153,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Authentik Password Set Error');
-@@ -182,7 +182,7 @@ export default class AuthentikProvider {
+@@ -182,7 +184,7 @@ export default class AuthentikProvider {
          return {
              id: userId,
              email: username,
@@ -160,7 +162,7 @@ index 19bf620b0..3daa269ff 100644
          };
      }
  
-@@ -194,9 +194,9 @@ export default class AuthentikProvider {
+@@ -194,9 +196,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -173,7 +175,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
-@@ -209,7 +209,7 @@ export default class AuthentikProvider {
+@@ -209,7 +211,7 @@ export default class AuthentikProvider {
          return {
              id: user.pk,
              email: user.username,
@@ -182,7 +184,7 @@ index 19bf620b0..3daa269ff 100644
          };
      }
  
-@@ -224,9 +224,9 @@ export default class AuthentikProvider {
+@@ -224,9 +226,9 @@ export default class AuthentikProvider {
                  method: 'POST',
                  headers: {
                      'Authorization': `Bearer ${creds.token}`,
@@ -194,7 +196,7 @@ index 19bf620b0..3daa269ff 100644
              });
  
              if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Password Update Error');
-@@ -235,7 +235,7 @@ export default class AuthentikProvider {
+@@ -235,7 +237,7 @@ export default class AuthentikProvider {
          return {
              id: mid,
              email: '',
@@ -203,7 +205,7 @@ index 19bf620b0..3daa269ff 100644
          };
      }
  
-@@ -244,7 +244,7 @@ export default class AuthentikProvider {
+@@ -244,7 +246,7 @@ export default class AuthentikProvider {
          agency?: number;
      }): Promise<{
          total: number;
@@ -212,7 +214,7 @@ index 19bf620b0..3daa269ff 100644
      }> {
          const creds = await this.auth();
          const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
-@@ -254,9 +254,9 @@ export default class AuthentikProvider {
+@@ -254,9 +256,9 @@ export default class AuthentikProvider {
  
          const response = await fetch(url, {
              headers: {
@@ -225,7 +227,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Channel List Error');
-@@ -274,8 +274,8 @@ export default class AuthentikProvider {
+@@ -274,8 +276,8 @@ export default class AuthentikProvider {
                  id: g.attributes?.channelId || g.num_pk || 0,
                  rdn: g.name.replace(/^tak_/, ''),
                  name: g.attributes?.channelName || g.name.replace(/^tak_/, ''),
@@ -236,7 +238,7 @@ index 19bf620b0..3daa269ff 100644
          };
      }
  
-@@ -290,17 +290,17 @@ export default class AuthentikProvider {
+@@ -290,17 +292,17 @@ export default class AuthentikProvider {
          const groupsUrl = new URL('/api/v3/core/groups/', this.authentikUrl);
          const groupsResponse = await fetch(groupsUrl, {
              headers: {
@@ -260,7 +262,7 @@ index 19bf620b0..3daa269ff 100644
          );
  
          if (!group) throw new Err(404, null, `Channel ${body.channel_id} not found`);
-@@ -310,9 +310,9 @@ export default class AuthentikProvider {
+@@ -310,9 +312,9 @@ export default class AuthentikProvider {
              method: 'POST',
              headers: {
                  'Authorization': `Bearer ${creds.token}`,
@@ -272,7 +274,7 @@ index 19bf620b0..3daa269ff 100644
          });
  
          if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Group Assignment Error');
-@@ -336,9 +336,9 @@ export default class AuthentikProvider {
+@@ -336,9 +338,9 @@ export default class AuthentikProvider {
  
              const response = await fetch(url, {
                  headers: {
@@ -285,7 +287,7 @@ index 19bf620b0..3daa269ff 100644
              });
  
              if (!response.ok) {
-@@ -365,9 +365,9 @@ export default class AuthentikProvider {
+@@ -365,9 +367,9 @@ export default class AuthentikProvider {
              const deleteResponse = await fetch(deleteUrl, {
                  method: 'DELETE',
                  headers: {
@@ -298,7 +300,41 @@ index 19bf620b0..3daa269ff 100644
              });
  
              if (!deleteResponse.ok) {
-@@ -390,6 +390,7 @@ export default class AuthentikProvider {
+@@ -382,6 +384,33 @@ export default class AuthentikProvider {
+         }
+     }
+ 
++    /**
++     * Look up an Authentik user by `email` first, falling back to `username`.
++     * OIDC callers pass the userinfo `email` claim, which Authentik does not
++     * guarantee equals the account's `username` field - querying by `email`
++     * first avoids silently failing (and skipping cert enrollment/attribute
++     * sync) for accounts where the two differ.
++     */
++    private async findUserByEmailOrUsername(token: string, identifier: string): Promise<any> {
++        const byEmailUrl = new URL('/api/v3/core/users/', this.authentikUrl);
++        byEmailUrl.searchParams.append('email', identifier);
++        const byEmailResponse = await fetch(byEmailUrl, {
++            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
++        });
++        if (!byEmailResponse.ok) throw new Err(500, new Error(await byEmailResponse.text()), 'Authentik User Fetch Error');
++        const byEmailData: any = await byEmailResponse.json();
++        if (byEmailData.results && byEmailData.results.length > 0) return byEmailData.results[0];
++
++        const byUsernameUrl = new URL('/api/v3/core/users/', this.authentikUrl);
++        byUsernameUrl.searchParams.append('username', identifier);
++        const byUsernameResponse = await fetch(byUsernameUrl, {
++            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
++        });
++        if (!byUsernameResponse.ok) throw new Err(500, new Error(await byUsernameResponse.text()), 'Authentik User Fetch Error');
++        const byUsernameData: any = await byUsernameResponse.json();
++        return byUsernameData.results?.[0];
++    }
++
+     async login(username: string): Promise<{
+         id: number;
+         name: string;
+@@ -390,23 +419,15 @@ export default class AuthentikProvider {
          agency_admin: Array<number>;
          tak_callsign?: string;
          tak_group?: string;
@@ -306,20 +342,29 @@ index 19bf620b0..3daa269ff 100644
      }> {
          const creds = await this.auth();
  
-@@ -398,9 +399,9 @@ export default class AuthentikProvider {
- 
-         const response = await fetch(url, {
-             headers: {
+-        const url = new URL('/api/v3/core/users/', this.authentikUrl);
+-        url.searchParams.append('username', username);
+-
+-        const response = await fetch(url, {
+-            headers: {
 -                'Authorization': `Bearer ${creds.token}`,
 -                'Accept': 'application/json'
 -            }
-+                Authorization: `Bearer ${creds.token}`,
-+                Accept: 'application/json',
-+            },
-         });
+-        });
+-
+-        if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
+-
+-        const data: any = await response.json();
+-        const user = data.results[0];
++        // `username` here is the OIDC email claim, which is not guaranteed to
++        // equal the Authentik user's `username` field (Authentik allows those
++        // to differ) - look up by `email` instead, falling back to `username`
++        // for compatibility with any pre-existing password-auth callers.
++        const user = await this.findUserByEmailOrUsername(creds.token, username);
  
-         if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik User Fetch Error');
-@@ -418,9 +419,9 @@ export default class AuthentikProvider {
+         if (!user) throw new Err(404, null, 'User not found');
+ 
+@@ -418,9 +439,9 @@ export default class AuthentikProvider {
                  const groupUrl = new URL(`/api/v3/core/groups/${groupUuid}/`, this.authentikUrl);
                  const groupResponse = await fetch(groupUrl, {
                      headers: {
@@ -332,7 +377,7 @@ index 19bf620b0..3daa269ff 100644
                  });
                  if (groupResponse.ok) {
                      const groupData: any = await groupResponse.json();
-@@ -455,50 +456,128 @@ export default class AuthentikProvider {
+@@ -455,50 +476,288 @@ export default class AuthentikProvider {
              phone: null,
              system_admin: isSystemAdmin,
              agency_admin: agencyAdminIds,
@@ -369,10 +414,172 @@ index 19bf620b0..3daa269ff 100644
 +     * transaction (not an in-process mutex) so it serializes correctly across
 +     * multiple ECS tasks behind the load balancer, not just within one process.
 +     */
++    /**
++     * Attempt to enroll a TAK client certificate using an Authentik-issued
++     * bearer token instead of a temporary password, via the OAuth2
++     * client_credentials + JWT-bearer client-assertion exchange (RFC 7523).
++     *
++     * The `userAccessToken` (the real user's own CloudTAK-session OIDC token,
++     * NOT CloudTAK's client credentials) is passed as `client_assertion` so
++     * Authentik ties the exchanged token to that user's identity rather than
++     * to a generic client_credentials service account - see
++     * https://docs.goauthentik.io/.../machine_to_machine/#externally-issued-jwts
++     * "JWT authentication" section. Using plain client_credentials here would
++     * silently issue every enrollment to the same synthetic service account,
++     * which is wrong and was an earlier mistake in this implementation.
++     *
++     * This only works if:
++     *   1. TAK Server's CoreConfig.xml <oauth><authServer> trusts the OAuth2
++     *      provider CloudTAK authenticates against (Federated OIDC Providers)
++     *   2. That connector accepts bearer tokens (clientAuth="false", and the
++     *      request hits a port AccessTokenResolver checks - 8446/8447)
++     *   3. The exchanged token's usernameClaim/groupsClaim resolve to a real,
++     *      known TAK Server identity
++     * None of that is verified here - this is a best-effort attempt, logged
++     * clearly at every step, that throws on any failure so the caller can fall
++     * back to the existing temporary-password flow. Nothing about the
++     * fallback path changes if this fails or is never configured.
++     */
++    private async enrollUserCertificateViaM2M(
++        email: string,
++        clientId: string,
++        userAccessToken: string,
++        takServerUrl: string,
++    ): Promise<{ cert: string; key: string; ca: string[] }> {
++        console.log(`[M2M] Attempting bearer-token cert enrollment for ${email} via Authentik JWT-bearer exchange`);
++
++        // Exchange the user's own CloudTAK-issued access token for a new token,
++        // using the JWT-bearer client-assertion grant so Authentik ties the
++        // result to this user's subject rather than a generic client identity.
++        const tokenUrl = new URL('/application/o/token/', this.authentikUrl);
++        const tokenResponse = await fetch(tokenUrl, {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
++            body: new URLSearchParams({
++                grant_type: 'client_credentials',
++                client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
++                client_assertion: userAccessToken,
++                client_id: clientId,
++                scope: 'openid profile email groups',
++            }),
++        });
++
++        const tokenBody = await tokenResponse.text();
++        if (!tokenResponse.ok) {
++            throw new Err(500, null, `[M2M] Authentik client_credentials exchange failed (${tokenResponse.status}): ${tokenBody}`);
++        }
++
++        let exchangedToken: string;
++        try {
++            exchangedToken = JSON.parse(tokenBody).access_token;
++        } catch {
++            throw new Err(500, null, `[M2M] Authentik token response was not valid JSON: ${tokenBody}`);
++        }
++        if (!exchangedToken) {
++            throw new Err(500, null, `[M2M] Authentik token response had no access_token: ${tokenBody}`);
++        }
++
++        console.log(`[M2M] Got exchanged token for ${email}, requesting cert from TAK Server`);
++
++        // Step 2: build the CSR ourselves - node-tak's Credentials.generate()
++        // hardcodes Basic auth (APIAuthPassword) and can't be reused for a
++        // bearer token, so the TLS config fetch + CSR + signClient/v2 POST is
++        // replicated here manually.
++        const configUrl = new URL('/Marti/api/tls/config', takServerUrl);
++        const configResponse = await fetch(configUrl, {
++            headers: { Authorization: `Bearer ${exchangedToken}` },
++        });
++        if (!configResponse.ok) {
++            throw new Err(500, null, `[M2M] TAK Server /tls/config rejected bearer token (${configResponse.status}): ${await configResponse.text()}`);
++        }
++        const configXml = await configResponse.text();
++
++        let parsedConfig: any;
++        try {
++            parsedConfig = xmljs.xml2js(configXml, { compact: true });
++        } catch (err) {
++            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${email}: ${configXml.slice(0, 500)}`);
++        }
++
++        let organization: string | undefined;
++        let organizationUnit: string | undefined;
++        const nameEntries = parsedConfig['ns2:certificateConfig']?.nameEntries;
++        if (nameEntries?.nameEntry) {
++            for (const ne of nameEntries.nameEntry) {
++                if (ne._attributes?.name === 'O') organization = ne._attributes.value;
++                if (ne._attributes?.name === 'OU') organizationUnit = ne._attributes.value;
++            }
++        }
++
++        const { csr, clientKey } = await pem.promisified.createCSR({
++            organization,
++            organizationUnit,
++            commonName: email,
++        });
++
++        const signUrl = new URL('/Marti/api/tls/signClient/v2', takServerUrl);
++        signUrl.searchParams.append('clientUid', `${email} (Web)`);
++        signUrl.searchParams.append('version', '3');
++
++        const signResponse = await fetch(signUrl, {
++            method: 'POST',
++            headers: {
++                Accept: 'application/json',
++                Authorization: `Bearer ${exchangedToken}`,
++            },
++            body: csr,
++        });
++
++        const signBody = await signResponse.text();
++        if (!signResponse.ok) {
++            throw new Err(500, null, `[M2M] TAK Server signClient/v2 rejected bearer token (${signResponse.status}): ${signBody}`);
++        }
++
++        let signed: any;
++        try {
++            signed = JSON.parse(signBody);
++        } catch {
++            throw new Err(500, null, `[M2M] TAK Server signClient/v2 response was not valid JSON: ${signBody}`);
++        }
++
++        let cert = '-----BEGIN CERTIFICATE-----\n' + signed.signedCert;
++        if (!signed.signedCert.endsWith('\n')) cert += '\n';
++        cert += '-----END CERTIFICATE-----';
++
++        const ca: string[] = [];
++        if (signed.ca0) ca.push(signed.ca0);
++        if (signed.ca1) ca.push(signed.ca1);
++
++        console.log(`[M2M] Cert enrollment succeeded for ${email} via bearer token exchange`);
++
++        return { cert, key: clientKey, ca };
++    }
++
 +    async enrollUserCertificate(
 +        username: string,
 +        takServerUrl: string,
++        userAccessToken?: string,
 +    ): Promise<{ cert: string; key: string; ca: string[] }> {
++        // Try the OAuth2 M2M bearer-token exchange first, if the caller has the
++        // user's own OIDC access token (only available right after the OIDC
++        // callback, not on password-login cert renewal paths) and CloudTAK's
++        // client ID is configured. This is a straight attempt with no feature
++        // flag - if it's not configured or TAK Server/Authentik reject it for
++        // any reason, the error is logged and the existing temporary-password
++        // flow below runs exactly as before.
++        if (userAccessToken && process.env.OIDC_CLIENT_ID) {
++            try {
++                return await this.enrollUserCertificateViaM2M(
++                    username,
++                    process.env.OIDC_CLIENT_ID,
++                    userAccessToken,
++                    takServerUrl,
++                );
++            } catch (err) {
++                console.error(`[M2M] Bearer-token cert enrollment failed for ${username}, falling back to temporary-password flow:`, err);
++            }
++        }
++
 +        return this.config.pg.transaction(async (tx) => {
 +            // Fixed namespace (arbitrary, just needs to not collide with other
 +            // advisory lock usage) + a hash of the username as the two int4 lock
@@ -384,16 +591,11 @@ index 19bf620b0..3daa269ff 100644
 +
 +            const creds = await this.auth();
 +
-+            // Look up the Authentik user PK by username/email
-+            const userUrl = new URL('/api/v3/core/users/', this.authentikUrl);
-+            userUrl.searchParams.append('username', username);
-+            const userResponse = await fetch(userUrl, {
-+                headers: { Authorization: `Bearer ${creds.token}`, Accept: 'application/json' },
-+            });
-+            if (!userResponse.ok) throw new Err(500, new Error(await userResponse.text()), 'Authentik user lookup failed during cert enrollment');
-+
-+            const userData: any = await userResponse.json();
-+            const user = userData.results[0];
++            // `username` here is the OIDC email claim, which is not guaranteed
++            // to equal the Authentik user's `username` field - look up by
++            // `email` instead, falling back to `username` for compatibility
++            // with any pre-existing password-auth callers.
++            const user = await this.findUserByEmailOrUsername(creds.token, username);
 +            if (!user) throw new Err(404, null, `User ${username} not found in Authentik`);
 +
 +            // Set a random temporary password on the user account (overwritten after enrollment)
@@ -407,7 +609,10 @@ index 19bf620b0..3daa269ff 100644
 +            if (!passwordResponse.ok) throw new Err(500, new Error(await passwordResponse.text()), 'Failed to set temporary password for cert enrollment');
 +
 +            try {
-+                const takAuth = new APIAuthPassword(username, tempPassword);
++                // Authenticate to the TAK Server using Authentik's actual
++                // `username` field (may differ from the OIDC email claim
++                // passed into this method).
++                const takAuth = new APIAuthPassword(user.username, tempPassword);
 +                const takApi = await TAKAPI.init(new URL(takServerUrl), takAuth);
 +                const enrollment = await takApi.Credentials.generate();
 +                return { cert: enrollment.cert, key: enrollment.key, ca: enrollment.ca || [] };
