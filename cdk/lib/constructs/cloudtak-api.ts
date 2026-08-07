@@ -423,7 +423,7 @@ export class CloudTakApi extends Construct {
         'SubnetPublicB': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_B)),
         'MediaSecurityGroup': mediaSecurityGroup.securityGroupId,
         // CloudTAK Server configuration
-        'CLOUDTAK_Server_name': `TAK.NZ ${environment === 'prod' ? 'Production' : 'Development'} Server`,
+        'CLOUDTAK_Server_name': environment === 'prod' ? 'TAK.NZ' : `TAK.NZ ${envConfig.stackName}`,
         'CLOUDTAK_Server_url': `ssl://${cdk.Fn.importValue(createTakImportValue(envConfig.stackName, TAK_EXPORT_NAMES.TAK_SERVICE_NAME))}:8089`,
         'CLOUDTAK_Server_api': `https://${cdk.Fn.importValue(createTakImportValue(envConfig.stackName, TAK_EXPORT_NAMES.TAK_SERVICE_NAME))}:8443`,
         'CLOUDTAK_Server_webtak': `https://${cdk.Fn.importValue(createTakImportValue(envConfig.stackName, TAK_EXPORT_NAMES.TAK_SERVICE_NAME))}:8446`,
