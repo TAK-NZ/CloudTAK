@@ -39,7 +39,7 @@ jobs:
     needs: [cdk-test]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Setup CDK Environment
         uses: ./.github/actions/setup-cdk
@@ -72,7 +72,7 @@ jobs:
       cloudtak-tag: ${{ steps.images.outputs.cloudtak-tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Setup CDK Environment
         uses: ./.github/actions/setup-cdk
@@ -122,7 +122,7 @@ jobs:
     if: always()
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Setup CDK Environment
         uses: ./.github/actions/setup-cdk

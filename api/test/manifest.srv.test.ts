@@ -70,6 +70,39 @@ test('GET: /api/manifest.webmanifest - logo configured', async () => {
     }
 });
 
+test('PUT: /api/config - clear login logo to empty string', async () => {
+    try {
+        const res = await flight.fetch('/api/config', {
+            method: 'PUT',
+            auth: { bearer: flight.token.admin },
+            body: { 'login::logo': '' },
+        }, false);
+
+        assert.equal(res.status, 200, 'http 200');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET: /api/manifest.webmanifest - empty-string logo row falls back to default', async () => {
+    try {
+        const res = await flight.fetch('/api/manifest.webmanifest', {
+            method: 'GET',
+        }, true);
+
+        assert.equal(res.status, 200, 'http 200');
+        assert.ok(Array.isArray(res.body.icons), 'icons is array');
+        // A DB row that exists but is '' (e.g. an admin cleared a custom
+        // logo) must not be treated as "logo configured" - it should fall
+        // back to the default logo just like a missing row, otherwise the
+        // PWA manifest ships an empty icon set and blocks the install
+        // prompt.
+        assert.equal(res.body.icons.length, 2, 'default logo produces two icons (192 and 512)');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('GET: /api/manifest.webmanifest/logos/192', async () => {
     try {
         const res = await flight.fetch('/api/manifest.webmanifest/logos/192', {
