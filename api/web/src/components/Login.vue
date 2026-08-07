@@ -533,6 +533,61 @@ const certRenewal = reactive<{
 });
 
 onMounted(async () => {
+    // Detect an existing (un-cleared) session left behind by a previous login.
+    // This MUST run before any of the login-consuming branches below (ETL
+    // token, OIDC fragment, query-string token) - those branches call
+    // applySession()/persistSession(), which compares the newly-authenticated
+    // user against storedUsername to decide whether to wipe locally cached
+    // data from a different user. If this check ran after those branches
+    // instead, storedUsername would still be null at comparison time, so a
+    // browser previously used for one account could silently inherit that
+    // account's cached profile/WebSocket state when a different user logs in
+    // via SSO. The database is intentionally NOT deleted here - it is only
+    // cleared on an explicit sign-out or when a different user logs in via
+    // applySession()/destroySession(). This avoids a costly resync when a
+    // token simply expires.
+    try {
+        const existing = await appStore.getUsername();
+        if (existing) {
+            storedUsername.value = existing;
+            body.value.username = existing;
+        }
+    } catch (err) {
+        console.error('Failed to read existing session', err);
+    }
+
+    // Handle SSO login completion. The backend hands the session back via a
+    // URL Fragment (/login#sso=<base64url payload>) rather than a query
+    // string, so it is never sent to the server or written to access logs.
+    // Parse and clear the fragment immediately so it isn't left sitting in
+    // the address bar or browser history.
+    if (window.location.hash.startsWith('#sso=')) {
+        loading.value = true;
+        loadingMessage.value = 'Completing login...';
+        const payloadRaw = window.location.hash.slice('#sso='.length);
+        // Clear the fragment from the URL without triggering a navigation/reload.
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+        try {
+            const padded = payloadRaw + '='.repeat((4 - payloadRaw.length % 4) % 4);
+            const json = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+            const payload = JSON.parse(json) as {
+                token: string;
+                email: string;
+                session: string;
+                redirect?: string;
+            };
+            await applySession({ token: payload.token, email: payload.email, session: payload.session });
+            emit('login');
+            const redirectPath = payload.redirect && payload.redirect.startsWith('/') ? payload.redirect : '/';
+            await router.replace(redirectPath);
+        } catch (err) {
+            loading.value = false;
+            console.error('Failed to parse SSO login payload', err);
+            // Fall through to normal login form
+        }
+        return;
+    }
+
     // Handle ETL API token passed as URL param for war room / kiosk display use.
     // These tokens start with 'etl.' and are exchanged for a session JWT via
     // POST /api/login/token before the normal login flow continues.
@@ -650,20 +705,6 @@ onMounted(async () => {
     // Only start conditional passkey autofill when ALB SSO is not active
     if (brandStore.passkey.enabled && !albOidcEnabled.value) {
         startConditionalPasskey();
-    }
-
-    // Detect an existing (un-cleared) session left behind by a previous login.
-    // The database is intentionally NOT deleted here - it is only cleared on an
-    // explicit sign-out or when a different user logs in. This avoids a costly
-    // resync when a token simply expires.
-    try {
-        const existing = await appStore.getUsername();
-        if (existing) {
-            storedUsername.value = existing;
-            body.value.username = existing;
-        }
-    } catch (err) {
-        console.error('Failed to read existing session', err);
     }
 });
 
