@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import Sinon from 'sinon';
 import Flight from './flight.js';
+import AuthentikProvider from '../lib/authentik-provider.js';
 
 const flight = new Flight();
 
@@ -190,6 +192,74 @@ test('POST: api/login - allowed for system admin when OIDC_FORCED', async () => 
         });
     } catch (err) {
         assert.ifError(err);
+    }
+});
+
+test('GET: api/login/oidc/callback - Authentik attribute sync populates callsign/group/role and suppresses the Welcome dialog', async () => {
+    // Regression test for: new SSO users were shown the "Welcome" callsign/
+    // group/role dialog even when Authentik attribute sync had already
+    // populated real values, because the frontend (and the isFirstLogin
+    // check in login.ts) suppress that dialog based on `profile.created ===
+    // profile.updated`, and nothing in the sync path used to bump `updated`.
+    userinfoEmail = 'attributesync@example.com';
+    userinfoGroups = [];
+
+    process.env.AUTHENTIK_URL = 'http://authentik.invalid';
+    process.env.AUTHENTIK_API_TOKEN_SECRET_ARN = 'arn:aws:secretsmanager:fake:fake:secret:fake';
+
+    Sinon.stub(AuthentikProvider.prototype, 'auth').resolves({
+        expires: new Date(Date.now() + 60_000),
+        token: 'fake-authentik-token',
+    });
+
+    // enrollUserCertificate is exercised elsewhere (login.srv.test.ts /
+    // OIDC_FORCED tests above) via the real HTTP mock TAK server - stub it
+    // here purely so this test can focus on the attribute-sync/updated-bump
+    // behaviour without also having to mock the Authentik core API user
+    // lookup + password endpoints it depends on internally.
+    Sinon.stub(AuthentikProvider.prototype, 'enrollUserCertificate').resolves({
+        cert: '',
+        key: '',
+        ca: [],
+    });
+
+    Sinon.stub(AuthentikProvider.prototype, 'login').resolves({
+        id: 42,
+        name: 'Attribute Sync User',
+        phone: null,
+        system_admin: false,
+        agency_admin: [],
+        tak_callsign: 'ATTRSYNC (Web)',
+        tak_group: 'Blue',
+        tak_role: 'Team Lead',
+    });
+
+    try {
+        const location = await ssoLogin();
+        const payload = ssoPayload(location);
+        assert.equal(payload.email, 'attributesync@example.com');
+
+        const res = await fetch(`${flight.base}/api/profile`, {
+            headers: { Authorization: `Bearer ${payload.token}` },
+        });
+        const profile = await res.json();
+
+        assert.equal(profile.tak_callsign, 'ATTRSYNC (Web)');
+        assert.equal(profile.tak_group, 'Blue');
+        assert.equal(profile.tak_role, 'Team Lead');
+
+        // The core regression check: created !== updated once real Authentik
+        // attributes have been synced in, which is exactly what the frontend's
+        // hasNoConfiguration() and the backend's isFirstLogin check rely on to
+        // decide whether to show the "Welcome" dialog again.
+        assert.notEqual(
+            profile.updated, profile.created,
+            'Profile.updated must be bumped once Authentik attribute sync succeeds, otherwise the Welcome dialog keeps reappearing',
+        );
+    } finally {
+        Sinon.restore();
+        delete process.env.AUTHENTIK_URL;
+        delete process.env.AUTHENTIK_API_TOKEN_SECRET_ARN;
     }
 });
 
