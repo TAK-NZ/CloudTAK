@@ -10,6 +10,7 @@ import { UAParser } from 'ua-parser-js';
 import { X509Certificate } from 'crypto';
 import { discovery, authorizationUrl, exchangeCode, userinfo } from '../lib/oidc.js';
 import type { OIDCConfig } from '../lib/oidc.js';
+import { sql } from 'drizzle-orm';
 
 /** Returns true when the cert PEM is missing, unparseable, or expires within 7 days. */
 function certNeedsRenewal(certPem: string | undefined): boolean {
@@ -367,6 +368,19 @@ export default async function router(schema: Schema, config: Config) {
                             }
                             if (Object.keys(profileConfigUpdates).length > 0) {
                                 await config.models.ProfileConfig.commit(email, profileConfigUpdates);
+
+                                // The frontend (hasNoConfiguration() in atlas-profile.ts) and the
+                                // isFirstLogin check above both key off `profile.created ===
+                                // profile.updated` to decide whether the user still needs the
+                                // "Welcome" callsign/group/role wizard. Profile.commit() is a plain
+                                // SQL UPDATE that never touches `updated` unless it's explicitly
+                                // passed in the values - so without this, a successful Authentik
+                                // attribute sync above would populate the real callsign/group/role
+                                // but `updated` would stay pinned to `created` forever, and the
+                                // wizard would keep reappearing on every login despite the data
+                                // already being correct. Bumping `updated` here is what actually
+                                // suppresses the dialog once real values have been synced in.
+                                updates.updated = sql`Now()`;
                             }
                         }
                     } catch (err) {
