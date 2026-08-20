@@ -1,10 +1,46 @@
 # Patch Audit & Status
 
-This document describes every patch in `scripts/patches/`, what it does, its current status, and whether it needs attention before the next upstream sync.
+This document describes every TAK-NZ customization to `api/` and `tasks/`: what it does and, most importantly, **why it exists**. That rationale is the reason this file is worth keeping.
 
-All patches are now **valid git diffs** generated with `git diff <v13-baseline> HEAD -- <file(s)>` and verified with `git apply --check --reverse`. Applying the reverse of a patch to the current codebase should always succeed cleanly; if it does not, the patch is stale and needs regeneration.
+> ### ⚠️ These patches are a historical record, not an applicable patch set
+>
+> They are **no longer applied to anything**. Upstream syncs are now a real
+> 3-way merge via the `vendor/upstream` branch, so TAK-NZ customizations are
+> carried forward by git and never need reinstating. See
+> [`docs/UPSTREAM-SYNC.md`](../../docs/UPSTREAM-SYNC.md).
+>
+> Use this file and the `.patch` files as **reference when resolving merge
+> conflicts** — they explain the intent behind code that upstream has since
+> changed. Do not try to `git apply` them.
+>
+> The previous claim here — that every patch is a valid `git diff <baseline> HEAD`
+> that reverse-applies cleanly — was never true and could not have been:
+>
+> - `scripts/apply-patches.sh` applied patches **sequentially** with `git apply`,
+>   but the patches were **cumulative diffs from the same baseline**. Those two
+>   models contradict each other for any file touched by more than one patch, and
+>   19 of 57 files were. Running the script against its own baseline died at
+>   patch 031, because 030 had already added those lines.
+> - 15 of 45 patches failed `git apply --check --reverse` at the time this notice
+>   was written. 11 of those were overlap artifacts, not drift.
+> - Patch 050 contained no diff at all, so `git apply` rejected the whole file.
+> - `apply-patches.sh` referenced `scripts/patches/files/`, which does not exist.
+> - Nothing in the repo ever invoked `apply-patches.sh`. The script has been
+>   removed.
+>
+> It was also **incomplete as a recovery mechanism**: TAK-NZ modifies 83 upstream
+> files, but the patches cover only 57. The 30 with no patch at all included
+> `api/test/login-oidc.srv.test.ts` (the OIDC test suite), `ConfigLogin.vue`,
+> `SettingsCallsign.vue`, `lib/style.ts` and `lib/logos.ts`. Reinstating from
+> patches alone would have silently dropped all of them — the same class of
+> failure that lost TAK certificate provisioning during the v13 port.
+>
+> And they do not survive upstream restructures: after upstream moved `api/lib/`
+> to `api/common/` + `api/stateless/` in v13.62.0, **25 of 45 patches target
+> paths that no longer exist.** Git's merge followed those renames automatically.
 
-The v13.26.0 upstream baseline commit is **418bdc4be**.
+The v13.26.0 upstream baseline commit is **418bdc4be**. The currently synced
+upstream version is recorded in [`.upstream-version`](../../.upstream-version).
 
 ---
 
@@ -40,7 +76,7 @@ The v13.26.0 upstream baseline commit is **418bdc4be**.
 | 045 | `api/routes/profile-overlays.ts` | Unhide existing overlay on duplicate POST instead of erroring; delete associated iconset on overlay delete | ✅ Applied & valid |
 | 048 | `api/web/src/workers/atlas-connection.ts` | Exponential-backoff WebSocket reconnect (max 5 attempts, 1s → 10s) | ✅ Applied & valid |
 | 049 | `api/web/src/base/events.ts`, `api/web/src/stores/map.ts`, `api/web/src/workers/atlas.ts` | Auto-logout on auth/connection error: `Session_Logout` event, redirect to `/api/logout` from main thread | ✅ Applied & valid |
-| 050 | *(note)* | Tab visibility reconnect — **superseded by upstream v13** (`reconnect()` and `_boundOnVisibilityChange` already in baseline) | ⬜ Superseded |
+| 050 | *(removed)* | Tab visibility reconnect — **superseded by upstream v13** (`reconnect()` and `_boundOnVisibilityChange` already in baseline). The `.patch` file has been deleted: it contained only comments and no diff, so `git apply` rejected it and aborted the whole run. | ⬜ Superseded |
 | 051 | `api/lib/authentik-provider.ts`, `api/routes/connection.ts`, `api/routes/login.ts` | Cert renewal uses password auth instead of potentially-revoked cert; removes stale cert-revocation check from login.ts | ✅ Applied & valid |
 | 053 | `api/lib/connection-web.ts`, `api/web/src/base/chatroom-chats.ts`, `api/web/src/components/CloudTAK/Menu/MenuChat.vue`, `api/web/src/components/CloudTAK/Notifications.vue`, `api/web/src/workers/atlas-connection.ts` | Chat fixes not covered by upstream: plugin dest routing, chatroom DB ops without fetch(), reconnect backoff + auth-failure detection, Notifications layout overflow. **Note (Jul 2026):** this patch previously also claimed fixes for double-stored messages, `isOutgoing` UID comparison, and chat-delete using the wrong column — those were independently fixed by upstream v13.26.0 and dropped from the patch; contact-presence fixes now live in patch 055. See `README-CHAT-FUNCTIONALITY.md` for the current, accurate breakdown. **Security fix (Jul 2026):** the plugin dest-routing block in `connection-web.ts` previously *replaced* the UID-based `<marti><dest uid="..."/>` (set by `DirectChat`'s constructor) with a callsign-only dest. Since TAK Server resolves callsign destinations via a single global, non-unique `callsign -> subscription` map (and CloudTAK gives every new profile the same default callsign, `"CloudTAK User"`), this could misroute a directed chat to the wrong user. Fixed by using `chat.addDest({ callsign })` to add the callsign dest alongside the existing UID dest instead of overwriting it — TAK Server's UID-based explicit-brokering match still wins for routing, while plugins reading `xmlDetail` for a callsign still find one. **Dead-code fix (Jul 2026):** `MenuChat.vue`'s `fetchChats({ skipRefresh })` option was added in an earlier revision but never actually invoked with `skipRefresh: true` anywhere, making it a no-op. Wired it up: `sendMessage()` now sets a `skipNextRefresh` flag before navigating away from the `/new` route, so the post-send network refresh doesn't race the TAK Server echo and roll back the optimistic local chatroom state. **Removed redundant dest injection (Jul 2026):** also dropped a bare `<dest callsign="...">` sibling element under `<detail>` (outside `<marti>`) that an earlier revision added on the assumption TAK Server strips `<marti>` before building `xmlDetail` for plugins. Verified against TAK Server's own source (`StreamingProtoBufHelper.cot2protoBuf()`, `takserver-plugins`): it only extracts a fixed allowlist of detail elements and passes everything else, including `<marti>`, straight through into `xmlDetail` unmodified — so the `addDest()` call alone is sufficient and the bare sibling was dead weight. **Chatroom "last activity" timestamp fix (Jul 2026):** `chatroom-chats.ts`'s `refresh()` queries the server ordered `desc` by `created` but was indexing `list.items[list.items.length - 1]` (the oldest message in the page) instead of `[0]` (the newest) when updating `chatroom.updated`. This predates patch 053 (present in v13.26.0 baseline too) but is fixed here since this file owns `refresh()`. **Existing-conversation-shows-empty-via-/new fix (Jul 2026):** `MenuChat.vue` gated its local-DB subscription and server refresh on the literal `'new'` URL segment instead of the resolved chatroom name, so any contact opened via `/menu/chats/new?callsign=...` (the route used by every "start chat" button throughout the app) showed an empty conversation even when history existed — direct navigation via `/menu/chats/:chatroom` worked fine. Fixed both checks to key off `room.value?.name`/`newRoom.name`. Also predates patch 053 (present in v13.26.0 baseline, unmodified). See `README-CHAT-FUNCTIONALITY.md`. | ✅ Applied & valid |
 | 054 | `api/web/src/stores/modules/icons.ts` | Scales down large raster icons to 32px max using canvas; prevents oversized icons from filling the whole screen | ✅ Applied & valid |
