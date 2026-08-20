@@ -1,0 +1,46 @@
+{
+    "name": "events",
+    "version": "0.0.0",
+    "type": "module",
+    "private": true,
+    "engines": {
+        "node": ">= 24"
+    },
+    "scripts": {
+        "test": "StackName='test' tsx --test test/*.test.ts",
+        "check": "tsc --noEmit",
+        "build": "tsc --noEmit",
+        "lint": "eslint index.ts cli.ts src/ test/",
+        "typegen": "npm run typegen -C ../../api"
+    },
+    "dependencies": {
+        "@aws-sdk/client-s3": "^3.787.0",
+        "@aws-sdk/lib-storage": "^3.787.0",
+        "@aws-sdk/node-http-handler": "^3.370.0",
+        "@tak-ps/node-cot": "^14.0.0",
+        "@tak-ps/node-safeurl": "^1.4.0",
+        "@tmcw/togeojson": "^7.1.0",
+        "@xmldom/xmldom": "^0.9.8",
+        "glob": "^13.0.0",
+        "jsonwebtoken": "^9.0.2",
+        "node-stream-zip": "^1.15.0",
+        "rimraf": "^6.0.1",
+        "sharp": "^0.34.1",
+        "undici": "^8.0.0",
+        "vinyl": "^3.0.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@stylistic/eslint-plugin": "^5.10.0",
+        "@types/jsonwebtoken": "^9.0.5",
+        "@types/node": "^26.0.0",
+        "@types/sinon": "^21.0.0",
+        "@types/vinyl": "^2.0.12",
+        "eslint": "^10.0.0",
+        "globals": "^17.0.0",
+        "sinon": "^22.0.0",
+        "tsx": "^4.21.0",
+        "typescript": "^6.0.0",
+        "typescript-eslint": "^8.0.0"
+    }
+}

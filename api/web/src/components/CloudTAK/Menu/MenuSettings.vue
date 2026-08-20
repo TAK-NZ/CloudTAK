@@ -1,0 +1,154 @@
+<template>
+    <MenuTemplate name='Settings'>
+        <div class='col-12 d-flex flex-column gap-2 py-3'>
+            <StandardItem
+                @click='router.push("/menu/settings/callsign")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconUserCog
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Callsign & Device Preferences
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/display")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconAdjustments
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Display Preferences
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/permissions")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconLock
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Permissions
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/tokens")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconRobot
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        API Tokens
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/passkeys")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconFingerprint
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Login Passkeys
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/sessions")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconDeviceDesktop
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Login Sessions
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='router.push("/menu/settings/paging")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconBell
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Paging Notifications
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
+                @click='refreshApp()'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconRefresh
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Refresh App
+                    </div>
+                </div>
+            </StandardItem>
+        </div>
+    </MenuTemplate>
+</template>
+
+<script setup lang='ts'>
+import { useRouter } from 'vue-router';
+import { supportsServiceWorker } from '../../../base/capacitor.ts';
+import MenuTemplate from '../util/MenuTemplate.vue';
+import StandardItem from '../util/StandardItem.vue';
+import {
+    IconRefresh,
+    IconRobot,
+    IconUserCog,
+    IconAdjustments,
+    IconLock,
+    IconFingerprint,
+    IconDeviceDesktop,
+    IconBell,
+} from '@tabler/icons-vue';
+import { useDeviceStore } from '../../../stores/device.ts';
+
+const deviceStore = useDeviceStore();
+const router = useRouter();
+
+async function refreshApp() {
+    if (!deviceStore.network.isOnline) {
+        throw new Error('Cannot refresh app while offline.');
+    }
+
+    if (supportsServiceWorker()) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+            await registration.unregister();
+        }
+    }
+
+    if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const key of keys) {
+            await caches.delete(key);
+        }
+    }
+
+    window.location.reload();
+}
+</script>
+

@@ -1,0 +1,79 @@
+import { defineConfig, type ViteDevServer } from 'vite'
+import path from 'node:path';
+import vue from '@vitejs/plugin-vue'
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+const milsymbolBrowserBundle = path.resolve(__dirname, 'node_modules/milsymbol/dist/milsymbol.js');
+
+export default defineConfig(({ mode }) => {
+    return {
+        define: {
+            'import.meta.env.HASH': JSON.stringify(Math.random().toString(36).substring(2, 15)),
+        },
+        plugins: [
+            vue(),
+            {
+                name: 'configure-server',
+                configureServer(server: ViteDevServer) {
+                    server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: (err?: any) => void) => {
+                        if (req.url?.startsWith('/admin') && !path.extname(req.url)) {
+                            req.url = '/admin.html';
+                        } else if (req.url?.startsWith('/connection') && !path.extname(req.url)) {
+                            req.url = '/connection.html';
+                        } else if (req.url?.startsWith('/setup') && !path.extname(req.url)) {
+                            req.url = '/setup.html';
+                        }
+                        next();
+                    });
+                }
+            }
+        ],
+        optimizeDeps: {
+            include: ["showdown", "@tak-ps/vue-tabler"],
+        },
+        resolve: {
+            alias: {
+                'milsymbol': milsymbolBrowserBundle,
+                '@tak-ps/cloudtak': path.resolve(__dirname, './plugin.ts'),
+                '@': path.resolve(__dirname, './src'),
+                '@cloudtak/api-types': path.resolve(__dirname, '../derived-types.d.ts'),
+            }
+        },
+        build: {
+            manifest: true,
+            target: 'esnext',
+            rolldownOptions: {
+                input: {
+                    main: path.resolve(__dirname, 'index.html'),
+                    docs: path.resolve(__dirname, 'docs.html'),
+                    video: path.resolve(__dirname, 'video.html'),
+                    admin: path.resolve(__dirname, 'admin.html'),
+                    connection: path.resolve(__dirname, 'connection.html'),
+                    setup: path.resolve(__dirname, 'setup.html'),
+                },
+            },
+        },
+        worker: {
+            format: 'es'
+        },
+        server: {
+            port: 8080,
+            proxy: {
+                '/api': {
+                    ws: true,
+                    target: 'http://localhost:5001',
+                    changeOrigin: true,
+                }
+            }
+        },
+        test: {
+            environment: 'jsdom',
+            globals: true,
+            deps: {
+                inline: ['@tak-ps/vue-tabler']
+            },
+            setupFiles: ['./src/test/setup.ts'],
+        },
+    };
+})
+

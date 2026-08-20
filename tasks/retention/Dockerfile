@@ -1,0 +1,15 @@
+FROM node:26-alpine3.24
+
+ENV APP_ROOT=/workspace
+WORKDIR $APP_ROOT/tasks/retention
+
+COPY tasks/retention/package*.json ./
+
+RUN npm install
+
+COPY tasks/retention/ ./
+
+RUN npm run lint \
+    && npm run build
+
+CMD ["npm", "run", "run-once"]

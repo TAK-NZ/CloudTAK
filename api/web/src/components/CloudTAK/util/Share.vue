@@ -1,0 +1,453 @@
+<template>
+    <TablerModal
+        size='lg'
+    >
+        <div class='modal-status bg-yellow' />
+        <div class='modal-header'>
+            <span class='modal-title'>Share Features</span>
+            <div class='ms-auto btn-list'>
+                <div class='d-flex align-items-center'>
+                    <IconUsers
+                        :size='20'
+                        stroke='1'
+                    /><span class='mx-2'>{{ selectedUsers.size }}</span>
+                </div>
+                <div class='d-flex align-items-center'>
+                    <IconAffiliate
+                        :size='20'
+                        stroke='1'
+                    /><span class='mx-2'>{{ selectedGroups.size }}</span>
+                </div>
+                <div class='d-flex align-items-center'>
+                    <IconAmbulance
+                        :size='20'
+                        stroke='1'
+                    /><span class='mx-2'>{{ selectedMissions.size }}</span>
+                </div>
+            </div>
+
+            <button
+                type='button'
+                class='btn-close'
+                aria-label='Close'
+                @click='emit("close")'
+            />
+        </div>
+        <div
+            class='modal-body'
+        >
+            <div class='mx-2'>
+                <TablerInput
+                    v-model='filter'
+                    icon='search'
+                    label=''
+                    placeholder='Filter...'
+                />
+            </div>
+            <TablerPillGroup
+                v-model='mode'
+                :options='[
+                    { value: "users", label: "Users" },
+                    { value: "groups", label: "Channels" },
+                    { value: "missions", label: "Data Syncs" }
+                ]'
+                :disabled='loading'
+            >
+                <template #option='{ option }'>
+                    <IconUsers
+                        v-if='option.value === "users"'
+                        v-tooltip='"Users"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <IconAffiliate
+                        v-else-if='option.value === "groups"'
+                        v-tooltip='"Channels"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <IconAmbulance
+                        v-else
+                        v-tooltip='"Data Syncs"'
+                        :size='24'
+                        stroke='1'
+                    />
+                    <span class='ms-2'>{{ option.label }}</span>
+                </template>
+            </TablerPillGroup>
+
+            <div
+                class='col-12 overflow-auto'
+                style='height: 50vh;'
+            >
+                <template v-if='mode === "users"'>
+                    <TablerLoading
+                        v-if='loading'
+                    />
+                    <TablerNone
+                        v-else-if='!visibleContacts.length'
+                        :create='false'
+                    />
+                    <template v-else>
+                        <COTContact
+                            v-for='a of visibleContacts'
+                            :key='a.uid'
+                            :contact='a'
+                            :button-chat='false'
+                            :button-zoom='false'
+                            :fly-to-click='false'
+                            :selected='selectedUsers.has(a)'
+                            class='rounded'
+                            @click='selectedUsers.has(a) ? selectedUsers.delete(a) : selectedUsers.add(a)'
+                        />
+                    </template>
+                </template>
+                <template v-else-if='mode === "groups"'>
+                    <TablerLoading
+                        v-if='loading'
+                    />
+                    <TablerNone
+                        v-else-if='!Object.keys(visibleChannels).length'
+                        :create='false'
+                    />
+                    <template v-else>
+                        <div
+                            v-for='ch in visibleChannels'
+                            :key='ch.name'
+                            class='col-lg-12 py-2 px-2 cloudtak-hover rounded cursor-pointer user-select-none'
+                            @click='selectedGroups.has(ch) ? selectedGroups.delete(ch) : selectedGroups.add(ch)'
+                        >
+                            <IconAffiliate
+                                v-if='!selectedGroups.has(ch)'
+                                :size='24'
+                                stroke='1'
+                            />
+                            <IconCheck
+                                v-else
+                                :size='24'
+                                stroke='1'
+                            />
+                            <span
+                                class='mx-2'
+                                v-text='ch.name'
+                            />
+                        </div>
+                    </template>
+                </template>
+                <template v-else-if='mode === "missions"'>
+                    <TablerLoading
+                        v-if='loading'
+                    />
+                    <TablerNone
+                        v-else-if='!visibleMissions.length'
+                        :create='false'
+                    />
+                    <template v-else>
+                        <div
+                            v-for='m in visibleMissions'
+                            :key='m.name'
+                            class='col-lg-12 py-2 px-2 cloudtak-hover rounded cursor-pointer user-select-none'
+                            @click='selectedMissions.has(m) ? selectedMissions.delete(m) : selectedMissions.add(m)'
+                        >
+                            <IconAmbulance
+                                v-if='!selectedMissions.has(m)'
+                                :size='24'
+                                stroke='1'
+                            />
+                            <IconCheck
+                                v-else
+                                :size='24'
+                                stroke='1'
+                            />
+                            <span
+                                class='mx-2'
+                                v-text='m.name'
+                            />
+                        </div>
+                    </template>
+                </template>
+            </div>
+        </div>
+        <div class='modal-footer'>
+            <div class='row g-2 w-100'>
+                <div
+                    class='col-6'
+                >
+                    <TablerButton
+                        v-tooltip='"Share to Selected"'
+                        :disabled='(selectedUsers.size === 0 && selectedGroups.size === 0 && selectedMissions.size === 0) || loading'
+                        class='w-100 btn-primary'
+                        @click='share'
+                    >
+                        <IconShare2
+                            :size='20'
+                            stroke='1'
+                            class='me-1'
+                        />
+                        <span>Share</span>
+                    </TablerButton>
+                </div>
+                <div class='col-6'>
+                    <TablerButton
+                        v-tooltip='"Broadcast to All Users"'
+                        :disabled='loading'
+                        class='w-100 btn-secondary'
+                        @click='broadcast'
+                    >
+                        <IconBroadcast
+                            :size='20'
+                            stroke='1'
+                            class='me-1'
+                        />
+                        <span>Broadcast To All Users</span>
+                    </TablerButton>
+                </div>
+            </div>
+        </div>
+    </TablerModal>
+</template>
+
+<script setup lang='ts'>
+import { ref, computed, watch, onMounted } from 'vue';
+import type { Ref } from 'vue';
+import { liveQuery } from 'dexie';
+import { useObservable } from '@vueuse/rxjs';
+import { from } from 'rxjs';
+import { OriginMode } from '../../../base/cot.ts';
+import { v4 as randomUUID } from 'uuid';
+import { std } from '../../../std.ts';
+import ContactManager from '../../../base/contact.ts';
+import {
+    TablerNone,
+    TablerInput,
+    TablerModal,
+    TablerLoading,
+    TablerButton,
+    TablerPillGroup,
+} from '@tak-ps/vue-tabler';
+import {
+    IconUsers,
+    IconCheck,
+    IconBroadcast,
+    IconAffiliate,
+    IconAmbulance,
+    IconShare2
+} from '@tabler/icons-vue';
+import Subscription from '../../../base/subscription.ts';
+import type { Contact, ContactList, Feature, GroupChannel } from '../../../types.ts'
+import COTContact from '../util/Contact.vue';
+import { useMapStore } from '../../../stores/map.ts';
+
+const mapStore = useMapStore();
+
+const props = defineProps<{
+    feats?: Feature[]
+    basemaps?: number[],
+}>();
+
+const emit = defineEmits([
+    'close',
+    'done'
+]);
+
+const loading = ref(true);
+const filter = ref('');
+const mode = ref('users');
+
+const selectedGroups = ref<Set<GroupChannel>>(new Set())
+const selectedMissions = ref<Set<{
+    name: string
+    guid: string
+}>>(new Set())
+const selectedUsers = ref<Set<Contact>>(new Set())
+
+const contacts: Ref<ContactList | undefined> = useObservable(
+    from(liveQuery(async () => {
+        return await ContactManager.list();
+    }))
+);
+const channels = ref<Array<GroupChannel>>([]);
+const missions = ref<Array<{
+    name: string
+    guid: string
+}>>([]);
+
+const visibleChannels = computed<Array<GroupChannel>>(() => {
+    return channels.value.filter((channel) => {
+        return channel.name.toLowerCase().includes(filter.value.toLowerCase());
+    });
+});
+
+const visibleMissions = computed<Array<{
+    name: string
+    guid: string
+}>>(() => {
+    return missions.value.filter((mission) => {
+        return mission.name.toLowerCase().includes(filter.value.toLowerCase());
+    });
+});
+
+const visibleContacts = computed<ContactList>(() => {
+    if (!contacts.value) return [];
+    return contacts.value.filter((contact) => {
+        return contact.callsign;
+    }).filter((contact) => {
+        return contact.callsign.toLowerCase().includes(filter.value.toLowerCase());
+    })
+});
+
+onMounted(async () => {
+    await fetchChannelList();
+    await fetchMissions();
+});
+
+watch(mode, () => {
+    filter.value = '';
+});
+
+/** Feats often come from Vector Tiles which don't contain the full feature */
+async function currentFeats(): Promise<Feature[]> {
+    const feats = [];
+
+    for (const f of props.feats || []) {
+        if (f.properties.type === 'b-f-t-r') {
+            // FileShare is manually generated and won't exist in CoT Store
+            feats.push(f);
+        } else {
+            const cot = await mapStore.worker.db.get(f.properties.id || f.id)
+            if (cot) feats.push(cot.as_feature());
+        }
+    }
+
+    return feats;
+}
+
+async function share() {
+    const feats = await currentFeats();
+
+    loading.value = true;
+
+    // CoTs with Attachments must always be send via a DataPackage
+    if (
+        feats.length === 1
+        && !props.basemaps
+        && (!feats[0].properties.attachments || feats[0].properties.attachments.length === 0)
+    ) {
+        if (selectedUsers.value.size > 0 || selectedGroups.value.size > 0) {
+            const feat = JSON.parse(JSON.stringify(feats[0]));
+            feat.properties.dest = [];
+
+            for (const contact of selectedUsers.value) {
+                feat.properties.dest.push({ uid: contact.uid });
+            }
+
+            for (const group of selectedGroups.value) {
+                feat.properties.dest.push({ group: group.name });
+            }
+
+            if (feat.properties.dest.length > 0) {
+                await mapStore.worker.conn.sendCOT(feat);
+            }
+        }
+
+        if (selectedMissions.value.size > 0) {
+            for (const mission of selectedMissions.value) {
+                const feat = JSON.parse(JSON.stringify(feats[0]));
+
+                await mapStore.worker.db.remove(feat.properties.id);
+
+                // Missions should never share IDs
+                const id = randomUUID();
+                feat.id = id;
+                feat.properties.uid = id;
+
+                feat.origin = {
+                    mode: OriginMode.MISSION,
+                    mode_id: mission.guid
+                }
+
+                await mapStore.worker.db.add(feat, {
+                    authored: true
+                });
+            }
+        }
+    } else {
+        const destinations: Array<{ uid?: string, group?: string, mission?: string }> = [
+            ...Array.from(selectedUsers.value).map((contact): { uid: string } => ({ uid: contact.uid })),
+            ...Array.from(selectedGroups.value).map((group): { group: string } => ({ group: group.name })),
+            ...Array.from(selectedMissions.value).map((mission): { mission: string } => ({ mission: mission.guid })),
+        ];
+
+        await std('/api/marti/package', {
+            method: 'PUT',
+            body: {
+                type: 'FeatureCollection',
+                destinations,
+                basemaps: props.basemaps || [],
+                features: feats.map((f) => {
+                    f = JSON.parse(JSON.stringify(f));
+                    return { id: f.properties.id || f.id, type: f.type, properties: f.properties, geometry: f.geometry }
+                })
+            }
+        });
+    }
+
+    loading.value = false;
+
+    emit('done');
+}
+
+async function broadcast() {
+    const feats = await currentFeats();
+
+    if (
+        feats.length === 1
+        && !props.basemaps
+        && (!feats[0].properties.attachments || feats[0].properties.attachments.length === 0)
+    ) {
+        await mapStore.worker.conn.sendCOT(JSON.parse(JSON.stringify(feats[0])));
+        emit('done');
+    } else {
+        await std('/api/marti/package', {
+            method: 'PUT',
+            body: {
+                type: 'FeatureCollection',
+                basemaps: props.basemaps || [],
+                features: feats.map((f) => {
+                    f = JSON.parse(JSON.stringify(f));
+
+                    return {
+                        id: f.properties.id || f.id,
+                        type: f.type,
+                        properties: f.properties,
+                        geometry: f.geometry
+                    }
+                })
+            }
+        });
+    }
+}
+
+async function fetchChannelList() {
+    loading.value = true;
+
+    channels.value = (await mapStore.worker.profile.loadChannels()).filter((channel) => {
+        if (!channel.active) return false;
+        if (!channel.direction.includes('IN')) return false;
+        return true;
+    });
+
+    loading.value = false;
+}
+
+async function fetchMissions() {
+    loading.value = true;
+
+    missions.value = Array.from(await Subscription.localList({
+        role: 'MISSION_SUBSCRIBER'
+    }))
+
+    loading.value = false;
+}
+
+</script>

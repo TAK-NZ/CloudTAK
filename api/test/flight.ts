@@ -1,0 +1,434 @@
+process.env.StackName = 'test';
+
+import CP from 'node:child_process';
+import MockTAKServer from './tak-server.js';
+import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import api from '../index.js';
+import Config from '../lib/config.js';
+import drop from './drop.js';
+import { pathToRegexp } from 'path-to-regexp';
+import test from 'node:test';
+import assert from 'node:assert';
+import ProfileControl from '../lib/control/profile.js';
+import { Ajv } from 'ajv';
+import type { FormatsPlugin } from 'ajv-formats';
+import * as ajvFormats from 'ajv-formats';
+import * as pgtypes from '../lib/schema.js';
+import { Pool } from '@openaddresses/batch-generic';
+const ajv = (ajvFormats.default as unknown as FormatsPlugin)(new Ajv({ allErrors: true }));
+
+/**
+ * @class
+ */
+class FlightResponse {
+    res: Response;
+    ok: boolean;
+    headers: Headers;
+    status: number;
+    body: any;
+
+    constructor(res: Response, body: any) {
+        this.res = res;
+
+        this.ok = res.ok;
+        this.headers = res.headers;
+        this.status = res.status;
+        this.body = body;
+    }
+}
+
+/**
+ * @class
+ */
+export default class Flight {
+    config?: Config;
+    srv?: any; // TODO: HTTP Server
+    base: string;
+    schema?: object;
+    routes: Record<string, RegExp>;
+    token: Record<string, string>;
+    _tak?: MockTAKServer;
+
+    constructor() {
+        this.base = 'http://localhost:5001';
+        this.token = {};
+        this.routes = {};
+    }
+
+    /**
+     * Clear and restore an empty database schema
+     *
+     * @param {Object} [opts] Options
+     * @param {boolean} [opts.dropdb=true] Should the database be dropped
+     * @param {boolean} [opts.takserver=false] Should the MockTAKServer be started
+     */
+    init(opts: { dropdb?: boolean; takserver?: boolean } = {}) {
+        const dropdb = opts.dropdb !== undefined ? opts.dropdb : true;
+        const takserver = opts.takserver !== undefined ? opts.takserver : false;
+
+        test('start: database', async () => {
+            try {
+                if (dropdb) {
+                    const connstr = process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test';
+                    await drop(connstr);
+
+                    const pool = await Pool.connect(connstr, pgtypes, {
+                        migrationsFolder: (new URL('../migrations', import.meta.url)).pathname,
+                    });
+
+                    await pool.end();
+                }
+            } catch (err) {
+                assert.ifError(err);
+            }
+
+            this.schema = JSON.parse(String(fs.readFileSync(new URL('./fixtures/get_schema.json', import.meta.url))));
+
+            for (const route of Object.keys(this.schema || {})) {
+                try {
+                    const regexp = pathToRegexp(route.split(' ').join(' /api'));
+                    this.routes[route] = new RegExp(regexp.regexp);
+                } catch (err) {
+                    assert.fail(`Could not parse ${route} as RegExp: ` + err);
+                }
+            }
+
+            if (takserver) {
+                this._tak = new MockTAKServer();
+                await this._tak.start();
+            }
+
+            process.env.ASSET_BUCKET = 'fake-asset-bucket';
+        });
+    }
+
+    get tak() {
+        if (!this._tak) throw new Error('Flight Test Runner not initialized - call flight.init({ takserver: true }) first');
+        return this._tak;
+    }
+
+    /**
+     * Make a fetch using a JSON fixture
+     *
+     * @param {String} name Name of fixture present in the ./fixtures folder (Should be JSON)
+     * @param {String} auth Name of the token that will be used to make the fetch
+     */
+    fixture(name: string, auth: string) {
+        test(`Fixture: ${name}`, async () => {
+            const req = JSON.parse(String(fs.readFileSync(new URL('./fixtures/' + name, import.meta.url))));
+            if (auth) req.auth = {
+                bearer: this.token[auth],
+            };
+
+            try {
+                await this.fetch(req.url, req, true);
+            } catch (err) {
+                assert.ifError(err);
+            }
+        });
+    }
+
+    /**
+     * Request data from the API & Ensure the output schema matches the response
+     *
+     * @param {String} url URL to fetch
+     * @param {Object} req Request Object
+     * @param {boolean|object} t If true validate schema & use defaults. If false, don't validate schema and use defaults
+     * @param {boolean} [t.verify] Verify Schema Validation
+     * @param {boolean} [t.json=true] Expect JSON in response
+     */
+    async fetch(
+        url: string | URL,
+        req: any,
+        t: boolean | { verify?: boolean; json?: boolean; binary?: boolean },
+    ): Promise<any> {
+        if (t === undefined) throw new Error('flight.fetch requires two arguments - pass (<url>, <req>, false) to disable schema testing');
+
+        const defs = {
+            verify: false,
+            json: true,
+            binary: false,
+        };
+
+        if (t === true) {
+            defs.verify = true;
+        } else if (t === false) {
+            defs.verify = false;
+        } else {
+            Object.assign(defs, t);
+        }
+
+        const parsedurl = new URL(url, this.base);
+
+        if (!req.headers) req.headers = {};
+        if (req.body && req.body.constructor === Object && !(req.body instanceof FormData)) {
+            req.headers['Content-Type'] = 'application/json';
+            req.body = JSON.stringify(req.body);
+        }
+
+        if (req.auth && req.auth.bearer) {
+            req.headers['Authorization'] = `Bearer ${req.auth.bearer}`;
+        } else if (req.auth && req.auth.username && req.auth.password) {
+            req.headers['Authorization'] = 'Basic ' + btoa(req.auth.username + ':' + req.auth.password);
+        }
+        delete req.auth;
+
+        if (!defs.verify) {
+            const _res = await fetch(parsedurl, req);
+            let body;
+            if (defs.json) body = await _res.json();
+            else if (defs.binary) body = await _res.arrayBuffer();
+            else body = await _res.text();
+
+            const res = new FlightResponse(_res, body);
+            return res;
+        }
+
+        if (!req.method) req.method = 'GET';
+
+        let match: string;
+        const spath = `${req.method.toUpperCase()} ${parsedurl.pathname}/`;
+        const matches = [];
+        for (const r of Object.keys(this.routes)) {
+            if (spath.match(this.routes[r])) {
+                matches.push(r);
+            }
+        }
+
+        if (!matches.length) {
+            assert.fail(`Cannot find schema match for: ${spath}`);
+            return;
+        } else if (matches.length === 1) {
+            match = matches[0];
+        } else {
+            // TODO multiple selection - default to first one defined in routes to mirror express behabior
+            match = matches[0];
+        }
+
+        const schemaurl = new URL('/api/schema', this.base);
+        schemaurl.searchParams.append('method', match.split(' ')[0]);
+        schemaurl.searchParams.append('url', match.split(' ')[1]);
+
+        const rawschema = await (await fetch(schemaurl)).json() as {
+            res: object;
+        };
+
+        if (!rawschema.res) throw new Error('Cannot validate resultant schema - no result schema defined');
+
+        const schema = ajv.compile(rawschema.res);
+        const _res = await fetch(parsedurl, req);
+        const res = new FlightResponse(_res, await _res.json());
+
+        if (res.ok) {
+            schema(res.body);
+
+            if (!schema.errors) return res;
+
+            for (const error of schema.errors) {
+                assert.fail(`${error.schemaPath}: ${error.message}`);
+            }
+        } else {
+            // Just print the body instead of spewing
+            // 100 schema validation errors for an error response
+            assert.fail(JSON.stringify(res.body));
+        }
+
+        return res;
+    }
+
+    /**
+     * Bootstrap a new server test instance
+     *
+     * @param {Object} custom custom config options
+     */
+    takeoff(custom = {}) {
+        test('test server takeoff', async () => {
+            this.config = await Config.env({
+                postgres: process.env.POSTGRES || 'postgres://postgres@localhost:5432/tak_ps_etl_test',
+                silent: true,
+                noevents: true,
+                nosinks: true,
+                nocache: true,
+            });
+
+            Object.assign(this.config, custom);
+
+            this.config.server = await this.config.models.Server.commit(this.config.server.id, {
+                name: 'Test Runner',
+                url: 'ssl://localhost:8089',
+                auth: {
+                    cert: String(fs.readFileSync(this.tak.keys.cert)),
+                    key: String(fs.readFileSync(this.tak.keys.key)),
+                },
+                api: 'https://localhost:8443',
+            });
+
+            this.srv = await api(this.config);
+        });
+    }
+
+    /**
+     * Create a new user and return an API token for that user
+     */
+    user(opts: {
+        username?: string;
+        admin?: boolean;
+    } = {}) {
+        if (opts.admin === undefined) opts.admin = true;
+
+        test('Create User', async () => {
+            const username = opts.username || (opts.admin ? 'admin' : 'user');
+
+            if (!this.config) throw new Error('TakeOff not completed');
+
+            const profileControl = new ProfileControl(this.config);
+
+            CP.execSync(`
+                openssl req \
+                    -newkey rsa:4096 \
+                    -keyout /tmp/cloudtak-test-${username}.key \
+                    -out /tmp/cloudtak-test-${username}.csr \
+                    -nodes \
+                    -subj "/CN=${username}" \
+                    2> /dev/null
+            `);
+
+            CP.execSync(`
+               openssl x509 \
+                    -req \
+                    -in /tmp/cloudtak-test-${username}.csr \
+                    -CA ${this.tak.keys.cert} \
+                    -CAkey ${this.tak.keys.key} \
+                    -out /tmp/cloudtak-test-${username}.cert \
+                    -set_serial 01 \
+                    -days 365 \
+                    2> /dev/null
+            `);
+
+            await profileControl.generate({
+                username: username + '@example.com',
+                system_admin: opts.admin,
+                auth: {
+                    key: String(fs.readFileSync(`/tmp/cloudtak-test-${username}.key`)),
+                    cert: String(fs.readFileSync(`/tmp/cloudtak-test-${username}.cert`)),
+                },
+            });
+
+            if (opts.admin) {
+                this.token[username] = jwt.sign({ access: 'admin', email: username + '@example.com' }, 'coe-wildland-fire');
+            } else {
+                this.token[username] = jwt.sign({ access: 'user', email: username + '@example.com' }, 'coe-wildland-fire');
+            }
+        });
+    }
+
+    server(username: string, password: string) {
+        test('Creating Server', async () => {
+            await this.fetch('/api/server', {
+                method: 'PATCH',
+                auth: {
+                    bearer: this.token.admin,
+                },
+                body: {
+                    name: 'Test Server',
+                    url: 'ssl://localhost:8089',
+                    api: 'https://localhost:8443',
+                    webtak: 'http://localhost:8444',
+
+                    username,
+                    password,
+
+                    auth: {
+                        cert: String(fs.readFileSync(this.tak.keys.cert)),
+                        key: String(fs.readFileSync(this.tak.keys.key)),
+                    },
+                },
+            }, true);
+
+            // Refresh config to pick up new server details
+            this.config!.server = await this.config!.models.Server.from(this.config!.server.id);
+        });
+    }
+
+    connection() {
+        test(`Creating Connection`, async () => {
+            CP.execSync(`
+                openssl req \
+                    -newkey rsa:4096 \
+                    -keyout /tmp/cloudtak-test-alice.key \
+                    -out /tmp/cloudtak-test-alice.csr \
+                    -nodes \
+                    -subj "/CN=Alice" \
+                    2> /dev/null
+            `);
+
+            CP.execSync(`
+               openssl x509 \
+                    -req \
+                    -in /tmp/cloudtak-test-alice.csr \
+                    -CA ${this.tak.keys.cert} \
+                    -CAkey ${this.tak.keys.key} \
+                    -out /tmp/cloudtak-test-alice.cert \
+                    -set_serial 01 \
+                    -days 365 \
+                    2> /dev/null
+            `);
+
+            const conn = await this.fetch('/api/connection', {
+                method: 'POST',
+                auth: {
+                    bearer: this.token.admin,
+                },
+                body: {
+                    name: 'Test Connection',
+                    description: 'Connection created by Flight Test Runner',
+                    auth: {
+                        key: String(fs.readFileSync('/tmp/cloudtak-test-alice.key')),
+                        cert: String(fs.readFileSync('/tmp/cloudtak-test-alice.cert')),
+                    },
+                },
+            }, true);
+
+            delete conn.body.certificate.validFrom;
+            delete conn.body.certificate.validTo;
+            delete conn.body.created;
+            delete conn.body.updated;
+
+            assert.deepEqual(conn.body, {
+                status: 'dead',
+                certificate: {
+                    subject: 'CN=Alice',
+                },
+                id: 1,
+                agency: null,
+                username: 'admin@example.com',
+                readonly: false,
+                name: 'Test Connection',
+                description: 'Connection created by Flight Test Runner',
+                enabled: true,
+            });
+
+            await new Promise((resolve) => {
+                setTimeout(resolve, 1000);
+            });
+        });
+    }
+
+    /**
+     * Shutdown an existing server test instance
+     */
+    landing() {
+        test('test server landing - api', async () => {
+            if (this._tak) {
+                assert.equal(
+                    this._tak.unhandledMartiRequests.length, 0,
+                    `Unhandled Marti requests detected: ${this._tak.unhandledMartiRequests.join(', ')}`,
+                );
+            }
+
+            if (this.srv) await this.srv.close();
+            if (this._tak) await this._tak.close();
+        });
+    }
+}

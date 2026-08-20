@@ -1,0 +1,308 @@
+import { db } from '../database.ts';
+import Filter from './filter.ts';
+import COT from './cot.ts';
+import Subscription from './subscription.ts';
+import type Atlas from '../workers/atlas.ts';
+import { server } from '../std.ts';
+import { bbox } from '@turf/bbox';
+import type { BBox, FeatureCollection as GeoJSONFeatureCollection } from 'geojson'
+import type { Feature, FeatureCollection } from '../types.ts';
+import { WorkerMessageType } from './events.ts';
+
+/**
+ * High Level Wrapper around the Data/Mission Sync API
+ */
+export default class SubscriptionFeature {
+    parent: Subscription;
+
+    token: string;
+    missiontoken?: string;
+
+    constructor(
+        parent: Subscription,
+        opts: {
+            token: string,
+            missiontoken?: string,
+        }
+    ) {
+        this.parent = parent;
+
+        this.token = opts.token;
+        this.missiontoken = opts.missiontoken;
+    }
+
+    headers(): Record<string, string> {
+        const headers: Record<string, string> = {};
+        if (this.missiontoken) headers.MissionAuthorization = this.missiontoken;
+        return headers;
+    }
+
+    async refresh(): Promise<void> {
+        const channel = new BroadcastChannel('cloudtak');
+        try {
+            const { data, error } = await server.GET('/api/marti/missions/{:guid}/cot', {
+                params: { path: { ':guid': this.parent.guid } },
+                headers: this.headers()
+            });
+
+            if (error || !data) throw new Error('Failed to fetch mission features');
+
+            const list = data as unknown as FeatureCollection;
+
+            for (const feat of list.features) {
+                await COT.style(feat);
+            }
+
+            const mapFeatures = list.features.filter((f) => f.properties.type !== 'b-t-f');
+            const chatFeatures = list.features.filter((f) => f.properties.type === 'b-t-f');
+
+            await db.transaction('rw', db.subscription_feature, db.subscription_chat, async () => {
+                await db.subscription_feature
+                    .where('mission')
+                    .equals(this.parent.guid)
+                    .delete();
+
+                for (const feature of mapFeatures) {
+                    await db.subscription_feature.put({
+                        id: feature.id,
+                        mission: this.parent.guid,
+                        path: feature.path,
+                        properties: feature.properties,
+                        geometry: feature.geometry,
+                    });
+                }
+
+                const unreadChats = new Set(
+                    await db.subscription_chat
+                        .where('mission')
+                        .equals(this.parent.guid)
+                        .filter(c => c.unread === true)
+                        .primaryKeys()
+                );
+
+                await db.subscription_chat
+                    .where('mission')
+                    .equals(this.parent.guid)
+                    .delete();
+
+                for (const feature of chatFeatures) {
+                    const chat = feature.properties.chat as {
+                        chatroom: string;
+                        id: string;
+                        senderCallsign: string;
+                        messageId?: string;
+                    } | undefined;
+                    if (!chat) continue;
+                    await db.subscription_chat.put({
+                        id: feature.id,
+                        mission: this.parent.guid,
+                        chatroom: chat.chatroom,
+                        sender: chat.senderCallsign || String(feature.properties.callsign || ''),
+                        sender_uid: chat.id,
+                        message: String(feature.properties.remarks || ''),
+                        created: String(feature.properties.start || feature.properties.time || new Date().toISOString()),
+                        unread: unreadChats.has(feature.id),
+                    });
+                }
+            });
+
+            channel.postMessage({
+                type: WorkerMessageType.Mission_Change_Feature,
+                body: {
+                    guid: this.parent.guid
+                }
+            });
+        } finally {
+            channel.close();
+        }
+    }
+
+    async list(
+        opts?: {
+            refresh?: boolean,
+        }
+    ): Promise<Array<Feature>> {
+        if (opts?.refresh) {
+            await this.refresh();
+        }
+
+        const feats = await db.subscription_feature
+            .where("mission")
+            .equals(this.parent.guid)
+            .toArray();
+
+        return feats.map(f => ({
+            id: f.id,
+            type: 'Feature',
+            path: f.path,
+            properties: f.properties,
+            geometry: f.geometry,
+        }));
+    }
+
+    async collection(raw = true): Promise<FeatureCollection> {
+        const features = await this.list();
+
+        if (raw) {
+            return {
+                type: 'FeatureCollection',
+                features: features.map((feat) => {
+                    return feat
+                })
+            } as FeatureCollection;
+        } else {
+            const filters = await Filter.list();
+            const filtered: Feature[] = [];
+
+            for (const feat of features) {
+                let blocked = false;
+                for (const filter of filters) {
+                    if (await filter.test(feat)) {
+                        blocked = true;
+                        break;
+                    }
+                }
+
+                if (!blocked) {
+                    filtered.push({
+                        ...feat,
+                        properties: {
+                            ...feat.properties,
+                            path: feat.path || '/',
+                        }
+                    });
+                }
+            }
+
+            return {
+                type: 'FeatureCollection',
+                features: filtered
+            } as FeatureCollection;
+        }
+    }
+
+    async bounds(): Promise<BBox> {
+        return bbox(await this.collection() as GeoJSONFeatureCollection);
+    }
+
+    async from(
+        uid: string
+    ): Promise<Feature | undefined> {
+        const f = await db.subscription_feature
+            .where("[mission+id]")
+            .equals([this.parent.guid, uid])
+            .first();
+
+        if (!f) return;
+
+        return {
+            id: f.id,
+            type: 'Feature',
+            path: f.path,
+            properties: f.properties,
+            geometry: f.geometry,
+        }
+    }
+
+    /**
+     * Upsert a feature into the mission.
+     * This will udpate the feature in the local DB, submit it to the TAK Server and
+     * mark the subscription as dirty for a re-render
+     *
+     * @param atlas - The Atlas instance
+     * @param cot - The COT object to upsert
+     * @param opts - Options for updating the feature
+     * @param opts.skipNetwork - If true, the feature will not be updated on the server - IE in response to a Mission Change event
+     */
+    async update(
+        atlas: Atlas,
+        cot: COT,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
+        if (cot.properties.type === 'b-t-f') {
+            const chat = cot.properties.chat as {
+                chatroom: string;
+                id: string;
+                senderCallsign: string;
+                messageId?: string;
+            } | undefined;
+
+            if (chat) {
+                await db.subscription_chat.put({
+                    id: cot.id,
+                    mission: this.parent.guid,
+                    chatroom: chat.chatroom,
+                    sender: chat.senderCallsign || String(cot.properties.callsign || ''),
+                    sender_uid: chat.id,
+                    message: String(cot.properties.remarks || ''),
+                    created: String(cot.properties.start || cot.properties.time || new Date().toISOString()),
+                    unread: !!opts.skipNetwork,
+                });
+            }
+        } else {
+            await db.subscription_feature.put({
+                id: cot.id,
+                mission: this.parent.guid,
+                path: cot.path,
+                properties: cot.properties,
+                geometry: cot.geometry,
+            });
+        }
+
+        await this.parent.update({
+            dirty: true
+        })
+
+        if (!opts.skipNetwork) {
+            const feat = cot.as_feature({
+                clone: true
+            });
+
+            if (cot.properties.type === 'b-t-f') {
+                feat.properties.dest = [{
+                    mission: this.parent.name
+                }];
+            } else {
+                feat.properties.dest = [{
+                    'mission-guid': this.parent.guid
+                }];
+            }
+
+            await atlas.conn.sendCOT(feat);
+        }
+    }
+
+    /**
+     * Delete a feature from the mission.
+     *
+     * @param atlas - The Atlas instance
+     * @param uid - The unique ID of the feature to delete
+     * @param opts - Options for deleting the feature
+     * @param opts.skipNetwork - If true, the feature will not be deleted from the server - IE in response to a Mission Change event
+     */
+    async delete(
+        atlas: Atlas,
+        uid: string,
+        opts: {
+            skipNetwork?: boolean
+        } = {}
+    ): Promise<void> {
+        await db.subscription_feature
+            .where("[mission+id]")
+            .equals([this.parent.guid, uid])
+            .delete();
+
+        await this.parent.update({
+            dirty: true
+        })
+
+        if (!opts.skipNetwork) {
+            await server.DELETE('/api/marti/missions/{:guid}/cot/{:uid}', {
+                params: { path: { ':guid': this.parent.guid, ':uid': uid } },
+                headers: this.headers(),
+            })
+        }
+    }
+}

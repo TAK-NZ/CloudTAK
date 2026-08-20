@@ -1,0 +1,197 @@
+<template>
+    <router-view v-if='appStore.isMobileDetected' />
+    <template v-else>
+        <div
+            ref='container'
+            class='position-absolute end-0 bottom-0 start-0'
+            :class='{
+                "start-0 end-0 top-0 bottom-0": resizing
+            }'
+        />
+        <div
+            class='position-absolute end-0 text-white d-flex'
+            role='menubar'
+            :class='{
+                "cloudtak-bg": !compact,
+            }'
+            style='
+                z-index: 4;
+                top: 60px;
+                bottom: var(--map-bottom-bar-size, 50px);
+            '
+            :style='`
+                width: ${compact ? "var(--map-compact-menu-size, 60px)" : `${menuWidth}px`};
+                min-width: ${compact ? "var(--map-compact-menu-size, 60px)" : `400px`};
+                ${compact ? "background-color: rgb(0, 0, 0, 0.5)" : ""}
+            `'
+        >
+            <div
+                v-if='!compact'
+                ref='resize'
+                class='resize cloudtak-bg cloudtak-hover cursor-drag'
+            />
+            <div
+                ref='menu'
+                class='position-relative w-100 h-100 px-0'
+            >
+                <MainMenuContents
+                    v-if='compact'
+                    :compact='true'
+                />
+                <router-view v-else />
+            </div>
+        </div>
+    </template>
+</template>
+
+<script setup lang='ts'>
+import { ref, watch, useTemplateRef, onMounted } from 'vue';
+import { useMapStore } from '../../stores/map.ts';
+import { useAppStore } from '../../stores/app.ts';
+import MainMenuContents from './MainMenuContents.vue';
+
+const mapStore = useMapStore();
+const appStore = useAppStore();
+
+const resizing = ref(false);
+
+const menu = useTemplateRef('menu');
+const resize = useTemplateRef('resize');
+const container = useTemplateRef('container');
+
+const menuWidth = ref<number>(400);
+
+const COMPACT_MENU_WIDTH = 60;
+const TOAST_OFFSET_BUFFER = 10;
+const MENU_RESIZE_HANDLE_WIDTH = 14;
+
+const props = defineProps({
+    compact: Boolean,
+})
+
+const syncToastOffset = () => {
+    const nextOffset = props.compact
+        ? COMPACT_MENU_WIDTH + TOAST_OFFSET_BUFFER
+        : menuWidth.value + MENU_RESIZE_HANDLE_WIDTH + TOAST_OFFSET_BUFFER;
+
+    if (mapStore.toastOffset.x !== nextOffset) {
+        mapStore.toastOffset.x = nextOffset;
+    }
+};
+
+watch(() => props.compact, () => {
+    syncToastOffset();
+});
+
+watch(menuWidth, () => {
+    if (!props.compact) syncToastOffset();
+});
+
+watch(resize, (newVal, oldVal, onCleanup) => {
+    if (resize.value && container.value && menu.value) {
+        resizing.value = false;
+
+        let beginWidth = menuWidth.value;
+        let beginX = resize.value.getBoundingClientRect().x;
+        let deltaX = 0;
+
+        const onStart = (e?: Event) => {
+            if (e && e.type === 'touchstart') e.preventDefault();
+            if (!resize.value) return;
+            beginWidth = menuWidth.value;
+            beginX = resize.value.getBoundingClientRect().x;
+            deltaX = 0;
+            resizing.value = true;
+        };
+
+        const onMove = (clientX: number, e: Event) => {
+            deltaX = beginX - clientX;
+
+            if (resizing.value) {
+                menuWidth.value = beginWidth + deltaX;
+                e.preventDefault();
+            }
+        };
+
+        const onEnd = () => {
+            resizing.value = false;
+        };
+
+        const onMouseDown = () => onStart();
+        const onMouseMove = (e: MouseEvent) => onMove(e.clientX, e);
+        const onMouseUp = () => onEnd();
+
+        const onTouchStart = (e: TouchEvent) => onStart(e);
+        const onTouchMove = (e: TouchEvent) => onMove(e.touches[0].clientX, e);
+        const onTouchEnd = () => onEnd();
+
+        const resizeEl = resize.value;
+        const menuEl = menu.value;
+        const containerEl = container.value;
+
+        resizeEl.addEventListener("mousedown", onMouseDown);
+        resizeEl.addEventListener("touchstart", onTouchStart, { passive: false });
+        resizeEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        resizeEl.addEventListener("mouseup", onMouseUp);
+        resizeEl.addEventListener("touchend", onTouchEnd);
+
+        menuEl.addEventListener("mousemove", onMouseMove);
+        menuEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        menuEl.addEventListener("mouseup", onMouseUp);
+        menuEl.addEventListener("touchend", onTouchEnd);
+
+        containerEl.addEventListener("mousemove", onMouseMove);
+        containerEl.addEventListener("touchmove", onTouchMove, { passive: false });
+        containerEl.addEventListener("mouseup", onMouseUp);
+        containerEl.addEventListener("touchend", onTouchEnd);
+
+        onCleanup(() => {
+            resizeEl.removeEventListener("mousedown", onMouseDown);
+            resizeEl.removeEventListener("touchstart", onTouchStart);
+            resizeEl.removeEventListener("touchmove", onTouchMove);
+            resizeEl.removeEventListener("mouseup", onMouseUp);
+            resizeEl.removeEventListener("touchend", onTouchEnd);
+
+            menuEl.removeEventListener("mousemove", onMouseMove);
+            menuEl.removeEventListener("touchmove", onTouchMove);
+            menuEl.removeEventListener("mouseup", onMouseUp);
+            menuEl.removeEventListener("touchend", onTouchEnd);
+
+            containerEl.removeEventListener("mousemove", onMouseMove);
+            containerEl.removeEventListener("touchmove", onTouchMove);
+            containerEl.removeEventListener("mouseup", onMouseUp);
+            containerEl.removeEventListener("touchend", onTouchEnd);
+        });
+    }
+})
+
+onMounted(async () => {
+    syncToastOffset();
+})
+</script>
+
+<style scoped>
+.resize {
+   height: 60px;
+   width: 14px;
+   cursor: col-resize;
+   flex-shrink: 0;
+   position: absolute;
+   left: -14px;
+   top: 50%;
+   transform: translateY(-50%);
+   z-index: 10;
+   user-select: none;
+   border-radius: 4px 0 0 4px;
+}
+.resize::before {
+   content: "";
+   position: absolute;
+   top: 50%;
+   left: 50%;
+   transform: translate(-50%, -50%);
+   width: 3px;
+   height: 15px;
+   border-inline: 1px solid currentColor;
+}
+</style>

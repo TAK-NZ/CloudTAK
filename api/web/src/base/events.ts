@@ -1,0 +1,48 @@
+export enum WorkerMessageType {
+    Atlas_Ready = 'cloudtak:atlas:ready',
+
+    Map_FlyTo = 'cloudtak:map:flyto',
+    Map_FitBounds = 'cloudtak:map:fitbounds',
+    Map_Projection = 'cloudtak:map:projection',
+
+    Profile_Callsign = 'cloudtak:profile:callsign',
+    Profile_Display_Zoom = 'cloudtak:profile:display:zoom',
+
+    Profile_Icon_Rotation = 'cloudtak:profile:icon:rotation',
+
+    Profile_Distance_Unit = 'cloudtak:profile:distance:unit',
+
+    Profile_Location_Coordinates = 'cloudtak:profile:location:coordinates',
+    Profile_Location_Source = 'cloudtak:profile:location:source',
+
+    Feature_Archived_Added = 'cloudtak:feature:archived:added',
+    Feature_Archived_Removed = 'cloudtak:feature:archived:removed',
+
+    Channels_None = 'channels:none',
+    Channels_List = 'channels:list',
+
+    Connection_Open = 'connection:open',
+    Connection_Close = 'connection:close',
+
+    Mission_Change_Feature = 'mission:change:feature',
+    Mission_Invite = 'mission:invite',
+
+    Channel_Change = 'channel:change',
+
+    Feature_Update = 'cloudtak:feature:update',
+    Profile_Update = 'cloudtak:profile:update',
+}
+
+export type WorkerMessage = {
+    type: WorkerMessageType,
+    // TODO Strongly type this
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    body?: any
+}
+
+export enum LocationState {
+    Loading,
+    Disabled,
+    Preset,
+    Live
+}

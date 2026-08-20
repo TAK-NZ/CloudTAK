@@ -1,0 +1,54 @@
+<template>
+    <TablerModal size='lg'>
+        <div class='modal-status bg-red' />
+        <div class='modal-header'>
+            <div class='d-flex align-items-center'>
+                <IconInfoSquare
+                    :size='28'
+                    stroke='1'
+                />
+                <span class='mx-2'>Welcome to CloudTAK</span>
+            </div>
+        </div>
+        <div class='modal-body'>
+            <SettingsCallsign
+                mode='emit'
+                :force-callsign='true'
+                @update='handleUpdate'
+            />
+        </div>
+        <div class='modal-footer'>
+            <div class='ms-auto'>
+                <button
+                    class='btn btn-primary'
+                    :disabled='!callsignSaved'
+                    @click='emit("close")'
+                >
+                    Done
+                </button>
+            </div>
+        </div>
+    </TablerModal>
+</template>
+
+<script setup lang='ts'>
+import { ref } from 'vue';
+import {
+    TablerModal,
+} from '@tak-ps/vue-tabler';
+import {
+    IconInfoSquare,
+} from '@tabler/icons-vue';
+
+import SettingsCallsign from './SettingsCallsign.vue';
+
+const emit = defineEmits([ 'close' ]);
+
+const callsignSaved = ref(false);
+
+function handleUpdate(key: string) {
+    if (key === 'tak_callsign') {
+        callsignSaved.value = true;
+    }
+}
+</script>

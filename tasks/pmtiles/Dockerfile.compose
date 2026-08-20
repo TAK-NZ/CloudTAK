@@ -1,0 +1,20 @@
+FROM node:26-alpine3.24
+
+EXPOSE 5002
+
+ENV APP_ROOT=/workspace
+
+WORKDIR $APP_ROOT/tasks/pmtiles
+
+COPY tasks/pmtiles/package*.json ./
+COPY api/derived-types.d.ts $APP_ROOT/api/derived-types.d.ts
+
+RUN npm install
+
+COPY tasks/pmtiles/ ./
+
+RUN npm run lint \
+    && npm run test \
+    && npm run build
+
+CMD ["npm", "run", "prod"]

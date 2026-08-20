@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "strict": true,
+        "strictNullChecks": true,
+        "allowImportingTsExtensions": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "module": "nodenext",
+        "target": "es2022",
+        "moduleResolution": "nodenext",
+        "sourceMap": true,
+        "outDir": "dist",
+        "paths": {
+            "@cloudtak/api-types": ["../../api/derived-types.d.ts"]
+        }
+    },
+    "exclude": [],
+    "include": [
+        "cli.ts",
+        "src/"
+    ]
+}

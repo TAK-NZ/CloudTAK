@@ -1,0 +1,187 @@
+<template>
+    <div>
+        <div class='card-header'>
+            <h1 class='card-title'>
+                Data Sync Admin
+            </h1>
+
+            <div class='ms-auto btn-list'>
+                <IconRefresh
+                    v-tooltip='"Refresh"'
+                    :size='32'
+                    stroke='1'
+                    class='cursor-pointer'
+                    @click='fetchList'
+                />
+            </div>
+        </div>
+        <div style='min-height: 20vh; margin-bottom: 61px'>
+            <TablerInput
+                v-model='paging.filter'
+                icon='search'
+                placeholder='Filter...'
+                class='mx-1 my-2'
+            />
+
+            <TablerLoading
+                v-if='loading'
+                desc='Loading Data Syncs'
+            />
+            <TablerNone
+                v-else-if='!list.items.length'
+                label='No Layers'
+                :create='false'
+            />
+            <div
+                v-else
+                class='table-responsive pb-5'
+            >
+                <table class='table card-table table-hover table-vcenter datatable'>
+                    <TableHeader
+                        v-model:sort='paging.sort'
+                        v-model:order='paging.order'
+                        v-model:header='header'
+                    />
+                    <tbody>
+                        <tr
+                            v-for='data in list.items'
+                            :key='data.id'
+                            class='cursor-pointer'
+                            @click='external(`/connection/${data.connection}/data/${data.id}`)'
+                        >
+                            <template
+                                v-for='h in header'
+                                :key='h.name'
+                            >
+                                <template v-if='h.display'>
+                                    <td>
+                                        <span v-text='(data as unknown as Record<string, unknown>)[h.name]' />
+                                    </td>
+                                </template>
+                            </template>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div
+                class='position-absolute bottom-0 w-100'
+                style='height: 61px;'
+            >
+                <TableFooter
+                    :limit='paging.limit'
+                    :total='list.total'
+                    @page='paging.page = $event'
+                />
+            </div>
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { ref, watch, onMounted } from 'vue';
+import { server } from '../../std.ts';
+import type { ETLData } from '../../types.ts';
+import TableHeader from '../util/TableHeader.vue';
+import TableFooter from '../util/TableFooter.vue';
+import {
+    TablerNone,
+    TablerInput,
+    TablerLoading
+} from '@tak-ps/vue-tabler';
+import {
+    IconRefresh,
+} from '@tabler/icons-vue';
+
+const loading = ref<boolean>(true);
+const header = ref<Array<{ name: string; display: boolean }>>([]);
+const paging = ref({
+    filter: '',
+    sort: 'name',
+    order: 'asc' as 'asc' | 'desc',
+    limit: 100,
+    page: 0
+});
+const list = ref<{ total: number; items: ETLData[] }>({
+    total: 0,
+    items: []
+});
+
+watch(paging, async () => {
+    await fetchList();
+}, { deep: true });
+
+onMounted(async () => {
+    await listDataSchema();
+    await fetchList();
+});
+
+async function listDataSchema() {
+    const res = await server.GET('/api/schema', {
+        params: {
+            query: {
+                method: 'GET',
+                url: '/data'
+            }
+        }
+    });
+
+    if (res.error) {
+        throw new Error(`Failed to fetch data schema: ${res.error}`);
+    }
+
+    if (!res.data) return;
+
+    header.value = ['id', 'name'].map((h) => {
+        return { name: h, display: true };
+    });
+
+    const schema = res.data as { query?: { properties?: { sort?: { enum?: string[] } } } };
+    if (schema?.query?.properties?.sort?.enum) {
+        header.value.push(...schema.query.properties.sort.enum.map((h: string) => {
+            return {
+                name: h,
+                display: false
+            };
+        }).filter((h: { name: string, display: boolean }) => {
+            for (const hknown of header.value) {
+                if (hknown.name === h.name) return false;
+            }
+            return true;
+        }));
+    }
+}
+
+async function fetchList() {
+    loading.value = true;
+    
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore - The root /api/data endpoint is missing from definitions
+    const res = await server.GET('/api/data', {
+        params: {
+            query: {
+                filter: paging.value.filter,
+                sort: paging.value.sort,
+                order: paging.value.order,
+                limit: paging.value.limit,
+                page: paging.value.page
+            }
+        }
+    });
+
+    if (res.data) {
+        const data = res.data as unknown as { total: number; items: ETLData[] };
+        list.value = {
+            total: data.total ?? 0,
+            items: data.items ?? []
+        };
+    } else {
+        list.value = { total: 0, items: [] };
+    }
+    
+    loading.value = false;
+}
+
+function external(url: string) {
+    window.location.href = url;
+}
+</script>

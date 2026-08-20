@@ -1,0 +1,1532 @@
+{
+    "GET /schema": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /openapi": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /agency": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /agency/:agencyid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /attachment": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /attachment": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /attachment/:hash": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "PUT /basemap": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /basemap": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /basemap": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "PATCH /basemap/:basemapid": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /basemap/:basemapid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /basemap/:basemapid/tiles": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /basemap/:basemapid/tiles/:z/:x/:y": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "POST /basemap/:basemapid/feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /basemap/:basemapid/feature/:featureid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /basemap/:basemapid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /config": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /config": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /config/display": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /config/login": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /config/tiles": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/asset": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/asset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/asset/:asset.:ext": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/asset/:asset.:ext": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /connection/:connectionid/channel": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/data/:dataid/asset": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/data/:dataid/asset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/data/:dataid/asset/:asset.:ext": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/data/:dataid/asset/:asset.:ext": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /data": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /connection/:connectionid/data": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/data": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/data/:dataid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/data/:dataid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/data/:dataid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /connection/:connectionid/feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/feature/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/feature/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /layer/:layerid/cot": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/cot/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/cot/:uid/all": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /connection/:connectionid/layer/:layerid/incoming/ephemeral": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /connection/:connectionid/layer/:layerid/outgoing/ephemeral": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/task/invoke": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task/logs": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/task/capabilities": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /layer/redeploy": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer/update-management": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/incoming": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/layer/:layerid/incoming": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/incoming": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/outgoing": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/layer/:layerid/outgoing": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/outgoing": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/layer/:layerid": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/redeploy": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/token": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/token": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/token/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/token/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/video/lease": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/video/lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/video/lease/:lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/:connectionid/video/lease": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/video/lease/:lease": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/video/lease/:lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /connection/refresh": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/0": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/auth": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "POST /connection/:connectionid/refresh": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /error": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /error/:errorid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /error": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /error/:errorid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /error": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /esri": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /esri/portal": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /esri/portal/content": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /esri/portal/service": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /esri/portal/server": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /esri/server": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /esri/server/layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /esri/server/layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /esri/server/layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /fonts/:fontstack/:start-:end.pbf": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /geofence": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /iconset": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /iconset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /iconset/:iconset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /iconset/:iconset": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /iconset/:iconset/regen": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /iconset/:iconset": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /iconset/:iconset/icon": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /icon": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /iconset/:iconset/icon/:icon": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /iconset/:iconset/icon/:icon": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /iconset/:iconset/icon/:icon": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /iconset/:iconset/sprite{:size}.json": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /iconset/:iconset/sprite{:size}.png": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /import": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /import/:import/raw": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "POST /import/:import/result": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /import/:import": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /import/:import/retry": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /import/:import": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /data/:dataid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /layer/:layerid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /template": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /ldap/channel": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /ldap/user": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /ldap/user/:email": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /login/passkey": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/register/options": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/register": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/authenticate/options": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /login/passkey/authenticate": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /login/passkey/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /login": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /login": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /manifest.webmanifest/logos/:size": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "POST /marti/export": {
+        "body": true,
+        "query": true,
+        "res": false
+    },
+    "GET /marti/cot/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/cot/:uid/all": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /marti/api/files/:hash": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/api/files/:hash": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /marti/missions/:name/layer": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/layer/:layerid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/missions/:name/layer": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/missions/:name/layer/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:name/layer/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/log": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /marti/missions/:name/log": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/missions/:name/log/:logid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:name/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/missions/:guid/cot": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/cot/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/qr": {
+        "body": false,
+        "query": false,
+        "res": false
+    },
+    "GET /marti/missions/:name/changes": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /marti/missions/:name": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /marti/mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/missions/:name": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/mission": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/missions/:name/archive": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /marti/missions/:name/role": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/subscriptions": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/subscriptions/roles": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:name/contacts": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /marti/missions/:name/upload": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/missions/:name/upload": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /marti/missions/:name/upload/:hash": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:guid/invite": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/missions/:guid/invite": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/invite": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/user": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /marti/package": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "PUT /marti/package": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/package": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/package/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /marti/package/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/package/:uid": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/subscription": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/subscription/:clientuid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/video": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/video/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/video": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PUT /marti/video/:uid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/video/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/group": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /marti/group": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/clients": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/api/contacts/all": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /marti/signClient": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission/:mission/log": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission/:mission/log": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission/log/:log": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette/:palette": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission/:mission/palette": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission/palette/:palette": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission/palette/:palette": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette/:palette/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /template/mission/:mission/palette/:palette/feature/:feature": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /template/mission/:mission/palette/:palette/feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /template/mission/:mission/palette/:palette/feature/:feature": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /template/mission/:mission/palette/:palette/feature/:feature": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/asset": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/asset/:asset": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/asset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/asset/:asset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/asset/:asset.:ext": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /profile/asset/:asset.pmtiles/tile": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
+    "GET /profile/chatroom": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/chatroom": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/chatroom/:chatroom": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/chatroom/:chatroom/chat": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/chatroom/:chatroom/chat": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /profile/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/feature": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PUT /profile/feature": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
+    "DELETE /profile/feature/:id": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /profile/feature/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/interest": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/interest": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/interest/:interestid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/interest/:interestid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /profile/location": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/overlay": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /profile/overlay/:overlay": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/overlay/:overlay": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/overlay": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/overlay": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /profile/paging": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/paging": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/paging/:pagingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/paging/:pagingid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/paging/:pagingid/verify": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /profile/paging/:pagingid/resend": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/paging/:pagingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/token": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/token": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile/token/:id": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/token/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/video": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /profile/video": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /profile/video/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile/video/:id": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /profile": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /profile": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /proxy": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /server/injector": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /server/injector": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /server/injector": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /retention": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /server/repeater": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /server/repeater/:uid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/sun": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/magnetic": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/weather": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/reverse": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/reverse/:longitude/:latitude/elevation": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/route": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/forward": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /search/suggest": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /server/tileset": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /server/video": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /server": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /server": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /swagger": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /task": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /task": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /task/:taskid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /task/raw": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /task/raw/:task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /task/raw/:task/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /task/:task": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /task/:task": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /task/:task/readme": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /type/cot": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /type/cot/:type": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /user": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "PATCH /user/:username": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /user/:username": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /user/:username/session": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /video/auth": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /video/active": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /video/lease": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /video/lease/:lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /video/lease/:lease/metadata": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /video/lease": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /video/lease/:lease": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /video/lease/:lease": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /video/service": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /video/service/path/:path": {
+        "body": false,
+        "query": false,
+        "res": true
+    }
+}
