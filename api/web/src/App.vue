@@ -140,10 +140,16 @@
             v-if='!mounted || (appStore.loading && !route.path.includes("configure") && !route.path.includes("login"))'
             :stage='appStore.loadingStage'
         />
+        <!--
+            No @login listener here on purpose. Login.vue used to emit 'login'
+            to trigger appStore.refreshLogin(), but an emit discards the
+            handler's promise, so the auth-state refresh raced the navigation
+            that followed it and could tear down a mid-mount Map.vue. Login.vue
+            now awaits refreshLogin() itself before navigating.
+        -->
         <router-view
             v-else
             @err='error = $event'
-            @login='appStore.refreshLogin'
         />
         <TablerError
             v-if='error'

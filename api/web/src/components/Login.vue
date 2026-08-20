@@ -365,8 +365,6 @@ import {
     TablerInlineAlert
 } from '@tak-ps/vue-tabler'
 
-const emit = defineEmits([ 'login' ]);
-
 const route = useRoute();
 const router = useRouter();
 
@@ -530,7 +528,7 @@ onMounted(async () => {
                 redirect?: string;
             };
             await applySession({ token: payload.token, email: payload.email, session: payload.session });
-            emit('login');
+            if (!await settleSession()) return;
             const redirectPath = payload.redirect && payload.redirect.startsWith('/') ? payload.redirect : '/';
             await router.replace(redirectPath);
         } catch (err) {
@@ -563,7 +561,7 @@ onMounted(async () => {
         } catch {
             localStorage.token = token;
         }
-        emit('login');
+        if (!await settleSession()) return;
         await router.replace(redirectPath.startsWith('/') ? redirectPath : '/');
         return;
     }
@@ -650,6 +648,31 @@ async function applySession(login: { token: string; email: string; session: stri
     storedUsername.value = login.email;
 }
 
+// Bring appStore's auth state in sync with the session we just persisted,
+// *before* navigating away from /login.
+//
+// This used to be `emit('login')`, which App.vue routed to
+// `appStore.refreshLogin()` - an async action whose promise the emit dropped.
+// refreshLogin() flips `appStore.loading` to true synchronously and back to
+// false only once it has read and decoded the token, so it raced the
+// navigation that immediately followed. App.vue gates <router-view> on
+// `appStore.loading && !route.path.includes('login')`, so whenever the route
+// reached '/' while that flag was still set, the just-mounted Map.vue was torn
+// down and remounted a tick later - running mapStore.destroy() and
+// mapStore.init() concurrently against the same singleton store.
+//
+// Awaiting the refresh makes the ordering deterministic: auth state is settled
+// while we are still on /login (where App.vue's gate is exempt, so there is no
+// flicker), and the route only changes afterwards. Map.vue mounts once.
+//
+// Returns false when the session could not be verified - refreshLogin() has
+// already cleared it and routed back to /login in that case, so the caller
+// must not navigate on top of that.
+async function settleSession(): Promise<boolean> {
+    await appStore.refreshLogin();
+    return appStore.user;
+}
+
 async function createLogin() {
     loading.value = true;
 
@@ -665,7 +688,7 @@ async function createLogin() {
 
         await applySession({ token: login.token, email: login.email, session: login.session });
 
-        navigateAfterLogin();
+        await navigateAfterLogin();
     } catch (err) {
         loading.value = false;
         // When OIDC is forced and the backend rejects a non-admin local login,
@@ -753,15 +776,15 @@ async function completePasskeyLogin(credential: AuthenticationResponseJSON) {
             return;
         }
 
-        navigateAfterLogin();
+        await navigateAfterLogin();
     } catch (err) {
         loading.value = false;
         throw err;
     }
 }
 
-function navigateAfterLogin() {
-    emit('login');
+async function navigateAfterLogin(): Promise<void> {
+    if (!await settleSession()) return;
 
     if (route.query.redirect && !String(route.query.redirect).includes('/login')) {
         const redirectPath = String(route.query.redirect);
@@ -779,14 +802,14 @@ function navigateAfterLogin() {
         })();
 
         if (resolved.matched.length > 0) {
-            router.push(redirectPath);
+            await router.push(redirectPath);
         } else if (isSafeRedirect) {
             window.location.href = redirectPath;
         } else {
-            router.push("/");
+            await router.push("/");
         }
     } else {
-        router.push("/");
+        await router.push("/");
     }
 }
 
@@ -807,17 +830,17 @@ async function renewCertificate() {
         certRenewal.required = false;
         certRenewal.password = '';
 
-        navigateAfterLogin();
+        await navigateAfterLogin();
     } catch (err) {
         loading.value = false;
         throw err;
     }
 }
 
-function skipCertRenewal() {
+async function skipCertRenewal(): Promise<void> {
     certRenewal.required = false;
     certRenewal.password = '';
-    navigateAfterLogin();
+    await navigateAfterLogin();
 }
 
 function loginWithSSO() {

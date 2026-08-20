@@ -366,9 +366,27 @@ export default async function router(schema: Schema, config: Config) {
                             if (userInfo.tak_role) {
                                 profileConfigUpdates['tak::role'] = userInfo.tak_role;
                             }
-                            if (Object.keys(profileConfigUpdates).length > 0) {
-                                await config.models.ProfileConfig.commit(email, profileConfigUpdates);
 
+                            // Whether any real value was synced. Captured before the
+                            // `_managed` markers below are added, because those are
+                            // written on every sync and would otherwise always make
+                            // the map non-empty - which would bump `updated` (and so
+                            // suppress the Welcome wizard) even when Authentik supplied
+                            // no attributes at all.
+                            const syncedValues = Object.keys(profileConfigUpdates).length > 0;
+
+                            // Record which fields Authentik owns so the API can tell the
+                            // frontend to lock them (see ProfileControl.from). Written
+                            // unconditionally, including `false`, so that clearing an
+                            // attribute in Authentik releases the lock on the next login
+                            // rather than leaving the field stuck read-only forever.
+                            profileConfigUpdates['tak::callsign_managed'] = Boolean(userInfo.tak_callsign);
+                            profileConfigUpdates['tak::group_managed'] = Boolean(userInfo.tak_group);
+                            profileConfigUpdates['tak::role_managed'] = Boolean(userInfo.tak_role);
+
+                            await config.models.ProfileConfig.commit(email, profileConfigUpdates);
+
+                            if (syncedValues) {
                                 // The frontend (hasNoConfiguration() in atlas-profile.ts) and the
                                 // isFirstLogin check above both key off `profile.created ===
                                 // profile.updated` to decide whether the user still needs the

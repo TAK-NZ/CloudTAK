@@ -40338,6 +40338,12 @@ export interface paths {
                             active: boolean;
                             system_admin: boolean;
                             agency_admin: number[];
+                            /** @description Callsign is supplied by the identity provider and cannot be changed by the user */
+                            tak_callsign_locked: boolean;
+                            /** @description Group is supplied by the identity provider and cannot be changed by the user */
+                            tak_group_locked: boolean;
+                            /** @description Role is supplied by the identity provider and cannot be changed by the user */
+                            tak_role_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
@@ -40507,6 +40513,12 @@ export interface paths {
                             active: boolean;
                             system_admin: boolean;
                             agency_admin: number[];
+                            /** @description Callsign is supplied by the identity provider and cannot be changed by the user */
+                            tak_callsign_locked: boolean;
+                            /** @description Group is supplied by the identity provider and cannot be changed by the user */
+                            tak_group_locked: boolean;
+                            /** @description Role is supplied by the identity provider and cannot be changed by the user */
+                            tak_role_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
@@ -43227,6 +43239,12 @@ export interface paths {
                             active: boolean;
                             system_admin: boolean;
                             agency_admin: number[];
+                            /** @description Callsign is supplied by the identity provider and cannot be changed by the user */
+                            tak_callsign_locked: boolean;
+                            /** @description Group is supplied by the identity provider and cannot be changed by the user */
+                            tak_group_locked: boolean;
+                            /** @description Role is supplied by the identity provider and cannot be changed by the user */
+                            tak_role_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
@@ -43371,6 +43389,12 @@ export interface paths {
                             active: boolean;
                             system_admin: boolean;
                             agency_admin: number[];
+                            /** @description Callsign is supplied by the identity provider and cannot be changed by the user */
+                            tak_callsign_locked: boolean;
+                            /** @description Group is supplied by the identity provider and cannot be changed by the user */
+                            tak_group_locked: boolean;
+                            /** @description Role is supplied by the identity provider and cannot be changed by the user */
+                            tak_role_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";

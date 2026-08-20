@@ -69,6 +69,30 @@ function waitForAtlasWorkerReady(worker: Worker): Promise<void> {
     });
 }
 
+/**
+ * Map lifecycle serialization.
+ *
+ * `mapStore` is a singleton, but `Map.vue` mounts and unmounts it - and
+ * `onBeforeUnmount` fires `destroy()` without awaiting it, because Vue
+ * lifecycle hooks are synchronous. App.vue additionally gates
+ * `<router-view>` on `appStore.loading`, so any auth-state transition can
+ * unmount and immediately remount `Map.vue` while a teardown is still in
+ * flight.
+ *
+ * `destroyPromise` gives `init()` something to wait on so the two never
+ * overlap, and `lifecycle` lets an in-flight `init()` detect that it has been
+ * superseded and stop touching store state.
+ *
+ * These live outside Pinia state deliberately: `destroy()` ends with
+ * `$reset()`, which would roll a state-resident counter back to its initial
+ * value mid-teardown and defeat the check.
+ */
+let destroyPromise: Promise<void> | undefined;
+let lifecycle = 0;
+
+/** How long destroy() waits for the worker's graceful shutdown RPC before terminating it outright. */
+const WORKER_DESTROY_TIMEOUT_MS = 2000;
+
 export type TAKNotification = { type: string; name: string; body: string; url: string; created: string; }
 
 export const useMapStore = defineStore('cloudtak', {
@@ -300,7 +324,27 @@ export const useMapStore = defineStore('cloudtak', {
             this._workerReady = waitForAtlasWorkerReady(rawWorker);
             this._worker = markRaw(Comlink.wrap<Atlas>(rawWorker));
         },
-        destroy: async function() {
+        destroy: async function(): Promise<void> {
+            // Coalesce concurrent teardowns so init() has exactly one promise
+            // to wait on, and so a double unmount cannot terminate the worker
+            // twice.
+            if (destroyPromise) return destroyPromise;
+
+            // Invalidate any init() still in flight. It bails out at its next
+            // checkpoint instead of binding handlers to the worker, map and
+            // BroadcastChannel this teardown is about to dispose of.
+            lifecycle++;
+
+            // The `.finally()` wrapper is what makes `destroyPromise` safe to
+            // await from init(): it settles only after the module-level handle
+            // has been cleared, so the waiter can never observe a stale one.
+            destroyPromise = this._teardown().finally(() => {
+                destroyPromise = undefined;
+            });
+
+            return destroyPromise;
+        },
+        _teardown: async function(): Promise<void> {
             // Capture current worker instances to avoid races with $reset()/state() creating new ones.
             const currentWorker = this._worker;
             const currentRawWorker = this._rawWorker;
@@ -315,7 +359,19 @@ export const useMapStore = defineStore('cloudtak', {
 
             if (currentWorker && currentRawWorker) {
                 try {
-                    await currentWorker.destroy();
+                    // Bounded on purpose. This is a Comlink RPC, so a worker
+                    // that has crashed or is wedged in a long synchronous task
+                    // will never answer it - and init() now waits for this
+                    // teardown before building a new map, which would turn an
+                    // unbounded wait here into a permanent loading spinner on
+                    // the next mount. terminate() below is the cleanup that
+                    // actually matters; the graceful RPC is best-effort.
+                    await Promise.race([
+                        currentWorker.destroy(),
+                        new Promise<void>((resolve) => {
+                            setTimeout(resolve, WORKER_DESTROY_TIMEOUT_MS);
+                        })
+                    ]);
                 } catch (err: unknown) {
                     console.error('Failed to destroy atlas worker:', err);
                 } finally {
@@ -621,7 +677,53 @@ export const useMapStore = defineStore('cloudtak', {
 
             return sub;
         },
-        init: async function(container: HTMLElement) {
+        /**
+         * Build the MapLibre instance and everything hanging off it.
+         *
+         * @returns true once initialization completed, false when this call was
+         *          superseded by a teardown/remount and gave up. Callers must
+         *          not touch the store further when it returns false.
+         */
+        init: async function(container: HTMLElement): Promise<boolean> {
+            // A destroy() from a previous mount may still be tearing down the
+            // worker, the map and the store state. Map.vue's onBeforeUnmount
+            // fires destroy() without awaiting it, so init() has to wait for it
+            // here. Without this, startWorker() below early-returns while
+            // `_rawWorker` is still set, binding this init to a worker that is
+            // about to be terminated - and Comlink RPCs against a terminated
+            // worker never settle, so `worker.init()` would hang forever behind
+            // the map loading spinner. destroy()'s trailing $reset() would also
+            // clobber whatever this init had already set up.
+            while (destroyPromise) {
+                // destroy() logs its own failures; a failed teardown still
+                // has to unblock the next init().
+                await destroyPromise.catch(() => undefined);
+            }
+
+            // Claim this lifecycle. A later destroy() bumps the counter, which
+            // tells the checkpoints below that this init has been superseded.
+            const generation = ++lifecycle;
+            const superseded = (): boolean => generation !== lifecycle;
+
+            const abandon = (instance?: mapgl.Map): false => {
+                // Dispose a map instance this init created but which the store
+                // is not tracking - either because we never got as far as
+                // handing it over, or because a concurrent destroy() has
+                // already stopped tracking it. Otherwise the WebGL context and
+                // its tile requests leak.
+                if (instance && this._map !== instance) {
+                    try {
+                        instance.remove();
+                    } catch (err) {
+                        console.error('Failed to dispose superseded map instance', err);
+                    }
+                }
+
+                console.warn('mapStore.init() superseded by a newer map lifecycle - aborting initialization');
+
+                return false;
+            };
+
             // Start the worker here rather than in state() so that std.ts
             // inside the worker resolves serverUrl from KV only after
             // initializeApp() has written it — eliminating the race that
@@ -677,8 +779,19 @@ export const useMapStore = defineStore('cloudtak', {
 
             const { value: token } = await Preferences.get({ key: 'token' });
 
+            // Checkpoint before the first worker RPC. Past this point a
+            // concurrent destroy() has already terminated the worker and
+            // $reset() has dropped `_worker`, so `this.worker` would either
+            // throw or hand back a proxy whose calls never resolve.
+            if (superseded()) return abandon();
+
             await this._workerReady!;
+
+            if (superseded()) return abandon();
+
             await this.worker.init(token || '');
+
+            if (superseded()) return abandon();
 
             this.channel.onmessage = async (event: MessageEvent<WorkerMessage>) => {
                 const msg = event.data;
@@ -854,6 +967,11 @@ export const useMapStore = defineStore('cloudtak', {
 
             if (!init.style || typeof init.style === 'string') throw new Error('init.style must be an object');
 
+            // Checkpoint before allocating a WebGL context and kicking off
+            // style/sprite/glyph requests, none of which are worth doing for a
+            // container that has already been unmounted.
+            if (superseded()) return abandon();
+
             mapgl.setWorkerUrl(maplibreWorkerUrl);
             const map = new mapgl.Map(init);
 
@@ -879,6 +997,13 @@ export const useMapStore = defineStore('cloudtak', {
             (map as mapgl.Map & { _geolocateControl?: GeolocateControl })._geolocateControl = geolocateControl;
 
             map.once('idle', async () => {
+                // `idle` fires asynchronously, so this map may already have been
+                // torn down. initOverlays() sets `isLoaded`, and $reset() would
+                // immediately flip it back to false - leaving the loading
+                // spinner up with no second `idle` event to recover from,
+                // because once() is one-shot.
+                if (superseded()) return;
+
                 const displayProjection = await ProfileConfig.get('display_projection');
 
                 if (displayProjection && displayProjection.value === 'globe') {
@@ -891,6 +1016,12 @@ export const useMapStore = defineStore('cloudtak', {
                     });
 
                 await this.initOverlays();
+
+                // destroy() clears `timer`, but only if the interval exists by
+                // the time it runs. Re-check so a teardown that has already
+                // passed that step doesn't leave a refresh loop ticking against
+                // a removed map.
+                if (superseded()) return;
 
                 this.timer = setInterval(async () => {
                     if (!this.map) return;
@@ -906,6 +1037,10 @@ export const useMapStore = defineStore('cloudtak', {
             this._menu = markRaw(new MenuManager(this));
             await (this._menu as MenuManager).init();
             this._bottomBar = this._bottomBar || markRaw(new BottomBarManager());
+
+            // The remaining setup is all worker RPCs. If a teardown started
+            // while MenuManager was initializing, `this.worker` is gone.
+            if (superseded()) return abandon(map);
 
             // If we missed the initial location update make sure it gets synced
             const loc = await this.worker.profile.location;
@@ -944,8 +1079,11 @@ export const useMapStore = defineStore('cloudtak', {
             // Initialize scale control settings
             this.updateDistanceUnit(this.distanceUnit);
 
+            if (superseded()) return abandon(map);
+
             this.isOpen = await this.worker.conn.isOpen;
 
+            return true;
         },
 
         submitLocationHttp: async function(position: Position): Promise<void> {
