@@ -636,7 +636,12 @@ onMounted(async () => {
     });
 
     if (!mapRef.value) throw new Error('Map Element could not be found - Please refresh the page and try again');
-    await mapStore.init(mapRef.value);
+
+    // init() returns false when this mount was superseded by a teardown before
+    // it could finish - the store belongs to a newer Map.vue instance at that
+    // point, so none of the wiring below applies and touching mapStore.map
+    // would throw.
+    if (!await mapStore.init(mapRef.value)) return;
 
     mapStore.map.on('mousemove', (e) => {
         mouseCoord.value = {
@@ -697,7 +702,14 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     inviteChannel?.close();
-    void mapStore.destroy();
+    // Lifecycle hooks are synchronous, so this teardown cannot be awaited here.
+    // mapStore.init() waits on it instead, which is what keeps a remount from
+    // racing it. The catch matters because that shared promise now has two
+    // consumers - without it a failed teardown surfaces as an unhandled
+    // rejection and App.vue pops an error modal on the way out.
+    void mapStore.destroy().catch((err: unknown) => {
+        console.error('Failed to tear down map state:', err);
+    });
 });
 
 function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
