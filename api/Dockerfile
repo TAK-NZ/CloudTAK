@@ -1,5 +1,5 @@
 # https://hub.docker.com/_/nginx
-FROM nginx:alpine3.23
+FROM nginx:alpine3.24
 
 EXPOSE 5000
 
@@ -7,12 +7,12 @@ ENV HOME=/home/etl
 WORKDIR $HOME
 
 # Data source configuration
-ARG DATA_SOURCE_URL=https://github.com/dfpc-coe/CloudTAK-Data/archive/refs/tags/v1.1.0.zip
+ARG DATA_SOURCE_URL=https://github.com/dfpc-coe/CloudTAK-Data/archive/refs/tags/v1.2.0.zip
 ARG API_URL
 ARG USE_LOCAL_ZIP=false
 ARG WEB_PLUGINS
 
-RUN apk add --no-cache git nodejs-current npm python3 make bash g++ openssl postgresql-client grep wget unzip
+RUN apk add --no-cache git nodejs-current npm python3 make bash g++ openssl postgresql-client grep wget unzip perf
 
 WORKDIR $HOME/api
 
@@ -23,15 +23,10 @@ RUN npm install
 
 COPY ./ $HOME/api
 
-RUN if [ ! -z "$WEB_PLUGINS" ]; then \
-        mkdir -p web/plugins; \
-        for url in $(echo $WEB_PLUGINS | tr "," " "); do \
-            git clone $url web/plugins/$(basename $url .git); \
-        done \
-    fi
+RUN WEB_PLUGINS="$WEB_PLUGINS" node bin/plugin.ts
 
 RUN cd web \
-    && npm install --legacy-peer-deps \
+    && npm install \
     && npm run lint \
     && npm run check \
     && npm run build \

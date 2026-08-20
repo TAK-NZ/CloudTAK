@@ -1,7 +1,6 @@
 <template>
     <MenuTemplate
         name='Routes'
-        :loading='!mapStore.isLoaded'
     >
         <template #buttons>
             <TablerIconButton
@@ -92,8 +91,8 @@ import {
     TablerIconButton,
     TablerRefreshButton
 } from '@tak-ps/vue-tabler';
-import type { WorkerMessage } from '../../../base/events.ts';
-import { WorkerMessageType } from '../../../base/events.ts';
+import type { WorkerMessage } from '../../../utils/events.ts';
+import { WorkerMessageType } from '../../../utils/events.ts';
 import {
     IconPlus,
     IconRoute,

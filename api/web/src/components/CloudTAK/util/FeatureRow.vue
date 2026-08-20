@@ -24,7 +24,7 @@
             :class='{
                 "cursor-pointer": isZoomable && props.hover,
                 "cursor-default": !isZoomable || props.hover === false,
-                "cloudtak-hover": hover
+                "cloudtak-hover-fill": hover
             }'
             :hover='hover'
             @click='(e: MouseEvent) => { if (e.ctrlKey) selectClick(); else flyToClick(); }'
@@ -203,7 +203,9 @@ async function deleteCOT() {
     if (props.deleteAction === 'delete') {
         isDeleting.value = true;
 
-        await mapStore.worker.db.remove(props.feature.id);
+        await mapStore.worker.db.remove(props.feature.id, {
+            mission: true
+        });
 
         isDeleting.value = false;
         isDeleted.value = true;
@@ -230,13 +232,3 @@ async function flyToClick() {
     cot.flyTo();
 }
 </script>
-
-<style scoped>
-.icon-wrapper {
-    width: 3rem;
-    height: 3rem;
-    min-width: 3rem;
-    min-height: 3rem;
-    flex-shrink: 0;
-}
-</style>

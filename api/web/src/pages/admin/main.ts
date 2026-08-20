@@ -1,16 +1,12 @@
 import { createApp } from 'vue'
 import * as VueRouter from 'vue-router'
 import { createPinia } from 'pinia'
-import { version } from '../../../package.json'
-import { initServiceWorker } from '../../base/service-worker.ts';
+import { initServiceWorker } from '../../utils/service-worker.ts';
 import { initGlobalErrorReporting, vueErrorHandler } from '../../lib/reporting/index.ts';
-
-import 'floating-vue/dist/style.css'
-import FloatingVue from 'floating-vue'
 
 import App from '../../App.vue';
 
-initServiceWorker(version);
+initServiceWorker();
 initGlobalErrorReporting();
 
 const router = VueRouter.createRouter({
@@ -34,10 +30,6 @@ const router = VueRouter.createRouter({
                 path: 'layer/updates',
                 name: 'admin-layer-updates',
                 component: () => import('../../components/Admin/AdminLayerUpdates.vue')
-            },{
-                path: 'layer/new',
-                name: 'admin-layer-new',
-                component: () => import('../../components/Admin/AdminLayerTemplate.vue')
             },{
                 path: 'video',
                 name: 'admin-videos',
@@ -78,6 +70,25 @@ const router = VueRouter.createRouter({
                 name: 'admin-connection',
                 component: () => import('../../components/Admin/AdminConnections.vue')
             },{
+                path: 'coredata',
+                name: 'admin-coredata',
+                component: () => import('../../components/Admin/AdminCoreData.vue'),
+                children: [{
+                    path: '',
+                    name: 'admin-coredata-default',
+                    redirect: () => {
+                        return { name: 'admin-coredata-devices' };
+                    }
+                },{
+                    path: 'devices',
+                    name: 'admin-coredata-devices',
+                    component: () => import('../../components/Admin/CoreData/CoreDataDevices.vue')
+                },{
+                    path: 'events',
+                    name: 'admin-coredata-events',
+                    component: () => import('../../components/Admin/CoreData/CoreDataEvents.vue')
+                }]
+            },{
                 path: 'user',
                 name: 'admin-users',
                 component: () => import('../../components/Admin/AdminUsers.vue')
@@ -102,11 +113,7 @@ const router = VueRouter.createRouter({
                 name: 'admin-mission-template-log',
                 component: () => import('../../components/Admin/AdminMissionTemplateLog.vue')
             },{
-                path: 'template/:template/palette/:palette',
-                name: 'admin-mission-template-palette',
-                component: () => import('../../components/Admin/AdminPalette.vue')
-            },{
-                path: 'template/:template/palette/:palette/feature/:feature',
+                path: 'template/:template/palette/:feature',
                 name: 'admin-mission-template-palette-feature',
                 component: () => import('../../components/Admin/AdminPaletteFeature.vue')
             },{
@@ -192,6 +199,5 @@ app.config.errorHandler = vueErrorHandler;
 
 app.use(router);
 app.use(pinia);
-app.use(FloatingVue);
 
 app.mount('#app');

@@ -1,10 +1,19 @@
 import { db } from '../database.ts'
 import type { DBConfig } from '../database.ts';
 import { server } from '../std.ts';
+import { withTimeout } from '../utils/async.ts';
 import { liveQuery, type Subscription } from 'dexie';
 import type { paths } from '@cloudtak/api-types';
 
 export type FullConfig = paths['/api/config']['get']['responses']['200']['content']['application/json'];
+
+// Config is read during boot, so its I/O must always settle: a stalled
+// cache read falls through to the network; a stalled cache write is dropped.
+const CACHE_TIMEOUT_MS = 2000;
+const FETCH_TIMEOUT_MS = 10000;
+
+const SYNC_CACHE_KEY = 'config';
+const SYNC_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export default class Config<K extends keyof FullConfig = keyof FullConfig> {
     key: K;
@@ -38,14 +47,10 @@ export default class Config<K extends keyof FullConfig = keyof FullConfig> {
     }
 
     static async get<K extends keyof FullConfig>(key: K): Promise<Config<K> | undefined> {
-        let entry = await db.config.get(key as string);
-        if (!entry) {
-            await this.refresh([key]);
-            entry = await db.config.get(key as string);
-        }
+        const result = await this.list([key]);
 
-        if (!entry) return undefined;
-        return new Config<K>(entry.key as K, entry.value as FullConfig[K]);
+        if (result[key] === undefined) return undefined;
+        return new Config<K>(key, result[key] as FullConfig[K]);
     }
 
     static async list(
@@ -56,7 +61,13 @@ export default class Config<K extends keyof FullConfig = keyof FullConfig> {
     ): Promise<Partial<FullConfig>> {
         const result: Partial<FullConfig> = {};
 
-        const db_res = await db.config.bulkGet(keys as string[]);
+        let db_res: (DBConfig | undefined)[];
+        try {
+            db_res = await withTimeout(db.config.bulkGet(keys as string[]), CACHE_TIMEOUT_MS, 'Config cache read');
+        } catch (err) {
+            console.warn('Config cache read failed, falling back to the network', err);
+            db_res = keys.map(() => undefined);
+        }
 
         const missing: (keyof FullConfig)[] = [];
 
@@ -88,20 +99,60 @@ export default class Config<K extends keyof FullConfig = keyof FullConfig> {
                 }
             }
 
-            if (defaultsToSave.length) {
-                await db.config.bulkPut(defaultsToSave);
-            }
+            await this.persist(defaultsToSave);
         }
 
         return result;
     }
 
+    /**
+     * Re-fetch every cached config value if the last sweep is more than
+     * 24 hours old. Failures are swallowed so a stale cache never surfaces
+     * an error - the timestamp is not advanced, so the next full sync retries.
+     */
+    static async sync(): Promise<void> {
+        try {
+            const last = await withTimeout(db.cache.get(SYNC_CACHE_KEY), CACHE_TIMEOUT_MS, 'Config sync cache read');
+            if (last && Date.now() - last.updated < SYNC_MAX_AGE_MS) return;
+
+            // Server config keys are `::` namespaced - skip session values
+            // like `token` that share the table
+            const keys = (await withTimeout(db.config.toCollection().primaryKeys(), CACHE_TIMEOUT_MS, 'Config sync key read'))
+                .map((key) => String(key))
+                .filter((key) => key.includes('::')) as (keyof FullConfig)[];
+
+            await this.refresh(keys);
+
+            await withTimeout(db.cache.put({
+                key: SYNC_CACHE_KEY,
+                updated: Date.now()
+            }), CACHE_TIMEOUT_MS, 'Config sync cache write');
+        } catch (err) {
+            console.warn('Config stale-sweep failed, keeping cached values', err);
+        }
+    }
+
     static async refresh(keys: (keyof FullConfig)[]): Promise<Partial<FullConfig>> {
         if (keys.length === 0) return {};
 
-        const res = await server.GET('/api/config', {
-            params: { query: { keys: keys.join(',') } }
-        });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+        let res;
+        try {
+            res = await server.GET('/api/config', {
+                params: { query: { keys: keys.join(',') } },
+                signal: controller.signal
+            });
+        } catch (err) {
+            if (controller.signal.aborted) {
+                throw new Error('Configuration request timed out', { cause: err });
+            }
+
+            throw err;
+        } finally {
+            clearTimeout(timer);
+        }
 
         if (res.error) throw new Error(res.error.message);
 
@@ -115,10 +166,20 @@ export default class Config<K extends keyof FullConfig = keyof FullConfig> {
             });
         }
 
-        if (ops.length) {
-            await db.config.bulkPut(ops);
-        }
+        await this.persist(ops);
 
         return data;
+    }
+
+    // Best-effort cache write — must not hang or fail the request that
+    // produced the values.
+    private static async persist(ops: DBConfig[]): Promise<void> {
+        if (!ops.length) return;
+
+        try {
+            await withTimeout(db.config.bulkPut(ops), CACHE_TIMEOUT_MS, 'Config cache write');
+        } catch (err) {
+            console.warn('Failed to cache config values', err);
+        }
     }
 }

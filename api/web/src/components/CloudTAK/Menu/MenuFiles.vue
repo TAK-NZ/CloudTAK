@@ -219,8 +219,8 @@ import { useRouter } from 'vue-router';
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import { Preferences } from '@capacitor/preferences';
 import type { ProfileFile, ProfileFileList } from '../../../types.ts';
-import PathManager from '../../../base/path-manager.ts';
-import type { PathNode } from '../../../base/path-manager.ts';
+import PathManager from '../../../utils/path-manager.ts';
+import type { PathNode } from '../../../utils/path-manager.ts';
 import ProfileConfig from '../../../base/profile.ts';
 import { stdurl, server } from '../../../std.ts';
 import {
@@ -369,14 +369,12 @@ function buildPathTree() {
     const flatPaths = Array.from(pathCounts.entries()).map(([path, count]) => ({ path, count }));
     paths.value = PathManager.buildTree<ProfileFile>(flatPaths);
 
-    // Populate items into opened nodes
     const populateItems = (nodes: PathNode<ProfileFile>[]) => {
         for (const node of nodes) {
             const items = pathItems.get(node.fullPath);
             if (items) {
                 node.items = new Set(items);
             }
-            // For intermediate nodes that have no direct items but have the path match
             if (node.children.length) {
                 populateItems(node.children);
             }
@@ -450,7 +448,6 @@ async function renameFolder() {
         return;
     }
 
-    // Update all files in this folder and descendants
     const allNodePaths = PathManager.flatPaths([node]);
 
     for (const oldP of allNodePaths) {

@@ -1,12 +1,10 @@
 <template>
     <div
-        class='d-flex text-white align-items-center px-2'
+        class='cloudtak-panel d-flex align-items-center px-2'
         style='
             z-index: 1;
             height: 60px;
-            max-width: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            border-radius: 0px 0px 6px 0px;
+            max-width: calc(100vw - 16px);
         '
     >
         <template v-if='!mapStore.mission'>
@@ -45,7 +43,7 @@
             </div>
 
             <div
-                class='d-none d-md-block border-start border-white opacity-50 mx-1'
+                class='d-none d-md-block border-start mx-1'
                 style='height: 32px;'
             />
 
@@ -100,7 +98,7 @@
                     </TablerIconButton>
                     <span
                         v-if='unreadLogs && unreadLogs > 0'
-                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm border border-dark'
+                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm unread-badge'
                         style='font-size: 0.75rem; z-index: 10;'
                     >
                         {{ unreadLogs > 99 ? '99+' : unreadLogs }}
@@ -121,7 +119,7 @@
                     </TablerIconButton>
                     <span
                         v-if='unreadChats && unreadChats > 0'
-                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm border border-dark'
+                        class='position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger text-white fw-bold shadow-sm unread-badge'
                         style='font-size: 0.75rem; z-index: 10;'
                     >
                         {{ unreadChats > 99 ? '99+' : unreadChats }}
@@ -188,3 +186,10 @@ const unreadChats = useObservable(
     }))
 );
 </script>
+
+<style scoped>
+/* Ring in the panel fill so the count lifts off the icon it overlaps. */
+.unread-badge {
+    border: 2px solid var(--cloudtak-panel-bg, transparent);
+}
+</style>

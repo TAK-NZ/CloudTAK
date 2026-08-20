@@ -119,7 +119,6 @@
             </template>
 
             <div class='px-2 pb-3'>
-                <!-- AutoSuggested Filters -->
                 <template v-if='(config.timezone as Record<string, unknown>)'>
                     <TablerTimeZone
                         v-model='(config.timezone as Record<string, string>).timezone'
@@ -157,7 +156,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { server } from '../../../std.ts';
 import type { ETLLayer, ETLLayerTaskCapabilities } from '../../../types.ts';
-import { validateJSON } from '../../../base/validators.ts';
+import { validateJSON } from '../../../utils/validators.ts';
 import {
     TablerNone,
     TablerAlert,

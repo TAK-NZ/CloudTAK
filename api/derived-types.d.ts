@@ -736,7 +736,7 @@ export interface paths {
                     /** @description No Description */
                     type?: ("raster" | "raster-dem" | "vector") | ("raster" | "raster-dem" | "vector")[];
                     /** @description No Description */
-                    sort: "id" | "created" | "updated" | "name" | "url" | "protocol" | "bounds" | "center" | "minzoom" | "maxzoom" | "format" | "type" | "username" | "sharing_enabled" | "sharing_token" | "hidden" | "tilesize" | "attribution" | "collection" | "frequency" | "scheme" | "overlay" | "tilejson" | "enableRLS";
+                    sort: "id" | "created" | "updated" | "parent" | "name" | "url" | "protocol" | "bounds" | "center" | "minzoom" | "maxzoom" | "format" | "type" | "username" | "sharing_enabled" | "sharing_token" | "hidden" | "tilesize" | "attribution" | "collection" | "frequency" | "scheme" | "overlay" | "tilejson" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description Only show Basemaps belonging to a given collection */
@@ -769,6 +769,8 @@ export interface paths {
                                 id: number;
                                 created: string;
                                 updated: string;
+                                /** @description If set, this Basemap/Overlay is a child of the given parent Basemap/Overlay */
+                                parent: null | number;
                                 name: string;
                                 url: string;
                                 protocol: "zxy" | "mapserver" | "imageserver" | "featureserver" | "hosted";
@@ -1015,6 +1017,8 @@ export interface paths {
                     "application/json": {
                         /** @description Human readable name */
                         name: string;
+                        /** @description Create this Basemap/Overlay as a child of the given parent Basemap/Overlay - only a single level of nesting is supported */
+                        parent?: number;
                         /**
                          * @description Allow CloudTAK users to share this layer with other users
                          * @default true
@@ -1048,6 +1052,7 @@ export interface paths {
                         style?: "xyz";
                         type?: "raster" | "raster-dem" | "vector";
                         bounds?: number[];
+                        /** @description TileJSON 3.0.0 center as [longitude, latitude, zoom] - the zoom element is optional */
                         center?: number[];
                         styles?: unknown[];
                         title?: string;
@@ -1067,6 +1072,8 @@ export interface paths {
                             id: number;
                             created: string;
                             updated: string;
+                            /** @description If set, this Basemap/Overlay is a child of the given parent Basemap/Overlay */
+                            parent: null | number;
                             name: string;
                             url: string;
                             protocol: "zxy" | "mapserver" | "imageserver" | "featureserver" | "hosted";
@@ -1204,6 +1211,8 @@ export interface paths {
                             id: number;
                             created: string;
                             updated: string;
+                            /** @description If set, this Basemap/Overlay is a child of the given parent Basemap/Overlay */
+                            parent: null | number;
                             name: string;
                             url: string;
                             protocol: "zxy" | "mapserver" | "imageserver" | "featureserver" | "hosted";
@@ -1233,6 +1242,43 @@ export interface paths {
                             actions: {
                                 feature: ("query" | "fetch" | "create" | "update" | "delete")[];
                             };
+                            /** @description Child Basemaps/Overlays of this Basemap - only a single level of nesting is supported */
+                            children: {
+                                id: number;
+                                created: string;
+                                updated: string;
+                                /** @description If set, this Basemap/Overlay is a child of the given parent Basemap/Overlay */
+                                parent: null | number;
+                                name: string;
+                                url: string;
+                                protocol: "zxy" | "mapserver" | "imageserver" | "featureserver" | "hosted";
+                                minzoom: number;
+                                maxzoom: number;
+                                format: "png" | "webp" | "jpeg" | "mvt";
+                                type: "raster" | "raster-dem" | "vector";
+                                username: null | string;
+                                sharing_enabled: boolean;
+                                sharing_token: null | string;
+                                hidden: boolean;
+                                tilesize: number;
+                                attribution: null | string;
+                                collection: null | string;
+                                frequency: null | number;
+                                /** @constant */
+                                scheme: "xyz";
+                                overlay: boolean;
+                                encoding?: "mapbox" | "terrarium";
+                                styles?: unknown[];
+                                iconset?: null | string;
+                                title?: string;
+                                snapping_enabled?: boolean;
+                                snapping_layer?: null | string;
+                                bounds?: number[];
+                                center?: number[];
+                                actions: {
+                                    feature: ("query" | "fetch" | "create" | "update" | "delete")[];
+                                };
+                            }[];
                         } | string;
                     };
                 };
@@ -1408,6 +1454,8 @@ export interface paths {
                     "application/json": {
                         /** @description Human readable name */
                         name?: string;
+                        /** @description Make this Basemap/Overlay a child of the given parent Basemap/Overlay - only a single level of nesting is supported */
+                        parent?: null | number;
                         sharing_enabled?: boolean;
                         /** @description Allow CloudTAK line editing to snap to features in this basemap */
                         snapping_enabled?: boolean;
@@ -1432,6 +1480,7 @@ export interface paths {
                         style?: "xyz";
                         type?: "raster" | "raster-dem" | "vector";
                         bounds?: number[];
+                        /** @description TileJSON 3.0.0 center as [longitude, latitude, zoom] - the zoom element is optional */
                         center?: number[];
                         styles?: unknown[];
                         title?: string;
@@ -1451,6 +1500,8 @@ export interface paths {
                             id: number;
                             created: string;
                             updated: string;
+                            /** @description If set, this Basemap/Overlay is a child of the given parent Basemap/Overlay */
+                            parent: null | number;
                             name: string;
                             url: string;
                             protocol: "zxy" | "mapserver" | "imageserver" | "featureserver" | "hosted";
@@ -2198,6 +2249,7 @@ export interface paths {
                             "agol::client_secret"?: string;
                             /** @description Base URL for Media Service */
                             "media::url"?: string;
+                            "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
                             /** @description COTURN Server Secret */
@@ -2214,6 +2266,15 @@ export interface paths {
                             "map::basemap"?: null | number;
                             /** @description Default Terrain (raster-dem) Basemap for New Users */
                             "map::terrain"?: null | number;
+                            /** @description Favourite Basemaps (1-3) shown at the top of the Basemap Menu */
+                            "map::basemap::favs"?: null | {
+                                /** @description Basemap ID */
+                                id: number;
+                                /** @description Basemap Name */
+                                name: string;
+                                /** @description Base64 encoded Preview Image */
+                                image: string;
+                            }[];
                             "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             "display::distance"?: "meter" | "kilometer" | "mile";
                             "display::elevation"?: "meter" | "feet";
@@ -2294,6 +2355,15 @@ export interface paths {
                                 icon: string;
                                 /** @description Application URL */
                                 url: string;
+                            }[];
+                            /** @description Preconfigured Core Event Types */
+                            "core::event::types"?: {
+                                /** @description Preconfigured Event Type Name */
+                                name: string;
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                /** @description Base64 encoded custom icon */
+                                icon?: string;
                             }[];
                         };
                     };
@@ -2437,6 +2507,7 @@ export interface paths {
                         "agol::client_secret"?: string;
                         /** @description Base URL for Media Service */
                         "media::url"?: string;
+                        "media::proxy::allow"?: string[];
                         /** @description COTURN Server URL */
                         "coturn::url"?: string;
                         /** @description COTURN Server Secret */
@@ -2453,6 +2524,15 @@ export interface paths {
                         "map::basemap"?: null | number;
                         /** @description Default Terrain (raster-dem) Basemap for New Users */
                         "map::terrain"?: null | number;
+                        /** @description Favourite Basemaps (1-3) shown at the top of the Basemap Menu */
+                        "map::basemap::favs"?: null | {
+                            /** @description Basemap ID */
+                            id: number;
+                            /** @description Basemap Name */
+                            name: string;
+                            /** @description Base64 encoded Preview Image */
+                            image: string;
+                        }[];
                         "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                         "display::distance"?: "meter" | "kilometer" | "mile";
                         "display::elevation"?: "meter" | "feet";
@@ -2534,6 +2614,15 @@ export interface paths {
                             /** @description Application URL */
                             url: string;
                         }[];
+                        /** @description Preconfigured Core Event Types */
+                        "core::event::types"?: {
+                            /** @description Preconfigured Event Type Name */
+                            name: string;
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            /** @description Base64 encoded custom icon */
+                            icon?: string;
+                        }[];
                     };
                 };
             };
@@ -2611,6 +2700,7 @@ export interface paths {
                             "agol::client_secret"?: string;
                             /** @description Base URL for Media Service */
                             "media::url"?: string;
+                            "media::proxy::allow"?: string[];
                             /** @description COTURN Server URL */
                             "coturn::url"?: string;
                             /** @description COTURN Server Secret */
@@ -2627,6 +2717,15 @@ export interface paths {
                             "map::basemap"?: null | number;
                             /** @description Default Terrain (raster-dem) Basemap for New Users */
                             "map::terrain"?: null | number;
+                            /** @description Favourite Basemaps (1-3) shown at the top of the Basemap Menu */
+                            "map::basemap::favs"?: null | {
+                                /** @description Basemap ID */
+                                id: number;
+                                /** @description Basemap Name */
+                                name: string;
+                                /** @description Base64 encoded Preview Image */
+                                image: string;
+                            }[];
                             "display::stale"?: "Immediate" | "10 Minutes" | "30 Minutes" | "1 Hour" | "Never";
                             "display::distance"?: "meter" | "kilometer" | "mile";
                             "display::elevation"?: "meter" | "feet";
@@ -2707,6 +2806,15 @@ export interface paths {
                                 icon: string;
                                 /** @description Application URL */
                                 url: string;
+                            }[];
+                            /** @description Preconfigured Core Event Types */
+                            "core::event::types"?: {
+                                /** @description Preconfigured Event Type Name */
+                                name: string;
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                /** @description Base64 encoded custom icon */
+                                icon?: string;
                             }[];
                         };
                     };
@@ -3057,6 +3165,104 @@ export interface paths {
             cookie?: never;
         };
         /** Return Tile Config */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            url: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the base URL that incoming Layer Webhooks are served from */
         get: {
             parameters: {
                 query?: never;
@@ -4712,6 +4918,8 @@ export interface paths {
                                     };
                                     /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                     archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
                                     geofence?: {
                                         elevationMonitored?: boolean;
                                         minElevation?: string;
@@ -4849,6 +5057,7 @@ export interface paths {
                                         point?: string;
                                         callsign?: string;
                                         mission?: string;
+                                        event?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -4860,7 +5069,7 @@ export interface paths {
                                         groupOwner?: string;
                                         messageId?: string;
                                         chatroom: string;
-                                        id: string;
+                                        id?: string;
                                         senderCallsign: string;
                                         chatgrp: unknown;
                                     };
@@ -5316,6 +5525,8 @@ export interface paths {
                             };
                             /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                             archived?: boolean;
+                            /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                            forcedelete?: boolean;
                             geofence?: {
                                 elevationMonitored?: boolean;
                                 minElevation?: string;
@@ -5453,6 +5664,7 @@ export interface paths {
                                 point?: string;
                                 callsign?: string;
                                 mission?: string;
+                                event?: string;
                                 url?: string;
                                 mime?: string;
                                 remarks?: string;
@@ -5464,7 +5676,7 @@ export interface paths {
                                 groupOwner?: string;
                                 messageId?: string;
                                 chatroom: string;
-                                id: string;
+                                id?: string;
                                 senderCallsign: string;
                                 chatgrp: unknown;
                             };
@@ -5851,6 +6063,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -5988,6 +6202,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -5999,7 +6214,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -6565,6 +6780,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -6702,6 +6919,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -6713,7 +6931,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -7282,6 +7500,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -7419,6 +7639,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -7430,7 +7651,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -7823,6 +8044,8 @@ export interface paths {
                                         };
                                         /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                         archived?: boolean;
+                                        /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                        forcedelete?: boolean;
                                         geofence?: {
                                             elevationMonitored?: boolean;
                                             minElevation?: string;
@@ -7960,6 +8183,7 @@ export interface paths {
                                             point?: string;
                                             callsign?: string;
                                             mission?: string;
+                                            event?: string;
                                             url?: string;
                                             mime?: string;
                                             remarks?: string;
@@ -7971,7 +8195,7 @@ export interface paths {
                                             groupOwner?: string;
                                             messageId?: string;
                                             chatroom: string;
-                                            id: string;
+                                            id?: string;
                                             senderCallsign: string;
                                             chatgrp: unknown;
                                         };
@@ -8451,6 +8675,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -8588,6 +8814,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -8599,7 +8826,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -9088,6 +9315,8 @@ export interface paths {
                                     };
                                     /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                     archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
                                     geofence?: {
                                         elevationMonitored?: boolean;
                                         minElevation?: string;
@@ -9225,6 +9454,7 @@ export interface paths {
                                         point?: string;
                                         callsign?: string;
                                         mission?: string;
+                                        event?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -9236,7 +9466,7 @@ export interface paths {
                                         groupOwner?: string;
                                         messageId?: string;
                                         chatroom: string;
-                                        id: string;
+                                        id?: string;
                                         senderCallsign: string;
                                         chatgrp: unknown;
                                     };
@@ -10251,7 +10481,10 @@ export interface paths {
         /** Get the logs related to the given task */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description No Description */
+                    limit?: number;
+                };
                 header?: never;
                 path: {
                     /** @description No Description */
@@ -10621,7 +10854,6 @@ export interface paths {
                                 latest_version: null | string;
                                 has_update: boolean;
                                 has_stack: boolean;
-                                template: boolean;
                                 connection: null | number;
                                 parent_name: null | string;
                             }[];
@@ -10718,7 +10950,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "template" | "connection" | "logging" | "task" | "memory" | "timeout" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
+                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "memory" | "timeout" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description No Description */
@@ -10752,7 +10984,6 @@ export interface paths {
                                 status?: string;
                                 created: string;
                                 updated: string;
-                                template: boolean;
                                 connection: null | number;
                                 username: null | string;
                                 uuid: string;
@@ -11177,6 +11408,15 @@ export interface paths {
                         alarm_points?: number;
                         /** @default false */
                         protected: boolean;
+                        /** @description Permissions granted to the Layer as <permission>:<level> pairs - ie video:read or video:* */
+                        permissions?: null | string[];
+                        /** @description Create an Incoming Config alongside the Layer */
+                        incoming?: {
+                            cron?: null | string;
+                            webhooks?: boolean;
+                        };
+                        /** @description Create an Outgoing Config alongside the Layer */
+                        outgoing?: Record<string, never>;
                     };
                 };
             };
@@ -11192,7 +11432,6 @@ export interface paths {
                             status?: string;
                             created: string;
                             updated: string;
-                            template: boolean;
                             connection: null | number;
                             username: null | string;
                             uuid: string;
@@ -13321,7 +13560,6 @@ export interface paths {
                             status?: string;
                             created: string;
                             updated: string;
-                            template: boolean;
                             connection: null | number;
                             username: null | string;
                             uuid: string;
@@ -13843,7 +14081,6 @@ export interface paths {
                             status?: string;
                             created: string;
                             updated: string;
-                            template: boolean;
                             connection: null | number;
                             username: null | string;
                             uuid: string;
@@ -16532,6 +16769,3150 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/core/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Core Devices */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Limit the number of responses returned */
+                    limit: number;
+                    /** @description Iterate through "pages" of items based on the "limit" query param */
+                    page: number;
+                    /** @description Order in which results are returned based on the "sort" query param */
+                    order: "asc" | "desc";
+                    /** @description No Description */
+                    sort: "id" | "created" | "updated" | "username" | "connection" | "event" | "type" | "name" | "manufacturer" | "model" | "serial" | "firmware" | "status" | "battery" | "simulated" | "external_id" | "remarks" | "metadata" | "enableRLS";
+                    /** @description Filter results by a human readable name field */
+                    filter: string;
+                    /** @description Only return Devices assigned to the given Core Event */
+                    event?: string;
+                    /** @description Only return Devices shared with the given TAK Channel bitpos - can be provided multiple times to match any of the given Channels */
+                    channel?: number | number[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: string;
+                                created: string;
+                                updated: string;
+                                username: null | string;
+                                /** @description Connection that created the Device if created by a Connection or Layer token */
+                                connection: null | number;
+                                /** @description Core Event the Device is currently assigned to */
+                                event: null | string;
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                /** @description Human readable name/callsign of the Device */
+                                name: string;
+                                /** @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI */
+                                manufacturer: string;
+                                /** @description Model of the Device - ie: Micro Detective, IdentiFINDER 2 */
+                                model: string;
+                                /** @description Manufacturer assigned Serial Number */
+                                serial: string;
+                                /** @description Firmware/Software revision reported by the Device */
+                                firmware: string;
+                                /** @description General Device health status - ie: Full, Reduced, Unknown */
+                                status: string;
+                                /** @description Battery level as a percentage (0-100) at last report */
+                                battery: null | number;
+                                /** @description Is the Device a simulated data source */
+                                simulated: boolean;
+                                /** @description ID of the Device in an external system */
+                                external_id: string;
+                                remarks: string;
+                                /** @description User defined key/value Device metadata */
+                                metadata: {
+                                    [key: string]: unknown;
+                                };
+                                /** @description TAK Server Channels the Device is shared with */
+                                channels: number[];
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a new Core Device */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name: string;
+                        /** @description MIL-STD-2525E Symbol ID */
+                        type: string;
+                        /** @description Core Event to assign the Device to */
+                        event?: null | string;
+                        /**
+                         * @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI
+                         * @default
+                         */
+                        manufacturer: string;
+                        /**
+                         * @description Model of the Device - ie: Micro Detective, IdentiFINDER 2
+                         * @default
+                         */
+                        model: string;
+                        /**
+                         * @description Manufacturer assigned Serial Number
+                         * @default
+                         */
+                        serial: string;
+                        /**
+                         * @description Firmware/Software revision reported by the Device
+                         * @default
+                         */
+                        firmware: string;
+                        /**
+                         * @description General Device health status - ie: Full, Reduced, Unknown
+                         * @default
+                         */
+                        status: string;
+                        /** @description Battery level as a percentage (0-100) at last report */
+                        battery?: null | number;
+                        /**
+                         * @description Is the Device a simulated data source
+                         * @default false
+                         */
+                        simulated: boolean;
+                        /**
+                         * @description ID of the Device in an external system
+                         * @default
+                         */
+                        external_id: string;
+                        /** @default  */
+                        remarks: string;
+                        /**
+                         * @description User defined key/value Device metadata
+                         * @default {}
+                         */
+                        metadata: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * @description TAK Server Channels to share the Device with
+                         * @default []
+                         */
+                        channels: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            username: null | string;
+                            /** @description Connection that created the Device if created by a Connection or Layer token */
+                            connection: null | number;
+                            /** @description Core Event the Device is currently assigned to */
+                            event: null | string;
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            /** @description Human readable name/callsign of the Device */
+                            name: string;
+                            /** @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI */
+                            manufacturer: string;
+                            /** @description Model of the Device - ie: Micro Detective, IdentiFINDER 2 */
+                            model: string;
+                            /** @description Manufacturer assigned Serial Number */
+                            serial: string;
+                            /** @description Firmware/Software revision reported by the Device */
+                            firmware: string;
+                            /** @description General Device health status - ie: Full, Reduced, Unknown */
+                            status: string;
+                            /** @description Battery level as a percentage (0-100) at last report */
+                            battery: null | number;
+                            /** @description Is the Device a simulated data source */
+                            simulated: boolean;
+                            /** @description ID of the Device in an external system */
+                            external_id: string;
+                            remarks: string;
+                            /** @description User defined key/value Device metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description TAK Server Channels the Device is shared with */
+                            channels: number[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/core/device/{:device}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Core Device */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":device": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            username: null | string;
+                            /** @description Connection that created the Device if created by a Connection or Layer token */
+                            connection: null | number;
+                            /** @description Core Event the Device is currently assigned to */
+                            event: null | string;
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            /** @description Human readable name/callsign of the Device */
+                            name: string;
+                            /** @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI */
+                            manufacturer: string;
+                            /** @description Model of the Device - ie: Micro Detective, IdentiFINDER 2 */
+                            model: string;
+                            /** @description Manufacturer assigned Serial Number */
+                            serial: string;
+                            /** @description Firmware/Software revision reported by the Device */
+                            firmware: string;
+                            /** @description General Device health status - ie: Full, Reduced, Unknown */
+                            status: string;
+                            /** @description Battery level as a percentage (0-100) at last report */
+                            battery: null | number;
+                            /** @description Is the Device a simulated data source */
+                            simulated: boolean;
+                            /** @description ID of the Device in an external system */
+                            external_id: string;
+                            remarks: string;
+                            /** @description User defined key/value Device metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description TAK Server Channels the Device is shared with */
+                            channels: number[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a Core Device */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":device": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update properties of a Core Device - only the Device creator can make changes */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":device": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name?: string;
+                        type?: string;
+                        /** @description Core Event to assign the Device to - set to null to unassign */
+                        event?: null | string;
+                        manufacturer?: string;
+                        model?: string;
+                        serial?: string;
+                        firmware?: string;
+                        status?: string;
+                        battery?: null | number;
+                        simulated?: boolean;
+                        external_id?: string;
+                        remarks?: string;
+                        /** @description User defined key/value Device metadata - replaces the existing metadata object */
+                        metadata?: {
+                            [key: string]: unknown;
+                        };
+                        channels?: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            username: null | string;
+                            /** @description Connection that created the Device if created by a Connection or Layer token */
+                            connection: null | number;
+                            /** @description Core Event the Device is currently assigned to */
+                            event: null | string;
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            /** @description Human readable name/callsign of the Device */
+                            name: string;
+                            /** @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI */
+                            manufacturer: string;
+                            /** @description Model of the Device - ie: Micro Detective, IdentiFINDER 2 */
+                            model: string;
+                            /** @description Manufacturer assigned Serial Number */
+                            serial: string;
+                            /** @description Firmware/Software revision reported by the Device */
+                            firmware: string;
+                            /** @description General Device health status - ie: Full, Reduced, Unknown */
+                            status: string;
+                            /** @description Battery level as a percentage (0-100) at last report */
+                            battery: null | number;
+                            /** @description Is the Device a simulated data source */
+                            simulated: boolean;
+                            /** @description ID of the Device in an external system */
+                            external_id: string;
+                            remarks: string;
+                            /** @description User defined key/value Device metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description TAK Server Channels the Device is shared with */
+                            channels: number[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the KanBan Boards of a Channel */
+        get: {
+            parameters: {
+                query: {
+                    /** @description TAK Channel bitpos to list Boards for */
+                    channel: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: string;
+                                created: string;
+                                updated: string;
+                                /** @description TAK Server Channel bitpos the Board belongs to */
+                                channel: number;
+                                name: string;
+                                description: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a new KanBan Board on a Channel - a Nominated Column is created alongside it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description TAK Channel bitpos the Board belongs to */
+                        channel: number;
+                        /** @description Human readable name */
+                        name: string;
+                        /** @description Human readable description */
+                        description?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description TAK Server Channel bitpos the Board belongs to */
+                            channel: number;
+                            name: string;
+                            description: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/column": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the Columns of a KanBan Board */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Board to list Columns for */
+                    board: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: string;
+                                created: string;
+                                updated: string;
+                                /** @description Board the Column belongs to */
+                                board: string;
+                                name: string;
+                                description: string;
+                                /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                color: string;
+                                /** @description Columns of type nominated are created automatically and cannot be removed */
+                                type: "nominated" | "custom";
+                                /** @description Horizontal position of the Column relative to the other Columns of the Board */
+                                position: number;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a new Column on a KanBan Board */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description Board the Column belongs to
+                         */
+                        board: string;
+                        /** @description Human readable name */
+                        name: string;
+                        /** @description Human readable description */
+                        description?: string;
+                        /** @description Hex colour the Column is rendered with - ie: #ff0000 - or an empty string for the default */
+                        color?: string;
+                        /** @description Horizontal position of the Column - defaults to after the existing Columns */
+                        position?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description Board the Column belongs to */
+                            board: string;
+                            name: string;
+                            description: string;
+                            /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                            color: string;
+                            /** @description Columns of type nominated are created automatically and cannot be removed */
+                            type: "nominated" | "custom";
+                            /** @description Horizontal position of the Column relative to the other Columns of the Board */
+                            position: number;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/column/{:column}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a Column - Events placed in the Column are removed from the Board but are not deleted */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":column": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename, restyle or re-order a Column of a KanBan Board */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":column": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name?: string;
+                        /** @description Human readable description */
+                        description?: string;
+                        /** @description Hex colour the Column is rendered with - ie: #ff0000 - or an empty string for the default */
+                        color?: string;
+                        position?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description Board the Column belongs to */
+                            board: string;
+                            name: string;
+                            description: string;
+                            /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                            color: string;
+                            /** @description Columns of type nominated are created automatically and cannot be removed */
+                            type: "nominated" | "custom";
+                            /** @description Horizontal position of the Column relative to the other Columns of the Board */
+                            position: number;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/board/event": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the Core Events placed on a KanBan Board along with the Column each sits in */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Board to list placed Events for */
+                    board: string;
+                    /** @description Only return Events placed in the given Column */
+                    column?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: string;
+                                created: string;
+                                updated: string;
+                                /** @description Board the Event is placed on */
+                                board: string;
+                                /** @description Column of the Board the Event is placed in */
+                                column: string;
+                                /** @description Vertical position of the Event within the Column */
+                                position: number;
+                                event: {
+                                    id: string;
+                                    /** @description GUID of the TAK Server Mission associated with the Event */
+                                    mission_guid: null | string;
+                                    created: string;
+                                    updated: string;
+                                    /** @description Is the Event currently active */
+                                    active: boolean;
+                                    /** @description Time at which the Event ended */
+                                    ended: null | string;
+                                    username: null | string;
+                                    /** @description Connection that created the Event if created by a Connection or Layer token */
+                                    connection: null | number;
+                                    priority: "none" | "low" | "medium" | "high" | "critical";
+                                    /** @description MIL-STD-2525E Symbol ID */
+                                    type: string;
+                                    name: string;
+                                    /** @description ID of the Event in an external system */
+                                    external_id: string;
+                                    /** @description Can users other than the creator edit the Event */
+                                    editable: boolean;
+                                    /** @description Human readable location - ie: an address */
+                                    location: string;
+                                    remarks: string;
+                                    /** @description User defined key/value Event metadata */
+                                    metadata: {
+                                        [key: string]: unknown;
+                                    };
+                                    /** @description Named URLs associated with the Event */
+                                    links: {
+                                        /** @description Human readable name of the Link */
+                                        name: string;
+                                        /** @description URL the Link points at */
+                                        url: string;
+                                    }[];
+                                    style: {
+                                        /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                        icon?: string;
+                                        /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                        "marker-color"?: string;
+                                        /** @description Opacity of the Event marker */
+                                        "marker-opacity"?: number;
+                                    };
+                                    geometry: {
+                                        /** @constant */
+                                        type: "Point";
+                                        coordinates: [
+                                            number,
+                                            number
+                                        ];
+                                    };
+                                    /** @description TAK Server Channels the Event is shared with */
+                                    channels: number[];
+                                    /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                                    boards: {
+                                        id: string;
+                                        name: string;
+                                        /** @description TAK Server Channel bitpos the Board belongs to */
+                                        channel: number;
+                                        /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                        column: null | string;
+                                        /** @description Columns of the Board */
+                                        columns: {
+                                            id: string;
+                                            name: string;
+                                            /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                            color: string;
+                                            type: "nominated" | "custom";
+                                            position: number;
+                                        }[];
+                                    }[];
+                                };
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        /**
+         * Nominate a Core Event into a Column or move it between the Columns
+         *                 of a Board - the Event must be shared with the Board's Channel
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description Column to place the Event in
+                         */
+                        column: string;
+                        /**
+                         * Format: uuid
+                         * @description Core Event to place
+                         */
+                        event: string;
+                        /**
+                         * @description Vertical position of the Event within the Column
+                         * @default 0
+                         */
+                        position: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description Board the Event is placed on */
+                            board: string;
+                            /** @description Column of the Board the Event is placed in */
+                            column: string;
+                            /** @description Vertical position of the Event within the Column */
+                            position: number;
+                            event: {
+                                id: string;
+                                /** @description GUID of the TAK Server Mission associated with the Event */
+                                mission_guid: null | string;
+                                created: string;
+                                updated: string;
+                                /** @description Is the Event currently active */
+                                active: boolean;
+                                /** @description Time at which the Event ended */
+                                ended: null | string;
+                                username: null | string;
+                                /** @description Connection that created the Event if created by a Connection or Layer token */
+                                connection: null | number;
+                                priority: "none" | "low" | "medium" | "high" | "critical";
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                name: string;
+                                /** @description ID of the Event in an external system */
+                                external_id: string;
+                                /** @description Can users other than the creator edit the Event */
+                                editable: boolean;
+                                /** @description Human readable location - ie: an address */
+                                location: string;
+                                remarks: string;
+                                /** @description User defined key/value Event metadata */
+                                metadata: {
+                                    [key: string]: unknown;
+                                };
+                                /** @description Named URLs associated with the Event */
+                                links: {
+                                    /** @description Human readable name of the Link */
+                                    name: string;
+                                    /** @description URL the Link points at */
+                                    url: string;
+                                }[];
+                                style: {
+                                    /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                    icon?: string;
+                                    /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                    "marker-color"?: string;
+                                    /** @description Opacity of the Event marker */
+                                    "marker-opacity"?: number;
+                                };
+                                geometry: {
+                                    /** @constant */
+                                    type: "Point";
+                                    coordinates: [
+                                        number,
+                                        number
+                                    ];
+                                };
+                                /** @description TAK Server Channels the Event is shared with */
+                                channels: number[];
+                                /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                                boards: {
+                                    id: string;
+                                    name: string;
+                                    /** @description TAK Server Channel bitpos the Board belongs to */
+                                    channel: number;
+                                    /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                    column: null | string;
+                                    /** @description Columns of the Board */
+                                    columns: {
+                                        id: string;
+                                        name: string;
+                                        /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                        color: string;
+                                        type: "nominated" | "custom";
+                                        position: number;
+                                    }[];
+                                }[];
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/board/event/{:placement}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a Core Event from a Board - the Event itself is not deleted */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":placement": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Move an already placed Core Event to another Column of the same Board or re-order it within its Column */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":placement": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description Column of the same Board to move the Event into
+                         */
+                        column?: string;
+                        position?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description Board the Event is placed on */
+                            board: string;
+                            /** @description Column of the Board the Event is placed in */
+                            column: string;
+                            /** @description Vertical position of the Event within the Column */
+                            position: number;
+                            event: {
+                                id: string;
+                                /** @description GUID of the TAK Server Mission associated with the Event */
+                                mission_guid: null | string;
+                                created: string;
+                                updated: string;
+                                /** @description Is the Event currently active */
+                                active: boolean;
+                                /** @description Time at which the Event ended */
+                                ended: null | string;
+                                username: null | string;
+                                /** @description Connection that created the Event if created by a Connection or Layer token */
+                                connection: null | number;
+                                priority: "none" | "low" | "medium" | "high" | "critical";
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                name: string;
+                                /** @description ID of the Event in an external system */
+                                external_id: string;
+                                /** @description Can users other than the creator edit the Event */
+                                editable: boolean;
+                                /** @description Human readable location - ie: an address */
+                                location: string;
+                                remarks: string;
+                                /** @description User defined key/value Event metadata */
+                                metadata: {
+                                    [key: string]: unknown;
+                                };
+                                /** @description Named URLs associated with the Event */
+                                links: {
+                                    /** @description Human readable name of the Link */
+                                    name: string;
+                                    /** @description URL the Link points at */
+                                    url: string;
+                                }[];
+                                style: {
+                                    /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                    icon?: string;
+                                    /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                    "marker-color"?: string;
+                                    /** @description Opacity of the Event marker */
+                                    "marker-opacity"?: number;
+                                };
+                                geometry: {
+                                    /** @constant */
+                                    type: "Point";
+                                    coordinates: [
+                                        number,
+                                        number
+                                    ];
+                                };
+                                /** @description TAK Server Channels the Event is shared with */
+                                channels: number[];
+                                /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                                boards: {
+                                    id: string;
+                                    name: string;
+                                    /** @description TAK Server Channel bitpos the Board belongs to */
+                                    channel: number;
+                                    /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                    column: null | string;
+                                    /** @description Columns of the Board */
+                                    columns: {
+                                        id: string;
+                                        name: string;
+                                        /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                        color: string;
+                                        type: "nominated" | "custom";
+                                        position: number;
+                                    }[];
+                                }[];
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/board/{:board}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single KanBan Board */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":board": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description TAK Server Channel bitpos the Board belongs to */
+                            channel: number;
+                            name: string;
+                            description: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a KanBan Board along with its Columns - Events placed on the Board are not deleted */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":board": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Rename a KanBan Board or update its description */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":board": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name?: string;
+                        /** @description Human readable description */
+                        description?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            created: string;
+                            updated: string;
+                            /** @description TAK Server Channel bitpos the Board belongs to */
+                            channel: number;
+                            name: string;
+                            description: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/core/event": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Core Events */
+        get: {
+            parameters: {
+                query: {
+                    /** @description Limit the number of responses returned */
+                    limit: number;
+                    /** @description Iterate through "pages" of items based on the "limit" query param */
+                    page: number;
+                    /** @description Order in which results are returned based on the "sort" query param */
+                    order: "asc" | "desc";
+                    /** @description No Description */
+                    sort: "id" | "mission_guid" | "created" | "updated" | "active" | "ended" | "username" | "connection" | "priority" | "type" | "name" | "external_id" | "editable" | "location" | "remarks" | "metadata" | "links" | "style" | "geometry" | "enableRLS";
+                    /** @description Filter results by a human readable name field */
+                    filter: string;
+                    /** @description Only return Events shared with the given TAK Channel bitpos - can be provided multiple times to match any of the given Channels */
+                    channel?: number | number[];
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: string;
+                                /** @description GUID of the TAK Server Mission associated with the Event */
+                                mission_guid: null | string;
+                                created: string;
+                                updated: string;
+                                /** @description Is the Event currently active */
+                                active: boolean;
+                                /** @description Time at which the Event ended */
+                                ended: null | string;
+                                username: null | string;
+                                /** @description Connection that created the Event if created by a Connection or Layer token */
+                                connection: null | number;
+                                priority: "none" | "low" | "medium" | "high" | "critical";
+                                /** @description MIL-STD-2525E Symbol ID */
+                                type: string;
+                                name: string;
+                                /** @description ID of the Event in an external system */
+                                external_id: string;
+                                /** @description Can users other than the creator edit the Event */
+                                editable: boolean;
+                                /** @description Human readable location - ie: an address */
+                                location: string;
+                                remarks: string;
+                                /** @description User defined key/value Event metadata */
+                                metadata: {
+                                    [key: string]: unknown;
+                                };
+                                /** @description Named URLs associated with the Event */
+                                links: {
+                                    /** @description Human readable name of the Link */
+                                    name: string;
+                                    /** @description URL the Link points at */
+                                    url: string;
+                                }[];
+                                style: {
+                                    /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                    icon?: string;
+                                    /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                    "marker-color"?: string;
+                                    /** @description Opacity of the Event marker */
+                                    "marker-opacity"?: number;
+                                };
+                                geometry: {
+                                    /** @constant */
+                                    type: "Point";
+                                    coordinates: [
+                                        number,
+                                        number
+                                    ];
+                                };
+                                /** @description TAK Server Channels the Event is shared with */
+                                channels: number[];
+                                /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                                boards: {
+                                    id: string;
+                                    name: string;
+                                    /** @description TAK Server Channel bitpos the Board belongs to */
+                                    channel: number;
+                                    /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                    column: null | string;
+                                    /** @description Columns of the Board */
+                                    columns: {
+                                        id: string;
+                                        name: string;
+                                        /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                        color: string;
+                                        type: "nominated" | "custom";
+                                        position: number;
+                                    }[];
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a new Core Event */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name: string;
+                        /** @description MIL-STD-2525E Symbol ID */
+                        type: string;
+                        /** @default none */
+                        priority: "none" | "low" | "medium" | "high" | "critical";
+                        geometry: {
+                            /** @constant */
+                            type: "Point";
+                            coordinates: [
+                                number,
+                                number
+                            ];
+                        };
+                        /**
+                         * @description Human readable location of the Event - ie: an address
+                         * @default
+                         */
+                        location: string;
+                        /** @default  */
+                        remarks: string;
+                        ended?: null | string;
+                        /**
+                         * @description ID of the Event in an external system
+                         * @default
+                         */
+                        external_id: string;
+                        /**
+                         * @description Can users other than the creator edit the Event
+                         * @default true
+                         */
+                        editable: boolean;
+                        /**
+                         * @description User defined key/value Event metadata
+                         * @default {}
+                         */
+                        metadata: {
+                            [key: string]: unknown;
+                        };
+                        /**
+                         * @description Named URLs associated with the Event
+                         * @default []
+                         */
+                        links: {
+                            /** @description Human readable name of the Link */
+                            name: string;
+                            /** @description URL the Link points at */
+                            url: string;
+                        }[];
+                        /**
+                         * @description Point styling for the Event
+                         * @default {}
+                         */
+                        style: {
+                            /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                            icon?: string;
+                            /** @description Hex colour of the Event marker - ie: #00ff00 */
+                            "marker-color"?: string;
+                            /** @description Opacity of the Event marker */
+                            "marker-opacity"?: number;
+                        };
+                        /**
+                         * @description TAK Server Channels to share the Event with
+                         * @default []
+                         */
+                        channels: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @description GUID of the TAK Server Mission associated with the Event */
+                            mission_guid: null | string;
+                            created: string;
+                            updated: string;
+                            /** @description Is the Event currently active */
+                            active: boolean;
+                            /** @description Time at which the Event ended */
+                            ended: null | string;
+                            username: null | string;
+                            /** @description Connection that created the Event if created by a Connection or Layer token */
+                            connection: null | number;
+                            priority: "none" | "low" | "medium" | "high" | "critical";
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            name: string;
+                            /** @description ID of the Event in an external system */
+                            external_id: string;
+                            /** @description Can users other than the creator edit the Event */
+                            editable: boolean;
+                            /** @description Human readable location - ie: an address */
+                            location: string;
+                            remarks: string;
+                            /** @description User defined key/value Event metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Event */
+                            links: {
+                                /** @description Human readable name of the Link */
+                                name: string;
+                                /** @description URL the Link points at */
+                                url: string;
+                            }[];
+                            style: {
+                                /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                icon?: string;
+                                /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                "marker-color"?: string;
+                                /** @description Opacity of the Event marker */
+                                "marker-opacity"?: number;
+                            };
+                            geometry: {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
+                            };
+                            /** @description TAK Server Channels the Event is shared with */
+                            channels: number[];
+                            /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                            boards: {
+                                id: string;
+                                name: string;
+                                /** @description TAK Server Channel bitpos the Board belongs to */
+                                channel: number;
+                                /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                column: null | string;
+                                /** @description Columns of the Board */
+                                columns: {
+                                    id: string;
+                                    name: string;
+                                    /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                    color: string;
+                                    type: "nominated" | "custom";
+                                    position: number;
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/core/event/{:event}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Core Event */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":event": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @description GUID of the TAK Server Mission associated with the Event */
+                            mission_guid: null | string;
+                            created: string;
+                            updated: string;
+                            /** @description Is the Event currently active */
+                            active: boolean;
+                            /** @description Time at which the Event ended */
+                            ended: null | string;
+                            username: null | string;
+                            /** @description Connection that created the Event if created by a Connection or Layer token */
+                            connection: null | number;
+                            priority: "none" | "low" | "medium" | "high" | "critical";
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            name: string;
+                            /** @description ID of the Event in an external system */
+                            external_id: string;
+                            /** @description Can users other than the creator edit the Event */
+                            editable: boolean;
+                            /** @description Human readable location - ie: an address */
+                            location: string;
+                            remarks: string;
+                            /** @description User defined key/value Event metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Event */
+                            links: {
+                                /** @description Human readable name of the Link */
+                                name: string;
+                                /** @description URL the Link points at */
+                                url: string;
+                            }[];
+                            style: {
+                                /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                icon?: string;
+                                /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                "marker-color"?: string;
+                                /** @description Opacity of the Event marker */
+                                "marker-opacity"?: number;
+                            };
+                            geometry: {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
+                            };
+                            /** @description TAK Server Channels the Event is shared with */
+                            channels: number[];
+                            /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                            boards: {
+                                id: string;
+                                name: string;
+                                /** @description TAK Server Channel bitpos the Board belongs to */
+                                channel: number;
+                                /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                column: null | string;
+                                /** @description Columns of the Board */
+                                columns: {
+                                    id: string;
+                                    name: string;
+                                    /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                    color: string;
+                                    type: "nominated" | "custom";
+                                    position: number;
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a Core Event */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":event": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update properties of a Core Event */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":event": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name?: string;
+                        type?: string;
+                        /** @description GUID of a TAK Server Mission to associate with the Event - set to null to remove the association */
+                        mission_guid?: null | string;
+                        priority?: "none" | "low" | "medium" | "high" | "critical";
+                        geometry?: {
+                            /** @constant */
+                            type: "Point";
+                            coordinates: [
+                                number,
+                                number
+                            ];
+                        };
+                        location?: string;
+                        remarks?: string;
+                        /** @description Set to false to end the Event - the ended timestamp is set automatically */
+                        active?: boolean;
+                        ended?: null | string;
+                        external_id?: string;
+                        editable?: boolean;
+                        /** @description User defined key/value Event metadata - replaces the existing metadata object */
+                        metadata?: {
+                            [key: string]: unknown;
+                        };
+                        /** @description Named URLs associated with the Event - replaces the existing links array */
+                        links?: {
+                            /** @description Human readable name of the Link */
+                            name: string;
+                            /** @description URL the Link points at */
+                            url: string;
+                        }[];
+                        /** @description Point styling for the Event - replaces the existing style object */
+                        style?: {
+                            /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                            icon?: string;
+                            /** @description Hex colour of the Event marker - ie: #00ff00 */
+                            "marker-color"?: string;
+                            /** @description Opacity of the Event marker */
+                            "marker-opacity"?: number;
+                        };
+                        channels?: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @description GUID of the TAK Server Mission associated with the Event */
+                            mission_guid: null | string;
+                            created: string;
+                            updated: string;
+                            /** @description Is the Event currently active */
+                            active: boolean;
+                            /** @description Time at which the Event ended */
+                            ended: null | string;
+                            username: null | string;
+                            /** @description Connection that created the Event if created by a Connection or Layer token */
+                            connection: null | number;
+                            priority: "none" | "low" | "medium" | "high" | "critical";
+                            /** @description MIL-STD-2525E Symbol ID */
+                            type: string;
+                            name: string;
+                            /** @description ID of the Event in an external system */
+                            external_id: string;
+                            /** @description Can users other than the creator edit the Event */
+                            editable: boolean;
+                            /** @description Human readable location - ie: an address */
+                            location: string;
+                            remarks: string;
+                            /** @description User defined key/value Event metadata */
+                            metadata: {
+                                [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Event */
+                            links: {
+                                /** @description Human readable name of the Link */
+                                name: string;
+                                /** @description URL the Link points at */
+                                url: string;
+                            }[];
+                            style: {
+                                /** @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path> */
+                                icon?: string;
+                                /** @description Hex colour of the Event marker - ie: #00ff00 */
+                                "marker-color"?: string;
+                                /** @description Opacity of the Event marker */
+                                "marker-opacity"?: number;
+                            };
+                            geometry: {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
+                            };
+                            /** @description TAK Server Channels the Event is shared with */
+                            channels: number[];
+                            /** @description Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each */
+                            boards: {
+                                id: string;
+                                name: string;
+                                /** @description TAK Server Channel bitpos the Board belongs to */
+                                channel: number;
+                                /** @description Column of the Board the Event is placed in - null when the Event has not been nominated to this Board */
+                                column: null | string;
+                                /** @description Columns of the Board */
+                                columns: {
+                                    id: string;
+                                    name: string;
+                                    /** @description Hex colour the Column is rendered with - ie: #ff0000 */
+                                    color: string;
+                                    type: "nominated" | "custom";
+                                    position: number;
+                                }[];
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/api/error": {
@@ -19249,6 +22630,1421 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/iconset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Iconsets */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    scope?: "server" | "user";
+                    /** @description Limit the number of responses returned. Use 0 to return all results without pagination; otherwise the limit is capped at 1000. */
+                    limit: number;
+                    /** @description Iterate through "pages" of items based on the "limit" query param */
+                    page: number;
+                    /** @description Order in which results are returned based on the "sort" query param */
+                    order: "asc" | "desc";
+                    /** @description No Description */
+                    sort: "uid" | "created" | "updated" | "version" | "name" | "username" | "username_internal" | "default_group" | "default_friendly" | "default_hostile" | "default_neutral" | "default_unknown" | "skip_resize" | "spritesheet_data" | "spritesheet_json" | "enableRLS";
+                    /** @description Filter results by a human readable name field */
+                    filter: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                uid: string;
+                                created: string;
+                                updated: string;
+                                version: number;
+                                name: string;
+                                username: null | string;
+                                username_internal: boolean;
+                                default_group: null | string;
+                                default_friendly: null | string;
+                                default_hostile: null | string;
+                                default_neutral: null | string;
+                                default_unknown: null | string;
+                                skip_resize: boolean;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create Iconset */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        uid: string;
+                        version: number;
+                        /** @description Human readable name */
+                        name: string;
+                        /**
+                         * @description If true, the iconset will not be shown in the UI for selection
+                         * @default false
+                         */
+                        internal: boolean;
+                        scope?: "server" | "user";
+                        default_group?: string;
+                        default_friendly?: string;
+                        default_hostile?: string;
+                        default_neutral?: string;
+                        default_unknown?: string;
+                        skip_resize?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            uid: string;
+                            created: string;
+                            updated: string;
+                            version: number;
+                            name: string;
+                            username: null | string;
+                            username_internal: boolean;
+                            default_group: null | string;
+                            default_friendly: null | string;
+                            default_hostile: null | string;
+                            default_neutral: null | string;
+                            default_unknown: null | string;
+                            skip_resize: boolean;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Iconset */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description No Description */
+                    format?: "json" | "zip";
+                    /** @description No Description */
+                    download?: boolean;
+                    /** @description Resize Images to 32x32px */
+                    resize?: boolean;
+                    /** @description No Description */
+                    token?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            uid: string;
+                            created: string;
+                            updated: string;
+                            version: number;
+                            name: string;
+                            username: null | string;
+                            username_internal: boolean;
+                            default_group: null | string;
+                            default_friendly: null | string;
+                            default_hostile: null | string;
+                            default_neutral: null | string;
+                            default_unknown: null | string;
+                            skip_resize: boolean;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete Iconset */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update Iconset */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        public?: boolean;
+                        default_group?: string;
+                        default_friendly?: string;
+                        default_hostile?: string;
+                        default_neutral?: string;
+                        default_unknown?: string;
+                        skip_resize?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            uid: string;
+                            created: string;
+                            updated: string;
+                            version: number;
+                            name: string;
+                            username: null | string;
+                            username_internal: boolean;
+                            default_group: null | string;
+                            default_friendly: null | string;
+                            default_hostile: null | string;
+                            default_neutral: null | string;
+                            default_unknown: null | string;
+                            skip_resize: boolean;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}/regen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Regenerate Iconset Spritesheet */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Icon */
+        post: {
+            parameters: {
+                query: {
+                    /** @description Regenerate Iconset spritesheet after upload */
+                    regen: boolean;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Human readable name */
+                        name: string;
+                        data: string;
+                        type2525b?: null | string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            created: string;
+                            updated: string;
+                            name: string;
+                            format: string;
+                            iconset: string;
+                            type2525b: string | null;
+                            data: string;
+                            path: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Icons */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    scope?: "server" | "user";
+                    /** @description Limit the number of responses returned. Use 0 to return all results without pagination; otherwise the limit is capped at 1000. */
+                    limit: number;
+                    /** @description Iterate through "pages" of items based on the "limit" query param */
+                    page: number;
+                    /** @description Order in which results are returned based on the "sort" query param */
+                    order: "asc" | "desc";
+                    /** @description No Description */
+                    sort?: "id" | "created" | "updated" | "name" | "format" | "iconset" | "type2525b" | "data" | "path" | "enableRLS";
+                    /** @description No Description */
+                    iconset?: string;
+                    /** @description Filter results by a human readable name field */
+                    filter: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            items: {
+                                id: number;
+                                created: string;
+                                updated: string;
+                                name: string;
+                                format: string;
+                                iconset: string;
+                                type2525b: string | null;
+                                data: string;
+                                path: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}/icon/{:icon}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Icon Metadata */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                    /** @description No Description */
+                    ":icon": number | string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            created: string;
+                            updated: string;
+                            name: string;
+                            format: string;
+                            iconset: string;
+                            type2525b: string | null;
+                            data: string;
+                            path: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Remove Icon from Iconset */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                    /** @description No Description */
+                    ":icon": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update Icon in Iconset */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                    /** @description No Description */
+                    ":icon": number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        data?: string;
+                        type2525b?: null | string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: number;
+                            created: string;
+                            updated: string;
+                            name: string;
+                            format: string;
+                            iconset: string;
+                            type2525b: string | null;
+                            data: string;
+                            path: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}/sprite{:size}.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Spriteset JSON for CoT types */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description No Description */
+                    scope?: "server" | "user";
+                    /** @description No Description */
+                    token?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                    /** @description No Description */
+                    ":size": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": unknown;
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/iconset/{:iconset}/sprite{:size}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return a sprite sheet for CoT Types */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description No Description */
+                    token?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":iconset": string;
+                    /** @description No Description */
+                    ":size": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/layer": {
         parameters: {
             query?: never;
@@ -19269,15 +24065,13 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "template" | "connection" | "logging" | "task" | "memory" | "timeout" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
+                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "memory" | "timeout" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description No Description */
                     task?: string;
                     /** @description No Description */
                     data?: number;
-                    /** @description No Description */
-                    template?: boolean;
                     /** @description No Description */
                     connection?: number;
                 };
@@ -19306,7 +24100,6 @@ export interface paths {
                                 status?: string;
                                 created: string;
                                 updated: string;
-                                template: boolean;
                                 connection: null | number;
                                 username: null | string;
                                 uuid: string;
@@ -19732,7 +24525,6 @@ export interface paths {
                             status?: string;
                             created: string;
                             updated: string;
-                            template: boolean;
                             connection: null | number;
                             username: null | string;
                             uuid: string;
@@ -20113,848 +24905,6 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/template": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List all layer templates */
-        get: {
-            parameters: {
-                query: {
-                    /** @description Limit the number of responses returned */
-                    limit: number;
-                    /** @description Iterate through "pages" of items based on the "limit" query param */
-                    page: number;
-                    /** @description Order in which results are returned based on the "sort" query param */
-                    order: "asc" | "desc";
-                    /** @description No Description */
-                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "template" | "connection" | "logging" | "task" | "memory" | "timeout" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
-                    /** @description Filter results by a human readable name field */
-                    filter: string;
-                    /** @description No Description */
-                    data?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            total: number;
-                            items: {
-                                id: number;
-                                status?: string;
-                                created: string;
-                                updated: string;
-                                template: boolean;
-                                connection: null | number;
-                                username: null | string;
-                                uuid: string;
-                                name: string;
-                                description: string;
-                                enabled: boolean;
-                                protected: boolean;
-                                logging: boolean;
-                                task: string;
-                                memory: number;
-                                timeout: number;
-                                priority: "high" | "low" | "off";
-                                alarm_period: number;
-                                alarm_evals: number;
-                                alarm_points: number;
-                                parent?: {
-                                    id: number;
-                                    name: string;
-                                    enabled: boolean;
-                                };
-                                incoming?: {
-                                    layer: number;
-                                    created: string;
-                                    updated: string;
-                                    config: {
-                                        timezone?: {
-                                            timezone: string;
-                                        };
-                                    };
-                                    cron: null | string;
-                                    webhooks: boolean;
-                                    enabled_styles: boolean;
-                                    styles: {
-                                        line?: {
-                                            stroke?: string;
-                                            "stroke-style"?: string;
-                                            "stroke-opacity"?: string;
-                                            "stroke-width"?: string;
-                                            id?: string;
-                                            remarks?: string;
-                                            phone?: string;
-                                            stale?: number | string;
-                                            minzoom?: number | string;
-                                            maxzoom?: number | string;
-                                            callsign?: string;
-                                            links?: {
-                                                remarks: string;
-                                                url: string;
-                                            }[];
-                                            marti?: {
-                                                /** @description Whether the CoT should be archived by the TAK Server */
-                                                archive?: boolean;
-                                                /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                dest?: {
-                                                    /** @description TAK Server channel (group) name to route this CoT to */
-                                                    group?: string;
-                                                    /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                    mission?: string;
-                                                    /** @description Individual client UID to route this CoT to */
-                                                    uid?: string;
-                                                    /** @description Individual client callsign to route this CoT to */
-                                                    callsign?: string;
-                                                }[];
-                                            };
-                                        };
-                                        point?: {
-                                            "marker-color"?: string;
-                                            "marker-opacity"?: string;
-                                            id?: string;
-                                            type?: string;
-                                            remarks?: string;
-                                            phone?: string;
-                                            stale?: number | string;
-                                            /** @default true */
-                                            rotate: boolean;
-                                            minzoom?: number | string;
-                                            maxzoom?: number | string;
-                                            callsign?: string;
-                                            links?: {
-                                                remarks: string;
-                                                url: string;
-                                            }[];
-                                            icon?: string;
-                                            marti?: {
-                                                /** @description Whether the CoT should be archived by the TAK Server */
-                                                archive?: boolean;
-                                                /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                dest?: {
-                                                    /** @description TAK Server channel (group) name to route this CoT to */
-                                                    group?: string;
-                                                    /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                    mission?: string;
-                                                    /** @description Individual client UID to route this CoT to */
-                                                    uid?: string;
-                                                    /** @description Individual client callsign to route this CoT to */
-                                                    callsign?: string;
-                                                }[];
-                                            };
-                                        };
-                                        polygon?: {
-                                            stroke?: string;
-                                            "stroke-style"?: string;
-                                            "stroke-opacity"?: string;
-                                            "stroke-width"?: string;
-                                            fill?: string;
-                                            "fill-opacity"?: string;
-                                            id?: string;
-                                            remarks?: string;
-                                            phone?: string;
-                                            callsign?: string;
-                                            stale?: number | string;
-                                            minzoom?: number | string;
-                                            maxzoom?: number | string;
-                                            links?: {
-                                                remarks: string;
-                                                url: string;
-                                            }[];
-                                            marti?: {
-                                                /** @description Whether the CoT should be archived by the TAK Server */
-                                                archive?: boolean;
-                                                /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                dest?: {
-                                                    /** @description TAK Server channel (group) name to route this CoT to */
-                                                    group?: string;
-                                                    /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                    mission?: string;
-                                                    /** @description Individual client UID to route this CoT to */
-                                                    uid?: string;
-                                                    /** @description Individual client callsign to route this CoT to */
-                                                    callsign?: string;
-                                                }[];
-                                            };
-                                        };
-                                        id?: string;
-                                        remarks?: string;
-                                        phone?: string;
-                                        callsign?: string;
-                                        stale?: number | string;
-                                        minzoom?: number | string;
-                                        maxzoom?: number | string;
-                                        links?: {
-                                            remarks: string;
-                                            url: string;
-                                        }[];
-                                        marti?: {
-                                            /** @description Whether the CoT should be archived by the TAK Server */
-                                            archive?: boolean;
-                                            /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                            dest?: {
-                                                /** @description TAK Server channel (group) name to route this CoT to */
-                                                group?: string;
-                                                /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                mission?: string;
-                                                /** @description Individual client UID to route this CoT to */
-                                                uid?: string;
-                                                /** @description Individual client callsign to route this CoT to */
-                                                callsign?: string;
-                                            }[];
-                                        };
-                                        queries?: {
-                                            query: string;
-                                            delete?: boolean;
-                                            styles?: {
-                                                id?: string;
-                                                remarks?: string;
-                                                phone?: string;
-                                                callsign?: string;
-                                                stale?: number | string;
-                                                minzoom?: number | string;
-                                                maxzoom?: number | string;
-                                                links?: {
-                                                    remarks: string;
-                                                    url: string;
-                                                }[];
-                                                marti?: {
-                                                    /** @description Whether the CoT should be archived by the TAK Server */
-                                                    archive?: boolean;
-                                                    /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                    dest?: {
-                                                        /** @description TAK Server channel (group) name to route this CoT to */
-                                                        group?: string;
-                                                        /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                        mission?: string;
-                                                        /** @description Individual client UID to route this CoT to */
-                                                        uid?: string;
-                                                        /** @description Individual client callsign to route this CoT to */
-                                                        callsign?: string;
-                                                    }[];
-                                                };
-                                                line?: {
-                                                    stroke?: string;
-                                                    "stroke-style"?: string;
-                                                    "stroke-opacity"?: string;
-                                                    "stroke-width"?: string;
-                                                    id?: string;
-                                                    remarks?: string;
-                                                    phone?: string;
-                                                    stale?: number | string;
-                                                    minzoom?: number | string;
-                                                    maxzoom?: number | string;
-                                                    callsign?: string;
-                                                    links?: {
-                                                        remarks: string;
-                                                        url: string;
-                                                    }[];
-                                                    marti?: {
-                                                        /** @description Whether the CoT should be archived by the TAK Server */
-                                                        archive?: boolean;
-                                                        /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                        dest?: {
-                                                            /** @description TAK Server channel (group) name to route this CoT to */
-                                                            group?: string;
-                                                            /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                            mission?: string;
-                                                            /** @description Individual client UID to route this CoT to */
-                                                            uid?: string;
-                                                            /** @description Individual client callsign to route this CoT to */
-                                                            callsign?: string;
-                                                        }[];
-                                                    };
-                                                };
-                                                point?: {
-                                                    "marker-color"?: string;
-                                                    "marker-opacity"?: string;
-                                                    id?: string;
-                                                    type?: string;
-                                                    remarks?: string;
-                                                    phone?: string;
-                                                    stale?: number | string;
-                                                    /** @default true */
-                                                    rotate: boolean;
-                                                    minzoom?: number | string;
-                                                    maxzoom?: number | string;
-                                                    callsign?: string;
-                                                    links?: {
-                                                        remarks: string;
-                                                        url: string;
-                                                    }[];
-                                                    icon?: string;
-                                                    marti?: {
-                                                        /** @description Whether the CoT should be archived by the TAK Server */
-                                                        archive?: boolean;
-                                                        /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                        dest?: {
-                                                            /** @description TAK Server channel (group) name to route this CoT to */
-                                                            group?: string;
-                                                            /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                            mission?: string;
-                                                            /** @description Individual client UID to route this CoT to */
-                                                            uid?: string;
-                                                            /** @description Individual client callsign to route this CoT to */
-                                                            callsign?: string;
-                                                        }[];
-                                                    };
-                                                };
-                                                polygon?: {
-                                                    stroke?: string;
-                                                    "stroke-style"?: string;
-                                                    "stroke-opacity"?: string;
-                                                    "stroke-width"?: string;
-                                                    fill?: string;
-                                                    "fill-opacity"?: string;
-                                                    id?: string;
-                                                    remarks?: string;
-                                                    phone?: string;
-                                                    callsign?: string;
-                                                    stale?: number | string;
-                                                    minzoom?: number | string;
-                                                    maxzoom?: number | string;
-                                                    links?: {
-                                                        remarks: string;
-                                                        url: string;
-                                                    }[];
-                                                    marti?: {
-                                                        /** @description Whether the CoT should be archived by the TAK Server */
-                                                        archive?: boolean;
-                                                        /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                        dest?: {
-                                                            /** @description TAK Server channel (group) name to route this CoT to */
-                                                            group?: string;
-                                                            /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                            mission?: string;
-                                                            /** @description Individual client UID to route this CoT to */
-                                                            uid?: string;
-                                                            /** @description Individual client callsign to route this CoT to */
-                                                            callsign?: string;
-                                                        }[];
-                                                    };
-                                                };
-                                            };
-                                        }[];
-                                    };
-                                    environment: unknown;
-                                    ephemeral: {
-                                        [key: string]: unknown;
-                                    };
-                                    data: null | number;
-                                };
-                                outgoing?: {
-                                    layer: number;
-                                    created: string;
-                                    updated: string;
-                                    environment: unknown;
-                                    ephemeral: {
-                                        [key: string]: unknown;
-                                    };
-                                    filters: {
-                                        queries?: {
-                                            name?: string;
-                                            query: string;
-                                        }[];
-                                    };
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Create a new Layer Template */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description Human readable name */
-                        name: string;
-                        /** @description Human readable description */
-                        description: string;
-                        /** @description Layer ID to create template from */
-                        id: number;
-                        connection?: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            id: number;
-                            status?: string;
-                            created: string;
-                            updated: string;
-                            template: boolean;
-                            connection: null | number;
-                            username: null | string;
-                            uuid: string;
-                            name: string;
-                            description: string;
-                            enabled: boolean;
-                            protected: boolean;
-                            logging: boolean;
-                            task: string;
-                            memory: number;
-                            timeout: number;
-                            priority: "high" | "low" | "off";
-                            alarm_period: number;
-                            alarm_evals: number;
-                            alarm_points: number;
-                            parent?: {
-                                id: number;
-                                name: string;
-                                enabled: boolean;
-                            };
-                            incoming?: {
-                                layer: number;
-                                created: string;
-                                updated: string;
-                                config: {
-                                    timezone?: {
-                                        timezone: string;
-                                    };
-                                };
-                                cron: null | string;
-                                webhooks: boolean;
-                                enabled_styles: boolean;
-                                styles: {
-                                    line?: {
-                                        stroke?: string;
-                                        "stroke-style"?: string;
-                                        "stroke-opacity"?: string;
-                                        "stroke-width"?: string;
-                                        id?: string;
-                                        remarks?: string;
-                                        phone?: string;
-                                        stale?: number | string;
-                                        minzoom?: number | string;
-                                        maxzoom?: number | string;
-                                        callsign?: string;
-                                        links?: {
-                                            remarks: string;
-                                            url: string;
-                                        }[];
-                                        marti?: {
-                                            /** @description Whether the CoT should be archived by the TAK Server */
-                                            archive?: boolean;
-                                            /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                            dest?: {
-                                                /** @description TAK Server channel (group) name to route this CoT to */
-                                                group?: string;
-                                                /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                mission?: string;
-                                                /** @description Individual client UID to route this CoT to */
-                                                uid?: string;
-                                                /** @description Individual client callsign to route this CoT to */
-                                                callsign?: string;
-                                            }[];
-                                        };
-                                    };
-                                    point?: {
-                                        "marker-color"?: string;
-                                        "marker-opacity"?: string;
-                                        id?: string;
-                                        type?: string;
-                                        remarks?: string;
-                                        phone?: string;
-                                        stale?: number | string;
-                                        /** @default true */
-                                        rotate: boolean;
-                                        minzoom?: number | string;
-                                        maxzoom?: number | string;
-                                        callsign?: string;
-                                        links?: {
-                                            remarks: string;
-                                            url: string;
-                                        }[];
-                                        icon?: string;
-                                        marti?: {
-                                            /** @description Whether the CoT should be archived by the TAK Server */
-                                            archive?: boolean;
-                                            /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                            dest?: {
-                                                /** @description TAK Server channel (group) name to route this CoT to */
-                                                group?: string;
-                                                /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                mission?: string;
-                                                /** @description Individual client UID to route this CoT to */
-                                                uid?: string;
-                                                /** @description Individual client callsign to route this CoT to */
-                                                callsign?: string;
-                                            }[];
-                                        };
-                                    };
-                                    polygon?: {
-                                        stroke?: string;
-                                        "stroke-style"?: string;
-                                        "stroke-opacity"?: string;
-                                        "stroke-width"?: string;
-                                        fill?: string;
-                                        "fill-opacity"?: string;
-                                        id?: string;
-                                        remarks?: string;
-                                        phone?: string;
-                                        callsign?: string;
-                                        stale?: number | string;
-                                        minzoom?: number | string;
-                                        maxzoom?: number | string;
-                                        links?: {
-                                            remarks: string;
-                                            url: string;
-                                        }[];
-                                        marti?: {
-                                            /** @description Whether the CoT should be archived by the TAK Server */
-                                            archive?: boolean;
-                                            /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                            dest?: {
-                                                /** @description TAK Server channel (group) name to route this CoT to */
-                                                group?: string;
-                                                /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                mission?: string;
-                                                /** @description Individual client UID to route this CoT to */
-                                                uid?: string;
-                                                /** @description Individual client callsign to route this CoT to */
-                                                callsign?: string;
-                                            }[];
-                                        };
-                                    };
-                                    id?: string;
-                                    remarks?: string;
-                                    phone?: string;
-                                    callsign?: string;
-                                    stale?: number | string;
-                                    minzoom?: number | string;
-                                    maxzoom?: number | string;
-                                    links?: {
-                                        remarks: string;
-                                        url: string;
-                                    }[];
-                                    marti?: {
-                                        /** @description Whether the CoT should be archived by the TAK Server */
-                                        archive?: boolean;
-                                        /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                        dest?: {
-                                            /** @description TAK Server channel (group) name to route this CoT to */
-                                            group?: string;
-                                            /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                            mission?: string;
-                                            /** @description Individual client UID to route this CoT to */
-                                            uid?: string;
-                                            /** @description Individual client callsign to route this CoT to */
-                                            callsign?: string;
-                                        }[];
-                                    };
-                                    queries?: {
-                                        query: string;
-                                        delete?: boolean;
-                                        styles?: {
-                                            id?: string;
-                                            remarks?: string;
-                                            phone?: string;
-                                            callsign?: string;
-                                            stale?: number | string;
-                                            minzoom?: number | string;
-                                            maxzoom?: number | string;
-                                            links?: {
-                                                remarks: string;
-                                                url: string;
-                                            }[];
-                                            marti?: {
-                                                /** @description Whether the CoT should be archived by the TAK Server */
-                                                archive?: boolean;
-                                                /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                dest?: {
-                                                    /** @description TAK Server channel (group) name to route this CoT to */
-                                                    group?: string;
-                                                    /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                    mission?: string;
-                                                    /** @description Individual client UID to route this CoT to */
-                                                    uid?: string;
-                                                    /** @description Individual client callsign to route this CoT to */
-                                                    callsign?: string;
-                                                }[];
-                                            };
-                                            line?: {
-                                                stroke?: string;
-                                                "stroke-style"?: string;
-                                                "stroke-opacity"?: string;
-                                                "stroke-width"?: string;
-                                                id?: string;
-                                                remarks?: string;
-                                                phone?: string;
-                                                stale?: number | string;
-                                                minzoom?: number | string;
-                                                maxzoom?: number | string;
-                                                callsign?: string;
-                                                links?: {
-                                                    remarks: string;
-                                                    url: string;
-                                                }[];
-                                                marti?: {
-                                                    /** @description Whether the CoT should be archived by the TAK Server */
-                                                    archive?: boolean;
-                                                    /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                    dest?: {
-                                                        /** @description TAK Server channel (group) name to route this CoT to */
-                                                        group?: string;
-                                                        /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                        mission?: string;
-                                                        /** @description Individual client UID to route this CoT to */
-                                                        uid?: string;
-                                                        /** @description Individual client callsign to route this CoT to */
-                                                        callsign?: string;
-                                                    }[];
-                                                };
-                                            };
-                                            point?: {
-                                                "marker-color"?: string;
-                                                "marker-opacity"?: string;
-                                                id?: string;
-                                                type?: string;
-                                                remarks?: string;
-                                                phone?: string;
-                                                stale?: number | string;
-                                                /** @default true */
-                                                rotate: boolean;
-                                                minzoom?: number | string;
-                                                maxzoom?: number | string;
-                                                callsign?: string;
-                                                links?: {
-                                                    remarks: string;
-                                                    url: string;
-                                                }[];
-                                                icon?: string;
-                                                marti?: {
-                                                    /** @description Whether the CoT should be archived by the TAK Server */
-                                                    archive?: boolean;
-                                                    /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                    dest?: {
-                                                        /** @description TAK Server channel (group) name to route this CoT to */
-                                                        group?: string;
-                                                        /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                        mission?: string;
-                                                        /** @description Individual client UID to route this CoT to */
-                                                        uid?: string;
-                                                        /** @description Individual client callsign to route this CoT to */
-                                                        callsign?: string;
-                                                    }[];
-                                                };
-                                            };
-                                            polygon?: {
-                                                stroke?: string;
-                                                "stroke-style"?: string;
-                                                "stroke-opacity"?: string;
-                                                "stroke-width"?: string;
-                                                fill?: string;
-                                                "fill-opacity"?: string;
-                                                id?: string;
-                                                remarks?: string;
-                                                phone?: string;
-                                                callsign?: string;
-                                                stale?: number | string;
-                                                minzoom?: number | string;
-                                                maxzoom?: number | string;
-                                                links?: {
-                                                    remarks: string;
-                                                    url: string;
-                                                }[];
-                                                marti?: {
-                                                    /** @description Whether the CoT should be archived by the TAK Server */
-                                                    archive?: boolean;
-                                                    /** @description One or more routing destinations (channels, data syncs, or individual clients) */
-                                                    dest?: {
-                                                        /** @description TAK Server channel (group) name to route this CoT to */
-                                                        group?: string;
-                                                        /** @description TAK Server Data Sync (mission) name to route this CoT to */
-                                                        mission?: string;
-                                                        /** @description Individual client UID to route this CoT to */
-                                                        uid?: string;
-                                                        /** @description Individual client callsign to route this CoT to */
-                                                        callsign?: string;
-                                                    }[];
-                                                };
-                                            };
-                                        };
-                                    }[];
-                                };
-                                environment: unknown;
-                                ephemeral: {
-                                    [key: string]: unknown;
-                                };
-                                data: null | number;
-                            };
-                            outgoing?: {
-                                layer: number;
-                                created: string;
-                                updated: string;
-                                environment: unknown;
-                                ephemeral: {
-                                    [key: string]: unknown;
-                                };
-                                filters: {
-                                    queries?: {
-                                        name?: string;
-                                        query: string;
-                                    }[];
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -22179,6 +26129,216 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/manifest.webmanifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the Web Manifest for PWA Use */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            name: string;
+                            short_name: string;
+                            description: string;
+                            start_url: string;
+                            display: string;
+                            background_color: string;
+                            theme_color: string;
+                            lang: string;
+                            scope: string;
+                            icons: {
+                                src: string;
+                                sizes: string;
+                                type: string;
+                            }[];
+                            orientation: string;
+                            categories: string[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/manifest.webmanifest/logos/{:size}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return a resized PNG logo for PWA use */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Logo size in pixels */
+                    ":size": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/marti/export": {
         parameters: {
             query?: never;
@@ -22362,6 +26522,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -22499,6 +26661,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -22510,7 +26673,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -22997,6 +27160,8 @@ export interface paths {
                                     };
                                     /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                     archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
                                     geofence?: {
                                         elevationMonitored?: boolean;
                                         minElevation?: string;
@@ -23134,6 +27299,7 @@ export interface paths {
                                         point?: string;
                                         callsign?: string;
                                         mission?: string;
+                                        event?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -23145,7 +27311,7 @@ export interface paths {
                                         groupOwner?: string;
                                         messageId?: string;
                                         chatroom: string;
-                                        id: string;
+                                        id?: string;
                                         senderCallsign: string;
                                         chatgrp: unknown;
                                     };
@@ -23550,216 +27716,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/manifest.webmanifest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return the Web Manifest for PWA Use */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            name: string;
-                            short_name: string;
-                            description: string;
-                            start_url: string;
-                            display: string;
-                            background_color: string;
-                            theme_color: string;
-                            lang: string;
-                            scope: string;
-                            icons: {
-                                src: string;
-                                sizes: string;
-                                type: string;
-                            }[];
-                            orientation: string;
-                            categories: string[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/manifest.webmanifest/logos/{:size}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return a resized PNG logo for PWA use */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Logo size in pixels */
-                    ":size": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/marti/api/files/{:hash}": {
         parameters: {
             query?: never;
@@ -23981,7 +27937,7 @@ export interface paths {
                             version: string;
                             type: string;
                             data: {
-                                name: string;
+                                name?: string;
                                 type: "GROUP" | "UID" | "CONTENTS" | "MAPLAYER" | "ITEM";
                                 parentUid?: string;
                                 uid: string;
@@ -24107,7 +28063,7 @@ export interface paths {
                             version: string;
                             type: string;
                             data: {
-                                name: string;
+                                name?: string;
                                 type: "GROUP" | "UID" | "CONTENTS" | "MAPLAYER" | "ITEM";
                                 parentUid?: string;
                                 uid: string;
@@ -24236,7 +28192,7 @@ export interface paths {
                             version: string;
                             type: string;
                             data: {
-                                name: string;
+                                name?: string;
                                 type: "GROUP" | "UID" | "CONTENTS" | "MAPLAYER" | "ITEM";
                                 parentUid?: string;
                                 uid: string;
@@ -24330,6 +28286,222 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/marti/missions/{:name}/layer/{:uid}/cot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Helper API to file existing Mission CoTs under a mission layer, moving them from any layer they are currently filed under */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":name": string;
+                    /** @description No Description */
+                    ":uid": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        uids: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/marti/missions/{:name}/layer/{:uid}/cot/{:cotuid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Helper API to move a Mission CoT out of a mission layer and back to the mission root - the CoT remains part of the Mission */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":name": string;
+                    /** @description No Description */
+                    ":uid": string;
+                    /** @description No Description */
+                    ":cotuid": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -25543,6 +29715,8 @@ export interface paths {
                                     };
                                     /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                     archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
                                     geofence?: {
                                         elevationMonitored?: boolean;
                                         minElevation?: string;
@@ -25680,6 +29854,7 @@ export interface paths {
                                         point?: string;
                                         callsign?: string;
                                         mission?: string;
+                                        event?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -25691,7 +29866,7 @@ export interface paths {
                                         groupOwner?: string;
                                         messageId?: string;
                                         chatroom: string;
-                                        id: string;
+                                        id?: string;
                                         senderCallsign: string;
                                         chatgrp: unknown;
                                     };
@@ -27059,7 +31234,101 @@ export interface paths {
                 };
             };
         };
-        put?: never;
+        /** Change the role of an existing mission subscriber */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":name": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        clientUid: string;
+                        username: string;
+                        role: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -31363,564 +35632,6 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Mission Template Palettes */
-        get: {
-            parameters: {
-                query: {
-                    /** @description Limit the number of responses returned */
-                    limit: number;
-                    /** @description Iterate through "pages" of items based on the "limit" query param */
-                    page: number;
-                    /** @description Order in which results are returned based on the "sort" query param */
-                    order: "asc" | "desc";
-                    /** @description No Description */
-                    sort: "uuid" | "name" | "created" | "updated" | "template" | "enableRLS";
-                    /** @description Filter results by a human readable name field */
-                    filter: string;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":mission": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            total: number;
-                            items: {
-                                uuid: string;
-                                name: string;
-                                created: string;
-                                updated: string;
-                                /** Format: uuid */
-                                template: string;
-                                features: {
-                                    uuid: string;
-                                    created: string;
-                                    updated: string;
-                                    name: string;
-                                    /** Format: uuid */
-                                    palette: string;
-                                    type: string;
-                                    style: (string | number | boolean | null) | unknown[] | {
-                                        [key: string]: unknown;
-                                    };
-                                }[];
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Create a new Mission Template Palette */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":mission": string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uuid: string;
-                            name: string;
-                            created: string;
-                            updated: string;
-                            /** Format: uuid */
-                            template: string;
-                            features: {
-                                uuid: string;
-                                created: string;
-                                updated: string;
-                                name: string;
-                                /** Format: uuid */
-                                palette: string;
-                                type: string;
-                                style: (string | number | boolean | null) | unknown[] | {
-                                    [key: string]: unknown;
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/template/mission/{:mission}/palette/{:palette}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Mission Template Palette */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uuid: string;
-                            name: string;
-                            created: string;
-                            updated: string;
-                            /** Format: uuid */
-                            template: string;
-                            features: {
-                                uuid: string;
-                                created: string;
-                                updated: string;
-                                name: string;
-                                /** Format: uuid */
-                                palette: string;
-                                type: string;
-                                style: (string | number | boolean | null) | unknown[] | {
-                                    [key: string]: unknown;
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete a Mission Template Palette */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Update properties of a Mission Template Palette */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uuid: string;
-                            name: string;
-                            created: string;
-                            updated: string;
-                            /** Format: uuid */
-                            template: string;
-                            features: {
-                                uuid: string;
-                                created: string;
-                                updated: string;
-                                name: string;
-                                /** Format: uuid */
-                                palette: string;
-                                type: string;
-                                style: (string | number | boolean | null) | unknown[] | {
-                                    [key: string]: unknown;
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/template/mission/{:mission}/palette/{:palette}/feature": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
         /** List Mission Template Palette Features */
         get: {
             parameters: {
@@ -31932,7 +35643,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "uuid" | "name" | "created" | "updated" | "template" | "enableRLS";
+                    sort: "uuid" | "created" | "updated" | "name" | "template" | "type" | "style" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                 };
@@ -31940,8 +35651,6 @@ export interface paths {
                 path: {
                     /** @description No Description */
                     ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
                 };
                 cookie?: never;
             };
@@ -31961,7 +35670,7 @@ export interface paths {
                                 updated: string;
                                 name: string;
                                 /** Format: uuid */
-                                palette: string;
+                                template: string;
                                 type: string;
                                 style: (string | number | boolean | null) | unknown[] | {
                                     [key: string]: unknown;
@@ -32041,8 +35750,6 @@ export interface paths {
                 path: {
                     /** @description No Description */
                     ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
                 };
                 cookie?: never;
             };
@@ -32078,7 +35785,7 @@ export interface paths {
                             updated: string;
                             name: string;
                             /** Format: uuid */
-                            palette: string;
+                            template: string;
                             type: string;
                             style: (string | number | boolean | null) | unknown[] | {
                                 [key: string]: unknown;
@@ -32154,7 +35861,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/template/mission/{:mission}/palette/{:palette}/feature/{:feature}": {
+    "/api/template/mission/{:mission}/palette/{:feature}": {
         parameters: {
             query?: never;
             header?: never;
@@ -32169,8 +35876,6 @@ export interface paths {
                 path: {
                     /** @description No Description */
                     ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
                     /** @description No Description */
                     ":feature": string;
                 };
@@ -32190,7 +35895,7 @@ export interface paths {
                             updated: string;
                             name: string;
                             /** Format: uuid */
-                            palette: string;
+                            template: string;
                             type: string;
                             style: (string | number | boolean | null) | unknown[] | {
                                 [key: string]: unknown;
@@ -32270,8 +35975,6 @@ export interface paths {
                 path: {
                     /** @description No Description */
                     ":mission": string;
-                    /** @description No Description */
-                    ":palette": string;
                     /** @description No Description */
                     ":feature": string;
                 };
@@ -32364,8 +36067,6 @@ export interface paths {
                     /** @description No Description */
                     ":mission": string;
                     /** @description No Description */
-                    ":palette": string;
-                    /** @description No Description */
                     ":feature": string;
                 };
                 cookie?: never;
@@ -32402,7 +36103,7 @@ export interface paths {
                             updated: string;
                             name: string;
                             /** Format: uuid */
-                            palette: string;
+                            template: string;
                             type: string;
                             style: (string | number | boolean | null) | unknown[] | {
                                 [key: string]: unknown;
@@ -33432,7 +37133,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "username" | "created" | "updated" | "read" | "chatroom" | "sender_callsign" | "sender_uid" | "message_id" | "message" | "enableRLS";
+                    sort: "id" | "username" | "created" | "updated" | "read" | "chatroom" | "sender_callsign" | "sender_uid" | "message_id" | "message" | "status" | "enableRLS";
                 };
                 header?: never;
                 path: {
@@ -33704,6 +37405,8 @@ export interface paths {
                                     };
                                     /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                     archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
                                     geofence?: {
                                         elevationMonitored?: boolean;
                                         minElevation?: string;
@@ -33841,6 +37544,7 @@ export interface paths {
                                         point?: string;
                                         callsign?: string;
                                         mission?: string;
+                                        event?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -33852,7 +37556,7 @@ export interface paths {
                                         groupOwner?: string;
                                         messageId?: string;
                                         chatroom: string;
-                                        id: string;
+                                        id?: string;
                                         senderCallsign: string;
                                         chatgrp: unknown;
                                     };
@@ -34311,6 +38015,8 @@ export interface paths {
                             };
                             /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                             archived?: boolean;
+                            /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                            forcedelete?: boolean;
                             geofence?: {
                                 elevationMonitored?: boolean;
                                 minElevation?: string;
@@ -34448,6 +38154,7 @@ export interface paths {
                                 point?: string;
                                 callsign?: string;
                                 mission?: string;
+                                event?: string;
                                 url?: string;
                                 mime?: string;
                                 remarks?: string;
@@ -34459,7 +38166,7 @@ export interface paths {
                                 groupOwner?: string;
                                 messageId?: string;
                                 chatroom: string;
-                                id: string;
+                                id?: string;
                                 senderCallsign: string;
                                 chatgrp: unknown;
                             };
@@ -34846,6 +38553,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -34983,6 +38692,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -34994,7 +38704,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -35557,6 +39267,8 @@ export interface paths {
                                 };
                                 /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
                                 archived?: boolean;
+                                /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                forcedelete?: boolean;
                                 geofence?: {
                                     elevationMonitored?: boolean;
                                     minElevation?: string;
@@ -35694,6 +39406,7 @@ export interface paths {
                                     point?: string;
                                     callsign?: string;
                                     mission?: string;
+                                    event?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -35705,7 +39418,7 @@ export interface paths {
                                     groupOwner?: string;
                                     messageId?: string;
                                     chatroom: string;
-                                    id: string;
+                                    id?: string;
                                     senderCallsign: string;
                                     chatgrp: unknown;
                                 };
@@ -37366,1421 +41079,6 @@ export interface paths {
         };
         trace?: never;
     };
-    "/api/iconset": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Iconsets */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    scope?: "server" | "user";
-                    /** @description Limit the number of responses returned. Use 0 to return all results without pagination; otherwise the limit is capped at 1000. */
-                    limit: number;
-                    /** @description Iterate through "pages" of items based on the "limit" query param */
-                    page: number;
-                    /** @description Order in which results are returned based on the "sort" query param */
-                    order: "asc" | "desc";
-                    /** @description No Description */
-                    sort: "uid" | "created" | "updated" | "version" | "name" | "username" | "username_internal" | "default_group" | "default_friendly" | "default_hostile" | "default_neutral" | "default_unknown" | "skip_resize" | "spritesheet_data" | "spritesheet_json" | "enableRLS";
-                    /** @description Filter results by a human readable name field */
-                    filter: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            total: number;
-                            items: {
-                                uid: string;
-                                created: string;
-                                updated: string;
-                                version: number;
-                                name: string;
-                                username: null | string;
-                                username_internal: boolean;
-                                default_group: null | string;
-                                default_friendly: null | string;
-                                default_hostile: null | string;
-                                default_neutral: null | string;
-                                default_unknown: null | string;
-                                skip_resize: boolean;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        /** Create Iconset */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        uid: string;
-                        version: number;
-                        /** @description Human readable name */
-                        name: string;
-                        /**
-                         * @description If true, the iconset will not be shown in the UI for selection
-                         * @default false
-                         */
-                        internal: boolean;
-                        scope?: "server" | "user";
-                        default_group?: string;
-                        default_friendly?: string;
-                        default_hostile?: string;
-                        default_neutral?: string;
-                        default_unknown?: string;
-                        skip_resize?: boolean;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uid: string;
-                            created: string;
-                            updated: string;
-                            version: number;
-                            name: string;
-                            username: null | string;
-                            username_internal: boolean;
-                            default_group: null | string;
-                            default_friendly: null | string;
-                            default_hostile: null | string;
-                            default_neutral: null | string;
-                            default_unknown: null | string;
-                            skip_resize: boolean;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Iconset */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description No Description */
-                    format?: "json" | "zip";
-                    /** @description No Description */
-                    download?: boolean;
-                    /** @description Resize Images to 32x32px */
-                    resize?: boolean;
-                    /** @description No Description */
-                    token?: string;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uid: string;
-                            created: string;
-                            updated: string;
-                            version: number;
-                            name: string;
-                            username: null | string;
-                            username_internal: boolean;
-                            default_group: null | string;
-                            default_friendly: null | string;
-                            default_hostile: null | string;
-                            default_neutral: null | string;
-                            default_unknown: null | string;
-                            skip_resize: boolean;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Delete Iconset */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Update Iconset */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        public?: boolean;
-                        default_group?: string;
-                        default_friendly?: string;
-                        default_hostile?: string;
-                        default_neutral?: string;
-                        default_unknown?: string;
-                        skip_resize?: boolean;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            uid: string;
-                            created: string;
-                            updated: string;
-                            version: number;
-                            name: string;
-                            username: null | string;
-                            username_internal: boolean;
-                            default_group: null | string;
-                            default_friendly: null | string;
-                            default_hostile: null | string;
-                            default_neutral: null | string;
-                            default_unknown: null | string;
-                            skip_resize: boolean;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}/regen": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Regenerate Iconset Spritesheet */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}/icon": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Create Icon */
-        post: {
-            parameters: {
-                query: {
-                    /** @description Regenerate Iconset spritesheet after upload */
-                    regen: boolean;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description Human readable name */
-                        name: string;
-                        data: string;
-                        type2525b?: null | string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            id: number;
-                            created: string;
-                            updated: string;
-                            name: string;
-                            format: string;
-                            iconset: string;
-                            type2525b: string | null;
-                            data: string;
-                            path: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/icon": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Icons */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    scope?: "server" | "user";
-                    /** @description Limit the number of responses returned. Use 0 to return all results without pagination; otherwise the limit is capped at 1000. */
-                    limit: number;
-                    /** @description Iterate through "pages" of items based on the "limit" query param */
-                    page: number;
-                    /** @description Order in which results are returned based on the "sort" query param */
-                    order: "asc" | "desc";
-                    /** @description No Description */
-                    sort?: "id" | "created" | "updated" | "name" | "format" | "iconset" | "type2525b" | "data" | "path" | "enableRLS";
-                    /** @description No Description */
-                    iconset?: string;
-                    /** @description Filter results by a human readable name field */
-                    filter: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            total: number;
-                            items: {
-                                id: number;
-                                created: string;
-                                updated: string;
-                                name: string;
-                                format: string;
-                                iconset: string;
-                                type2525b: string | null;
-                                data: string;
-                                path: string;
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}/icon/{:icon}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Icon Metadata */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                    /** @description No Description */
-                    ":icon": number | string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            id: number;
-                            created: string;
-                            updated: string;
-                            name: string;
-                            format: string;
-                            iconset: string;
-                            type2525b: string | null;
-                            data: string;
-                            path: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        /** Remove Icon from Iconset */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                    /** @description No Description */
-                    ":icon": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        options?: never;
-        head?: never;
-        /** Update Icon in Iconset */
-        patch: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                    /** @description No Description */
-                    ":icon": number;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name?: string;
-                        data?: string;
-                        type2525b?: null | string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            id: number;
-                            created: string;
-                            updated: string;
-                            name: string;
-                            format: string;
-                            iconset: string;
-                            type2525b: string | null;
-                            data: string;
-                            path: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}/sprite{:size}.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Spriteset JSON for CoT types */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description No Description */
-                    scope?: "server" | "user";
-                    /** @description No Description */
-                    token?: string;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                    /** @description No Description */
-                    ":size": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": unknown;
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/iconset/{:iconset}/sprite{:size}.png": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return a sprite sheet for CoT Types */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description No Description */
-                    token?: string;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":iconset": string;
-                    /** @description No Description */
-                    ":size": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/profile/paging": {
         parameters: {
             query?: never;
@@ -39945,6 +42243,16 @@ export interface paths {
                                 updated: string;
                                 lease: number;
                                 username: string;
+                                position: {
+                                    /** @description Column position on a 12 column grid */
+                                    x: number;
+                                    /** @description Row position in grid units */
+                                    y: number;
+                                    /** @description Width in grid columns */
+                                    w: number;
+                                    /** @description Height in grid rows */
+                                    h: number;
+                                };
                             }[];
                         };
                     };
@@ -40012,7 +42320,13 @@ export interface paths {
             };
         };
         put?: never;
-        /** Push a new Profile Video to the database */
+        /**
+         * Push a new Profile Video to the Video Wall
+         *
+         *                 Either an existing Video Lease ID or a Stream URL must be provided.
+         *                 If a URL is provided it is resolved to an existing lease where possible,
+         *                 otherwise a proxy lease is created on behalf of the user.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -40023,7 +42337,22 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        lease: number;
+                        /** @description Existing Video Lease ID */
+                        lease?: number;
+                        /** @description Video Stream URL */
+                        url?: string;
+                        /** @description Human readable name - used if a new proxy lease is created */
+                        name?: string;
+                        position?: {
+                            /** @description Column position on a 12 column grid */
+                            x: number;
+                            /** @description Row position in grid units */
+                            y: number;
+                            /** @description Width in grid columns */
+                            w: number;
+                            /** @description Height in grid rows */
+                            h: number;
+                        };
                     };
                 };
             };
@@ -40041,6 +42370,16 @@ export interface paths {
                             updated: string;
                             lease: number;
                             username: string;
+                            position: {
+                                /** @description Column position on a 12 column grid */
+                                x: number;
+                                /** @description Row position in grid units */
+                                y: number;
+                                /** @description Width in grid columns */
+                                w: number;
+                                /** @description Height in grid rows */
+                                h: number;
+                            };
                         };
                     };
                 };
@@ -40145,6 +42484,16 @@ export interface paths {
                             updated: string;
                             lease: number;
                             username: string;
+                            position: {
+                                /** @description Column position on a 12 column grid */
+                                x: number;
+                                /** @description Row position in grid units */
+                                y: number;
+                                /** @description Width in grid columns */
+                                w: number;
+                                /** @description Height in grid rows */
+                                h: number;
+                            };
                         };
                     };
                 };
@@ -40301,7 +42650,122 @@ export interface paths {
         };
         options?: never;
         head?: never;
-        patch?: never;
+        /** Update a Profile Video - used to persist Video Wall placement */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":id": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        position?: {
+                            /** @description Column position on a 12 column grid */
+                            x: number;
+                            /** @description Row position in grid units */
+                            y: number;
+                            /** @description Width in grid columns */
+                            w: number;
+                            /** @description Height in grid rows */
+                            h: number;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** Format: uuid */
+                            id: string;
+                            created: string;
+                            updated: string;
+                            lease: number;
+                            username: string;
+                            position: {
+                                /** @description Column position on a 12 column grid */
+                                x: number;
+                                /** @description Row position in grid units */
+                                y: number;
+                                /** @description Width in grid columns */
+                                w: number;
+                                /** @description Height in grid rows */
+                                h: number;
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/api/profile": {
@@ -40331,7 +42795,6 @@ export interface paths {
                             username: string;
                             created: string;
                             updated: string;
-                            phone: string;
                             last_login: string;
                             /** @description Does the user have an active CloudTAK Session */
                             active: boolean;
@@ -40339,6 +42802,7 @@ export interface paths {
                             agency_admin: number[];
                             tak_callsign: string;
                             tak_remarks: string;
+                            tak_phone: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
                             tak_role: "Team Member" | "Team Lead" | "HQ" | "Sniper" | "Medic" | "Forward Observer" | "RTO" | "K9";
                             tak_type: string;
@@ -40368,6 +42832,7 @@ export interface paths {
                             display_elevation: "meter" | "feet";
                             display_speed: "m/s" | "km/h" | "mi/h";
                             display_radiation_dose: "sieverts" | "rems";
+                            display_wakelock: "Default" | "Charging" | "Always On";
                             geometry_point_type?: string;
                             geometry_point_color?: string;
                             geometry_point_icon?: string;
@@ -40454,6 +42919,7 @@ export interface paths {
                     "application/json": {
                         tak_callsign?: string;
                         tak_remarks?: string;
+                        tak_phone?: string;
                         tak_group?: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
                         tak_role?: "Team Member" | "Team Lead" | "HQ" | "Sniper" | "Medic" | "Forward Observer" | "RTO" | "K9";
                         tak_type?: string;
@@ -40483,6 +42949,7 @@ export interface paths {
                         display_elevation?: "meter" | "feet";
                         display_speed?: "m/s" | "km/h" | "mi/h";
                         display_radiation_dose?: "sieverts" | "rems";
+                        display_wakelock?: "Default" | "Charging" | "Always On";
                         geometry_point_type?: string;
                         geometry_point_color?: string;
                         geometry_point_icon?: string;
@@ -40500,7 +42967,6 @@ export interface paths {
                             username: string;
                             created: string;
                             updated: string;
-                            phone: string;
                             last_login: string;
                             /** @description Does the user have an active CloudTAK Session */
                             active: boolean;
@@ -40508,6 +42974,7 @@ export interface paths {
                             agency_admin: number[];
                             tak_callsign: string;
                             tak_remarks: string;
+                            tak_phone: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
                             tak_role: "Team Member" | "Team Lead" | "HQ" | "Sniper" | "Medic" | "Forward Observer" | "RTO" | "K9";
                             tak_type: string;
@@ -40537,6 +43004,7 @@ export interface paths {
                             display_elevation: "meter" | "feet";
                             display_speed: "m/s" | "km/h" | "mi/h";
                             display_radiation_dose: "sieverts" | "rems";
+                            display_wakelock: "Default" | "Charging" | "Always On";
                             geometry_point_type?: string;
                             geometry_point_color?: string;
                             geometry_point_icon?: string;
@@ -41319,6 +43787,1815 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get information about the configured search provider(s) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            reverse: {
+                                enabled: boolean;
+                                providers: {
+                                    id: string;
+                                    name: string;
+                                }[];
+                            };
+                            route: {
+                                enabled: boolean;
+                                providers: {
+                                    id: string;
+                                    name: string;
+                                    modes: {
+                                        id: string;
+                                        name: string;
+                                    }[];
+                                }[];
+                            };
+                            forward: {
+                                enabled: boolean;
+                                providers: {
+                                    id: string;
+                                    name: string;
+                                }[];
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get information about a given point */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    provider?: string;
+                    /** @description No Description */
+                    altitude: number;
+                    /** @description No Description */
+                    elevation?: number;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sun: {
+                                /** @description sunrise (top edge of the sun appears on the horizon) */
+                                sunrise: string | null;
+                                /** @description sunrise ends (bottom edge of the sun touches the horizon) */
+                                sunriseEnd: string | null;
+                                /** @description morning golden hour (soft light, best time for photography) ends */
+                                goldenHourEnd: string | null;
+                                /** @description solar noon (sun is in the highest position) */
+                                solarNoon: string | null;
+                                /** @description evening golden hour starts */
+                                goldenHour: string | null;
+                                /** @description sunset starts (bottom edge of the sun touches the horizon) */
+                                sunsetStart: string | null;
+                                /** @description sunset (sun disappears below the horizon, evening civil twilight starts) */
+                                sunset: string | null;
+                                /** @description dusk (evening nautical twilight starts) */
+                                dusk: string | null;
+                                /** @description nautical dusk (evening astronomical twilight starts) */
+                                nauticalDusk: string | null;
+                                /** @description night starts (dark enough for astronomical observations) */
+                                night: string | null;
+                                /** @description nadir (darkest moment of the night, sun is in the lowest position) */
+                                nadir: string | null;
+                                /** @description night ends (morning astronomical twilight starts) */
+                                nightEnd: string | null;
+                                /** @description nautical dawn (morning nautical twilight starts) */
+                                nauticalDawn: string | null;
+                                /** @description dawn (morning nautical twilight ends, morning civil twilight starts) */
+                                dawn: string | null;
+                            };
+                            magnetic: {
+                                declination: number;
+                                inclination: number;
+                            };
+                            weather: null | {
+                                type: string;
+                                properties: {
+                                    units: string;
+                                    forecastGenerator: string;
+                                    generatedAt: string;
+                                    updateTime: string;
+                                    validTimes: string;
+                                    elevation: {
+                                        unitCode: string;
+                                        value: number;
+                                    };
+                                    periods: {
+                                        number: number;
+                                        name: string;
+                                        startTime: string;
+                                        endTime: string;
+                                        isDaytime: boolean;
+                                        temperature: number;
+                                        temperatureUnit: string;
+                                        temperatureTrend: unknown;
+                                        probabilityOfPrecipitation: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        dewpoint: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        relativeHumidity: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        windSpeed: string;
+                                        windDirection: string;
+                                        icon: string;
+                                        shortForecast: string;
+                                        detailedForecast: string;
+                                    }[];
+                                };
+                                geometry: {
+                                    type: string;
+                                    coordinates: number[][][];
+                                };
+                            };
+                            reverse: null | {
+                                LongLabel: string;
+                                ShortLabel: string;
+                                Addr_type: string;
+                            };
+                            elevation: null | string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}/sun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get sun phase information for a given point */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    altitude: number;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sun: {
+                                /** @description sunrise (top edge of the sun appears on the horizon) */
+                                sunrise: string | null;
+                                /** @description sunrise ends (bottom edge of the sun touches the horizon) */
+                                sunriseEnd: string | null;
+                                /** @description morning golden hour (soft light, best time for photography) ends */
+                                goldenHourEnd: string | null;
+                                /** @description solar noon (sun is in the highest position) */
+                                solarNoon: string | null;
+                                /** @description evening golden hour starts */
+                                goldenHour: string | null;
+                                /** @description sunset starts (bottom edge of the sun touches the horizon) */
+                                sunsetStart: string | null;
+                                /** @description sunset (sun disappears below the horizon, evening civil twilight starts) */
+                                sunset: string | null;
+                                /** @description dusk (evening nautical twilight starts) */
+                                dusk: string | null;
+                                /** @description nautical dusk (evening astronomical twilight starts) */
+                                nauticalDusk: string | null;
+                                /** @description night starts (dark enough for astronomical observations) */
+                                night: string | null;
+                                /** @description nadir (darkest moment of the night, sun is in the lowest position) */
+                                nadir: string | null;
+                                /** @description night ends (morning astronomical twilight starts) */
+                                nightEnd: string | null;
+                                /** @description nautical dawn (morning nautical twilight starts) */
+                                nauticalDawn: string | null;
+                                /** @description dawn (morning nautical twilight ends, morning civil twilight starts) */
+                                dawn: string | null;
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}/magnetic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get magnetic declination information for a given point */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            magnetic: {
+                                declination: number;
+                                inclination: number;
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get weather forecast for a given point */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            weather: null | {
+                                type: string;
+                                properties: {
+                                    units: string;
+                                    forecastGenerator: string;
+                                    generatedAt: string;
+                                    updateTime: string;
+                                    validTimes: string;
+                                    elevation: {
+                                        unitCode: string;
+                                        value: number;
+                                    };
+                                    periods: {
+                                        number: number;
+                                        name: string;
+                                        startTime: string;
+                                        endTime: string;
+                                        isDaytime: boolean;
+                                        temperature: number;
+                                        temperatureUnit: string;
+                                        temperatureTrend: unknown;
+                                        probabilityOfPrecipitation: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        dewpoint: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        relativeHumidity: {
+                                            unitCode: string;
+                                            value: number;
+                                        };
+                                        windSpeed: string;
+                                        windDirection: string;
+                                        icon: string;
+                                        shortForecast: string;
+                                        detailedForecast: string;
+                                    }[];
+                                };
+                                geometry: {
+                                    type: string;
+                                    coordinates: number[][][];
+                                };
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get reverse geocoding information for a given point */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description No Description */
+                    provider?: string;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            reverse: null | {
+                                LongLabel: string;
+                                ShortLabel: string;
+                                Addr_type: string;
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/reverse/{:longitude}/{:latitude}/elevation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get elevation information for a given point */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description No Description */
+                    elevation?: number;
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            elevation: null | string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/route": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Generate a route given stop information */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    provider?: string;
+                    /** @description Human readable name of the route */
+                    callsign: string;
+                    /** @description Lat,Lng of starting position */
+                    start: string;
+                    /** @description Lat,Lng of end position */
+                    end: string;
+                    /** @description Travel mode for routing */
+                    travelMode?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @constant */
+                            type: "FeatureCollection";
+                            features: {
+                                id: string;
+                                /** @constant */
+                                type: "Feature";
+                                properties: {
+                                    /** @default UNKNOWN */
+                                    callsign: string;
+                                    /** @default a-f-G */
+                                    type: string;
+                                    how: string;
+                                    time: string;
+                                    start: string;
+                                    stale: string;
+                                    center: number[];
+                                    minzoom?: number;
+                                    maxzoom?: number;
+                                    rotate?: boolean;
+                                    range?: number;
+                                    bearing?: number;
+                                    creator?: {
+                                        /** @description The Unique ID of the creator of the CoT */
+                                        uid: string;
+                                        /** @description The Callsign of the creator of the CoT */
+                                        callsign?: string;
+                                        /** @description Time at which the CoT was created by the creator */
+                                        time?: string;
+                                        /** @description The Type of the creator - typically a- for things on the ground, b- for digital things, etc */
+                                        type: string;
+                                    };
+                                    course?: number;
+                                    slope?: number;
+                                    speed?: number;
+                                    labels?: boolean;
+                                    "marker-color"?: string;
+                                    "marker-opacity"?: number;
+                                    stroke?: string;
+                                    "stroke-opacity"?: number;
+                                    "stroke-width"?: number;
+                                    "stroke-style"?: string;
+                                    fill?: string;
+                                    "fill-opacity"?: number;
+                                    metadata?: {
+                                        [key: string]: unknown;
+                                    };
+                                    /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
+                                    archived?: boolean;
+                                    /** @description Presence of the detail.__forcedelete tag - on a t-x-d-d tasking, instructs the TAK client to remove the linked CoT immediately rather than marking it stale */
+                                    forcedelete?: boolean;
+                                    geofence?: {
+                                        elevationMonitored?: boolean;
+                                        minElevation?: string;
+                                        maxElevation?: string;
+                                        monitor?: string;
+                                        trigger?: string;
+                                        tracking?: boolean;
+                                        boundingSphere?: number;
+                                    };
+                                    contact?: {
+                                        phone?: string;
+                                        name?: string;
+                                        callsign?: string;
+                                        endpoint?: string;
+                                    };
+                                    shape?: {
+                                        ellipse?: {
+                                            /** @description The major axis of the ellipse in meters */
+                                            major: number;
+                                            /** @description The minor axis of the ellipse in meters */
+                                            minor: number;
+                                            /** @description The angle of the ellipse in degrees */
+                                            angle: number;
+                                            /** @description Whether the ellipse axes should be swapped when rendered by TAK clients */
+                                            swapAxis?: boolean;
+                                        };
+                                    };
+                                    remarks?: string;
+                                    milsym?: {
+                                        id: string;
+                                    };
+                                    milicon?: {
+                                        id: string;
+                                    };
+                                    mission?: {
+                                        type?: string;
+                                        tool?: string;
+                                        guid?: string;
+                                        name?: string;
+                                        authorUid?: string;
+                                        missionLayer?: {
+                                            name?: string;
+                                            parentUid?: string;
+                                            type?: string;
+                                            uid?: string;
+                                        };
+                                        missionChanges?: {
+                                            contentUid?: string;
+                                            creatorUid: string;
+                                            isFederatedChange: boolean;
+                                            missionName: string;
+                                            timestamp: string;
+                                            type: string;
+                                            contentResource?: {
+                                                expiration: string;
+                                                filename?: string;
+                                                hash: string;
+                                                name: string;
+                                                size: number;
+                                                submissionTime: string;
+                                                submitter: string;
+                                                tool?: string;
+                                                uid: string;
+                                            };
+                                            details?: {
+                                                type: string;
+                                                callsign: string;
+                                                color: string;
+                                                lat: string;
+                                                lon: string;
+                                            };
+                                        }[];
+                                    };
+                                    fileshare?: {
+                                        filename: string;
+                                        name: string;
+                                        senderCallsign: string;
+                                        senderUid: string;
+                                        senderUrl: string;
+                                        sha256: string;
+                                        sizeInBytes: number;
+                                    };
+                                    ackrequest?: {
+                                        uid: string;
+                                        ackrequested: boolean;
+                                        tag: string;
+                                    };
+                                    attachments?: string[];
+                                    sensor?: {
+                                        elevation?: number;
+                                        vfov?: number;
+                                        fov?: number;
+                                        roll?: number;
+                                        range?: number;
+                                        azimuth?: number;
+                                        north?: number;
+                                        fovBlue?: number;
+                                        fovAlpha?: number;
+                                        fovGreen?: number;
+                                        fovRed?: number;
+                                        strokeWeight?: number;
+                                        strokeColor?: number;
+                                        rangeLines?: number;
+                                        rangeLineStrokeWeight?: number;
+                                        rangeLineStrokeColor?: number;
+                                        displayMagneticReference?: number;
+                                        hideFov?: boolean;
+                                        type?: string;
+                                        version?: string;
+                                        model?: string;
+                                    };
+                                    video?: {
+                                        uid?: string;
+                                        sensor?: string;
+                                        spi?: string;
+                                        url?: string;
+                                        connection?: {
+                                            uid: string;
+                                            address: string;
+                                            networkTimeout?: number;
+                                            path?: string;
+                                            protocol?: string;
+                                            bufferTime?: number;
+                                            port?: number;
+                                            roverPort?: number;
+                                            rtspReliable?: number;
+                                            ignoreEmbeddedKLV?: boolean;
+                                            alias?: string;
+                                        };
+                                    };
+                                    links?: {
+                                        uid?: string;
+                                        relation?: string;
+                                        type?: string;
+                                        point?: string;
+                                        callsign?: string;
+                                        mission?: string;
+                                        event?: string;
+                                        url?: string;
+                                        mime?: string;
+                                        remarks?: string;
+                                        production_time?: string;
+                                        parent_callsign?: string;
+                                    }[];
+                                    chat?: {
+                                        parent?: string;
+                                        groupOwner?: string;
+                                        messageId?: string;
+                                        chatroom: string;
+                                        id?: string;
+                                        senderCallsign: string;
+                                        chatgrp: unknown;
+                                    };
+                                    track?: {
+                                        speed?: string;
+                                        course?: string;
+                                        slope?: string;
+                                        eCourse?: string;
+                                        eSpeed?: string;
+                                        eSlope?: string;
+                                    };
+                                    dest?: {
+                                        uid?: string;
+                                        callsign?: string;
+                                        group?: string;
+                                        mission?: string;
+                                        "mission-guid"?: string;
+                                        after?: string;
+                                        path?: string;
+                                    } | {
+                                        uid?: string;
+                                        callsign?: string;
+                                        group?: string;
+                                        mission?: string;
+                                        "mission-guid"?: string;
+                                        after?: string;
+                                        path?: string;
+                                    }[];
+                                    /** @description Presence of marti._attributes.archive - instructs the TAK Server to archive this message */
+                                    marti_archive?: boolean;
+                                    icon?: string;
+                                    droid?: string;
+                                    takv?: {
+                                        device?: string;
+                                        platform?: string;
+                                        os?: string;
+                                        version?: string;
+                                    };
+                                    group?: {
+                                        name: string;
+                                        role: string;
+                                    };
+                                    status?: {
+                                        battery?: string;
+                                        readiness?: string;
+                                    };
+                                    precisionlocation?: {
+                                        geopointsrc?: string;
+                                        altsrc?: string;
+                                    };
+                                    flow?: {
+                                        [key: string]: string;
+                                    };
+                                    radsensordetail?: {
+                                        sensor_data: {
+                                            /** @description epoch time in Long format */
+                                            time: string;
+                                            /** @description The model of sensor (Micro Detective, IdentiFINDER 2, etc.) in string format */
+                                            model: string;
+                                            /** @description The neutron detector status (Full, Reduced or Unknown). Not available for most sensors, default to Unknown */
+                                            neutronstatus: string;
+                                            /** @description The gamma detector status (Full, Reduced or Unknown). Not available for most sensors, default to Unknown */
+                                            gammastatus: string;
+                                            /** @description The Manufacturer of the sensor (Ortec, Nucsafe, etc.) in string format */
+                                            manufacturer: string;
+                                            /** @description The name of the given sensor in string format */
+                                            callsign?: string;
+                                            /** @description The Serial Number of the Sensor in string format */
+                                            serialnumber: string;
+                                            /** @description The battery level as a percentage, float value */
+                                            batterylevel?: number;
+                                            /** @description The ID algorithm used to ID isotopes (ex. GADRAS) */
+                                            id_algorithm?: string;
+                                            /** @description The search algorithm used (ex. RDAK, SAMBA) */
+                                            search_algorithm?: string;
+                                            /** @description The alarm algorithm used (ex. RDAK, SAMBA) */
+                                            alarm_algorithm?: string;
+                                            /** @description Used internally by the CBRN plugin */
+                                            ordinal?: number;
+                                            /** @description Identifier of this subchannel, if this event is a report from a subchannel of a master sensor */
+                                            subchannel?: string;
+                                            /** @description Used to align subchannels */
+                                            measurement_ref?: number;
+                                            /** @description Name of the master sensor, if this event is a report from a subchannel */
+                                            master_sensor_manufacturer?: string;
+                                            /** @description Serial number of the master sensor, if this event is a report from a subchannel */
+                                            master_sensor_serial?: string;
+                                            /** @description A bearing in positive degrees if the sensor reports back a direction for the detected source, -1 otherwise */
+                                            source_bearing?: number;
+                                            /** @description A scale from 0 - 0.5 giving the magnitude of the source strength in the direction of source_bearing */
+                                            source_strength?: number;
+                                            /** @description Used for sensors that can relay data from other sensors, or that can be relayed in that way */
+                                            relay_type?: string;
+                                            /** @description The location of the sensor where it's being worn on the vest */
+                                            module_location?: string;
+                                            /** @description The number from the sensor needed in order to retrieve any specific algorithm calculated data */
+                                            detector_number?: number;
+                                            /** @description The total mR configured for the sensor's current mission */
+                                            mission_total_mR?: number;
+                                            /** @description The total seconds remaining of mission time based on current configuration of sensor and acquired dose */
+                                            mission_stay_time_sec?: number;
+                                            /** @description The total uR acquired by the sensor for the current mission */
+                                            mission_acquired_uR?: number;
+                                            /** @description The temperature of the sensor in degrees celsius */
+                                            sensor_temp_deg_c?: number;
+                                            /** @description The current directional heading of the sensor */
+                                            heading?: number;
+                                            source_distance?: "MOVE_MUCH_CLOSER" | "MOVE_CLOSER" | "OPTIMAL" | "MOVE_AWAY" | "MOVE_FAR_AWAY";
+                                            /** @description The UID of the TAK marker that this sensor is attached to */
+                                            attachedUid?: string;
+                                            /** @description Is the data in this element representative of a simulated sensor */
+                                            simulated?: boolean;
+                                        };
+                                        radmeasurement?: {
+                                            /** @description Defines the alarm level, could be standard deviations above background. Will default to 0 (no alarm) */
+                                            nalarmstddev: number;
+                                            /** @description Alarm flag for the measurement. 1 = alarmed, 0 = not alarmed */
+                                            alarm: number;
+                                            /** @description The measurement value as a float. A/B/G/N will be interpreted as CPS. Dose Rate will be interpreted as mR/Hr */
+                                            measurement: number;
+                                            name: "alpha" | "beta" | "gamma" | "neutron" | "doserate";
+                                        }[];
+                                        physical_module?: {
+                                            location: "FRONT_LEFT" | "FRONT_RIGHT" | "REAR_LEFT" | "REAR_RIGHT" | "CAB";
+                                            /** @description Gamma counts per second */
+                                            gamma_cps: number;
+                                            /** @description Alarm level for the measurement. 0 = not alarmed, > 0 = alarm level */
+                                            gamma_alarm: number;
+                                            /** @description The gamma dose rate. Will be interpreted as uR/Hr */
+                                            gamma_dose_rate: number;
+                                        }[];
+                                        search_algorithm?: {
+                                            /** @description The Neutron localization value */
+                                            neutron_loc: number;
+                                            /** @description The Gamma localization value */
+                                            gamma_loc: number;
+                                            /** @description The Neutron localization alarm level */
+                                            neutron_loc_alarm_value: number;
+                                            /** @description The Gamma localization alarm level */
+                                            gamma_loc_alarm_value: number;
+                                            /** @description Alarm flag for the neutron localization value. 1 = alarmed, 0 = not alarmed */
+                                            neutron_loc_alarm: number;
+                                            /** @description Alarm flag for the gamma localization value. 1 = alarmed, 0 = not alarmed */
+                                            gamma_loc_alarm: number;
+                                        };
+                                        spectrum?: {
+                                            /** @description Flag for zero compression. 1 = zero compressed, 0 = not compressed */
+                                            zerocompression: number;
+                                            /** @description FOREGROUND or BACKGROUND */
+                                            type: string;
+                                            /** @description Spectrum live time in epoch time (ms) */
+                                            livetime_ms: string;
+                                            /** @description Spectrum real time in epoch time (ms) */
+                                            realtime_ms: string;
+                                            /** @description The spectral channel data */
+                                            channeldata: string;
+                                            /** @description The ID of the crystal reporting the channel data */
+                                            crystal_id?: string;
+                                        }[];
+                                        isotope?: {
+                                            /** @description The confidence value as a float representation of a percentage (88.5 NOT 0.885) */
+                                            confidence: number;
+                                            /** @description The name of the isotope */
+                                            name: string;
+                                            /** @description The type of the isotope */
+                                            type: string;
+                                        }[];
+                                        data_permissions?: {
+                                            /** @description All is true if all users should have access/permission */
+                                            all: boolean;
+                                            /** @description The list of ATAK UIDs that should have access/permission */
+                                            contact_list: string;
+                                        };
+                                        command_permissions?: {
+                                            /** @description All is true if all users should have access/permission */
+                                            all: boolean;
+                                            /** @description The list of ATAK UIDs that should have access/permission */
+                                            contact_list: string;
+                                        };
+                                    };
+                                    chemsensordetail?: {
+                                        sensor_data: {
+                                            /** @description The Manufacturer of the sensor in string format */
+                                            manufacturer: string;
+                                            /** @description The model of sensor in string format */
+                                            model: string;
+                                            /** @description The Serial Number of the Sensor in string format */
+                                            serialnumber: string;
+                                            /** @description The battery level as a percentage, float value */
+                                            batterylevel?: number;
+                                            /** @description The name of the given sensor in string format. Default name is Manufacturer+SerialNum */
+                                            callsign?: string;
+                                            /** @description The revision of the ChemCoT format, at writing this is "7" */
+                                            revision?: number;
+                                            /** @description General sensor health status */
+                                            status?: string;
+                                            /** @description Used internally by the CBRN plugin */
+                                            ordinal?: number;
+                                            /** @description The UID of the TAK marker that this sensor is attached to */
+                                            attachedUid?: string;
+                                            /** @description Is the data in this element representative of a simulated sensor */
+                                            simulated?: boolean;
+                                        };
+                                        detection?: {
+                                            /** @description Timestamp for the detection, epoch time (ms) */
+                                            time: string;
+                                            /** @description Chemical Name in string format */
+                                            agent: string;
+                                            /** @description Amount of chemical detected as a float. Could be mass, density, bars etc. */
+                                            quantity: number;
+                                            /** @description The units used to describe the quantity */
+                                            quantityunits: string;
+                                            /** @description Concentration of chemical in Kg/m^3 */
+                                            concentration?: number;
+                                            /** @description Alarm state of the sensor. 1 = alarm, 0 = no alarm */
+                                            alarm: number;
+                                            /** @description The confidence of the detection from the sensor as a percentage */
+                                            confidence?: number;
+                                            /** @description The mass fraction of the detection from the sensor in ppm */
+                                            massfraction?: number;
+                                            /** @description The percentage of the detection from the sensor in percent from 0-100 */
+                                            percent?: number;
+                                            /** @description The class of chemical detected. Nerve, Blood, TIC, etc. */
+                                            class?: string;
+                                            /** @description The ID number of the detection */
+                                            id?: number;
+                                        }[];
+                                    };
+                                    biosensordetail?: {
+                                        sensor_data: {
+                                            /** @description The Manufacturer of the sensor in string format */
+                                            manufacturer: string;
+                                            /** @description The model of sensor in string format */
+                                            model: string;
+                                            /** @description The Serial Number of the Sensor in string format */
+                                            serialnumber: string;
+                                            /** @description The battery level as a percentage, float value */
+                                            batterylevel?: number;
+                                            /** @description The name of the given sensor in string format. Default name is Manufacturer+SerialNum */
+                                            callsign?: string;
+                                            /** @description The revision of the BioCoT format */
+                                            revision?: number;
+                                            /** @description General sensor health status */
+                                            status?: string;
+                                            /** @description Used internally by the CBRN plugin */
+                                            ordinal?: number;
+                                            /** @description The UID of the TAK marker that this sensor is attached to */
+                                            attachedUid?: string;
+                                            /** @description Is the data in this element representative of a simulated sensor */
+                                            simulated?: boolean;
+                                        };
+                                        measurement?: {
+                                            /** @description Timestamp for the measurement, epoch time (ms) */
+                                            time: string;
+                                            /** @description Biological class */
+                                            bioClass?: string;
+                                            /** @description Biological type */
+                                            type?: string;
+                                            /** @description Channel identifier */
+                                            channel?: number;
+                                            /** @description Is this bio measurement harmful */
+                                            harmful?: boolean;
+                                            /** @description Dose Time */
+                                            doseTime?: number;
+                                            /** @description Amount of dose */
+                                            dose: number;
+                                            /** @description The confidence of the measurement from the sensor as a percentage */
+                                            confidence?: number;
+                                            /** @description Confirmation level */
+                                            confirmationLevel?: string;
+                                            /** @description Concentration */
+                                            concentration?: number;
+                                            /** @description Sample ID of this measurement */
+                                            sampleId?: string;
+                                            /** @description Persistency */
+                                            persistency?: string;
+                                            level?: {
+                                                /** @description The name of this measurement level */
+                                                levelName: string;
+                                                /** @description The value of this measurement level */
+                                                levelValue: string;
+                                            }[];
+                                        }[];
+                                    };
+                                    spatial?: {
+                                        version?: number;
+                                        attitude: {
+                                            /** @description Roll of entity in degrees. Positive indicates listing to the right. */
+                                            roll: number;
+                                            /** @description Pitch of entity in degrees. Positive indicates nose point up. */
+                                            pitch: number;
+                                            /** @description Yaw of entity in degrees. Positive indicates turned to the right. */
+                                            yaw?: number;
+                                            /** @description 1-sigma error of roll with respect to a zero mean normal Gaussian distribution. */
+                                            eRoll?: number;
+                                            /** @description 1-sigma error of pitch with respect to a zero mean normal Gaussian distribution. */
+                                            ePitch?: number;
+                                            /** @description 1-sigma error of yaw with respect to a zero mean normal Gaussian distribution. */
+                                            eYaw?: number;
+                                        };
+                                        spin: {
+                                            /** @description Degrees per second with positive indicating to the pilots right */
+                                            roll: number;
+                                            /** @description Degrees per second with positive indicating nose up. */
+                                            pitch: number;
+                                            /** @description Degrees per second with positive indicating right. */
+                                            yaw?: number;
+                                            /** @description 1-sigma error of roll with respect to a zero mean normal Gaussian distribution. */
+                                            eRoll?: number;
+                                            /** @description 1-sigma error of pitch with respect to a zero mean normal Gaussian distribution. */
+                                            ePitch?: number;
+                                            /** @description 1-sigma error of yaw with respect to a zero mean normal Gaussian distribution. */
+                                            eYaw?: number;
+                                        };
+                                    };
+                                };
+                                path?: string;
+                                geometry: {
+                                    /** @constant */
+                                    type: "Point";
+                                    coordinates: number[];
+                                } | {
+                                    /** @constant */
+                                    type: "LineString";
+                                    coordinates: number[][];
+                                } | {
+                                    /** @constant */
+                                    type: "Polygon";
+                                    coordinates: number[][][];
+                                };
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/forward": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get information about a given string */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    provider?: string;
+                    /** @description No Description */
+                    query: string;
+                    /** @description No Description */
+                    limit?: number;
+                    /** @description No Description */
+                    magicKey: string;
+                    /** @description No Description */
+                    longitude?: number;
+                    /** @description No Description */
+                    latitude?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                address: string;
+                                location: {
+                                    x: number;
+                                    y: number;
+                                };
+                                score: number;
+                                attributes: {
+                                    LongLabel?: string;
+                                    ShortLabel?: string;
+                                };
+                                extent: {
+                                    xmin: number;
+                                    ymin: number;
+                                    xmax: number;
+                                    ymax: number;
+                                    spatialReference?: {
+                                        wkid: number;
+                                        latestWkid?: number;
+                                        wkt?: string;
+                                    } | {
+                                        wkt: string;
+                                        wkid?: number;
+                                        latestWkid?: number;
+                                    };
+                                };
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/search/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get information about a given string */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    provider?: string;
+                    /** @description No Description */
+                    query: string;
+                    /** @description No Description */
+                    limit: number;
+                    /** @description No Description */
+                    longitude?: number;
+                    /** @description No Description */
+                    latitude?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                text: string;
+                                magicKey: string;
+                                isCollection: boolean;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -42444,7 +46721,142 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get a single Task Version, including the Capabilities document embedded in the OCI Image Manifest at build time */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":task": string;
+                    /** @description No Description */
+                    ":version": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            version: string;
+                            deployed: boolean;
+                            capabilities: {
+                                /** @description Version of the Capabilities document format */
+                                version: string;
+                                /** @description Human readable name of the task */
+                                name: string;
+                                /** @description Human readable description of what the task does */
+                                description: string;
+                                permissions: {
+                                    /** @description The resource the permission applies to - ie feature:* */
+                                    resource: string;
+                                    /** @description Whether the task can function without this permission */
+                                    required: boolean;
+                                    /** @description Human readable explanation of why the task needs this permission */
+                                    description: string;
+                                }[];
+                                compute: {
+                                    /** @description Memory in MB the task should be allocated */
+                                    memory: number;
+                                    /** @description Timeout in seconds after which the task is terminated */
+                                    timeout: number;
+                                };
+                                invocations: {
+                                    incoming?: {
+                                        schedule?: {
+                                            description: string;
+                                            default: {
+                                                enabled: boolean;
+                                                /** @description AWS Schedule Expression - ie rate(1 minute) */
+                                                schedule: string;
+                                            };
+                                        };
+                                        webhook?: {
+                                            description: string;
+                                            default: {
+                                                enabled: boolean;
+                                            };
+                                        };
+                                    };
+                                    outgoing?: {
+                                        types: {
+                                            /** @description The resource type the task accepts - ie feature:* */
+                                            resource: string;
+                                            description: string;
+                                        }[];
+                                    };
+                                };
+                            } | null;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Delete a given task version */
@@ -42967,6 +47379,239 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/type/2525e": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List 2525E Symbol Sets & Symbols - returned SIDCs can be used on the Feature `type` property
+         *
+         *                 Symbols are hierarchical: Symbol Set => Entity => Entity Type => Entity Subtype
+         *                 When no filter is provided and a symbolset is given, only top-level Entities are returned -
+         *                 pass an Entity Code as `parent` to descend into its Entity Types / Subtypes.
+         *                 When a filter is provided a flat search across all Symbols is performed.
+         */
+        get: {
+            parameters: {
+                query: {
+                    /** @description No Description */
+                    filter: string;
+                    /** @description No Description */
+                    identity: "p" | "u" | "a" | "f" | "n" | "s" | "h" | "j" | "k" | "o";
+                    /** @description No Description */
+                    symbolset?: string;
+                    /** @description 6 digit Entity Code to list the children of - requires symbolset */
+                    parent?: string;
+                    /** @description Limit the number of responses returned */
+                    limit: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            total: number;
+                            symbolsets: {
+                                id: string;
+                                name: string;
+                            }[];
+                            items: {
+                                sidc: string;
+                                name: string;
+                                /** @description The most specific level of the Symbol name - ie the Entity Subtype name */
+                                title: string;
+                                remarks: string;
+                                symbolset: string;
+                                children: number;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/type/2525e/{:sidc}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get metadata for a given 2525D/2525E Numeric SIDC */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":sidc": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            sidc: string;
+                            name: string;
+                            remarks: string;
+                            symbolset: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/type/cot/{:type}": {
         parameters: {
             query?: never;
@@ -43088,7 +47733,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "name" | "username" | "last_login" | "auth" | "created" | "updated" | "phone" | "system_admin" | "agency_admin" | "enableRLS";
+                    sort: "id" | "name" | "username" | "last_login" | "auth" | "created" | "updated" | "system_admin" | "agency_admin" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                 };
@@ -43110,7 +47755,6 @@ export interface paths {
                                 username: string;
                                 created: string;
                                 updated: string;
-                                phone: string;
                                 last_login: string;
                                 /** @description Does the user have an active CloudTAK Session */
                                 active: boolean;
@@ -43220,7 +47864,6 @@ export interface paths {
                             username: string;
                             created: string;
                             updated: string;
-                            phone: string;
                             last_login: string;
                             /** @description Does the user have an active CloudTAK Session */
                             active: boolean;
@@ -43228,6 +47871,7 @@ export interface paths {
                             agency_admin: number[];
                             tak_callsign: string;
                             tak_remarks: string;
+                            tak_phone: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
                             tak_role: "Team Member" | "Team Lead" | "HQ" | "Sniper" | "Medic" | "Forward Observer" | "RTO" | "K9";
                             tak_type: string;
@@ -43257,6 +47901,7 @@ export interface paths {
                             display_elevation: "meter" | "feet";
                             display_speed: "m/s" | "km/h" | "mi/h";
                             display_radiation_dose: "sieverts" | "rems";
+                            display_wakelock: "Default" | "Charging" | "Always On";
                             geometry_point_type?: string;
                             geometry_point_color?: string;
                             geometry_point_icon?: string;
@@ -43364,7 +48009,6 @@ export interface paths {
                             username: string;
                             created: string;
                             updated: string;
-                            phone: string;
                             last_login: string;
                             /** @description Does the user have an active CloudTAK Session */
                             active: boolean;
@@ -43372,6 +48016,7 @@ export interface paths {
                             agency_admin: number[];
                             tak_callsign: string;
                             tak_remarks: string;
+                            tak_phone: string;
                             tak_group: "White" | "Yellow" | "Orange" | "Magenta" | "Red" | "Maroon" | "Purple" | "Dark Blue" | "Blue" | "Cyan" | "Teal" | "Green" | "Dark Green" | "Brown";
                             tak_role: "Team Member" | "Team Lead" | "HQ" | "Sniper" | "Medic" | "Forward Observer" | "RTO" | "K9";
                             tak_type: string;
@@ -43401,6 +48046,7 @@ export interface paths {
                             display_elevation: "meter" | "feet";
                             display_speed: "m/s" | "km/h" | "mi/h";
                             display_radiation_dose: "sieverts" | "rems";
+                            display_wakelock: "Default" | "Charging" | "Always On";
                             geometry_point_type?: string;
                             geometry_point_color?: string;
                             geometry_point_icon?: string;
@@ -44794,1812 +49440,6 @@ export interface paths {
                                     id: string;
                                 }[];
                             };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get information about the configured search provider(s) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            reverse: {
-                                enabled: boolean;
-                                providers: {
-                                    id: string;
-                                    name: string;
-                                }[];
-                            };
-                            route: {
-                                enabled: boolean;
-                                providers: {
-                                    id: string;
-                                    name: string;
-                                    modes: {
-                                        id: string;
-                                        name: string;
-                                    }[];
-                                }[];
-                            };
-                            forward: {
-                                enabled: boolean;
-                                providers: {
-                                    id: string;
-                                    name: string;
-                                }[];
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get information about a given point */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    provider?: string;
-                    /** @description No Description */
-                    altitude: number;
-                    /** @description No Description */
-                    elevation?: number;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            sun: {
-                                /** @description sunrise (top edge of the sun appears on the horizon) */
-                                sunrise: string | null;
-                                /** @description sunrise ends (bottom edge of the sun touches the horizon) */
-                                sunriseEnd: string | null;
-                                /** @description morning golden hour (soft light, best time for photography) ends */
-                                goldenHourEnd: string | null;
-                                /** @description solar noon (sun is in the highest position) */
-                                solarNoon: string | null;
-                                /** @description evening golden hour starts */
-                                goldenHour: string | null;
-                                /** @description sunset starts (bottom edge of the sun touches the horizon) */
-                                sunsetStart: string | null;
-                                /** @description sunset (sun disappears below the horizon, evening civil twilight starts) */
-                                sunset: string | null;
-                                /** @description dusk (evening nautical twilight starts) */
-                                dusk: string | null;
-                                /** @description nautical dusk (evening astronomical twilight starts) */
-                                nauticalDusk: string | null;
-                                /** @description night starts (dark enough for astronomical observations) */
-                                night: string | null;
-                                /** @description nadir (darkest moment of the night, sun is in the lowest position) */
-                                nadir: string | null;
-                                /** @description night ends (morning astronomical twilight starts) */
-                                nightEnd: string | null;
-                                /** @description nautical dawn (morning nautical twilight starts) */
-                                nauticalDawn: string | null;
-                                /** @description dawn (morning nautical twilight ends, morning civil twilight starts) */
-                                dawn: string | null;
-                            };
-                            magnetic: {
-                                declination: number;
-                                inclination: number;
-                            };
-                            weather: null | {
-                                type: string;
-                                properties: {
-                                    units: string;
-                                    forecastGenerator: string;
-                                    generatedAt: string;
-                                    updateTime: string;
-                                    validTimes: string;
-                                    elevation: {
-                                        unitCode: string;
-                                        value: number;
-                                    };
-                                    periods: {
-                                        number: number;
-                                        name: string;
-                                        startTime: string;
-                                        endTime: string;
-                                        isDaytime: boolean;
-                                        temperature: number;
-                                        temperatureUnit: string;
-                                        temperatureTrend: unknown;
-                                        probabilityOfPrecipitation: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        dewpoint: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        relativeHumidity: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        windSpeed: string;
-                                        windDirection: string;
-                                        icon: string;
-                                        shortForecast: string;
-                                        detailedForecast: string;
-                                    }[];
-                                };
-                                geometry: {
-                                    type: string;
-                                    coordinates: number[][][];
-                                };
-                            };
-                            reverse: null | {
-                                LongLabel: string;
-                                ShortLabel: string;
-                                Addr_type: string;
-                            };
-                            elevation: null | string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}/sun": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get sun phase information for a given point */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    altitude: number;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            sun: {
-                                /** @description sunrise (top edge of the sun appears on the horizon) */
-                                sunrise: string | null;
-                                /** @description sunrise ends (bottom edge of the sun touches the horizon) */
-                                sunriseEnd: string | null;
-                                /** @description morning golden hour (soft light, best time for photography) ends */
-                                goldenHourEnd: string | null;
-                                /** @description solar noon (sun is in the highest position) */
-                                solarNoon: string | null;
-                                /** @description evening golden hour starts */
-                                goldenHour: string | null;
-                                /** @description sunset starts (bottom edge of the sun touches the horizon) */
-                                sunsetStart: string | null;
-                                /** @description sunset (sun disappears below the horizon, evening civil twilight starts) */
-                                sunset: string | null;
-                                /** @description dusk (evening nautical twilight starts) */
-                                dusk: string | null;
-                                /** @description nautical dusk (evening astronomical twilight starts) */
-                                nauticalDusk: string | null;
-                                /** @description night starts (dark enough for astronomical observations) */
-                                night: string | null;
-                                /** @description nadir (darkest moment of the night, sun is in the lowest position) */
-                                nadir: string | null;
-                                /** @description night ends (morning astronomical twilight starts) */
-                                nightEnd: string | null;
-                                /** @description nautical dawn (morning nautical twilight starts) */
-                                nauticalDawn: string | null;
-                                /** @description dawn (morning nautical twilight ends, morning civil twilight starts) */
-                                dawn: string | null;
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}/magnetic": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get magnetic declination information for a given point */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            magnetic: {
-                                declination: number;
-                                inclination: number;
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}/weather": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get weather forecast for a given point */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            weather: null | {
-                                type: string;
-                                properties: {
-                                    units: string;
-                                    forecastGenerator: string;
-                                    generatedAt: string;
-                                    updateTime: string;
-                                    validTimes: string;
-                                    elevation: {
-                                        unitCode: string;
-                                        value: number;
-                                    };
-                                    periods: {
-                                        number: number;
-                                        name: string;
-                                        startTime: string;
-                                        endTime: string;
-                                        isDaytime: boolean;
-                                        temperature: number;
-                                        temperatureUnit: string;
-                                        temperatureTrend: unknown;
-                                        probabilityOfPrecipitation: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        dewpoint: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        relativeHumidity: {
-                                            unitCode: string;
-                                            value: number;
-                                        };
-                                        windSpeed: string;
-                                        windDirection: string;
-                                        icon: string;
-                                        shortForecast: string;
-                                        detailedForecast: string;
-                                    }[];
-                                };
-                                geometry: {
-                                    type: string;
-                                    coordinates: number[][][];
-                                };
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}/reverse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get reverse geocoding information for a given point */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description No Description */
-                    provider?: string;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            reverse: null | {
-                                LongLabel: string;
-                                ShortLabel: string;
-                                Addr_type: string;
-                            };
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/reverse/{:longitude}/{:latitude}/elevation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get elevation information for a given point */
-        get: {
-            parameters: {
-                query?: {
-                    /** @description No Description */
-                    elevation?: number;
-                };
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":latitude": number;
-                    /** @description No Description */
-                    ":longitude": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            elevation: null | string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/route": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Generate a route given stop information */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    provider?: string;
-                    /** @description Human readable name of the route */
-                    callsign: string;
-                    /** @description Lat,Lng of starting position */
-                    start: string;
-                    /** @description Lat,Lng of end position */
-                    end: string;
-                    /** @description Travel mode for routing */
-                    travelMode?: string;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            type: "FeatureCollection";
-                            features: {
-                                id: string;
-                                /** @constant */
-                                type: "Feature";
-                                properties: {
-                                    /** @default UNKNOWN */
-                                    callsign: string;
-                                    /** @default a-f-G */
-                                    type: string;
-                                    how: string;
-                                    time: string;
-                                    start: string;
-                                    stale: string;
-                                    center: number[];
-                                    minzoom?: number;
-                                    maxzoom?: number;
-                                    rotate?: boolean;
-                                    range?: number;
-                                    bearing?: number;
-                                    creator?: {
-                                        /** @description The Unique ID of the creator of the CoT */
-                                        uid: string;
-                                        /** @description The Callsign of the creator of the CoT */
-                                        callsign?: string;
-                                        /** @description Time at which the CoT was created by the creator */
-                                        time?: string;
-                                        /** @description The Type of the creator - typically a- for things on the ground, b- for digital things, etc */
-                                        type: string;
-                                    };
-                                    course?: number;
-                                    slope?: number;
-                                    speed?: number;
-                                    labels?: boolean;
-                                    "marker-color"?: string;
-                                    "marker-opacity"?: number;
-                                    stroke?: string;
-                                    "stroke-opacity"?: number;
-                                    "stroke-width"?: number;
-                                    "stroke-style"?: string;
-                                    fill?: string;
-                                    "fill-opacity"?: number;
-                                    metadata?: {
-                                        [key: string]: unknown;
-                                    };
-                                    /** @description Presence of the detail.archive tag - instructs the TAK client to locally archive this feature */
-                                    archived?: boolean;
-                                    geofence?: {
-                                        elevationMonitored?: boolean;
-                                        minElevation?: string;
-                                        maxElevation?: string;
-                                        monitor?: string;
-                                        trigger?: string;
-                                        tracking?: boolean;
-                                        boundingSphere?: number;
-                                    };
-                                    contact?: {
-                                        phone?: string;
-                                        name?: string;
-                                        callsign?: string;
-                                        endpoint?: string;
-                                    };
-                                    shape?: {
-                                        ellipse?: {
-                                            /** @description The major axis of the ellipse in meters */
-                                            major: number;
-                                            /** @description The minor axis of the ellipse in meters */
-                                            minor: number;
-                                            /** @description The angle of the ellipse in degrees */
-                                            angle: number;
-                                            /** @description Whether the ellipse axes should be swapped when rendered by TAK clients */
-                                            swapAxis?: boolean;
-                                        };
-                                    };
-                                    remarks?: string;
-                                    milsym?: {
-                                        id: string;
-                                    };
-                                    milicon?: {
-                                        id: string;
-                                    };
-                                    mission?: {
-                                        type?: string;
-                                        tool?: string;
-                                        guid?: string;
-                                        name?: string;
-                                        authorUid?: string;
-                                        missionLayer?: {
-                                            name?: string;
-                                            parentUid?: string;
-                                            type?: string;
-                                            uid?: string;
-                                        };
-                                        missionChanges?: {
-                                            contentUid?: string;
-                                            creatorUid: string;
-                                            isFederatedChange: boolean;
-                                            missionName: string;
-                                            timestamp: string;
-                                            type: string;
-                                            contentResource?: {
-                                                expiration: string;
-                                                filename?: string;
-                                                hash: string;
-                                                name: string;
-                                                size: number;
-                                                submissionTime: string;
-                                                submitter: string;
-                                                tool?: string;
-                                                uid: string;
-                                            };
-                                            details?: {
-                                                type: string;
-                                                callsign: string;
-                                                color: string;
-                                                lat: string;
-                                                lon: string;
-                                            };
-                                        }[];
-                                    };
-                                    fileshare?: {
-                                        filename: string;
-                                        name: string;
-                                        senderCallsign: string;
-                                        senderUid: string;
-                                        senderUrl: string;
-                                        sha256: string;
-                                        sizeInBytes: number;
-                                    };
-                                    ackrequest?: {
-                                        uid: string;
-                                        ackrequested: boolean;
-                                        tag: string;
-                                    };
-                                    attachments?: string[];
-                                    sensor?: {
-                                        elevation?: number;
-                                        vfov?: number;
-                                        fov?: number;
-                                        roll?: number;
-                                        range?: number;
-                                        azimuth?: number;
-                                        north?: number;
-                                        fovBlue?: number;
-                                        fovAlpha?: number;
-                                        fovGreen?: number;
-                                        fovRed?: number;
-                                        strokeWeight?: number;
-                                        strokeColor?: number;
-                                        rangeLines?: number;
-                                        rangeLineStrokeWeight?: number;
-                                        rangeLineStrokeColor?: number;
-                                        displayMagneticReference?: number;
-                                        hideFov?: boolean;
-                                        type?: string;
-                                        version?: string;
-                                        model?: string;
-                                    };
-                                    video?: {
-                                        uid?: string;
-                                        sensor?: string;
-                                        spi?: string;
-                                        url?: string;
-                                        connection?: {
-                                            uid: string;
-                                            address: string;
-                                            networkTimeout?: number;
-                                            path?: string;
-                                            protocol?: string;
-                                            bufferTime?: number;
-                                            port?: number;
-                                            roverPort?: number;
-                                            rtspReliable?: number;
-                                            ignoreEmbeddedKLV?: boolean;
-                                            alias?: string;
-                                        };
-                                    };
-                                    links?: {
-                                        uid?: string;
-                                        relation?: string;
-                                        type?: string;
-                                        point?: string;
-                                        callsign?: string;
-                                        mission?: string;
-                                        url?: string;
-                                        mime?: string;
-                                        remarks?: string;
-                                        production_time?: string;
-                                        parent_callsign?: string;
-                                    }[];
-                                    chat?: {
-                                        parent?: string;
-                                        groupOwner?: string;
-                                        messageId?: string;
-                                        chatroom: string;
-                                        id: string;
-                                        senderCallsign: string;
-                                        chatgrp: unknown;
-                                    };
-                                    track?: {
-                                        speed?: string;
-                                        course?: string;
-                                        slope?: string;
-                                        eCourse?: string;
-                                        eSpeed?: string;
-                                        eSlope?: string;
-                                    };
-                                    dest?: {
-                                        uid?: string;
-                                        callsign?: string;
-                                        group?: string;
-                                        mission?: string;
-                                        "mission-guid"?: string;
-                                        after?: string;
-                                        path?: string;
-                                    } | {
-                                        uid?: string;
-                                        callsign?: string;
-                                        group?: string;
-                                        mission?: string;
-                                        "mission-guid"?: string;
-                                        after?: string;
-                                        path?: string;
-                                    }[];
-                                    /** @description Presence of marti._attributes.archive - instructs the TAK Server to archive this message */
-                                    marti_archive?: boolean;
-                                    icon?: string;
-                                    droid?: string;
-                                    takv?: {
-                                        device?: string;
-                                        platform?: string;
-                                        os?: string;
-                                        version?: string;
-                                    };
-                                    group?: {
-                                        name: string;
-                                        role: string;
-                                    };
-                                    status?: {
-                                        battery?: string;
-                                        readiness?: string;
-                                    };
-                                    precisionlocation?: {
-                                        geopointsrc?: string;
-                                        altsrc?: string;
-                                    };
-                                    flow?: {
-                                        [key: string]: string;
-                                    };
-                                    radsensordetail?: {
-                                        sensor_data: {
-                                            /** @description epoch time in Long format */
-                                            time: string;
-                                            /** @description The model of sensor (Micro Detective, IdentiFINDER 2, etc.) in string format */
-                                            model: string;
-                                            /** @description The neutron detector status (Full, Reduced or Unknown). Not available for most sensors, default to Unknown */
-                                            neutronstatus: string;
-                                            /** @description The gamma detector status (Full, Reduced or Unknown). Not available for most sensors, default to Unknown */
-                                            gammastatus: string;
-                                            /** @description The Manufacturer of the sensor (Ortec, Nucsafe, etc.) in string format */
-                                            manufacturer: string;
-                                            /** @description The name of the given sensor in string format */
-                                            callsign?: string;
-                                            /** @description The Serial Number of the Sensor in string format */
-                                            serialnumber: string;
-                                            /** @description The battery level as a percentage, float value */
-                                            batterylevel?: number;
-                                            /** @description The ID algorithm used to ID isotopes (ex. GADRAS) */
-                                            id_algorithm?: string;
-                                            /** @description The search algorithm used (ex. RDAK, SAMBA) */
-                                            search_algorithm?: string;
-                                            /** @description The alarm algorithm used (ex. RDAK, SAMBA) */
-                                            alarm_algorithm?: string;
-                                            /** @description Used internally by the CBRN plugin */
-                                            ordinal?: number;
-                                            /** @description Identifier of this subchannel, if this event is a report from a subchannel of a master sensor */
-                                            subchannel?: string;
-                                            /** @description Used to align subchannels */
-                                            measurement_ref?: number;
-                                            /** @description Name of the master sensor, if this event is a report from a subchannel */
-                                            master_sensor_manufacturer?: string;
-                                            /** @description Serial number of the master sensor, if this event is a report from a subchannel */
-                                            master_sensor_serial?: string;
-                                            /** @description A bearing in positive degrees if the sensor reports back a direction for the detected source, -1 otherwise */
-                                            source_bearing?: number;
-                                            /** @description A scale from 0 - 0.5 giving the magnitude of the source strength in the direction of source_bearing */
-                                            source_strength?: number;
-                                            /** @description Used for sensors that can relay data from other sensors, or that can be relayed in that way */
-                                            relay_type?: string;
-                                            /** @description The location of the sensor where it's being worn on the vest */
-                                            module_location?: string;
-                                            /** @description The number from the sensor needed in order to retrieve any specific algorithm calculated data */
-                                            detector_number?: number;
-                                            /** @description The total mR configured for the sensor's current mission */
-                                            mission_total_mR?: number;
-                                            /** @description The total seconds remaining of mission time based on current configuration of sensor and acquired dose */
-                                            mission_stay_time_sec?: number;
-                                            /** @description The total uR acquired by the sensor for the current mission */
-                                            mission_acquired_uR?: number;
-                                            /** @description The temperature of the sensor in degrees celsius */
-                                            sensor_temp_deg_c?: number;
-                                            /** @description The current directional heading of the sensor */
-                                            heading?: number;
-                                            source_distance?: "MOVE_MUCH_CLOSER" | "MOVE_CLOSER" | "OPTIMAL" | "MOVE_AWAY" | "MOVE_FAR_AWAY";
-                                            /** @description The UID of the TAK marker that this sensor is attached to */
-                                            attachedUid?: string;
-                                            /** @description Is the data in this element representative of a simulated sensor */
-                                            simulated?: boolean;
-                                        };
-                                        radmeasurement?: {
-                                            /** @description Defines the alarm level, could be standard deviations above background. Will default to 0 (no alarm) */
-                                            nalarmstddev: number;
-                                            /** @description Alarm flag for the measurement. 1 = alarmed, 0 = not alarmed */
-                                            alarm: number;
-                                            /** @description The measurement value as a float. A/B/G/N will be interpreted as CPS. Dose Rate will be interpreted as mR/Hr */
-                                            measurement: number;
-                                            name: "alpha" | "beta" | "gamma" | "neutron" | "doserate";
-                                        }[];
-                                        physical_module?: {
-                                            location: "FRONT_LEFT" | "FRONT_RIGHT" | "REAR_LEFT" | "REAR_RIGHT" | "CAB";
-                                            /** @description Gamma counts per second */
-                                            gamma_cps: number;
-                                            /** @description Alarm level for the measurement. 0 = not alarmed, > 0 = alarm level */
-                                            gamma_alarm: number;
-                                            /** @description The gamma dose rate. Will be interpreted as uR/Hr */
-                                            gamma_dose_rate: number;
-                                        }[];
-                                        search_algorithm?: {
-                                            /** @description The Neutron localization value */
-                                            neutron_loc: number;
-                                            /** @description The Gamma localization value */
-                                            gamma_loc: number;
-                                            /** @description The Neutron localization alarm level */
-                                            neutron_loc_alarm_value: number;
-                                            /** @description The Gamma localization alarm level */
-                                            gamma_loc_alarm_value: number;
-                                            /** @description Alarm flag for the neutron localization value. 1 = alarmed, 0 = not alarmed */
-                                            neutron_loc_alarm: number;
-                                            /** @description Alarm flag for the gamma localization value. 1 = alarmed, 0 = not alarmed */
-                                            gamma_loc_alarm: number;
-                                        };
-                                        spectrum?: {
-                                            /** @description Flag for zero compression. 1 = zero compressed, 0 = not compressed */
-                                            zerocompression: number;
-                                            /** @description FOREGROUND or BACKGROUND */
-                                            type: string;
-                                            /** @description Spectrum live time in epoch time (ms) */
-                                            livetime_ms: string;
-                                            /** @description Spectrum real time in epoch time (ms) */
-                                            realtime_ms: string;
-                                            /** @description The spectral channel data */
-                                            channeldata: string;
-                                            /** @description The ID of the crystal reporting the channel data */
-                                            crystal_id?: string;
-                                        }[];
-                                        isotope?: {
-                                            /** @description The confidence value as a float representation of a percentage (88.5 NOT 0.885) */
-                                            confidence: number;
-                                            /** @description The name of the isotope */
-                                            name: string;
-                                            /** @description The type of the isotope */
-                                            type: string;
-                                        }[];
-                                        data_permissions?: {
-                                            /** @description All is true if all users should have access/permission */
-                                            all: boolean;
-                                            /** @description The list of ATAK UIDs that should have access/permission */
-                                            contact_list: string;
-                                        };
-                                        command_permissions?: {
-                                            /** @description All is true if all users should have access/permission */
-                                            all: boolean;
-                                            /** @description The list of ATAK UIDs that should have access/permission */
-                                            contact_list: string;
-                                        };
-                                    };
-                                    chemsensordetail?: {
-                                        sensor_data: {
-                                            /** @description The Manufacturer of the sensor in string format */
-                                            manufacturer: string;
-                                            /** @description The model of sensor in string format */
-                                            model: string;
-                                            /** @description The Serial Number of the Sensor in string format */
-                                            serialnumber: string;
-                                            /** @description The battery level as a percentage, float value */
-                                            batterylevel?: number;
-                                            /** @description The name of the given sensor in string format. Default name is Manufacturer+SerialNum */
-                                            callsign?: string;
-                                            /** @description The revision of the ChemCoT format, at writing this is "7" */
-                                            revision?: number;
-                                            /** @description General sensor health status */
-                                            status?: string;
-                                            /** @description Used internally by the CBRN plugin */
-                                            ordinal?: number;
-                                            /** @description The UID of the TAK marker that this sensor is attached to */
-                                            attachedUid?: string;
-                                            /** @description Is the data in this element representative of a simulated sensor */
-                                            simulated?: boolean;
-                                        };
-                                        detection?: {
-                                            /** @description Timestamp for the detection, epoch time (ms) */
-                                            time: string;
-                                            /** @description Chemical Name in string format */
-                                            agent: string;
-                                            /** @description Amount of chemical detected as a float. Could be mass, density, bars etc. */
-                                            quantity: number;
-                                            /** @description The units used to describe the quantity */
-                                            quantityunits: string;
-                                            /** @description Concentration of chemical in Kg/m^3 */
-                                            concentration?: number;
-                                            /** @description Alarm state of the sensor. 1 = alarm, 0 = no alarm */
-                                            alarm: number;
-                                            /** @description The confidence of the detection from the sensor as a percentage */
-                                            confidence?: number;
-                                            /** @description The mass fraction of the detection from the sensor in ppm */
-                                            massfraction?: number;
-                                            /** @description The percentage of the detection from the sensor in percent from 0-100 */
-                                            percent?: number;
-                                            /** @description The class of chemical detected. Nerve, Blood, TIC, etc. */
-                                            class?: string;
-                                            /** @description The ID number of the detection */
-                                            id?: number;
-                                        }[];
-                                    };
-                                    biosensordetail?: {
-                                        sensor_data: {
-                                            /** @description The Manufacturer of the sensor in string format */
-                                            manufacturer: string;
-                                            /** @description The model of sensor in string format */
-                                            model: string;
-                                            /** @description The Serial Number of the Sensor in string format */
-                                            serialnumber: string;
-                                            /** @description The battery level as a percentage, float value */
-                                            batterylevel?: number;
-                                            /** @description The name of the given sensor in string format. Default name is Manufacturer+SerialNum */
-                                            callsign?: string;
-                                            /** @description The revision of the BioCoT format */
-                                            revision?: number;
-                                            /** @description General sensor health status */
-                                            status?: string;
-                                            /** @description Used internally by the CBRN plugin */
-                                            ordinal?: number;
-                                            /** @description The UID of the TAK marker that this sensor is attached to */
-                                            attachedUid?: string;
-                                            /** @description Is the data in this element representative of a simulated sensor */
-                                            simulated?: boolean;
-                                        };
-                                        measurement?: {
-                                            /** @description Timestamp for the measurement, epoch time (ms) */
-                                            time: string;
-                                            /** @description Biological class */
-                                            bioClass?: string;
-                                            /** @description Biological type */
-                                            type?: string;
-                                            /** @description Channel identifier */
-                                            channel?: number;
-                                            /** @description Is this bio measurement harmful */
-                                            harmful?: boolean;
-                                            /** @description Dose Time */
-                                            doseTime?: number;
-                                            /** @description Amount of dose */
-                                            dose: number;
-                                            /** @description The confidence of the measurement from the sensor as a percentage */
-                                            confidence?: number;
-                                            /** @description Confirmation level */
-                                            confirmationLevel?: string;
-                                            /** @description Concentration */
-                                            concentration?: number;
-                                            /** @description Sample ID of this measurement */
-                                            sampleId?: string;
-                                            /** @description Persistency */
-                                            persistency?: string;
-                                            level?: {
-                                                /** @description The name of this measurement level */
-                                                levelName: string;
-                                                /** @description The value of this measurement level */
-                                                levelValue: string;
-                                            }[];
-                                        }[];
-                                    };
-                                    spatial?: {
-                                        version?: number;
-                                        attitude: {
-                                            /** @description Roll of entity in degrees. Positive indicates listing to the right. */
-                                            roll: number;
-                                            /** @description Pitch of entity in degrees. Positive indicates nose point up. */
-                                            pitch: number;
-                                            /** @description Yaw of entity in degrees. Positive indicates turned to the right. */
-                                            yaw?: number;
-                                            /** @description 1-sigma error of roll with respect to a zero mean normal Gaussian distribution. */
-                                            eRoll?: number;
-                                            /** @description 1-sigma error of pitch with respect to a zero mean normal Gaussian distribution. */
-                                            ePitch?: number;
-                                            /** @description 1-sigma error of yaw with respect to a zero mean normal Gaussian distribution. */
-                                            eYaw?: number;
-                                        };
-                                        spin: {
-                                            /** @description Degrees per second with positive indicating to the pilots right */
-                                            roll: number;
-                                            /** @description Degrees per second with positive indicating nose up. */
-                                            pitch: number;
-                                            /** @description Degrees per second with positive indicating right. */
-                                            yaw?: number;
-                                            /** @description 1-sigma error of roll with respect to a zero mean normal Gaussian distribution. */
-                                            eRoll?: number;
-                                            /** @description 1-sigma error of pitch with respect to a zero mean normal Gaussian distribution. */
-                                            ePitch?: number;
-                                            /** @description 1-sigma error of yaw with respect to a zero mean normal Gaussian distribution. */
-                                            eYaw?: number;
-                                        };
-                                    };
-                                };
-                                path?: string;
-                                geometry: {
-                                    /** @constant */
-                                    type: "Point";
-                                    coordinates: number[];
-                                } | {
-                                    /** @constant */
-                                    type: "LineString";
-                                    coordinates: number[][];
-                                } | {
-                                    /** @constant */
-                                    type: "Polygon";
-                                    coordinates: number[][][];
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/forward": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get information about a given string */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    provider?: string;
-                    /** @description No Description */
-                    query: string;
-                    /** @description No Description */
-                    limit?: number;
-                    /** @description No Description */
-                    magicKey: string;
-                    /** @description No Description */
-                    longitude?: number;
-                    /** @description No Description */
-                    latitude?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            items: {
-                                address: string;
-                                location: {
-                                    x: number;
-                                    y: number;
-                                };
-                                score: number;
-                                attributes: {
-                                    LongLabel?: string;
-                                    ShortLabel?: string;
-                                };
-                                extent: {
-                                    xmin: number;
-                                    ymin: number;
-                                    xmax: number;
-                                    ymax: number;
-                                    spatialReference?: {
-                                        wkid: number;
-                                        latestWkid?: number;
-                                        wkt?: string;
-                                    } | {
-                                        wkt: string;
-                                        wkid?: number;
-                                        latestWkid?: number;
-                                    };
-                                };
-                            }[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/search/suggest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get information about a given string */
-        get: {
-            parameters: {
-                query: {
-                    /** @description No Description */
-                    provider?: string;
-                    /** @description No Description */
-                    query: string;
-                    /** @description No Description */
-                    limit: number;
-                    /** @description No Description */
-                    longitude?: number;
-                    /** @description No Description */
-                    latitude?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            items: {
-                                text: string;
-                                magicKey: string;
-                                isCollection: boolean;
-                            }[];
                         };
                     };
                 };
