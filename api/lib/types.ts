@@ -302,6 +302,18 @@ export const ProfileResponse = Type.Composite([
         }),
         system_admin: Type.Boolean(),
         agency_admin: Type.Array(Type.Integer()),
+
+        // Read-only markers, deliberately not part of `Profile` (and therefore not
+        // of ProfilePatchBody) so a user cannot unlock their own fields by PATCHing.
+        tak_callsign_locked: Type.Boolean({
+            description: 'Callsign is supplied by the identity provider and cannot be changed by the user',
+        }),
+        tak_group_locked: Type.Boolean({
+            description: 'Group is supplied by the identity provider and cannot be changed by the user',
+        }),
+        tak_role_locked: Type.Boolean({
+            description: 'Role is supplied by the identity provider and cannot be changed by the user',
+        }),
     }),
     Profile,
 ]);

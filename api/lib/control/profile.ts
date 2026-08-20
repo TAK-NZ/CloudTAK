@@ -8,6 +8,26 @@ import {
 } from '../enums.js';
 import { ProfileResponse } from '../types.js';
 
+/**
+ * Profile settings that an upstream IdP (Authentik) can own, expressed as the
+ * suffix of their `tak::` ProfileConfig key. When the IdP supplies a value for
+ * one of these, the user must not be able to edit it themselves — the sync would
+ * silently overwrite their change on the next login anyway.
+ */
+export const IDP_MANAGED_FIELDS = ['callsign', 'group', 'role'] as const;
+
+/**
+ * Whether the IdP attribute sync is currently authoritative for profile fields.
+ *
+ * The OIDC callback re-applies the IdP's callsign/group/role on *every* login
+ * when this is on, so those fields are effectively read-only for the user. With
+ * it off, the sync only runs on first login and the user owns their values from
+ * then on, so nothing should be locked.
+ */
+export function idpAttributeSyncEnabled(): boolean {
+    return process.env.SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN === 'true';
+}
+
 export const ProfileConfigDefaults = {
     'display::stale': Profile_Stale.TenMinutes,
     'display::distance': Profile_Distance.MILE,
@@ -125,12 +145,45 @@ export default class ProfileControl {
             (profile as any)[key.replace(/::/g, '_')] = full_config[key as keyof typeof full_config];
         }
 
+        // Surface the IdP field locks the frontend uses to disable the callsign
+        // settings inputs. `tak::<field>_managed` records which fields the IdP
+        // actually supplied at the last attribute sync; that marker is ANDed with
+        // the live sync setting here rather than being baked into the stored value,
+        // so switching SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN off hands control back to
+        // the user immediately instead of requiring every profile to be rewritten.
+        const syncEnabled = idpAttributeSyncEnabled();
+        for (const field of IDP_MANAGED_FIELDS) {
+            const managed = Boolean(full_config[`tak::${field}_managed` as keyof typeof full_config]);
+            // Internal bookkeeping, not part of ProfileResponse - strip the flattened
+            // form so only the derived `_locked` flag is exposed to clients.
+            delete (profile as any)[`tak_${field}_managed`];
+            (profile as any)[`tak_${field}_locked`] = syncEnabled && managed;
+        }
+
         // @ts-expect-error Update Batch-Generic to specify actual geometry type (Point) instead of Geometry
         return {
             ...profile,
             active: this.config.wsClients.has(profile.username),
             agency_admin: profile.agency_admin || [],
         };
+    }
+
+    /**
+     * The set of `ProfilePatchBody` keys the user is not allowed to change because
+     * an upstream IdP owns them. Returns the flattened key names (`tak_callsign`,
+     * `tak_group`, `tak_role`) so callers can test request bodies directly.
+     */
+    async lockedFields(email: string): Promise<Set<string>> {
+        if (!idpAttributeSyncEnabled()) return new Set();
+
+        const configs = await this.config.models.ProfileConfig.from(email);
+
+        const locked = new Set<string>();
+        for (const field of IDP_MANAGED_FIELDS) {
+            if (configs[`tak::${field}_managed`]) locked.add(`tak_${field}`);
+        }
+
+        return locked;
     }
 
     async generate(

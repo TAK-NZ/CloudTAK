@@ -48,12 +48,14 @@
                             <TablerInput
                                 v-if='item.type === "input"'
                                 v-model='(profile as any)[item.key]'
-                                :error='item.key === "tak_callsign" ? validateTextNotEmpty(profile.tak_callsign) : ""'
+                                :disabled='item.locked'
+                                :error='item.key === "tak_callsign" && !item.locked ? validateTextNotEmpty(profile.tak_callsign) : ""'
                                 :required='item.key === "tak_callsign"'
                             />
                             <TablerEnum
                                 v-else-if='item.type === "enum"'
                                 v-model='(profile as any)[item.key]'
+                                :disabled='item.locked'
                                 :options='item.options'
                             />
                             <CoordinateType
@@ -63,7 +65,17 @@
                             />
                         </div>
                         <div
-                            v-if='item.type === "input" && hasChanged(item.key)'
+                            v-if='item.locked'
+                            class='d-flex align-items-center gap-1 text-secondary'
+                        >
+                            <IconLock
+                                :size='14'
+                                stroke='1.5'
+                            />
+                            <span class='small'>Managed by your single sign-on account and cannot be changed here</span>
+                        </div>
+                        <div
+                            v-if='item.type === "input" && !item.locked && hasChanged(item.key)'
                             class='d-flex justify-content-end'
                         >
                             <button
@@ -98,6 +110,7 @@ import {
     IconClock,
     IconMapPin,
     IconCircleCheck,
+    IconLock,
 } from '@tabler/icons-vue';
 import CoordinateType from './CoordinateType.vue';
 import StandardItem from './StandardItem.vue';
@@ -134,11 +147,19 @@ type SettingItem = {
     type: 'input' | 'enum' | 'coordinate';
     options?: string[];
     routerOnly?: boolean;
+    /** Owned by the identity provider - rendered read-only and never saved */
+    locked?: boolean;
 };
 
 const loading = ref(true);
 const profile = ref<Profile | undefined>();
 const groups = ref<Record<string, string>>({});
+/**
+ * Fields the IdP supplies (and re-applies on every login), reported by the API as
+ * `tak_*_locked` on the profile. Editing them locally would be silently reverted,
+ * so the inputs are disabled and both save paths skip them.
+ */
+const locked = ref<Record<string, boolean>>({});
 const search = ref('');
 const savedKey = ref<string | undefined>();
 const changedFields = ref<Set<string>>(new Set());
@@ -167,6 +188,7 @@ const settings = computed<SettingItem[]>(() => {
             label: 'User Callsign',
             icon: IconUser,
             type: 'input',
+            locked: locked.value.tak_callsign,
         },
         {
             key: 'tak_group',
@@ -174,6 +196,7 @@ const settings = computed<SettingItem[]>(() => {
             icon: IconUsers,
             type: 'enum',
             options: tak_groups.value,
+            locked: locked.value.tak_group,
         },
         {
             key: 'tak_role',
@@ -181,6 +204,7 @@ const settings = computed<SettingItem[]>(() => {
             icon: IconShield,
             type: 'enum',
             options: roles,
+            locked: locked.value.tak_role,
         },
         {
             key: 'tak_loc_freq',
@@ -216,6 +240,18 @@ onMounted(async () => {
     loading.value = true;
     await fetchConfig();
 
+    // Refresh the cached profile before reading it. ProfileConfig.sync() is a no-op
+    // once the local store is populated, so without forcing it a session that
+    // predates the lock flags (or whose IdP attributes changed on a later login)
+    // would render the fields as editable when they are not.
+    await ProfileConfig.sync({ refresh: true });
+
+    locked.value = {
+        tak_callsign: Boolean((await ProfileConfig.get('tak_callsign_locked'))?.value),
+        tak_group: Boolean((await ProfileConfig.get('tak_group_locked'))?.value),
+        tak_role: Boolean((await ProfileConfig.get('tak_role_locked'))?.value),
+    };
+
     const p = {
         tak_callsign: (await ProfileConfig.get('tak_callsign'))?.value,
         tak_group: (await ProfileConfig.get('tak_group'))?.value,
@@ -229,7 +265,10 @@ onMounted(async () => {
         p.tak_group = `${p.tak_group} - ${groups.value[p.tak_group]}`;
     }
 
-    if (props.forceCallsign) {
+    // The welcome wizard blanks the callsign to force the user to enter one. Skip
+    // that when the IdP owns it, otherwise the wizard would demand a value the user
+    // has no way to save and the Done button would never enable.
+    if (props.forceCallsign && !locked.value.tak_callsign) {
         p.tak_callsign = '';
     }
 
@@ -241,6 +280,12 @@ onMounted(async () => {
     }
 
     loading.value = false;
+
+    // The welcome wizard gates its Done button on a tak_callsign update event. A
+    // locked callsign can never emit one, so report it as already satisfied.
+    if (props.mode === 'emit' && locked.value.tak_callsign) {
+        emit('update', 'tak_callsign');
+    }
 });
 
 const groupKeys: (keyof FullConfig)[] = [
@@ -272,6 +317,7 @@ async function fetchConfig() {
 
 async function saveField(key: string) {
     if (!profile.value) return;
+    if (locked.value[key]) return;
 
     const p = JSON.parse(JSON.stringify(profile.value)) as Profile;
     p.tak_group = p.tak_group.replace(/\s-\s.*$/, '') as Profile["tak_group"];
@@ -307,6 +353,11 @@ watch(
 
         // Detect which fields changed
         for (const item of settings.value) {
+            // IdP-managed fields are never persisted from here. The inputs are
+            // disabled, but this also covers programmatic mutation (e.g. the
+            // tak_group display-label rewrite) reaching the auto-save branch.
+            if (item.locked) continue;
+
             const current = (newProfile as Profile)[item.key as keyof Profile];
             if (current !== previousValues[item.key]) {
                 if (item.type === 'input') {
