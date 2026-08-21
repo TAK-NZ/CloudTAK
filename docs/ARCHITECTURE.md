@@ -20,7 +20,7 @@ The CloudTAK Infrastructure provides web-based TAK services with ETL capabilitie
                 ▼               ▼       ▼               ▼                             ▼
 ┌─────────────────┐    ┌──────────────────┐    ┌──────────────┐    ┌──────────────────┐
 │   Base Layer    │    │   ETL Tasks      │    │   Aurora     │    │   Base Layer     │
-│ (VPC/ECS/S3)    │    │ (Batch/Lambda)   │    │ PostgreSQL   │    │  (S3 Buckets)    │
+│ (VPC/ECS/S3)    │    │ (ECS/Lambda)     │    │ PostgreSQL   │    │  (S3 Buckets)    │
 └─────────────────┘    └──────────────────┘    │  Database    │    └──────────────────┘
                                                └──────────────┘
 ```
@@ -69,10 +69,12 @@ The CloudTAK Infrastructure provides web-based TAK services with ETL capabilitie
 - **Usage**: Static assets, logs, and configuration files
 - **Integration**: CloudTAK connects to existing S3 resources
 
-#### 3. AWS Batch for ETL Processing
-- **Purpose**: Scalable ETL job processing
-- **Tasks**: Data processing, events processing, pmtiles generation
-- **Scaling**: On-demand compute resources
+#### 3. ECS Tasks for Data Processing
+- **Purpose**: Convert uploaded data and maintain derived artefacts
+- **Tasks**: `events` (converts uploads — KML/GPX/TCX/MBTiles → GeoJSON), `pmtiles` (tile
+  generation), `retention` (scheduled cleanup)
+- **Scaling**: `events` is a long-running Fargate service; `retention` is an EventBridge-scheduled
+  `RunTask`
 - **Integration**: Connects to Aurora database and S3 buckets
 
 #### 4. Lambda Functions
@@ -213,7 +215,7 @@ The infrastructure implements a layered security model with dedicated security g
 - **Development**: 1 vCPU, 4GB RAM, single instance
 - **Production**: 2 vCPU, 8GB RAM, single instance
 - **Database**: Aurora Serverless v2 (dev) or provisioned instances (prod)
-- **ETL Processing**: AWS Batch with on-demand scaling
+- **Data Processing**: ECS Fargate tasks (`events`, `pmtiles`, `retention`)
 
 ### 2. Performance Considerations
 - **Single Instance**: API does not support horizontal scaling

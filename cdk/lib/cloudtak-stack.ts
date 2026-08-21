@@ -5,7 +5,6 @@
  * - Aurora PostgreSQL database (serverless for dev-test, provisioned for prod)
  * - ECS Fargate service for the API
  * - Application Load Balancer with HTTPS
- * - AWS Batch for ETL processing
  * - Lambda functions for event processing
  * - S3 bucket for assets
  * - Secrets Manager for application secrets
@@ -28,7 +27,6 @@ import { LoadBalancer } from './constructs/load-balancer';
 import { CloudTakApi } from './constructs/cloudtak-api';
 import { Route53 } from './constructs/route53';
 import { S3Resources } from './constructs/s3-resources';
-import { Batch } from './constructs/batch';
 import { Secrets } from './constructs/secrets';
 import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
@@ -107,8 +105,7 @@ export class CloudTakStack extends cdk.Stack {
         effect: cdk.aws_iam.Effect.ALLOW,
         principals: [
           new cdk.aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('batch.amazonaws.com')
+          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com')
         ],
         actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
         resources: ['*'],
@@ -428,15 +425,6 @@ export class CloudTakStack extends cdk.Stack {
       containerEnvironmentFiles: cloudtakApi.containerEnvironmentFiles,
       taskRole: cloudtakApi.taskRole,
       executionRole: cloudtakApi.executionRole
-    });
-
-    // Create AWS Batch resources for ETL processing
-    const batch = new Batch(this, 'Batch', {
-      envConfig,
-      vpc,
-      ecrRepository,
-      assetBucketName: s3Resources.assetBucket.bucketName,
-      serviceUrl: route53Records.serviceUrl
     });
 
     // Create ETL role for Lambda layer functions

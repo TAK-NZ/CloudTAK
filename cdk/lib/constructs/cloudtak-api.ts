@@ -182,13 +182,6 @@ export class CloudTakApi extends Construct {
               actions: ['cloudformation:ListStacks'],
               resources: ['*']
             }),
-            // Batch job permissions
-            new cdk.aws_iam.PolicyStatement({
-              effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['batch:SubmitJob', 'batch:ListJobs', 'batch:DescribeJobs', 'batch:CancelJob'],
-              resources: ['*']
-            }),
-
             // ECS permissions for media server
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
@@ -218,7 +211,7 @@ export class CloudTakApi extends Construct {
               resources: ['*']
             }),
 
-            // CloudWatch Logs permissions for Batch job logs and Lambda logs
+            // CloudWatch Logs permissions for ETL layer Lambda logs
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
               actions: [
@@ -232,7 +225,6 @@ export class CloudTakApi extends Construct {
                 'logs:ListTagsForResource'
               ],
               resources: [
-                `arn:${cdk.Stack.of(this).partition}:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/batch/job*`,
                 `arn:${cdk.Stack.of(this).partition}:logs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:log-group:/aws/lambda/TAK-${envConfig.stackName}-CloudTAK-layer-*`
               ]
             }),
