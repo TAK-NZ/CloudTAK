@@ -113,11 +113,13 @@ export class EventsService extends Construct {
       }
     });
 
-    // Create task definition — fixed 1024 CPU / 2048 MB per upstream change #11
+    // Create task definition — fixed 1024 CPU / 4096 MB.
+    // Memory raised from 2048 to match upstream v13.70.0 (cloudformation/lib/events.js):
+    // OOM headroom for bulk imports. 1 vCPU supports 2-8 GB on Fargate.
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'EventsTaskDefinition', {
       family: `TAK-${envConfig.stackName}-CloudTAK-events`,
       cpu: 1024,
-      memoryLimitMiB: 2048,
+      memoryLimitMiB: 4096,
       taskRole: taskRole,
       executionRole: executionRole
     });
