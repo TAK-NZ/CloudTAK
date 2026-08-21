@@ -47,11 +47,28 @@ export interface CloudTakApiProps {
   oidcClientId?: string;
   /** Secret holding the OIDC client secret from the Authentik OAuth2 provider */
   oidcClientSecret?: secretsmanager.ISecret;
+  /**
+   * Internal hub ALB DNS name. Set once the stateless/stateful split is wired;
+   * the stateless tier calls the hub for anything needing a TAK Server
+   * connection. Omit to run the container in single-service `both` mode.
+   */
+  hubAlbDnsName?: string;
 }
 
 export class CloudTakApi extends Construct {
   public readonly service: ecs.FargateService;
   public readonly taskDefinition: ecs.FargateTaskDefinition;
+
+  // Exposed so CloudTakStateful can run the *same* image with the *same* IAM
+  // roles, environment and secrets, differing only by CLOUDTAK_Server_Mode.
+  // Sharing these rather than duplicating them is deliberate: the two tiers are
+  // one application and any drift between them is a latent production bug.
+  public readonly containerImage: ecs.ContainerImage;
+  public readonly containerEnvironment: Record<string, string>;
+  public readonly containerSecrets: Record<string, ecs.Secret>;
+  public readonly containerEnvironmentFiles?: ecs.EnvironmentFile[];
+  public readonly taskRole: cdk.aws_iam.Role;
+  public readonly executionRole: cdk.aws_iam.Role;
 
   constructor(scope: Construct, id: string, props: CloudTakApiProps) {
     super(scope, id);
@@ -76,7 +93,8 @@ export class CloudTakApi extends Construct {
       geofenceSecret,
       serviceUrl,
       oidcClientId,
-      oidcClientSecret
+      oidcClientSecret,
+      hubAlbDnsName
     } = props;
 
     // Create CloudWatch log group for container logs
@@ -89,7 +107,7 @@ export class CloudTakApi extends Construct {
     });
 
     // Create task role with comprehensive permissions
-    const taskRole = new cdk.aws_iam.Role(this, 'TaskRole', {
+    const taskRole = this.taskRole = new cdk.aws_iam.Role(this, 'TaskRole', {
       assumedBy: new cdk.aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       inlinePolicies: {
         'api-policy': new cdk.aws_iam.PolicyDocument({
@@ -296,7 +314,7 @@ export class CloudTakApi extends Construct {
     });
     
     // Create execution role
-    const executionRole = new cdk.aws_iam.Role(this, 'ExecRole', {
+    const executionRole = this.executionRole = new cdk.aws_iam.Role(this, 'ExecRole', {
       assumedBy: new cdk.aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
       managedPolicies: [
         cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AmazonECSTaskExecutionRolePolicy')
@@ -396,7 +414,7 @@ export class CloudTakApi extends Construct {
 
 
     // Determine container image source
-    const containerImage = dockerImageAsset 
+    const containerImage = this.containerImage = dockerImageAsset 
       ? ecs.ContainerImage.fromDockerImageAsset(dockerImageAsset)
       : (() => {
           const cloudtakImageTag = cdk.Stack.of(this).node.tryGetContext('cloudtakImageTag');
@@ -416,6 +434,13 @@ export class CloudTakApi extends Construct {
         'AWS_REGION': cdk.Stack.of(this).region,
         'CLOUDTAK_Mode': 'AWS',
         'StackName': `TAK-${envConfig.stackName}-CloudTAK`,
+        // Stateless tier: serves the web app and REST API, holds no TAK Server
+        // connections. Without hubAlbDnsName the container stays in single-service
+        // 'both' mode, which is what runs before the split is wired.
+        ...(hubAlbDnsName ? {
+          'CLOUDTAK_Server_Mode': 'api',
+          'CLOUDTAK_Hub_URL': `http://${hubAlbDnsName}`
+        } : {}),
         'ASSET_BUCKET': assetBucketName,
         'API_URL': serviceUrl.startsWith('http') ? serviceUrl : `https://${serviceUrl}`,
         'VpcId': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.VPC_ID)),
@@ -475,6 +500,11 @@ export class CloudTakApi extends Construct {
       };
     }
 
+    // Publish the finalised container config for CloudTakStateful to reuse.
+    this.containerEnvironment = containerDefinitionOptions.environment as Record<string, string>;
+    this.containerSecrets = containerDefinitionOptions.secrets as Record<string, ecs.Secret>;
+    this.containerEnvironmentFiles = containerDefinitionOptions.environmentFiles;
+
     // Add container to task definition
     const container = this.taskDefinition.addContainer('api', containerDefinitionOptions);
 
@@ -500,6 +530,29 @@ export class CloudTakApi extends Construct {
 
     // Attach service to ALB target group for load balancing
     this.service.attachToApplicationTargetGroup(albTargetGroup);
+
+    // Horizontal scaling for the stateless tier, matching upstream v13.70.0
+    // (cloudformation/lib/api.js).
+    //
+    // This is only safe because the hub split moved ConnectionPool out of this
+    // service - it is per-process in-memory state, so before the split a second
+    // task would have duplicated every TAK Server session and broken layer CoT
+    // delivery. Do not enable this without CLOUDTAK_Server_Mode=api.
+    //
+    // CPU only: upstream deliberately has no memory scaling policy here (unlike
+    // the Events service), so neither do we.
+    if (hubAlbDnsName) {
+      const scaling = this.service.autoScaleTaskCount({
+        minCapacity: envConfig.ecs.desiredCount,
+        maxCapacity: envConfig.ecs.maxCapacity ?? 10
+      });
+
+      scaling.scaleOnCpuUtilization('ApiCPUScaling', {
+        targetUtilizationPercent: envConfig.ecs.targetCpuUtilization ?? 70,
+        scaleInCooldown: cdk.Duration.seconds(300),
+        scaleOutCooldown: cdk.Duration.seconds(60)
+      });
+    }
 
     // Export API URL for Lambda layer imports
     new cdk.CfnOutput(this, 'ApiUrlOutput', {

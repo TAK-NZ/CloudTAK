@@ -34,7 +34,9 @@
       "ecs": {
         "taskCpu": 2048,
         "taskMemory": 4096,
-        "desiredCount": 1,
+        "desiredCount": 2,
+        "targetCpuUtilization": 70,
+        "maxCapacity": 10,
         "enableDetailedLogging": true,
         "enableEcsExec": true
       },
@@ -84,7 +86,9 @@
       "ecs": {
         "taskCpu": 4096,
         "taskMemory": 8192,
-        "desiredCount": 1,
+        "desiredCount": 2,
+        "targetCpuUtilization": 70,
+        "maxCapacity": 10,
         "enableDetailedLogging": false,
         "enableEcsExec": false
       },

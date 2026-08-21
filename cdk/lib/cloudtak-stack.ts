@@ -33,6 +33,8 @@ import { Secrets } from './constructs/secrets';
 import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
+import { HubLoadBalancer } from './constructs/hub-load-balancer';
+import { CloudTakStateful } from './constructs/cloudtak-stateful';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
 import { EtlRole } from './constructs/etl-role';
@@ -320,6 +322,14 @@ export class CloudTakStack extends cdk.Stack {
       logsBucket
     });
 
+    // Internal hub ALB. Created before the API service because the stateless
+    // tier needs its DNS name as CLOUDTAK_Hub_URL.
+    const hubLoadBalancer = new HubLoadBalancer(this, 'HubLoadBalancer', {
+      envConfig,
+      vpc,
+      hubAlbSecurityGroup: securityGroups.hubAlb
+    });
+
     // Create Route53 DNS record for the service
     const route53Records = new Route53(this, 'Route53', {
       hostedZone,
@@ -382,7 +392,26 @@ export class CloudTakStack extends cdk.Stack {
       geofenceSecret: secrets.geofenceSecret,
       serviceUrl: route53Records.serviceUrl,
       oidcClientId,
-      oidcClientSecret
+      oidcClientSecret,
+      hubAlbDnsName: hubLoadBalancer.alb.loadBalancerDnsName
+    });
+
+    // Stateful ("hub") tier: browser WebSockets, the TAK Server connection pool,
+    // geofence/events, and database migrations. Same image and IAM roles as the
+    // API service, differing only by CLOUDTAK_Server_Mode.
+    const cloudtakStateful = new CloudTakStateful(this, 'CloudTakStateful', {
+      envConfig,
+      vpc,
+      ecsCluster,
+      statefulSecurityGroup: securityGroups.stateful,
+      httpsListener: loadBalancer.httpsListener,
+      hubRpcTargetGroup: hubLoadBalancer.rpcTargetGroup,
+      containerImage: cloudtakApi.containerImage,
+      containerEnvironment: cloudtakApi.containerEnvironment,
+      containerSecrets: cloudtakApi.containerSecrets,
+      containerEnvironmentFiles: cloudtakApi.containerEnvironmentFiles,
+      taskRole: cloudtakApi.taskRole,
+      executionRole: cloudtakApi.executionRole
     });
 
     // Create AWS Batch resources for ETL processing
@@ -408,6 +437,7 @@ export class CloudTakStack extends cdk.Stack {
       envConfig,
       eventsService: eventsService.service,
       apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
       loadBalancer: loadBalancer.alb,
       database: database.cluster
     });
@@ -449,6 +479,16 @@ export class CloudTakStack extends cdk.Stack {
     cloudtakApi.service.node.addDependency(database.connectionStringSecret);
     cloudtakApi.service.node.addDependency(route53Records.aRecord);
     cloudtakApi.service.node.addDependency(route53Records.aaaaRecord);
+
+    // The stateful tier runs migrations, so it must not start before the
+    // database and its connection string exist.
+    cloudtakStateful.service.node.addDependency(database.cluster);
+    cloudtakStateful.service.node.addDependency(database.connectionStringSecret);
+
+    // The stateless tier calls the hub for anything needing a TAK Server
+    // connection, so bring the hub up first. This is ordering only - the
+    // stateless tasks tolerate a hub that is not yet reachable.
+    cloudtakApi.service.node.addDependency(cloudtakStateful.service);
     
     eventsService.service.node.addDependency(database.cluster);
     eventsService.service.node.addDependency(database.connectionStringSecret);
