@@ -135,10 +135,20 @@ export class CloudTakStateful extends Construct {
       healthCheckGracePeriod: cdk.Duration.seconds(300),
       circuitBreaker: { rollback: true },
       propagateTags: ecs.PropagatedTagSource.SERVICE,
-      // A single-task service cannot honour minHealthy 100% without briefly
-      // running two tasks, which is exactly what must not happen here.
-      minHealthyPercent: 0,
-      maxHealthyPercent: 100
+      // Roll forward: start the replacement, wait for it to pass its health
+      // check, then drain the old task. Matches upstream v13.70.0
+      // (`cloudformation/lib/stateful.js`, MinimumHealthyPercent 100 /
+      // MaximumPercent 200) and every other service in this stack.
+      //
+      // This does mean two `CLOUDTAK_Server_Mode=hub` tasks exist for the length
+      // of one health check pass, each with its own ConnectionPool, so TAK
+      // Server sees duplicate connections for that window and the hub ALB will
+      // spread RPC across both. Upstream accepts that, and it is the better
+      // trade: the alternative - draining first, which is what this used to do -
+      // is a guaranteed gap in browser WebSockets *and* hub RPC on every single
+      // deploy, rather than a brief overlap.
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200
     });
 
     // Port 5000: WebSocket + health check, reached via the public ALB.
@@ -154,10 +164,14 @@ export class CloudTakStateful extends Construct {
         enabled: true,
         path: '/api',
         healthyHttpCodes: '200,202,302,304',
-        interval: cdk.Duration.seconds(30),
+        // Upstream's timings. These matter more than they look now that the
+        // service rolls forward: two healthy checks at 15s is how long the two
+        // hub tasks overlap, so 15/3 keeps that window at roughly 30 seconds
+        // instead of a minute.
+        interval: cdk.Duration.seconds(15),
         timeout: cdk.Duration.seconds(5),
         healthyThresholdCount: 2,
-        unhealthyThresholdCount: 5
+        unhealthyThresholdCount: 3
       }
     });
 
