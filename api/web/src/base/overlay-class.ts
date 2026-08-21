@@ -276,18 +276,36 @@ export default class Overlay {
             const list = await std(listUrl.toString()) as { items: Array<{ id: number; tilesize?: number; encoding?: string }> };
             if (!list.items.length) return null;
 
-            const terrainId = list.items[0].id;
-            const terrainUrl = stdurl(`/api/basemap/${terrainId}/tiles`);
+            const terrain = list.items[0];
+            const terrainUrl = stdurl(`/api/basemap/${terrain.id}/tiles`);
             if (token) terrainUrl.searchParams.set('token', token);
 
             const tileJSON = await std(terrainUrl.toString()) as TileJSON;
 
             const sourceId = '__terrain__';
             if (!mapStore.map.getSource(sourceId)) {
-                mapStore.map.addSource(sourceId, {
+                // tileSize and encoding must be carried over from the basemap
+                // record, exactly as mapStore.addTerrain() does for 3D. TileJSON
+                // has no field for either, so spreading it alone leaves MapLibre
+                // on its raster-dem defaults - tileSize 512 - and the DEM is
+                // then sampled at the wrong resolution. 3D terrain looked fine
+                // because addTerrain() passes both, which is why hillshading
+                // could be missing while 3D worked.
+                const source: {
+                    type: 'raster-dem';
+                    tileSize?: number;
+                    encoding?: 'mapbox' | 'terrarium';
+                } & TileJSON = {
                     ...tileJSON,
-                    type: 'raster-dem',
-                });
+                    type: 'raster-dem'
+                };
+
+                if (terrain.tilesize) source.tileSize = terrain.tilesize;
+                if (terrain.encoding === 'mapbox' || terrain.encoding === 'terrarium') {
+                    source.encoding = terrain.encoding;
+                }
+
+                mapStore.map.addSource(sourceId, source);
             }
 
             return sourceId;

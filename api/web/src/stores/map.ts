@@ -1720,6 +1720,17 @@ export const useMapStore = defineStore('cloudtak', {
 
             OverlayManager.appendLoaded(...newOverlays);
 
+            // addLayers() above already called updateBackground() for each
+            // basemap, but it resolves the color from
+            // OverlayManager.visibleBasemaps(), which reads `loaded` - and
+            // nothing is in `loaded` until the append that just happened. So on
+            // first load every basemap's background layer was invisible to it
+            // and the shared background kept CloudTAK's default. Re-run it now
+            // that `loaded` is populated. Without this the ocean on a vector
+            // basemap stays unpainted until the user reselects the basemap,
+            // which goes through update() and repaints it.
+            this.updateBackground();
+
             OverlayManager.appendLoaded(await Overlay.internal({
                 id: -1,
                 name: 'Map Features',
