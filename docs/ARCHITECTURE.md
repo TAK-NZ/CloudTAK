@@ -212,23 +212,31 @@ The infrastructure implements a layered security model with dedicated security g
 ## Scalability and Performance
 
 ### 1. Resource Allocation
-- **Development**: 1 vCPU, 4GB RAM, single instance
-- **Production**: 2 vCPU, 8GB RAM, single instance
+- **Development**: 2 vCPU, 4 GB RAM per task, 2 tasks
+- **Production**: 4 vCPU, 8 GB RAM per task, 2 tasks
 - **Database**: Aurora Serverless v2 (dev) or provisioned instances (prod)
 - **Data Processing**: ECS Fargate tasks (`events`, `pmtiles`, `retention`)
 
 ### 2. Performance Considerations
-- **Single Instance**: API does not support horizontal scaling
+- **Stateless API**: Horizontally scalable — see *Scaling Strategy* below
 - **Database**: Multi-AZ deployment for production reliability
 - **Load Balancer**: Health checks and traffic distribution
 - **Caching**: CloudFront integration available via base infrastructure
 
 ### 3. Limitations
-- **API Scaling**: No auto-scaling implemented - single container instance
-- **High Availability**: Database redundancy only, API is single point of failure
-- **Concurrent Users**: Limited by single instance resource allocationtion)
-- **ECS Service**: Auto-scaling based on CPU utilization
-- **Target Capacity**: 1-10 tasks based on demand
+- **Stateful tier**: `CloudTAK-stateful` runs exactly one task and cannot be scaled.
+  It holds the TAK Server connection pool, which is per-process in-memory state, so a
+  second task would duplicate every TAK Server session. This tier is the remaining
+  single point of failure.
+- **Concurrent users**: Bounded by the stateful tier, not by the API tier
+
+## Scaling Strategy
+
+### 1. Horizontal Scaling
+- **ECS Service**: Auto-scaling on CPU utilization, target 70%
+- **Target Capacity**: 2-10 tasks for the stateless API. Only enabled once the hub
+  ALB exists, because it depends on the API tier running in `CLOUDTAK_Server_Mode=api`
+- **Cooldowns**: 60s scale-out, 300s scale-in
 - **ETL Tasks**: Independent scaling per task type
 
 ### 2. High Availability
@@ -244,13 +252,12 @@ The infrastructure implements a layered security model with dedicated security g
 ## Cost Optimization
 
 ### Development Environment Optimizations
-- **Single Task**: Minimal compute allocation (~$25/month savings)
-- **Smaller Resources**: Lower CPU/memory allocation
+- **Smaller Resources**: Lower CPU/memory allocation per task (2 vCPU / 4 GB vs 4 vCPU / 8 GB)
 - **Container Insights Disabled**: Reduces CloudWatch costs
 - **Fewer ECR Images**: Reduced storage costs
 
 ### Production Environment Features
-- **High Availability**: Multiple task instances for redundancy
+- **High Availability**: Larger tasks and a provisioned multi-AZ database
 - **Enhanced Monitoring**: Container Insights enabled
 - **Advanced Configuration**: Extended ECR retention
 - **Security Features**: Vulnerability scanning enabled
