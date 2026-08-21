@@ -179,7 +179,15 @@ export class EventsService extends Construct {
       enableExecuteCommand: envConfig.ecs.enableEcsExec,
 
       healthCheckGracePeriod: cdk.Duration.seconds(300),
-      propagateTags: ecs.PropagatedTagSource.SERVICE
+      propagateTags: ecs.PropagatedTagSource.SERVICE,
+
+      // Roll forward rather than draining first. Left unset, CDK defaults
+      // minHealthyPercent to 50, and 50% of a single task rounds down to zero
+      // required healthy - so a deploy stopped the only events task before
+      // starting its replacement. Upstream's EventsService declares no
+      // DeploymentConfiguration at all, taking the ECS default of 100/200.
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200
     });
 
     // Add tags
