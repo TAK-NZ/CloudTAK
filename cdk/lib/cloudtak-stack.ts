@@ -35,6 +35,7 @@ import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
 import { HubLoadBalancer } from './constructs/hub-load-balancer';
 import { CloudTakStateful } from './constructs/cloudtak-stateful';
+import { Dashboard } from './constructs/dashboard';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
 import { EtlRole } from './constructs/etl-role';
@@ -439,6 +440,18 @@ export class CloudTakStack extends cdk.Stack {
       apiService: cloudtakApi.service,
       statefulService: cloudtakStateful.service,
       loadBalancer: loadBalancer.alb,
+      database: database.cluster
+    });
+
+    // Operational dashboard - stateless and stateful tiers side by side
+    new Dashboard(this, 'Dashboard', {
+      envConfig,
+      loadBalancer: loadBalancer.alb,
+      hubLoadBalancer: hubLoadBalancer.alb,
+      targetGroup: loadBalancer.targetGroup,
+      statefulTargetGroup: cloudtakStateful.targetGroup,
+      apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
       database: database.cluster
     });
 
