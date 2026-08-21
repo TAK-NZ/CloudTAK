@@ -1,6 +1,6 @@
 import Config from '../../common/config.js';
 import sharp from 'sharp';
-import { FullConfigDefaults } from './defaults.js';
+import { FullConfigDefaults } from '../../common/defaults.js';
 
 export const LOGO_SIZES = [192, 512];
 

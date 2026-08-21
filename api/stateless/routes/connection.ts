@@ -498,10 +498,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
             });
 
-            if (connection.enabled && config.conns.has(connection.id)) {
-                await config.conns.delete(connection.id);
-                const updatedConn = await config.models.Connection.from(connection.id);
-                await config.conns.add(new MachineConnConfig(config, updatedConn));
+            // Rebuild the live connection so it picks up the new certificate.
+            // Upstream moved the connection pool onto ConfigStateful; the hub is
+            // how the stateless side reaches it.
+            if (connection.enabled) {
+                await config.hub.connectionSync(connection.id, { force: true });
             }
 
             res.json({ renewed: true, message: `Certificate renewed for connection ${connection.id}` });
@@ -556,10 +557,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
                 });
 
-                if (connection.enabled && config.conns.has(connection.id)) {
-                    await config.conns.delete(connection.id);
-                    const updatedConn = await config.models.Connection.from(connection.id);
-                    await config.conns.add(new MachineConnConfig(config, updatedConn));
+                // Rebuild the live connection so it picks up the new certificate.
+                // Upstream moved the connection pool onto ConfigStateful; the hub
+                // is how the stateless side reaches it.
+                if (connection.enabled) {
+                    await config.hub.connectionSync(connection.id, { force: true });
                 }
 
                 console.log(`Certificate renewed for connection ${connection.id} via layer ${layer.id} health check`);

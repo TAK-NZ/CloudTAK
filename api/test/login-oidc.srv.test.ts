@@ -4,7 +4,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import Sinon from 'sinon';
 import Flight from './flight.js';
-import AuthentikProvider from '../lib/authentik-provider.js';
+import AuthentikProvider from '../stateless/lib/authentik-provider.js';
 
 const flight = new Flight();
 

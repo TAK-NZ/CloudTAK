@@ -308,9 +308,10 @@ export default class Overlay {
         }
 
         for (const l of this.styles) {
-                if (l.type === 'background') continue;
+            // Background layers have no source, and upstream's narrowing here is
+            // what lets us read l.source below without a suppression.
+            if (l.type === 'background') continue;
 
-            // @ts-expect-error background layers have no source property
             let layerSource: string | undefined = l.source;
 
             // Resolve the __terrain__ sentinel to the actual raster-dem source.
@@ -343,9 +344,10 @@ export default class Overlay {
         // without round-tripping through update()/save() which would PATCH
         // the server with unchanged values.
         for (const l of this.styles) {
-                if (l.type === 'background') continue;
+            // Background layers have no source, and upstream's narrowing here is
+            // what lets us read l.source below without a suppression.
+            if (l.type === 'background') continue;
 
-            // @ts-expect-error background layers have no source property
             let layerSource: string | undefined = l.source;
             if (layerSource === '__terrain__') {
                 const terrainId = await Overlay.ensureTerrainSource(mapStore);

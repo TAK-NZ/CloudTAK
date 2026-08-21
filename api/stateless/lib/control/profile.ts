@@ -1,5 +1,7 @@
 import { Static, Type } from '@sinclair/typebox';
 import { sql } from 'drizzle-orm';
+import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
+import { Profile } from '../../../common/schema.js';
 import { TAKRole, TAKGroup } from '@tak-ps/node-tak/lib/api/types';
 import type ConfigStateless from '../../config.js';
 import {
