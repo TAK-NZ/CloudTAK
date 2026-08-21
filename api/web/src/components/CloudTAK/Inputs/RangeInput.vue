@@ -10,7 +10,8 @@
     >
         <div class='card-header d-flex align-items-center'>
             <div class='card-title'>
-                <IconCompass
+                <component
+                    :is='TAKNZ_DRAWTOOL_ICONS["range"]'
                     :size='25'
                     stroke='1'
                 />
@@ -85,9 +86,9 @@ import {
     TablerIconButton
 } from '@tak-ps/vue-tabler';
 
+import TAKNZ_DRAWTOOL_ICONS from '../../../base/taknz-drawtool-icons.ts';
 import {
-    IconX,
-    IconCompass
+    IconX
 } from '@tabler/icons-vue';
 
 import type { LngLatLike } from 'maplibre-gl'

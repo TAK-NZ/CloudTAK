@@ -6,8 +6,9 @@ covered in `README.md` / `MAPPING.md`.
 **Scope: decided. 12 of the 13 entries get a new icon** -- 9 from ATAK plus three
 derived icons (Draw Point, Draw Line, Draw Sector). The dropdown trigger keeps
 Tabler's `IconPencilPlus`. `drawtools/` holds exactly one file per entry, so
-what is in that directory *is* the decision. Unused candidates sit in
-`drawtools/rejected/`.
+what is in that directory *is* the decision. Rejected candidates are not kept as
+files; each is named below with the reason it lost, and all are regenerable from
+the pinned ATAK commit with the scripts in this folder.
 
 **Status: not wired in**, pending the v13.70.0 upstream sync. Compare before and
 after in
@@ -49,8 +50,7 @@ lower right -- the same position and role as the badge on the six draw tools. It
 is the "create something" affordance for the whole palette, so keeping it is more
 consistent with the convention, not less.
 
-ATAK's nearest candidate, `ic_edit_outline`, is a plain pencil with no badge. It
-is kept at `drawtools/rejected/ic_edit_outline.svg`.
+ATAK's nearest candidate, `ic_edit_outline`, is a plain pencil with no badge.
 
 Earlier revisions of this document compared the ATAK candidate against Tabler's
 plain `pencil`, which is the icon on the *current* branch rather than the one the
@@ -117,9 +117,8 @@ tool; see the Lasso Select entry under the keeps.
 ## Badge note: Lasso Select
 
 Adopted `ic_lasso` -- ATAK's real lasso-selection icon, confirmed at
-`RegionShapeTool.Mode.LASSO` and `LassoContentProvider.java:68`. See
-[`contact-sheets/06_lasso_candidates.png`](contact-sheets/06_lasso_candidates.png),
-which shows every candidate at 96px and at the 25px the palette renders.
+`RegionShapeTool.Mode.LASSO` and `LassoContentProvider.java:68`. All three were rendered at 96px and at the 25px the palette actually uses before
+deciding.
 
 Its `+` is a **solid filled disc with the cross knocked out**, unlike the thin
 outline `+` on the shape tools. That difference is the reason it was adopted: it
@@ -139,7 +138,7 @@ Theme safety was verified -- the cross is a transparent hole (`fill-rule
 evenodd`, a single `currentColor` fill), not a hardcoded colour, so it inverts
 correctly on CloudTAK's light theme instead of disappearing.
 
-Two other candidates were rejected, both kept in `drawtools/rejected/`:
+Two other candidates were rejected:
 
 | Candidate | Why not |
 |---|---|
@@ -157,7 +156,7 @@ does not survive 25px.
 So R&B uses `nav_rb` instead: an arrow above a measurement scale, conveying
 bearing *and* range, and distinct from every other icon in the palette. It is
 also ATAK's own nav-menu R&B icon, so it keeps the semantic authority. Both
-rejected rulers are kept in `drawtools/rejected/`.
+rejected rulers are named in the table below.
 
 This is the only case in the set where the canonical ATAK icon had to be passed
 over.
@@ -230,7 +229,7 @@ cover both upstreams. `draw-point_point_plus` is ATAK-only.
 
 ## Source format: vector, not traced
 
-Every ATAK icon here except `nav_rb` ships as an **Android vector drawable**
+Most ATAK icons here ship as an **Android vector drawable**
 (`res/drawable/*.xml`), so `convert_vector_drawable.py` remaps it to SVG
 losslessly -- `android:pathData` uses the same grammar as SVG's `d`. This is
 strictly better than tracing:
@@ -241,8 +240,13 @@ strictly better than tracing:
 | size | 2-9 KB | 0.3-3.5 KB |
 | re-derivable | depends on tracer settings | deterministic |
 
-`nav_rb` is the exception -- it exists only as a raster, so it went through
-`trace_icons.py`.
+Two are exceptions, existing only as rasters, so they went through
+`trace_icons.py`:
+
+- `nav_rb` (Range & Bearing) -- raster at six densities up to 192x192
+- `ic_lasso` (Lasso Select) -- a single 96x96 `drawable-xhdpi` PNG
+
+So the 12 adopted icons are 7 converted, 2 traced and 3 derived.
 
 Prefer the converter over the tracer whenever ATAK ships a vector for the icon
 you want. Note that only 174 of the 397 files in `res/drawable/` are actually
@@ -307,11 +311,22 @@ All three are upstream-owned.
 - `drawtools/*.svg` -- the 12 adopted icons: 9 from ATAK plus three derived
   (`draw-point_point_plus`, `draw-line_line_plus`, `draw-sector_cone_plus`). The
   trigger has no file here -- it keeps Tabler's `IconPencilPlus`
-- `drawtools/rejected/*.svg` -- 9 not shipped. Eight were considered and passed
-  over (`ic_edit_outline`, `ic_ruler_unselected`, `ic_drag_ruler_unselected`,
-  `telestrate`, `bullseye`, `ic_center`, `ic_pick_date`, `ic_menu_ellipse`);
-  `ic_point` is retained because it is the **base** for
-  `draw-point_point_plus`
+### Considered and not adopted
+
+Not kept as files. All regenerable with `convert_vector_drawable.py`.
+
+| ATAK icon | Considered for | Why not |
+|---|---|---|
+| `ic_edit_outline` | trigger | Plain pencil, no badge; `IconPencilPlus` already has one |
+| `ic_ruler_unselected` | Range & Bearing | ATAK's canonical R&B icon, but near-identical to a plain line -- see *Collision note* |
+| `ic_drag_ruler_unselected` | Range & Bearing / Draw Line | Dynamic R&B; differs from a plain line only by a dash pattern, which does not survive 25px |
+| `ic_menu_ellipse` | Draw Sector | An ellipse, not a sector -- would mislabel the tool |
+| `telestrate` | Lasso Select | ATAK's telestration icon: freehand *drawing*, not selecting |
+| `nav_lasso` | Lasso Select | Loop with a tail but no cinch knot; reads as a speech bubble at 25px |
+| `bullseye`, `ic_center`, `ic_pick_date` | various | Extracted during the survey, beaten by the adopted icon |
+
+`ic_point` is the **base** for `draw-point_point_plus` but is not stored either --
+the regeneration chain converts it from ATAK's XML on the fly (see below).
 - `make_plus_badge.py` -- composes the derived icons
 - `convert_vector_drawable.py` -- the vector drawable to SVG converter
 
@@ -326,7 +341,8 @@ B=branding/atak-icons
 python3 $B/convert_vector_drawable.py "$ATAK/polygon.xml" $B/drawtools/polygon.svg
 
 # 2. derived icons: base + ATAK's "+" badge
-python3 $B/make_plus_badge.py "$B/drawtools/rejected/ic_point.svg" \
+python3 $B/convert_vector_drawable.py "$ATAK/ic_point.xml" /tmp/ic_point.svg
+python3 $B/make_plus_badge.py /tmp/ic_point.svg \
     $B/drawtools/draw-point_point_plus.svg
 python3 $B/make_plus_badge.py "$TAB/line.svg" \
     $B/drawtools/draw-line_line_plus.svg --stroke-width 1.1

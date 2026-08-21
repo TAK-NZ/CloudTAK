@@ -64,12 +64,54 @@ The Admin and COT Debugger menu entries retain their Tabler icons and are not
 covered by this notice.
 
 
+ATAK-CIV drawing tool icons
+---------------------------
+
+The drawing tools palette ships twelve further icons from the same ATAK-CIV
+source and under the same GPL-3.0 terms as above. Nine come directly from ATAK;
+three are derived, and two of those combine ATAK artwork with Tabler Icons.
+
+Source:   ATAK-CIV 5.5.1.10, commit 9f6893dd657feacc35ec5de03dad721c2e44170e
+          atak/ATAK/app/src/main/res/drawable/            (vector drawables)
+          atak/ATAK/app/src/main/res/drawable-*/          (rasters, 2 icons)
+
+Form:     Seven were converted from Android vector drawables to SVG losslessly,
+          two were traced from rasters, and three were composed. The SVGs are
+          under branding/atak-icons/drawtools/ and their markup is embedded in
+          api/web/src/base/taknz-drawtool-icons.ts.
+
+| Tool key | Source |
+|---|---|
+| `coordinate` | ATAK `ic_target` |
+| `event` | ATAK `ic_edit_calendar` |
+| `range` | ATAK `nav_rb` (traced from raster) |
+| `range_rings` | ATAK `ic_menu_rb_circle` |
+| `point` | derived: ATAK `ic_point` + ATAK create badge |
+| `line` | derived: Tabler `line` + ATAK create badge |
+| `polygon` | ATAK `polygon` |
+| `rectangle` | ATAK `rectangle` |
+| `circle` | ATAK `ic_menu_circle` |
+| `sector` | derived: Tabler `cone` + ATAK create badge |
+| `lasso` | ATAK `ic_lasso` (traced from raster) |
+| `import` | ATAK `ic_navstack_import` |
+
+The `line` and `sector` icons are derived works combining Tabler Icons (MIT)
+with ATAK-CIV artwork (GPL-3.0); both upstreams are covered by this notice. The
+`point` icon is ATAK-only. In every case the create badge is lifted verbatim
+from ATAK's own `rectangle` drawable.
+
+The palette's dropdown trigger keeps its Tabler icon and is not covered here.
+Selection rationale, the rejected candidates and the regeneration commands are
+in branding/atak-icons/DRAWTOOLS.md.
+
+
 Tabler Icons
 ------------
 
 The remaining interface icons come from Tabler Icons via the @tabler/icons-vue
 package, under the MIT License. See that package's own license file in the
-dependency tree.
+dependency tree. Two of the derived drawing tool icons above incorporate Tabler
+artwork under those terms.
 
 
 Noto Sans

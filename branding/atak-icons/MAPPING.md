@@ -47,8 +47,7 @@ under `atak/ATAK/app/src/main/java/com/atakmap/android/`, and `strings.xml`
 `svg-traced/missions_datasync_atak_sync_original_bw.svg`. It is the solid
 two-arrow sync glyph -- see the section below for how it was traced.
 
-Two thin-line alternatives were considered and rejected, both retained in
-`alternates/`:
+Two thin-line alternatives were considered and rejected:
 
 - `missions_alt_nav_symbols_copy_26.*` -- a two-arrow circular loop. Style-
   consistent with the other 15 icons, but reads less immediately as "sync".
@@ -103,12 +102,13 @@ retained so the script stays usable on either kind of input.
 This is a solid filled glyph. Every other icon in the CloudTAK nav bar -- Tabler
 and ATAK `nav_*` alike -- is thin line art. It reads noticeably heavier than its
 neighbours; this is visible in the last tile of
-`contact-sheets/00_all_atak_nav_icons.png`. It will not blend the way the ATAK
+`contact-sheets/04_tabler_vs_atak_pairs.png`. It will not blend the way the ATAK
 line icons do -- it is the only solid glyph among the 16, the other 15 being
 outlines that render close to Tabler at `stroke-width: 1`. This was accepted
 deliberately: ATAK-CIV ships no thin-line Data Sync icon, and the solid glyph
 conveys "sync" better than Tabler's `IconReplace`. The style-consistent
-alternative is kept at `alternates/missions_alt_nav_symbols_copy_26.*`.
+alternative is `nav_symbols_copy_26`, regenerable from
+`drawable-xxxhdpi/nav_symbols_copy_26.png` with `trace_icons.py`.
 
 ## Unsuitable source assets
 
@@ -127,8 +127,8 @@ saturation, 65-91% fully transparent. Five are not:
 
 These are widget chrome and placeholders, not icons, which is why they carry
 baked-in backgrounds. **None of them are in the primary or alternate sets**, so
-nothing here needs fixing. `alternates/channels_alt_ic_channels.png` was checked
-separately and is clean.
+nothing here needs fixing. `ic_channels.png` (a `channels` alternative) was
+checked separately and is clean.
 
 They would matter if the tracers were pointed at them: `trace_icons.py` keys on
 alpha, so a 97%-opaque plate traces as a filled square rather than a glyph, and
@@ -146,32 +146,28 @@ Confirmed by source reference, not guesswork:
 - `nav_overlay_manager` -> `res/layout/view_tak_nav.xml:45`
 - `nav_track_history` -> `android/track/TrackHistoryComponent.java:101`
 
-## Alternates (`alternates/`)
+## Considered and not adopted
 
-Considered and not adopted. Nothing here ships. The `missions` entries are the
-only ones that were a close call.
+None of these are kept as files -- they are recorded here so the decisions are
+traceable, and all are regenerable from the pinned ATAK commit with the scripts
+in this folder.
 
-| File | For |
-|---|---|
-| `missions_alt_nav_symbols_copy_26.png` + `.svg` | `missions` - thin-line sync loop. Style-consistent with the other 15, but reads less clearly as "sync". **Already traced**, so swapping it in is a one-line change |
-| `missions_alt_nav_restart.png` | `missions` - near-identical to the above, but means "restart" in ATAK |
-| `server_alt_nav_server.png` + `.svg` | `server` (Admin) - **traced then rejected.** Plain database cylinder; Tabler's `IconServerCog` gear conveys administration better |
-| `debugger_alt_nav_toolbars.png` + `.svg` | `debugger` - **traced then rejected.** Wrench/screwdriver reads as "tools"; ATAK has no bug glyph |
-| `packages_alt_nav_package.png` | `packages` - near-identical to nav_data_package |
-| `channels_alt_ic_channels.png` | `channels` - xhdpi only (96x96) |
-| `features_alt_nav_point.png` | `features` - pin with a "+" |
-| `connections_alt_nav_server.png` | `connections` |
-| `overlays_alt_nav_grid.png` | `overlays` |
-| `exports_alt_nav_export.png` | unused today |
-| `info_alt_nav_info.png` | unused today |
-| `alerts_alt_nav_alert.png` | unused today |
-| `plugins_alt_nav_plugins.png` | unused today |
+| ATAK icon | Considered for | Why not |
+|---|---|---|
+| `nav_symbols_copy_26` | `missions` | Thin-line sync loop, style-consistent with the other 15, but reads less clearly as "sync" than the adopted solid glyph |
+| `nav_restart` | `missions` | Near-identical to the above (7926 pixels differ) but means "restart" in ATAK |
+| `nav_server` | `server` (Admin) | Plain database cylinder; Tabler's `IconServerCog` gear conveys administration better |
+| `nav_toolbars` | `debugger` | Wrench/screwdriver reads as "tools"; ATAK has no bug glyph |
+| `nav_package` | `packages` | Near-identical to the adopted `nav_data_package` |
+| `ic_channels` | `channels` | xhdpi only (96x96); `nav_channels` ships at six densities |
+| `nav_point` | `features` | Pin with a "+", which implies create rather than browse |
+| `nav_grid` | `overlays` | Grid, less apt than the adopted layers glyph |
+| `nav_export`, `nav_info`, `nav_alert`, `nav_plugins` | — | Extracted during the survey, no matching menu entry |
 
 ## Directories
 
 - `primary/` -- the 16 adopted source PNGs (192x192) renamed to
   `<cloudtak-key>_<atak-name>.png`, one per adopted menu entry
-- `alternates/` -- 16 unused files. Not shipped
 - `svg-traced/` -- the 16 adopted icons as SVG (see CAVEAT below)
 - `contact-sheets/` -- visual indexes
 - `trace_icons.py` -- tracer for the ATAK white-on-transparent PNGs
