@@ -138,13 +138,15 @@ After 25 seconds total, connection gives up and user must refresh page.
 
 ## Deployment
 
-The patches are automatically applied during the build process via `scripts/apply-patches.sh`.
-
-### Verify Patches Applied
-```bash
-cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
-./scripts/apply-patches.sh
-```
+> **Correction.** An earlier version of this document claimed the patches are
+> "automatically applied during the build process via `scripts/apply-patches.sh`".
+> That was never true: nothing in the repo invoked that script, and it could not
+> run to completion anyway. It has been removed.
+>
+> These changes are ordinary committed code in `api/`. They ship whenever the
+> API image is built. Upstream syncs carry them forward via a 3-way merge — see
+> [`docs/UPSTREAM-SYNC.md`](../../docs/UPSTREAM-SYNC.md) and the notice at the top
+> of [`PATCH_AUDIT.md`](PATCH_AUDIT.md).
 
 ### Build and Deploy
 ```bash
@@ -238,5 +240,5 @@ If these fixes work well, consider:
 
 ## Related Documentation
 - [OIDC Authentication Guide](../../docs/OIDC_AUTHENTICATION.md)
-- [OIDC Implementation Summary](../../docs/OIDC_IMPLEMENTATION_SUMMARY.md)
+- [Patch Audit](PATCH_AUDIT.md) - authoritative per-patch status
 - [Deployment Guide](../../docs/DEPLOYMENT_GUIDE.md)

@@ -11,6 +11,11 @@ on:
       - 'docs/**'
       - '*.md'
       - '.gitignore'
+      # Upstream-sync bookkeeping and the patch archive never affect the
+      # deployed artifact. scripts/** is deliberately NOT excluded, because
+      # build.sh and deploy.sh do.
+      - '.upstream-version'
+      - 'scripts/patches/**'
   workflow_dispatch:
 
 permissions:

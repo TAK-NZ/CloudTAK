@@ -1,4 +1,0 @@
-# NOTE: patch 050 (tab visibility reconnect) is fully superseded by upstream v13.26.0.
-# The upstream already includes reconnect() in atlas-connection.ts,
-# _boundOnVisibilityChange in map.ts, and username initialisation in atlas.ts.
-# No changes needed after sync.

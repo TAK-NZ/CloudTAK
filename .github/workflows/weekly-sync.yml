@@ -1,117 +1,213 @@
 name: Weekly Upstream Sync
 
-# This workflow automatically syncs with the upstream CloudTAK repository weekly.
-# It runs every Saturday at 2AM New Zealand time, creates a sync branch, applies branding, and opens a PR.
-# Manual intervention is required if merge conflicts occur.
+# Syncs api/ and tasks/ from upstream dfpc-coe/CloudTAK once a week
+# (Saturday 2AM NZST) using a real 3-way merge via the vendor/upstream branch.
+#
+# This workflow used to run `git checkout <upstream> -- api/ tasks/`, which
+# deleted every TAK-NZ customization and required a manual re-port from
+# scripts/patches/. It now merges instead, so our changes are carried forward by
+# git and only genuine overlaps need a human. See docs/UPSTREAM-SYNC.md.
+#
+# Outcomes:
+#   clean merge  -> pushes the sync branch + vendor branch and opens a PR
+#   conflicts    -> pushes only the vendor branch and opens an issue, because
+#                   resolving must happen on our side (vendor/upstream has to
+#                   stay pristine upstream content, so the GitHub web conflict
+#                   editor must NOT be used on it)
 
 on:
   schedule:
     - cron: '0 14 * * 6'  # Saturday 2AM NZST (14:00 UTC)
   workflow_dispatch:
+    inputs:
+      target:
+        description: 'Upstream ref to sync to (blank = latest upstream tag)'
+        required: false
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   check-sync-mode:
     runs-on: ubuntu-latest
     outputs:
       should_sync: ${{ steps.check.outputs.should_sync }}
-      sync_mode: ${{ steps.check.outputs.sync_mode }}
+      sync_args: ${{ steps.check.outputs.sync_args }}
     steps:
       - name: Check sync mode
         id: check
         run: |
-          SYNC_MODE="${{ vars.SYNC_MODE }}"
-          case "$SYNC_MODE" in
-            "main")
-              echo "✅ Sync mode: main branch"
-              echo "should_sync=true" >> $GITHUB_OUTPUT
-              echo "sync_mode=main" >> $GITHUB_OUTPUT
+          if [ -n "${{ inputs.target }}" ]; then
+            echo "✅ Manual sync to ${{ inputs.target }}"
+            echo "should_sync=true"                     >> "$GITHUB_OUTPUT"
+            echo "sync_args=--tag ${{ inputs.target }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          case "${{ vars.SYNC_MODE }}" in
+            main)
+              echo "✅ Sync mode: upstream main branch"
+              echo "should_sync=true"    >> "$GITHUB_OUTPUT"
+              echo "sync_args=--main"    >> "$GITHUB_OUTPUT"
               ;;
-            "tag")
-              echo "✅ Sync mode: latest version tag"
-              echo "should_sync=true" >> $GITHUB_OUTPUT
-              echo "sync_mode=tag" >> $GITHUB_OUTPUT
+            tag)
+              echo "✅ Sync mode: latest upstream tag"
+              echo "should_sync=true"        >> "$GITHUB_OUTPUT"
+              echo "sync_args=--latest-tag"  >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "⏸️ Sync disabled (SYNC_MODE not set or invalid)"
-              echo "should_sync=false" >> $GITHUB_OUTPUT
+              echo "⏸️ Sync disabled (SYNC_MODE not set to 'main' or 'tag')"
+              echo "should_sync=false" >> "$GITHUB_OUTPUT"
               ;;
           esac
-  
+
   sync-upstream:
     needs: check-sync-mode
     if: ${{ needs.check-sync-mode.outputs.should_sync == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      
       - name: Checkout
         uses: actions/checkout@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Full history and tags are required: the merge base lives on
+          # vendor/upstream and upstream releases are resolved from tags.
           fetch-depth: 0
 
       - name: Configure Git
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Replay previously recorded conflict resolutions where the same
+          # conflict recurs.
+          git config rerere.enabled true
 
-      - name: Sync with Upstream
+      - name: Make vendor/upstream available locally
         run: |
-          SYNC_MODE="${{ needs.check-sync-mode.outputs.sync_mode }}"
-          git remote add upstream https://github.com/dfpc-coe/CloudTAK.git || true
-          git fetch upstream --tags
-          
-          # Determine sync target
-          case "$SYNC_MODE" in
-            "main")
-              SYNC_TARGET="upstream/main"
-              SYNC_DESC="main branch"
-              ;;
-            "tag")
-              LATEST_TAG=$(git describe --tags --abbrev=0 upstream/main 2>/dev/null || echo "")
-              if [ -z "$LATEST_TAG" ]; then
-                echo "⚠️ No tags found, falling back to main branch"
-                SYNC_TARGET="upstream/main"
-                SYNC_DESC="main branch (no tags available)"
-              else
-                SYNC_TARGET="$LATEST_TAG"
-                SYNC_DESC="tag $LATEST_TAG"
-              fi
-              ;;
-          esac
-          
-          echo "🔄 Syncing with $SYNC_DESC"
-          
-          # Create sync branch
-          SYNC_BRANCH="sync/upstream-$(date +%Y%m%d)"
-          git checkout -b "$SYNC_BRANCH"
-          
-          # Selectively update only api/ and tasks/ folders instead of merging the entire repository
-          echo "🔄 Selectively updating api/ and tasks/ folders from $SYNC_DESC"
-          git checkout "$SYNC_TARGET" -- api/ tasks/
-          
-          # Check if there are any changes to commit
-          if git diff --staged --quiet; then
-            echo "ℹ️ No changes to api/ or tasks/ folders from $SYNC_DESC"
-            exit 0
+          git fetch origin '+refs/heads/vendor/upstream:refs/remotes/origin/vendor/upstream' || true
+          if git rev-parse -q --verify refs/remotes/origin/vendor/upstream >/dev/null; then
+            git branch --force vendor/upstream refs/remotes/origin/vendor/upstream
+            echo "vendor/upstream = $(git rev-parse --short vendor/upstream)"
           else
-            # Commit the changes
-            git commit -m "Update api/ and tasks/ folders from $SYNC_DESC"
-            echo "✅ Selective update successful from $SYNC_DESC"
-            echo "📝 Only api/ and tasks/ folders updated (branding applied at build time)"
-            
-            # Push sync branch
-            git push origin "$SYNC_BRANCH"
-            
-            # Create pull request
-            gh pr create \
-              --title "Weekly upstream sync of api/ and tasks/ from $SYNC_DESC - $(date +%Y-%m-%d)" \
-              --body "Automated selective sync of api/ and tasks/ folders from upstream CloudTAK repository ($SYNC_DESC). Branding will be applied at build time. Please review changes before merging." \
-              --head "$SYNC_BRANCH" \
-              --base main
+            echo "::error::vendor/upstream does not exist on origin. It records which"
+            echo "::error::upstream version our tree derives from. Seed it once with:"
+            echo "::error::  scripts/sync-upstream.sh --seed \$(cat .upstream-version)"
+            exit 1
           fi
+
+      - name: Sync from upstream
+        id: sync
+        run: |
+          set +e
+          scripts/sync-upstream.sh ${{ needs.check-sync-mode.outputs.sync_args }} 2>&1 | tee /tmp/sync.log
+          rc=${PIPESTATUS[0]}
+          set -e
+
+          echo "target=$(cat .upstream-version)" >> "$GITHUB_OUTPUT"
+          echo "branch=$(git branch --show-current)" >> "$GITHUB_OUTPUT"
+
+          case "$rc" in
+            0)  echo "outcome=merged"      >> "$GITHUB_OUTPUT" ;;
+            5)  echo "outcome=up-to-date"  >> "$GITHUB_OUTPUT" ;;
+            10) echo "outcome=conflicts"   >> "$GITHUB_OUTPUT" ;;
+            *)  echo "outcome=error"       >> "$GITHUB_OUTPUT"; exit "$rc" ;;
+          esac
+
+      - name: Nothing to do
+        if: ${{ steps.sync.outputs.outcome == 'up-to-date' }}
+        run: echo "ℹ️ Already synced to ${{ steps.sync.outputs.target }}"
+
+      - name: Push and open pull request (clean merge)
+        if: ${{ steps.sync.outputs.outcome == 'merged' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH='${{ steps.sync.outputs.branch }}'
+          TARGET='${{ steps.sync.outputs.target }}'
+
+          git push origin "vendor/upstream"
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+          gh pr create \
+            --title "chore(sync): upstream api/ + tasks/ to $TARGET" \
+            --head "$BRANCH" \
+            --base main \
+            --body "$(cat <<EOF
+          Automated upstream sync to **$TARGET**, merged via \`vendor/upstream\`.
+
+          Git merged this cleanly - no TAK-NZ customization needed manual
+          reinstatement. Review the upstream changes, then confirm CI is green.
+
+          ### ⚠️ Merge with a merge commit
+
+          **Do not squash or rebase this PR.** Squashing discards the second
+          parent, which destroys the merge base that \`vendor/upstream\`
+          provides. The next sync would then explode into ~1200 conflicts
+          instead of ~30.
+
+          If that happens by accident, repair it with (changes no files):
+
+          \`\`\`
+          git branch -D vendor/upstream
+          scripts/sync-upstream.sh --seed \$(cat .upstream-version)
+          \`\`\`
+
+          See \`docs/UPSTREAM-SYNC.md\`.
+          EOF
+          )"
+
+      - name: Push vendor branch and open issue (conflicts)
+        if: ${{ steps.sync.outputs.outcome == 'conflicts' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TARGET='${{ steps.sync.outputs.target }}'
+
+          # Discard the conflicted merge; a human redoes it locally. Only the
+          # vendor branch is published, and it holds pristine upstream content.
+          git merge --abort || true
+          git push origin "vendor/upstream"
+
+          CONFLICTS=$(sed -n '/need manual resolution/,$p' /tmp/sync.log | sed 's/\x1b\[[0-9;]*m//g')
+
+          gh issue create \
+            --title "Upstream sync to $TARGET needs manual conflict resolution" \
+            --label "upstream-sync" \
+            --body "$(cat <<EOF
+          The weekly sync to **$TARGET** could not merge cleanly. \`vendor/upstream\`
+          has been advanced and pushed; nothing was merged into \`main\`.
+
+          Resolve locally:
+
+          \`\`\`
+          git fetch origin && git checkout main && git pull
+          scripts/sync-upstream.sh --tag $TARGET
+          # resolve the files it lists, then:
+          git add <files> && git commit
+          cd api && npm ci && npx tsc --noEmit
+          cd web && npm ci && npm run lint && npm test
+          git push -u origin sync/upstream-<timestamp>
+          \`\`\`
+
+          Open a PR and **merge it with a merge commit, never squash.**
+
+          \`scripts/patches/*.patch\` and \`scripts/patches/PATCH_AUDIT.md\` document
+          why each TAK-NZ customization exists - use them as reference when
+          resolving. Note they are historical records, not applicable patches.
+
+          <details><summary>Conflict report</summary>
+
+          \`\`\`
+          $CONFLICTS
+          \`\`\`
+
+          </details>
+
+          See \`docs/UPSTREAM-SYNC.md\`.
+          EOF
+          )"
+
+          echo "::warning::Sync to $TARGET needs manual resolution - issue opened"

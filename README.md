@@ -237,7 +237,7 @@ npm run deploy:local:dev
 - **Route53 Hosted Zone** - Ensure your domain's hosted zone exists before deployment
 - **AWS Permissions** - CDK requires broad permissions for CloudFormation operations
 - **Docker Issues** - Ensure Docker is running for local development
-- **Upstream Conflicts** - Use manual conflict resolution for complex merge conflicts
+- **Upstream Conflicts** - See the [Upstream Sync Runbook](docs/UPSTREAM-SYNC.md). Sync PRs must be merged with a **merge commit, never squashed**.
 
 ### Support Resources
 - **AWS CDK Documentation** - https://docs.aws.amazon.com/cdk/
