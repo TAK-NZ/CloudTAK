@@ -110,6 +110,17 @@ export class CloudTakStateful extends Construct {
         // leave nginx proxying to nothing.
       },
       secrets: containerSecrets,
+      // Restart in place instead of replacing the task. Matches upstream
+      // v13.70.0 (cloudformation/lib/stateful.js). See cloudtak-api.ts for the
+      // full reasoning and the circuit-breaker trade-off.
+      //
+      // This tier gains the most. Replacing the task means Fargate placement, an
+      // image pull, a new ENI and re-registration with *two* target groups
+      // (5000 WebSocket + 5002 hub RPC). An in-place restart avoids all of that.
+      // It still loses every TAK Server connection, since ConnectionPool is
+      // per-process and this is a new process, but the outage is far shorter.
+      enableRestartPolicy: true,
+      restartAttemptPeriod: cdk.Duration.seconds(300),
       ...(containerEnvironmentFiles ? { environmentFiles: containerEnvironmentFiles } : {})
     });
 

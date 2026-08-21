@@ -153,7 +153,15 @@ export class EventsService extends Construct {
       logging: ecs.LogDrivers.awsLogs({
         logGroup: logGroup,
         streamPrefix: `TAK-${envConfig.stackName}-CloudTAK`
-      })
+      }),
+      // Restart in place instead of replacing the task. Matches upstream
+      // v13.70.0 (cloudformation/lib/events.js). See cloudtak-api.ts for the
+      // full reasoning and the circuit-breaker trade-off.
+      //
+      // Worth most on this service: it is a single task, so a task replacement
+      // is a complete gap in event processing until the replacement is healthy.
+      enableRestartPolicy: true,
+      restartAttemptPeriod: cdk.Duration.seconds(300)
     });
 
     container.addPortMappings({
