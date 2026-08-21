@@ -406,7 +406,10 @@ export class CloudTakStack extends cdk.Stack {
     // Create monitoring and alarms
     const alarms = new Alarms(this, 'Alarms', {
       envConfig,
-      eventsService: eventsService.service
+      eventsService: eventsService.service,
+      apiService: cloudtakApi.service,
+      loadBalancer: loadBalancer.alb,
+      database: database.cluster
     });
 
     // Create retention service for automated cleanup of expired data
