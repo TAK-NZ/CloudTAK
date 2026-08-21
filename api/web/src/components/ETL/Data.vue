@@ -1,5 +1,10 @@
 <template>
-    <div style='overflow: auto;'>
+    <div
+        class='h-full w-full cloudtak-page'
+        style='overflow: auto;'
+    >
+        <NavHeader title='Connections' />
+
         <div class='page-wrapper'>
             <div class='page-header d-print-none'>
                 <div class='container-xl'>
@@ -43,20 +48,26 @@
 
                                 <div class='ms-auto'>
                                     <div class='btn-list'>
-                                        <IconAccessPoint
+                                        <span
                                             v-if='data.mission_sync'
-                                            v-tooltip='"Mission Sync On"'
-                                            :size='32'
-                                            stroke='1'
-                                            class='text-green'
-                                        />
-                                        <IconAccessPointOff
+                                            title='Mission Sync On'
+                                        >
+                                            <IconAccessPoint
+                                                :size='32'
+                                                stroke='1'
+                                                class='text-green'
+                                            />
+                                        </span>
+                                        <span
                                             v-else
-                                            v-tooltip='"Mission Sync Off"'
-                                            :size='32'
-                                            stroke='1'
-                                            class='text-red'
-                                        />
+                                            title='Mission Sync Off'
+                                        >
+                                            <IconAccessPointOff
+                                                :size='32'
+                                                stroke='1'
+                                                class='text-red'
+                                            />
+                                        </span>
 
                                         <TablerIconButton
                                             title='Edit'
@@ -200,6 +211,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
+import NavHeader from '../util/NavHeader.vue';
 import timeDiff from '../../timediff.ts';
 import InitialAuthor from '../util/InitialAuthor.vue';
 import {

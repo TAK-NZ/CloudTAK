@@ -1,20 +1,28 @@
 import { Geolocation } from '@capacitor/geolocation';
-import type { CallbackID, Position } from '@capacitor/geolocation';
+import type { Position } from '@capacitor/geolocation';
 import { BackgroundGeolocation } from '@capgo/background-geolocation';
 import type {
     CallbackError as BackgroundGeolocationError,
     Location as BackgroundLocation
 } from '@capgo/background-geolocation';
-import { isNativePlatform } from '../../base/capacitor.ts';
+import { isNativePlatform } from '../../utils/capacitor.ts';
 import { PermissionQuery, normalizePermissionState } from './shared.ts';
 import type { DevicePermissionContext } from './types.ts';
 
 export class GeolocationPermission {
     constructor(private readonly context: DevicePermissionContext) {}
 
-    private watchId: CallbackID | null = null;
-    private backgroundWatchActive = false;
+    private watchActive = false;
+    private watchGeneration = 0;
+    private lastLocationTimestamp = 0;
     private locationCallback: ((position: Position) => void) | null = null;
+
+    // The background watcher only emits fixes newer than its own start time and
+    // only after `DISTANCE_FILTER_M` of movement, so a stationary device can go
+    // indefinitely without one. A one-shot fix seeds the first position instead.
+    private static readonly DISTANCE_FILTER_M = 10;
+    private static readonly SEED_TIMEOUT_MS = 10000;
+    private static readonly SEED_MAX_AGE_MS = 30000;
 
     static supportsLocationRequests(): boolean {
         return isNativePlatform() || (typeof navigator !== 'undefined' && 'geolocation' in navigator);
@@ -97,63 +105,79 @@ export class GeolocationPermission {
         await this.stopWatch();
 
         this.locationCallback = onLocation;
+        this.lastLocationTimestamp = 0;
+        const generation = ++this.watchGeneration;
 
         const handler = (position: Position | null, err?: unknown) => {
             if (err) {
                 console.error('Location Error', err);
                 return;
             }
-            if (position && this.locationCallback) this.locationCallback(position);
+            if (!position || generation !== this.watchGeneration || !this.locationCallback) return;
+            // The seeded fix can resolve after a watcher fix has landed
+            if (position.timestamp < this.lastLocationTimestamp) return;
+            this.lastLocationTimestamp = position.timestamp;
+            this.locationCallback(position);
         };
 
         try {
-            // Foreground watcher delivers an immediate, reliable fix (incl. iOS
-            // simulator) and clears the initial "Acquiring GPS" state.
-            await this.startForegroundWatch(handler);
-
-            // Background watcher keeps location flowing once iOS suspends the
-            // foreground watcher. Started fire-and-forget so a slow addWatcher
-            // (e.g. resolving "Always" permission) can never block foreground
-            // acquisition.
+            // Resolve the foreground (When In Use) prompt before starting the
+            // watcher: iOS ignores the watcher's escalation to "Always" while
+            // that first prompt is still pending, which used to defer the
+            // Always prompt to the second app launch.
             if (isNativePlatform()) {
-                void this.startBackgroundWatch(handler).catch((err: unknown) => {
-                    console.warn('Failed to start background location watch', err);
-                });
+                await this.refreshStatus();
+                if (this.context.permissions.location === 'prompt') {
+                    await this.request();
+                }
             }
+
+            // Single watcher on every platform: on native the plugin delivers
+            // foreground fixes too, and on web it falls back to
+            // navigator.geolocation.watchPosition.
+            await this.startBackgroundWatch(handler);
+
+            void this.seedImmediateFix(handler, generation);
         } catch (err) {
             console.error('Failed to start location watch', err);
         }
     }
 
+    // Started alongside the watcher, not awaited: the watcher must not wait on a
+    // fix that can take seconds or never arrive.
+    private async seedImmediateFix(
+        handler: (position: Position | null, err?: unknown) => void,
+        generation: number
+    ): Promise<void> {
+        if (['denied', 'unsupported'].includes(this.context.permissions.location)) return;
+
+        try {
+            const position = await Geolocation.getCurrentPosition({
+                enableHighAccuracy: true,
+                timeout: GeolocationPermission.SEED_TIMEOUT_MS,
+                maximumAge: GeolocationPermission.SEED_MAX_AGE_MS
+            });
+
+            if (generation !== this.watchGeneration) return;
+            handler(position);
+        } catch (err) {
+            console.warn('No immediate GPS fix available, waiting on location watch', err);
+        }
+    }
+
     async stopWatch(): Promise<void> {
-        if (this.watchId !== null) {
-            const id = this.watchId;
-            this.watchId = null;
+        this.watchGeneration++;
+
+        if (this.watchActive) {
+            this.watchActive = false;
             try {
-                await Geolocation.clearWatch({ id });
+                await BackgroundGeolocation.stop();
             } catch (err) {
                 console.warn('Failed to clear location watch', err);
             }
         }
 
-        if (this.backgroundWatchActive) {
-            this.backgroundWatchActive = false;
-            try {
-                await BackgroundGeolocation.stop();
-            } catch (err) {
-                console.warn('Failed to clear background location watch', err);
-            }
-        }
-
         this.locationCallback = null;
-    }
-
-    private async startForegroundWatch(handler: (position: Position | null, err?: unknown) => void): Promise<void> {
-        this.watchId = await Geolocation.watchPosition({
-            maximumAge: 0,
-            timeout: 10000,
-            enableHighAccuracy: true
-        }, handler);
     }
 
     private async startBackgroundWatch(handler: (position: Position | null, err?: unknown) => void): Promise<void> {
@@ -161,12 +185,17 @@ export class GeolocationPermission {
             backgroundTitle: 'CloudTAK GPS active',
             backgroundMessage: 'CloudTAK is sharing your location.',
             requestPermissions: true,
+            // Reject fixes cached from before the watcher started - stale
+            // positions are seeded explicitly by seedImmediateFix() instead,
+            // which bounds their age.
             stale: false,
-            distanceFilter: 0
+            // Metres of movement before a new fix is delivered. Ignored by the
+            // web fallback.
+            distanceFilter: GeolocationPermission.DISTANCE_FILTER_M
         }, (location?: BackgroundLocation, err?: BackgroundGeolocationError) => {
             handler(location ? GeolocationPermission.backgroundLocationToPosition(location) : null, err);
         });
-        this.backgroundWatchActive = true;
+        this.watchActive = true;
     }
 
     private static backgroundLocationToPosition(location: BackgroundLocation): Position {

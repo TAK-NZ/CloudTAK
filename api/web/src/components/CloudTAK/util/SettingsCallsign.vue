@@ -52,6 +52,13 @@
                                 :error='item.key === "tak_callsign" && !item.locked ? validateTextNotEmpty(profile.tak_callsign) : ""'
                                 :required='item.key === "tak_callsign"'
                             />
+                            <TablerInput
+                                v-else-if='item.type === "seconds"'
+                                v-model='locFreqSeconds'
+                                type='number'
+                                min='0'
+                                step='0.1'
+                            />
                             <TablerEnum
                                 v-else-if='item.type === "enum"'
                                 v-model='(profile as any)[item.key]'
@@ -75,7 +82,7 @@
                             <span class='small'>Managed by your single sign-on account and cannot be changed here</span>
                         </div>
                         <div
-                            v-if='item.type === "input" && !item.locked && hasChanged(item.key)'
+                            v-if='(item.type === "input" || item.type === "seconds") && !item.locked && hasChanged(item.key)'
                             class='d-flex justify-content-end'
                         >
                             <button
@@ -109,10 +116,12 @@ import {
     IconShield,
     IconClock,
     IconMapPin,
+    IconPhone,
     IconCircleCheck,
     IconLock,
 } from '@tabler/icons-vue';
 import CoordinateType from './CoordinateType.vue';
+import { normalizePointType } from '../../../utils/point-type.ts';
 import StandardItem from './StandardItem.vue';
 import type { Profile } from '../../../../src/types.ts';
 import Config from '../../../base/config.ts';
@@ -122,7 +131,7 @@ import {
     TablerEnum,
     TablerLoading
 } from '@tak-ps/vue-tabler';
-import { validateTextNotEmpty } from '../../../base/validators.ts';
+import { validateTextNotEmpty } from '../../../utils/validators.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import ProfileConfig from '../../../base/profile.ts';
 const mapStore = useMapStore();
@@ -144,7 +153,7 @@ type SettingItem = {
     key: string;
     label: string;
     icon: Component;
-    type: 'input' | 'enum' | 'coordinate';
+    type: 'input' | 'enum' | 'coordinate' | 'seconds';
     options?: string[];
     routerOnly?: boolean;
     /** Owned by the identity provider - rendered read-only and never saved */
@@ -191,6 +200,12 @@ const settings = computed<SettingItem[]>(() => {
             locked: locked.value.tak_callsign,
         },
         {
+            key: 'tak_phone',
+            label: 'Phone Number',
+            icon: IconPhone,
+            type: 'input',
+        },
+        {
             key: 'tak_group',
             label: 'User Group',
             icon: IconUsers,
@@ -208,9 +223,9 @@ const settings = computed<SettingItem[]>(() => {
         },
         {
             key: 'tak_loc_freq',
-            label: 'Location Reporting Frequency (ms)',
+            label: 'Location Reporting Frequency (sec)',
             icon: IconClock,
-            type: 'input',
+            type: 'seconds',
             routerOnly: true,
         },
         {
@@ -230,6 +245,17 @@ const filteredSettings = computed(() => {
     return settings.value.filter((item) =>
         item.label.toLowerCase().includes(query)
     );
+});
+
+const locFreqSeconds = computed<number>({
+    get: () => {
+        const ms = profile.value?.tak_loc_freq;
+        return typeof ms === 'number' ? Math.round(ms / 1000) : 0;
+    },
+    set: (seconds: number) => {
+        if (!profile.value) return;
+        profile.value.tak_loc_freq = Math.round((Number(seconds) || 0) * 1000);
+    }
 });
 
 function hasChanged(key: string): boolean {
@@ -257,7 +283,8 @@ onMounted(async () => {
         tak_group: (await ProfileConfig.get('tak_group'))?.value,
         tak_role: (await ProfileConfig.get('tak_role'))?.value,
         tak_type: (await ProfileConfig.get('tak_type'))?.value,
-        tak_loc_freq: (await ProfileConfig.get('tak_loc_freq'))?.value
+        tak_loc_freq: (await ProfileConfig.get('tak_loc_freq'))?.value,
+        tak_phone: (await ProfileConfig.get('tak_phone'))?.value
     } as Profile;
 
     if (p.tak_group && groups.value[p.tak_group]) {
@@ -274,7 +301,6 @@ onMounted(async () => {
 
     profile.value = p;
 
-    // Snapshot initial values
     for (const item of settings.value) {
         previousValues[item.key] = (profile.value as Profile)[item.key as keyof Profile];
     }
@@ -327,10 +353,9 @@ async function saveField(key: string) {
     });
 
     if (key === 'tak_type') {
-        mapStore.defaultPointType = p.tak_type || 'u-d-p';
+        mapStore.defaultPointType = normalizePointType(p.tak_type);
     }
 
-    // Show saved indicator
     savedKey.value = key;
     changedFields.value.delete(key);
     previousValues[key] = (profile.value as Profile)[key as keyof Profile];
@@ -345,13 +370,11 @@ async function saveField(key: string) {
     }
 }
 
-// Watch for changes to auto-save non-input fields
 watch(
     () => profile.value,
     async (newProfile) => {
         if (!newProfile || loading.value) return;
 
-        // Detect which fields changed
         for (const item of settings.value) {
             // IdP-managed fields are never persisted from here. The inputs are
             // disabled, but this also covers programmatic mutation (e.g. the
@@ -360,7 +383,7 @@ watch(
 
             const current = (newProfile as Profile)[item.key as keyof Profile];
             if (current !== previousValues[item.key]) {
-                if (item.type === 'input') {
+                if (item.type === 'input' || item.type === 'seconds') {
                     // Track changed state for input fields (manual save)
                     changedFields.value.add(item.key);
                 } else {
@@ -375,7 +398,7 @@ watch(
                     });
 
                     if (item.key === 'tak_type') {
-                        mapStore.defaultPointType = p.tak_type || 'u-d-p';
+                        mapStore.defaultPointType = normalizePointType(p.tak_type);
                     }
 
                     previousValues[item.key] = current;
@@ -391,29 +414,3 @@ watch(
     { deep: true }
 );
 </script>
-
-<style scoped>
-.saved-indicator {
-    top: 10px;
-    right: 12px;
-    z-index: 1;
-}
-
-.saved-fade-enter-active {
-    transition: opacity 0.2s ease-in;
-}
-
-.saved-fade-leave-active {
-    transition: opacity 1.4s ease-out;
-}
-
-.saved-fade-enter-from,
-.saved-fade-leave-to {
-    opacity: 0;
-}
-
-.saved-fade-enter-to,
-.saved-fade-leave-from {
-    opacity: 1;
-}
-</style>

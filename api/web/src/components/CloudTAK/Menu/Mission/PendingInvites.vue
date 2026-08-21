@@ -12,9 +12,9 @@
             <span class='fw-bold'>Pending Invites</span>
             <TablerBadge
                 class='rounded-pill small ms-auto'
-                background-color='rgba(239, 68, 68, 0.2)'
-                border-color='rgba(239, 68, 68, 0.5)'
-                text-color='#dc2626'
+                background-color='var(--tblr-red-lt)'
+                border-color='var(--tblr-red)'
+                text-color='var(--tblr-red)'
             >
                 {{ invites.length }}
             </TablerBadge>
@@ -35,7 +35,7 @@
         <transition name='menu-overlays-fade'>
             <div
                 v-if='showInvites'
-                class='mt-2 pt-2 px-3 rounded-3 border border-white border-opacity-10 bg-black bg-opacity-25'
+                class='mt-2 pt-2 px-3 rounded-3 border cloudtak-accent'
                 @click.stop
             >
                 <div
@@ -121,22 +121,3 @@ async function deleteInvite(invite: MissionInvite) {
     emit('update:invites', newInvites);
 }
 </script>
-
-<style scoped>
-.menu-overlays-fade-enter-active,
-.menu-overlays-fade-leave-active {
-    transition: all 0.2s ease-out;
-    max-height: 500px;
-    opacity: 1;
-    overflow: hidden;
-}
-
-.menu-overlays-fade-enter-from,
-.menu-overlays-fade-leave-to {
-    max-height: 0;
-    opacity: 0;
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-}
-</style>

@@ -5,6 +5,7 @@ import type {
     APIProfileChat
 } from '../types.ts'
 import type { DBChatroomChat } from '../database.ts';
+import { ChatStatus } from '../database.ts';
 import type Atlas from '../workers/atlas.ts';
 import type { Remote } from 'comlink';
 import ContactManager from './contact.ts';
@@ -43,8 +44,13 @@ export default class ChatroomChats {
                     sender: c.sender_callsign,
                     sender_uid: c.sender_uid,
                     message: c.message,
-                    // Preserve local created timestamp if record already exists
-                    created: existing?.created || c.created
+                    // Preserve the local created timestamp when we already have the
+                    // record, so an optimistic echo does not jump position. Fall back
+                    // to upstream's ISO normalization - Postgres timestamps are not
+                    // ISO 8601 and would otherwise sort inconsistently against
+                    // locally created messages.
+                    created: existing?.created || new Date(c.created).toISOString(),
+                    status: (c.status as ChatStatus | null) ?? undefined
                 });
             }
         });
@@ -73,8 +79,10 @@ export default class ChatroomChats {
             .equals(this.chatroom)
             .toArray();
 
+        // Oldest to most recent - compare as dates as stored timestamps
+        // may be a mix of ISO 8601 and Postgres formatted strings
         chats.sort((a, b) => {
-            return a.created.localeCompare(b.created);
+            return new Date(a.created).getTime() - new Date(b.created).getTime();
         });
 
         return chats;
@@ -113,7 +121,8 @@ export default class ChatroomChats {
             sender: sender.callsign,
             sender_uid: sender.uid,
             message: message,
-            created: created
+            created: created,
+            status: ChatStatus.Sending
         });
 
         if (!recipient) {

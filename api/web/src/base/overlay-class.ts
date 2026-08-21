@@ -7,8 +7,8 @@ import { Preferences } from '@capacitor/preferences';
 import { DrawToolMode } from '../stores/modules/draw.ts';
 import type { FeatureCollection } from 'geojson';
 import { bbox } from '@turf/bbox'
-import type { LngLatBoundsLike, LayerSpecification, VectorTileSource, RasterTileSource, GeoJSONSource } from 'maplibre-gl'
-import cotStyles from './utils/styles.ts'
+import type { LngLatBoundsLike, LayerSpecification, VectorTileSource, RasterTileSource, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl'
+import cotStyles from '../utils/styles.ts'
 import { std, stdurl } from '../std.js';
 import { db, type DBOverlay } from '../database.ts';
 import { useMapStore } from '../stores/map.js';
@@ -17,9 +17,6 @@ import Subscription from './subscription.ts';
 import { FeatureVisibility } from '../stores/modules/feature-visibility.ts';
 import OverlayManager from './overlay.ts';
 
-/**
- * @class
- */
 export default class Overlay {
     _destroyed: boolean;
     _internal: boolean;
@@ -27,6 +24,15 @@ export default class Overlay {
     _timer: ReturnType<typeof setInterval> | null;
 
     _clickable: Array<{ id: string; type: string }>;
+
+    // Each MapLibre layer-scoped listener runs its own queryRenderedFeatures
+    // hit-test on every mousemove, so hover listeners are registered once per
+    // overlay (with the full layer id array) and tracked here for removal
+    _hoverListeners: Array<{
+        type: 'mouseenter' | 'mousemove' | 'mouseleave';
+        layerIds: string[];
+        handler: (e: MapLayerMouseEvent) => void;
+    }>;
 
     _error?: Error;
     _loaded: boolean;
@@ -75,11 +81,13 @@ export default class Overlay {
                 for (const layer of ov.styles) {
                     const l = layer as LayerSpecification;
                     l.id = `${ov.id}-${l.id}`;
-                    // hillshade layers reference a separate raster-dem source — preserve as-is
-                    if (l.type !== 'hillshade') {
-                        // @ts-expect-error Special case Background Layer type
+
+                    // Background layers have no source. Hillshade layers point at a
+                    // separate raster-dem source, so theirs must be preserved too.
+                    if (l.type !== 'background' && l.type !== 'hillshade') {
                         l.source = String(ov.id);
-                    }                }
+                    }
+                }
             }
 
             ov = await std(`/api/profile/overlay/${ov.id}`, {
@@ -159,6 +167,7 @@ export default class Overlay {
         this._destroyed = false;
         this._internal = opts.internal || false;
         this._clickable = [];
+        this._hoverListeners = [];
         this._loaded = false;
 
         this.loading = false;
@@ -299,6 +308,8 @@ export default class Overlay {
         }
 
         for (const l of this.styles) {
+                if (l.type === 'background') continue;
+
             // @ts-expect-error background layers have no source property
             let layerSource: string | undefined = l.source;
 
@@ -332,6 +343,8 @@ export default class Overlay {
         // without round-tripping through update()/save() which would PATCH
         // the server with unchanged values.
         for (const l of this.styles) {
+                if (l.type === 'background') continue;
+
             // @ts-expect-error background layers have no source property
             let layerSource: string | undefined = l.source;
             if (layerSource === '__terrain__') {
@@ -351,66 +364,93 @@ export default class Overlay {
 
         await FeatureVisibility.applyToOverlay(this);
 
-        // Update attribution if this is a basemap
         if (this.mode === 'basemap') {
+            mapStore.updateBackground();
             await mapStore.updateAttribution();
         }
 
-        for (const click of this._clickable) {
+        this.removeHoverListeners();
+
+        const hoverLayerIds = this._clickable.map((click) => click.id);
+
+        if (hoverLayerIds.length) {
             const hoverIds = new Set<string>();
 
-            mapStore.map.on('mouseenter', click.id, () => {
+            const onMouseEnter = () => {
                 if (mapStore.draw.mode !== DrawToolMode.STATIC) return;
                 mapStore.map.getCanvas().style.cursor = 'pointer';
-            })
+            };
 
-            mapStore.map.on('mousemove', click.id, (e) => {
+            const onMouseMove = (e: MapLayerMouseEvent) => {
                 if (mapStore.draw.mode !== DrawToolMode.STATIC) return;
+                if (!e.features) return;
 
-                if (this.type === 'vector' && e.features) {
-                    const newIds = e.features.map(f => String(f.id));
+                const newIds = new Set<string>();
+                for (const f of e.features) newIds.add(String(f.id));
 
-                    for (const id of hoverIds) {
-                        if (newIds.includes(id)) continue;
+                for (const id of hoverIds) {
+                    if (newIds.has(id)) continue;
 
-                        mapStore.map.setFeatureState({
-                            id: id,
-                            source: String(this.id),
-                            sourceLayer: 'out'
-                        }, { hover: false });
+                    mapStore.map.setFeatureState({
+                        id: id,
+                        source: String(this.id),
+                        sourceLayer: 'out'
+                    }, { hover: false });
 
-                        hoverIds.delete(id);
-                    }
-
-                    for (const id of newIds) {
-                        mapStore.map.setFeatureState({
-                            id: id,
-                            source: String(this.id),
-                            sourceLayer: 'out'
-                        }, { hover: true });
-
-                        hoverIds.add(id);
-                    }
+                    hoverIds.delete(id);
                 }
-            });
 
-            mapStore.map.on('mouseleave', click.id, () => {
+                for (const id of newIds) {
+                    if (hoverIds.has(id)) continue;
+
+                    mapStore.map.setFeatureState({
+                        id: id,
+                        source: String(this.id),
+                        sourceLayer: 'out'
+                    }, { hover: true });
+
+                    hoverIds.add(id);
+                }
+            };
+
+            const onMouseLeave = () => {
                 if (mapStore.draw.mode !== DrawToolMode.STATIC) return;
                 mapStore.map.getCanvas().style.cursor = '';
 
-                if (this.type === 'vector') {
-                    for (const id of hoverIds) {
-                        mapStore.map.setFeatureState({
-                            id: id,
-                            source: String(this.id),
-                            sourceLayer: 'out'
-                        }, { hover: false });
-                    }
-
-                    hoverIds.clear()
+                for (const id of hoverIds) {
+                    mapStore.map.setFeatureState({
+                        id: id,
+                        source: String(this.id),
+                        sourceLayer: 'out'
+                    }, { hover: false });
                 }
-            })
+
+                hoverIds.clear();
+            };
+
+            mapStore.map.on('mouseenter', hoverLayerIds, onMouseEnter);
+            this._hoverListeners.push({ type: 'mouseenter', layerIds: hoverLayerIds, handler: onMouseEnter });
+
+            mapStore.map.on('mouseleave', hoverLayerIds, onMouseLeave);
+            this._hoverListeners.push({ type: 'mouseleave', layerIds: hoverLayerIds, handler: onMouseLeave });
+
+            // Only vector overlays track hover feature-state, so only they pay
+            // for a per-mousemove hit-test
+            if (this.type === 'vector') {
+                mapStore.map.on('mousemove', hoverLayerIds, onMouseMove);
+                this._hoverListeners.push({ type: 'mousemove', layerIds: hoverLayerIds, handler: onMouseMove });
+            }
         }
+    }
+
+    removeHoverListeners(): void {
+        const mapStore = useMapStore();
+
+        for (const l of this._hoverListeners) {
+            mapStore.map.off(l.type, l.layerIds, l.handler);
+        }
+
+        this._hoverListeners = [];
     }
 
     async init(opts: {
@@ -507,12 +547,6 @@ export default class Overlay {
             this.styles = [];
         }
 
-        if (this.iconset) {
-            mapStore.icons.addIconset(this.iconset).catch((err: unknown) => {
-                console.error('Error adding iconset', this.iconset, err);
-            });
-        }
-
         if (this.type === 'vector' && this. mode !== 'basemap' && opts.clickable === undefined) {
             opts.clickable = this.styles.map((l) => {
                 return { id: l.id, type: 'feat' };
@@ -553,16 +587,12 @@ export default class Overlay {
     remove() {
         const mapStore = useMapStore();
 
+        this.removeHoverListeners();
+
         for (const l of this.styles) {
             if (mapStore.map.getLayer(String(l.id))) {
                 mapStore.map.removeLayer(String(l.id));
             }
-        }
-
-        if (this.iconset) {
-            mapStore.icons.removeIconset(this.iconset).catch((err: unknown) => {
-                console.error('Error removing iconset', this.iconset, err);
-            });
         }
 
         if (mapStore.map.getStyle().sources[String(this.id)]) {
@@ -573,7 +603,7 @@ export default class Overlay {
 
     moveBefore(overlay?: Overlay): void {
         const mapStore = useMapStore();
-        const before = overlay?.styles[0]?.id;
+        const before = overlay?.styles.find((l) => l.type !== 'background')?.id;
         const hasBefore = before ? !!mapStore.map.getLayer(before) : false;
 
         for (const layer of this.styles) {
@@ -653,7 +683,6 @@ export default class Overlay {
         await this.save();
 
 
-        // Update attribution if this is a basemap
         if (this.mode === 'basemap') {
             const mapStore = useMapStore();
             await mapStore.updateAttribution();
@@ -669,8 +698,7 @@ export default class Overlay {
                 await mapStore.makeActiveMission(undefined);
             }
 
-            const { value: token } = await Preferences.get({ key: 'token' });
-            const sub = await Subscription.from(this.mode_id, token || '', {
+            const sub = await Subscription.from(this.mode_id, {
                 subscribed: true
             });
 
@@ -698,8 +726,10 @@ export default class Overlay {
             await db.overlay.delete(this.id);
         }
 
-        // Update attribution if this was a basemap
+        // If the remaining basemaps provide no background color the CloudTAK
+        // default is restored
         if (wasBasemap) {
+            mapStore.updateBackground();
             await mapStore.updateAttribution();
         }
     }
@@ -727,13 +757,14 @@ export default class Overlay {
         if (body.visible !== undefined && body.visible !== this.visible) {
             this.visible = body.visible;
             for (const l of this.styles) {
+                if (l.type === 'background') continue;
                 mapStore.map.setLayoutProperty(l.id, 'visibility', this.visible ? 'visible' : 'none');
             }
             changed = true;
         }
 
-        // Update attribution if this is a basemap
         if (this.mode === 'basemap') {
+            mapStore.updateBackground();
             await mapStore.updateAttribution();
         }
 

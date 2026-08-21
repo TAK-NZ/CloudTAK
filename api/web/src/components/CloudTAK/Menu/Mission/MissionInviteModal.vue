@@ -11,7 +11,7 @@
             <div class='text-secondary'>
                 You have been invited to join the mission:
                 <br>
-                <strong class='text-white'>{{ props.mission.name }}</strong>
+                <strong>{{ props.mission.name }}</strong>
             </div>
         </div>
         <div class='modal-footer'>
@@ -89,7 +89,6 @@ function accept() {
 
 async function decline() {
     try {
-        // Fetch invites to find the invitee and type
         const res = await Subscription.list();
         const invite = res.invites.find(i => i.missionGuid === props.mission.guid);
 

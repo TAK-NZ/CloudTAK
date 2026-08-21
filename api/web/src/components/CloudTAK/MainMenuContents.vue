@@ -155,7 +155,7 @@
 
         <template #footer>
             <div
-                class='main-menu-footer flex-shrink-0 cloudtak-bg border-top border-white'
+                class='main-menu-footer flex-shrink-0 cloudtak-header border-top'
             >
                 <div
                     class='row g-0 align-items-center'
@@ -171,11 +171,18 @@
                                 stroke='1'
                                 class='mx-2'
                             />
-                            <span
-                                class='text-truncate'
-                                style='font-size: 18px;'
-                                v-text='username'
-                            />
+                            <div class='overflow-hidden'>
+                                <div
+                                    class='text-truncate'
+                                    style='font-size: 18px;'
+                                    v-text='username'
+                                />
+                                <div
+                                    class='text-muted'
+                                    style='font-size: 11px; line-height: 1.2;'
+                                    v-text='`v${version}`'
+                                />
+                            </div>
                         </div>
                     </div>
 
@@ -183,13 +190,12 @@
                         role='button'
                         style='width: 40px;'
                         class='py-2 px-2 ms-auto d-flex cloudtak-hover cursor-pointer'
+                        title='Logout'
                         @click.stop.prevent='logout'
                         @keyup.enter='logout'
                     >
                         <IconLogout
-                            v-tooltip='"Logout"'
                             tabindex='0'
-                            title='Logout'
                             :size='32'
                             stroke='1'
                         />
@@ -220,7 +226,8 @@ import {
     TablerInput,
     TablerNone,
 } from '@tak-ps/vue-tabler';
-import { openSecondaryView } from '../../base/capacitor.ts';
+import { openSecondaryView } from '../../utils/capacitor.ts';
+import { version } from '../../../package.json';
 import { useMapStore } from '../../stores/map.ts';
 import { useAppStore } from '../../stores/app.ts';
 import type { MenuItemConfig } from '../../stores/modules/menu.ts';

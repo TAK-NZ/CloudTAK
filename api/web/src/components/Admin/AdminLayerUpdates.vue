@@ -24,20 +24,20 @@
 
         <div style='min-height: 20vh; margin-bottom: 61px'>
             <TablerLoading
-                v-if='loading'
+                v-if='initialLoading'
                 desc='Loading Layer Updates'
             />
             <TablerAlert
-                v-else-if='error'
+                v-else-if='!initialLoading && error'
                 :err='error'
             />
             <TablerNone
-                v-else-if='!list.items.length'
+                v-else-if='!initialLoading && !list.items.length'
                 label='No Layers'
                 :create='false'
             />
             <div
-                v-else
+                v-else-if='!initialLoading'
                 class='table-responsive pb-5'
             >
                 <table class='table card-table table-hover table-vcenter datatable'>
@@ -70,7 +70,7 @@
                                     <div class='d-flex flex-wrap align-items-center gap-2'>
                                         <span
                                             class='subheader'
-                                            v-text='layer.parent_name || "Template Layer"'
+                                            v-text='layer.parent_name || "Admin Layer"'
                                         />
                                         <TablerBadge
                                             v-if='!layer.has_stack'
@@ -112,7 +112,7 @@
 <script setup lang='ts'>
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { openSecondaryView } from '../../base/capacitor.ts';
+import { openSecondaryView } from '../../utils/capacitor.ts';
 import { server } from '../../std.ts';
 import type { AdminLayerUpdate, AdminLayerUpdateList } from '../../types.ts';
 import {
@@ -132,6 +132,7 @@ const router = useRouter();
 
 const error = ref<Error | undefined>();
 const loading = ref(true);
+const initialLoading = ref(true);
 const updating = ref<Record<number, boolean>>({});
 const list = ref<AdminLayerUpdateList>({
     total: 0,
@@ -160,6 +161,7 @@ async function fetchList(): Promise<void> {
         error.value = err instanceof Error ? err : new Error(String(err));
     } finally {
         loading.value = false;
+        initialLoading.value = false;
     }
 }
 

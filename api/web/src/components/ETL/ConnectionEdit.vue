@@ -1,5 +1,10 @@
 <template>
-    <div style='overflow: auto;'>
+    <div
+        class='h-full w-full cloudtak-page'
+        style='overflow: auto;'
+    >
+        <NavHeader title='Connections' />
+
         <div class='page-wrapper'>
             <div class='page-header d-print-none'>
                 <div class='container-xl'>
@@ -74,18 +79,24 @@
                                                 @update:model-value='(v: string) => { connection.readonly = v === "external" }'
                                             >
                                                 <template #option='{ option }'>
-                                                    <IconCloud
+                                                    <span
                                                         v-if='option.value === "cloud"'
-                                                        v-tooltip='"Cloud Integration"'
-                                                        :size='32'
-                                                        stroke='1'
-                                                    />
-                                                    <IconDrone
+                                                        title='Cloud Integration'
+                                                    >
+                                                        <IconCloud
+                                                            :size='32'
+                                                            stroke='1'
+                                                        />
+                                                    </span>
+                                                    <span
                                                         v-if='option.value === "external"'
-                                                        v-tooltip='"External Integration"'
-                                                        :size='32'
-                                                        stroke='1'
-                                                    />
+                                                        title='External Integration'
+                                                    >
+                                                        <IconDrone
+                                                            :size='32'
+                                                            stroke='1'
+                                                        />
+                                                    </span>
                                                     <span class='mx-2'>{{ option.label }}</span>
                                                 </template>
                                             </TablerPillGroup>
@@ -240,6 +251,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { server } from '../../std.ts';
 import PageFooter from '../PageFooter.vue';
+import NavHeader from '../util/NavHeader.vue';
 import AgencySelect from './Connection/AgencySelect.vue';
 import CertificateP12 from './Connection/CertificateP12.vue';
 import CertificateLogin from './Connection/CertificateLogin.vue';
