@@ -280,24 +280,31 @@ export default class Overlay {
             const terrainUrl = stdurl(`/api/basemap/${terrain.id}/tiles`);
             if (token) terrainUrl.searchParams.set('token', token);
 
-            const tileJSON = await std(terrainUrl.toString()) as TileJSON;
-
             const sourceId = '__terrain__';
             if (!mapStore.map.getSource(sourceId)) {
-                // tileSize and encoding must be carried over from the basemap
-                // record, exactly as mapStore.addTerrain() does for 3D. TileJSON
-                // has no field for either, so spreading it alone leaves MapLibre
-                // on its raster-dem defaults - tileSize 512 - and the DEM is
-                // then sampled at the wrong resolution. 3D terrain looked fine
-                // because addTerrain() passes both, which is why hillshading
-                // could be missing while 3D worked.
+                // Hand MapLibre the TileJSON *url* and let it fetch and parse the
+                // document itself, exactly as mapStore.addTerrain() does for 3D.
+                //
+                // This previously fetched the TileJSON here and spread it into
+                // the source spec. MapLibre validates source specs and rejects
+                // unknown properties, and CloudTAK's TileJSON carries several -
+                // `tilejson`, `version`, `name`, `description`, `scheme`,
+                // `center` and CloudTAK's own `actions`. Style.addSource()
+                // returns early when validation fails, so the source was never
+                // created; addLayers() then hit its `getSource` guard and
+                // skipped every hillshade layer. Silent, because the validation
+                // errors only surface as `error` events on the map.
+                //
+                // That is the whole reason 3D terrain worked while 2D
+                // hillshading did not: addTerrain() was already passing a url.
                 const source: {
                     type: 'raster-dem';
+                    url: string;
                     tileSize?: number;
                     encoding?: 'mapbox' | 'terrarium';
-                } & TileJSON = {
-                    ...tileJSON,
-                    type: 'raster-dem'
+                } = {
+                    type: 'raster-dem',
+                    url: String(terrainUrl)
                 };
 
                 if (terrain.tilesize) source.tileSize = terrain.tilesize;
