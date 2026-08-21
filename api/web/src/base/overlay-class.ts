@@ -17,6 +17,51 @@ import Subscription from './subscription.ts';
 import { FeatureVisibility } from '../stores/modules/feature-visibility.ts';
 import OverlayManager from './overlay.ts';
 
+/**
+ * Namespace a basemap/overlay style's layer ids and point them at the overlay's
+ * own source.
+ *
+ * Returns new layer objects. Do not go back to mutating in place: `replace()`
+ * used to transform the array its caller handed it, and MenuBasemaps passes
+ * `basemap.styles` straight out of its own component state - so re-selecting the
+ * same basemap prefixed the same array a second time, a third time, and so on.
+ * Overlay 23 on test reached `23-23-23-Background` that way, uniformly across all
+ * 287 layers, one level per click.
+ *
+ * Idempotent as well as non-mutating, because the prefixed form is *persisted*
+ * (`create()` PATCHes it back), so a stored style is already namespaced and any
+ * path that re-derives would otherwise double it. Belt and braces: the real fix
+ * for that is to stop storing a derived value at all and prefix at render time,
+ * which is a larger change than this.
+ *
+ * Layers exempt from the source rewrite:
+ *   - `background` has no source property at all.
+ *   - `hillshade` points at the shared `__terrain__` raster-dem source, not at
+ *     this overlay's vector/raster source.
+ *
+ * `create()` and `replace()` disagreed about `background` before this - one
+ * skipped it, the other assigned `source` and needed a `@ts-expect-error` to do
+ * it. One helper, one rule.
+ */
+function namespaceStyles(
+    id: number | string,
+    styles: Array<LayerSpecification>
+): Array<LayerSpecification> {
+    const prefix = `${id}-`;
+
+    return styles.map((layer) => {
+        const l = { ...layer } as LayerSpecification;
+
+        if (!l.id.startsWith(prefix)) l.id = `${prefix}${l.id}`;
+
+        if (l.type !== 'background' && l.type !== 'hillshade') {
+            (l as LayerSpecification & { source?: string }).source = String(id);
+        }
+
+        return l;
+    });
+}
+
 export default class Overlay {
     _destroyed: boolean;
     _internal: boolean;
@@ -78,16 +123,7 @@ export default class Overlay {
             }) as ProfileOverlay;
 
             if (ov.styles && ov.styles.length) {
-                for (const layer of ov.styles) {
-                    const l = layer as LayerSpecification;
-                    l.id = `${ov.id}-${l.id}`;
-
-                    // Background layers have no source. Hillshade layers point at a
-                    // separate raster-dem source, so theirs must be preserved too.
-                    if (l.type !== 'background' && l.type !== 'hillshade') {
-                        l.source = String(ov.id);
-                    }
-                }
+                ov.styles = namespaceStyles(ov.id, ov.styles as Array<LayerSpecification>);
             }
 
             ov = await std(`/api/profile/overlay/${ov.id}`, {
@@ -686,20 +722,8 @@ export default class Overlay {
         if (overlay.url) this.url = overlay.url;
         if (overlay.token) this.token = overlay.token;
         if (overlay.styles) {
-            if (overlay.styles && overlay.styles.length) {
-                for (const layer of overlay.styles) {
-                    const l = layer as LayerSpecification;
-                    l.id = `${this.id}-${l.id}`;
-                    // hillshade layers reference a separate raster-dem source
-                    // (a different overlay) — preserve their source as-is.
-                    // All other layer types use this overlay's own source.
-                    if (l.type !== 'hillshade') {
-                        // @ts-expect-error Special case Background Layer type
-                        l.source = String(this.id);
-                    }
-                }
-            }
-            this.styles = overlay.styles as Array<LayerSpecification>;
+            // namespaceStyles() copies, so the caller's array is left alone.
+            this.styles = namespaceStyles(this.id, overlay.styles as Array<LayerSpecification>);
         }
 
         await this.init({
