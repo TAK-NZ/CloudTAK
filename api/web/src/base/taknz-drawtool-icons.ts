@@ -20,44 +20,61 @@
  *    ATAK's apparent thickness (1.1 in 24-space). `stroke` is accepted and
  *    dropped for the same reason as in taknz-nav-icons.ts.
  *  - `sector` carries an id, `taknz-plus-notch`, because it is the only notched
- *    icon. The palette renders each tool once so it stays unique; if these are
- *    ever inlined repeatedly into one document that has to be revisited.
+ *    icon. That id is made unique per component instance at setup time, so the
+ *    same icon can be mounted more than once in a document. It has to be: the
+ *    palette and DrawOverlay.vue both render the sector icon, and reopening the
+ *    palette mid-draw puts both on the page at once.
  *
- * DrawTools.vue renders icons at `:size='25'`. The dropdown trigger is *not* in
- * this map: it keeps Tabler's IconPencilPlus, which already carries the same `+`
- * create badge as the six draw tools.
+ * DrawTools.vue renders icons at `:size='25'`, DrawOverlay.vue at `:size='24'`.
+ * The dropdown trigger is *not* in this map: it keeps Tabler's IconPencilPlus,
+ * which already carries the same `+` create badge as the six draw tools.
  */
-import { h, markRaw } from 'vue';
-import type { Component, FunctionalComponent } from 'vue';
+import { defineComponent, h, markRaw, useId } from 'vue';
+import type { Component } from 'vue';
 
-interface DrawIconProps {
-    size?: number | string;
-    color?: string;
-    /** Accepted and ignored - these are fills, or have their weight baked in. */
-    stroke?: number | string;
-}
+/**
+ * The only id appearing in any icon's markup. Rewritten per instance so two
+ * mounted copies cannot collide - a duplicate id would make one instance's
+ * `mask="url(#...)"` resolve to the other instance's mask element.
+ */
+const LOCAL_ID = 'taknz-plus-notch';
 
 function atakDrawIcon(name: string, inner: string): Component {
-    const icon: FunctionalComponent<DrawIconProps> = (props) => h('svg', {
-        xmlns: 'http://www.w3.org/2000/svg',
-        viewBox: '0 0 24 24',
-        width: props.size ?? 24,
-        height: props.size ?? 24,
-        fill: 'currentColor',
-        stroke: 'none',
-        'aria-hidden': 'true',
-        ...(props.color ? { style: { color: props.color } } : {}),
-        // Static markup generated from files in this repository - no user input
-        // reaches it. Needed because these icons are not uniformly a single
-        // path: preserving the source markup keeps masks, groups and baked
-        // stroke weights exactly as the converter emitted them.
-        innerHTML: inner
-    });
+    const hasLocalId = inner.includes(LOCAL_ID);
 
-    icon.props = ['size', 'color', 'stroke'];
-    icon.displayName = name;
+    return markRaw(defineComponent({
+        name,
+        props: {
+            size: { type: [Number, String], default: 24 },
+            color: { type: String, default: undefined },
+            /** Accepted and ignored - these are fills, or have their weight baked in. */
+            stroke: { type: [Number, String], default: undefined }
+        },
+        setup(props) {
+            // useId() is called once per instance, so the generated id is stable
+            // across re-renders and does not churn the DOM. Only `sector` needs
+            // it; every other icon carries no id and is used as-is.
+            const markup = hasLocalId
+                ? inner.split(LOCAL_ID).join(`${LOCAL_ID}-${useId()}`)
+                : inner;
 
-    return markRaw(icon);
+            return () => h('svg', {
+                xmlns: 'http://www.w3.org/2000/svg',
+                viewBox: '0 0 24 24',
+                width: props.size,
+                height: props.size,
+                fill: 'currentColor',
+                stroke: 'none',
+                'aria-hidden': 'true',
+                ...(props.color ? { style: { color: props.color } } : {}),
+                // Static markup generated from files in this repository - no user
+                // input reaches it. Needed because these icons are not uniformly a
+                // single path: preserving the source markup keeps masks, groups and
+                // baked stroke weights exactly as the converter emitted them.
+                innerHTML: markup
+            });
+        }
+    }));
 }
 
 /**
