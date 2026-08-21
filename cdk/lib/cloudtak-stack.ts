@@ -188,6 +188,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
@@ -212,6 +217,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
 
@@ -236,6 +246,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
