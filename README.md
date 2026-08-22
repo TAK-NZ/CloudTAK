@@ -128,13 +128,14 @@ This stack uses a **hybrid Docker image strategy** that supports both pre-built 
 1. **CloudTAK API**: Web interface and API services
 2. **Events Task**: Event processing container
 3. **PMTiles Task**: Tile generation container
-4. **Data Task**: Data processing container
+4. **Retention Task**: Scheduled data retention container
 
 ### Upstream Integration
-- **Configurable Sync**: Weekly sync with upstream repository (configurable via SYNC_MODE)
-- **Sync Modes**: Disabled, main branch, or latest version tag
-- **Branding Application**: TAK.NZ customizations applied after sync
+- **Merge-based Sync**: `scripts/sync-upstream.sh` 3-way merges upstream `api/` and `tasks/` via the `vendor/upstream` branch, so TAK.NZ changes are carried forward by git rather than re-applied
+- **Manual by design**: run when you intend to take a new upstream release; every sync needs review on our side
+- **Branding Application**: TAK.NZ customizations applied at image build time
 - **Version Tagging**: Git SHA and version-based image tags
+- **Fork Delta**: [`docs/fork/FORK-DELTA.md`](docs/fork/FORK-DELTA.md) records why each customization exists
 
 ### Certificate Management
 - **User Certificates**: Automatic enrollment and renewal on OIDC login (7-day threshold)
@@ -219,7 +220,7 @@ npm run deploy:local:dev
 - **[🔧 Environment Variables](docs/ENVIRONMENT_VARIABLES.md)** - CloudTAK application configuration via environment variables
 - **[🪝 Webhooks Guide](docs/WEBHOOKS.md)** - Incoming webhook support for ETL layers
 - **[🔐 OIDC Authentication](docs/OIDC_AUTHENTICATION.md)** - In-app Single Sign-On setup with Authentik
-- **[📜 Certificate Management](docs/CERTIFICATE_MANAGEMENT.md)** - Automatic certificate monitoring and renewal
+- **[📜 Certificate Management](docs/fork/README-CERT-RENEWAL.md)** - Automatic certificate monitoring and renewal
 
 ## Security Features
 

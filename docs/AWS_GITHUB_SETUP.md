@@ -112,24 +112,19 @@ graph TD
 2. **build-images**: Sync upstream, apply branding, build production images
 3. **deploy-production**: Deploy to production with built images (requires approval)
 
-### 6.4 Weekly Upstream Sync (`weekly-sync.yml`)
+### 6.4 Upstream Sync (manual, not a workflow)
 
-**Triggers:**
-- Schedule: Saturday 2AM NZST (14:00 UTC)
-- Manual dispatch
+Syncing from upstream is **not** automated. Run `scripts/sync-upstream.sh`
+locally when you intend to take a new upstream release, then open a PR from the
+branch it creates. See [`UPSTREAM-SYNC.md`](UPSTREAM-SYNC.md) for the runbook.
 
-**Process:**
-1. Check sync mode configuration
-2. Sync with upstream CloudTAK repository (main branch or latest tag)
-3. Commit clean upstream code (no branding applied)
-4. Create pull request for review
+A scheduled `weekly-sync.yml` workflow used to exist. It was removed: every sync
+needs real work on our side regardless of how clean the merge is, so an automated
+attempt bought nothing, and it held `contents: write` over `vendor/upstream` —
+the branch the sync mechanism depends on remaining an ancestor of `main`.
 
-**Sync Modes:**
-- `main` - Sync with upstream main branch
-- `tag` - Sync with latest version tag
-- Unset/disabled - No sync performed
-
-**Note:** Branding is now applied at build time, not during sync. This keeps the main branch clean with upstream code only.
+**Note:** branding is applied at build time, not during sync, so `main` carries
+upstream code plus our own changes and nothing branding-specific.
 
 ### 6.5 Image Building with Conditional Branding
 
@@ -169,8 +164,10 @@ graph TD
 
 | Variable | Description | Values | Usage |
 |----------|-------------|--------|-------|
-| `SYNC_MODE` | Controls weekly upstream sync behavior | `main`, `tag`, or unset | `main` = sync with main branch, `tag` = sync with latest version tag, unset = disabled |
 | `APPLY_BRANDING` | Controls whether TAK.NZ branding is applied during image builds | `true`, `false` | `true` = apply branding at build time, `false` = build with upstream code only |
+
+`SYNC_MODE` used to gate the scheduled upstream sync. Both the variable and the
+workflow are gone — syncing is manual, see section 6.4.
 
 ## 8. Composite Actions
 

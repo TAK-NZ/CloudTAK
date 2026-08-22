@@ -39,7 +39,8 @@ VENDOR_BRANCH="vendor/upstream"
 VERSION_FILE=".upstream-version"
 SYNC_PATHS=(api tasks)
 
-# Machine-readable outcomes, consumed by .github/workflows/weekly-sync.yml.
+# Machine-readable outcomes, so a caller can distinguish "nothing to do" from
+# "needs a human" without parsing output.
 EXIT_MERGED=0        # merged cleanly, commit created
 EXIT_ERROR=1         # precondition failed / unrecoverable
 EXIT_UP_TO_DATE=5    # already on the target upstream version, nothing done
