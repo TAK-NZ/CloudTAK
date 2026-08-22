@@ -9,7 +9,8 @@
         />
         <div class='modal-header text-body'>
             <div class='modal-title d-flex align-items-center'>
-                <IconTarget
+                <component
+                    :is='TAKNZ_DRAWTOOL_ICONS["range_rings"]'
                     :size='32'
                     stroke='1'
                 />
@@ -130,9 +131,9 @@ import Coordinate from '../util/Coordinate.vue';
 import PropertyDistance from '../Property/PropertyDistance.vue';
 import ProfileConfig from '../../../base/profile.ts';
 import Ellipse from '@turf/ellipse'
+import TAKNZ_DRAWTOOL_ICONS from '../../../base/taknz-drawtool-icons.ts';
 import {
     IconPlus,
-    IconTarget,
     IconTrash
 } from '@tabler/icons-vue';
 import {

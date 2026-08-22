@@ -24,9 +24,14 @@ export interface ContextEnvironmentConfig {
   ecs: {
     taskCpu: number;
     taskMemory: number;
+    /** Baseline task count for the stateless API service; also the autoscaling floor. */
     desiredCount: number;
     enableDetailedLogging: boolean;
     enableEcsExec?: boolean;
+    /** CPU target for the stateless API service's tracking policy. Defaults to 70. */
+    targetCpuUtilization?: number;
+    /** Autoscaling ceiling for the stateless API service. Defaults to 10. */
+    maxCapacity?: number;
   };
   cloudtak: {
     hostname: string;

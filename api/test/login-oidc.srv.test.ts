@@ -229,7 +229,7 @@ test('GET: api/login/oidc/callback - Authentik attribute sync populates callsign
         phone: null,
         system_admin: false,
         agency_admin: [],
-        tak_callsign: 'ATTRSYNC (Web)',
+        tak_callsign: 'ATTRSYNC',
         tak_group: 'Blue',
         tak_role: 'Team Lead',
     });
@@ -244,7 +244,7 @@ test('GET: api/login/oidc/callback - Authentik attribute sync populates callsign
         });
         const profile = await res.json();
 
-        assert.equal(profile.tak_callsign, 'ATTRSYNC (Web)');
+        assert.equal(profile.tak_callsign, 'ATTRSYNC');
         assert.equal(profile.tak_group, 'Blue');
         assert.equal(profile.tak_role, 'Team Lead');
 

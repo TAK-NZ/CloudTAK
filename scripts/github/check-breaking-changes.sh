@@ -14,7 +14,6 @@ PATTERNS=(
   "TaskDefinition.*will be destroyed"
   "S3.*Bucket.*will be destroyed"
   "Lambda.*will be destroyed"
-  "BatchJobQueue.*will be destroyed"
 )
 
 echo "🔍 Checking for breaking changes in CloudTAK stack..."

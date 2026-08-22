@@ -13,7 +13,7 @@ import {
     IconNetwork,
     IconPackages,
     IconSettings,
-    IconReplace,
+    IconAmbulance,
     IconServerCog,
     IconBoxMultiple,
     IconFileImport,
@@ -24,6 +24,7 @@ import ProfileConfig from '../../base/profile.ts';
 import ContactManager from '../../base/contact.ts';
 import Chatroom from '../../base/chatroom.ts';
 import Config from '../../base/config.ts';
+import TAKNZ_NAV_ICONS from '../../base/taknz-nav-icons.ts';
 import type { Profile } from '../../types.ts';
 
 export type MenuItemConfig = {
@@ -145,7 +146,7 @@ export default class MenuManager {
                 route: '/menu/missions',
                 tooltip: 'Data Sync',
                 description: 'Real-Time Datasets',
-                icon: IconReplace,
+                icon: IconAmbulance,
             },
             {
                 key: 'packages',
@@ -259,7 +260,14 @@ export default class MenuManager {
                 description: 'Adjust personal display preferences.',
                 icon: IconSettings,
             },
-        ];
+        ].map((item) => {
+            // TAK.NZ swaps in ATAK-CIV icons per menu key. Keys absent from the
+            // map keep whatever upstream ships, so the array above stays
+            // byte-identical to upstream and merges cleanly when upstream adds
+            // or reorders entries. See base/taknz-nav-icons.ts.
+            const override = TAKNZ_NAV_ICONS[item.key];
+            return override ? { ...item, icon: override } : item;
+        });
     }
 
     get items(): ComputedRef<MenuItemConfig[]> {

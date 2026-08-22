@@ -389,18 +389,33 @@ import {
 } from '@tak-ps/vue-tabler'
 import {
     IconX,
-    IconLine,
-    IconPoint,
     IconPencil,
     IconChevronUp,
     IconChevronDown,
-    IconCircle,
-    IconLasso,
-    IconCone,
-    IconVector,
-    IconPolygon,
     IconCheck,
 } from '@tabler/icons-vue';
+import TAKNZ_DRAWTOOL_ICONS from '../../../base/taknz-drawtool-icons.ts';
+
+// TAK.NZ swaps in the same ATAK-CIV icons the drawing tools palette uses, so this
+// pane's header matches the tool that opened it. Bound to upstream's Tabler names
+// rather than editing the template, which keeps the template byte-identical and
+// the conflict surface at this one block. If upstream switches a header to a
+// different icon the unused binding fails the build rather than silently
+// reverting. See base/taknz-drawtool-icons.ts and branding/atak-icons/DRAWTOOLS.md.
+//
+// IconPencil ("Editing Existing Feature") stays Tabler: it is the edit-existing
+// affordance, not one of the create tools, and ATAK ships no matching glyph -
+// the same reason the palette trigger keeps IconPencilPlus. IconCheck, IconX and
+// the chevrons are generic UI and are left alone.
+const {
+    point: IconPoint,
+    line: IconLine,
+    polygon: IconPolygon,
+    rectangle: IconVector,
+    circle: IconCircle,
+    sector: IconCone,
+    lasso: IconLasso,
+} = TAKNZ_DRAWTOOL_ICONS;
 
 const mapStore = useMapStore();
 const appStore = useAppStore();

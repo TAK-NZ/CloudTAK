@@ -476,12 +476,21 @@ export default class AuthentikProvider {
             phone: null,
             system_admin: isSystemAdmin,
             agency_admin: agencyAdminIds,
-            // Suffix with " (Web)" to distinguish this CloudTAK (browser) session's
-            // callsign from the same user's ATAK/WinTAK device callsign — Authentik
-            // supplies the same base callsign attribute to both, and TAK Server does
-            // not disambiguate clients by anything other than the literal callsign
-            // string, so without this two sessions for the same person would collide.
-            tak_callsign: attributes.takCallsign ? `${attributes.takCallsign} (Web)` : attributes.takCallsign,
+            // Passed through verbatim, matching upstream, which does not decorate
+            // the callsign at all.
+            //
+            // This used to append " (Web)" so a browser session was distinguishable
+            // from the same person's ATAK/WinTAK device, since Authentik hands the
+            // same callsign attribute to both and TAK Server disambiguates clients
+            // only by the literal callsign string. That trade was reconsidered: the
+            // suffix showed up everywhere the callsign is displayed, and it is not
+            // how upstream or any other TAK client behaves.
+            //
+            // Note the certificate enrollment path below still uses a " (Web)"
+            // suffixed `clientUid`. That is a different identifier - it keeps the
+            // browser's TAK Server client certificate from colliding with the user's
+            // device certificate - and is deliberately left alone.
+            tak_callsign: attributes.takCallsign,
             tak_group: attributes.takColor,
             tak_role: attributes.takRole,
         };
