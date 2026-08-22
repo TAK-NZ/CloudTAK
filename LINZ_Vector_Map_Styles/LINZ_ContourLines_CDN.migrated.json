@@ -1,0 +1,370 @@
+[
+  {
+    "id": "Contours-Index-Halo",
+    "type": "line",
+    "paint": {
+      "line-blur": 0.3,
+      "line-color": "rgba(0, 0, 0, 0.75)",
+      "line-width": {
+        "stops": [
+          [
+            10,
+            0.9
+          ],
+          [
+            12,
+            0.9
+          ],
+          [
+            15,
+            1.2
+          ]
+        ]
+      },
+      "line-offset": 0.3,
+      "line-opacity": 0.1
+    },
+    "filter": [
+      "all",
+      [
+        "==",
+        [
+          "get",
+          "type"
+        ],
+        "index"
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "minzoom": 10,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Contours-All",
+    "type": "line",
+    "paint": {
+      "line-color": "rgba(206, 103, 6, 0.75)",
+      "line-width": {
+        "stops": [
+          [
+            12,
+            0.4
+          ],
+          [
+            16,
+            0.6
+          ]
+        ]
+      },
+      "line-opacity": {
+        "stops": [
+          [
+            13,
+            0.3
+          ],
+          [
+            14,
+            1
+          ]
+        ]
+      }
+    },
+    "filter": [
+      "all",
+      [
+        "!",
+        [
+          "has",
+          "designated"
+        ]
+      ],
+      [
+        "!=",
+        [
+          "get",
+          "type"
+        ],
+        "index"
+      ],
+      [
+        "!",
+        [
+          "has",
+          "nat_form"
+        ]
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "minzoom": 13,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Contours-Designated",
+    "type": "line",
+    "paint": {
+      "line-color": "rgba(206, 103, 6, 0.75)",
+      "line-width": 0.4,
+      "line-dasharray": [
+        30,
+        30
+      ]
+    },
+    "filter": [
+      "all",
+      [
+        "has",
+        "designated"
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "minzoom": 9,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Contours-Index",
+    "type": "line",
+    "paint": {
+      "line-color": {
+        "stops": [
+          [
+            10,
+            "rgba(205, 128, 31, 0.5)"
+          ],
+          [
+            15,
+            "rgba(207, 129, 43, 0.75)"
+          ]
+        ]
+      },
+      "line-width": {
+        "stops": [
+          [
+            10,
+            0.5
+          ],
+          [
+            12,
+            0.7
+          ],
+          [
+            15,
+            1.2
+          ]
+        ]
+      },
+      "line-opacity": {
+        "stops": [
+          [
+            10,
+            0
+          ],
+          [
+            11,
+            1
+          ]
+        ]
+      }
+    },
+    "filter": [
+      "all",
+      [
+        "==",
+        [
+          "get",
+          "type"
+        ],
+        "index"
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "minzoom": 10,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Contours-Natural",
+    "type": "line",
+    "paint": {
+      "line-color": "rgba(206, 103, 6, 0.75)",
+      "line-width": 0.6,
+      "line-dasharray": [
+        30,
+        10,
+        10,
+        10
+      ]
+    },
+    "filter": [
+      "all",
+      [
+        "has",
+        "nat_form"
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "minzoom": 9,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Contours-Label",
+    "type": "symbol",
+    "paint": {
+      "text-color": "rgba(193, 104, 9, 1)",
+      "text-halo-blur": 0.5,
+      "text-halo-color": "rgba(243, 243, 242, 1)",
+      "text-halo-width": 1.5
+    },
+    "filter": [
+      "any",
+      [
+        "==",
+        [
+          "get",
+          "type"
+        ],
+        "index"
+      ],
+      [
+        "has",
+        "designated"
+      ]
+    ],
+    "layout": {
+      "text-font": [
+        "Open Sans Bold"
+      ],
+      "text-size": {
+        "stops": [
+          [
+            13,
+            8
+          ],
+          [
+            15,
+            12
+          ]
+        ]
+      },
+      "text-field": "{elevation}",
+      "visibility": "visible",
+      "text-padding": 0,
+      "symbol-spacing": {
+        "stops": [
+          [
+            10,
+            150
+          ],
+          [
+            16,
+            300
+          ]
+        ]
+      },
+      "symbol-placement": "line",
+      "text-line-height": 1,
+      "text-keep-upright": false,
+      "text-allow-overlap": false
+    },
+    "source": "LINZ Basemaps",
+    "maxzoom": 20,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Height-Point",
+    "type": "circle",
+    "paint": {
+      "circle-color": "rgba(47, 47, 46, 1)",
+      "circle-radius": 2
+    },
+    "filter": [
+      "all",
+      [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "peak"
+      ]
+    ],
+    "layout": {
+      "visibility": "visible"
+    },
+    "source": "LINZ Basemaps",
+    "maxzoom": 18,
+    "minzoom": 13,
+    "source-layer": "contours"
+  },
+  {
+    "id": "Height-Point-Labels",
+    "type": "symbol",
+    "paint": {
+      "text-halo-blur": 0.5,
+      "text-halo-color": "rgba(243, 243, 242, 0.75)",
+      "text-halo-width": 1,
+      "text-translate-anchor": "map"
+    },
+    "filter": [
+      "all",
+      [
+        "==",
+        [
+          "get",
+          "kind"
+        ],
+        "peak"
+      ]
+    ],
+    "layout": {
+      "text-font": [
+        "Open Sans Italic"
+      ],
+      "text-size": {
+        "stops": [
+          [
+            13,
+            8
+          ],
+          [
+            15,
+            11
+          ]
+        ]
+      },
+      "text-field": "{elevation}",
+      "visibility": "visible",
+      "text-anchor": "bottom-left",
+      "text-offset": [
+        0.2,
+        -0.2
+      ],
+      "text-justify": "auto",
+      "text-optional": false,
+      "text-allow-overlap": false,
+      "icon-pitch-alignment": "auto",
+      "text-variable-anchor": [
+        "bottom-left",
+        "bottom-right"
+      ],
+      "text-ignore-placement": false
+    },
+    "source": "LINZ Basemaps",
+    "maxzoom": 18,
+    "minzoom": 13,
+    "source-layer": "contours"
+  }
+]
