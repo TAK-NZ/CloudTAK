@@ -11,11 +11,10 @@ on:
       - 'docs/**'
       - '*.md'
       - '.gitignore'
-      # Upstream-sync bookkeeping and the patch archive never affect the
-      # deployed artifact. scripts/** is deliberately NOT excluded, because
-      # build.sh and deploy.sh do.
+      # Upstream-sync bookkeeping never affects the deployed artifact.
+      # scripts/** is deliberately NOT excluded, because build.sh and deploy.sh
+      # do. The fork-delta docs live under docs/**, already excluded above.
       - '.upstream-version'
-      - 'scripts/patches/**'
   workflow_dispatch:
 
 permissions:

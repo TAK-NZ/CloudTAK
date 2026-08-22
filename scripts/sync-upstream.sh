@@ -10,7 +10,7 @@
 #
 # That is not a merge. It has no "ours" side: it deletes every TAK-NZ
 # customization in api/ and tasks/ and replaces it with pristine upstream. The
-# customizations then had to be re-applied by hand from scripts/patches/, which
+# customizations then had to be re-applied by hand from a patch archive, which
 # is how we lost TAK certificate provisioning, first-login attribute sync, and
 # wrote TAK attributes to a table that has no such columns during the v13 port.
 #
@@ -24,9 +24,10 @@
 #
 # This also survives upstream restructures. When upstream moved api/lib/ to
 # api/common/ + api/stateless/ in v13.62.0, git followed the renames and carried
-# our auth.ts customizations into the new location automatically. 25 of the 45
-# files in scripts/patches/ target paths that no longer exist and could not be
-# applied at all.
+# our auth.ts customizations into the new location automatically. The old patch
+# archive did not: by v13.70.0 only 8 of its 45 patches still matched the tree,
+# and 19 targeted paths that no longer existed. It has been deleted; the
+# rationale it carried now lives in docs/fork/FORK-DELTA.md.
 #
 # See docs/UPSTREAM-SYNC.md for the full runbook.
 
@@ -38,7 +39,8 @@ VENDOR_BRANCH="vendor/upstream"
 VERSION_FILE=".upstream-version"
 SYNC_PATHS=(api tasks)
 
-# Machine-readable outcomes, consumed by .github/workflows/weekly-sync.yml.
+# Machine-readable outcomes, so a caller can distinguish "nothing to do" from
+# "needs a human" without parsing output.
 EXIT_MERGED=0        # merged cleanly, commit created
 EXIT_ERROR=1         # precondition failed / unrecoverable
 EXIT_UP_TO_DATE=5    # already on the target upstream version, nothing done
@@ -312,8 +314,8 @@ if [ -n "$CONFLICTS" ]; then
     fi
     echo
     echo "📋 next steps:"
-    echo "   1. Resolve each file. scripts/patches/*.patch and scripts/patches/PATCH_AUDIT.md"
-    echo "      explain why each TAK-NZ customization exists - use them as reference."
+    echo "   1. Resolve each file. docs/fork/FORK-DELTA.md explains why each TAK-NZ"
+    echo "      customization exists, grouped by concern - use it as reference."
     echo "   2. git add <file> ... && git commit      ${DIM}(the merge commit is pre-staged)${OFF}"
     echo "   3. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
     echo "   4. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"
