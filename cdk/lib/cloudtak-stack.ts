@@ -202,6 +202,12 @@ export class CloudTakStack extends cdk.Stack {
           // change under branding/ rewrites their asset hash and forces a
           // pointless rebuild and ECR push of images that never read it.
           'branding/**',
+          // Large published geospatial archives kept locally for convenience
+          // (see data/README.md). Same reasoning as branding/, but the stakes
+          // are higher: a single .pmtiles here is over a gigabyte, so including
+          // it would stage that into cdk.out and hand it to the Docker daemon on
+          // every local synth.
+          'data/**',
         ]
       });
       
@@ -231,6 +237,12 @@ export class CloudTakStack extends cdk.Stack {
           // change under branding/ rewrites their asset hash and forces a
           // pointless rebuild and ECR push of images that never read it.
           'branding/**',
+          // Large published geospatial archives kept locally for convenience
+          // (see data/README.md). Same reasoning as branding/, but the stakes
+          // are higher: a single .pmtiles here is over a gigabyte, so including
+          // it would stage that into cdk.out and hand it to the Docker daemon on
+          // every local synth.
+          'data/**',
         ]
       });
 
@@ -260,6 +272,12 @@ export class CloudTakStack extends cdk.Stack {
           // change under branding/ rewrites their asset hash and forces a
           // pointless rebuild and ECR push of images that never read it.
           'branding/**',
+          // Large published geospatial archives kept locally for convenience
+          // (see data/README.md). Same reasoning as branding/, but the stakes
+          // are higher: a single .pmtiles here is over a gigabyte, so including
+          // it would stage that into cdk.out and hand it to the Docker daemon on
+          // every local synth.
+          'data/**',
         ]
       });
       
