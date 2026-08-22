@@ -29,7 +29,7 @@ git checkout "$UPSTREAM_TAG" -- api/ tasks/     # ← the old way
 
 That is not a merge. It has no "ours" side — it **deletes** every TAK-NZ change
 in those directories and replaces them with pristine upstream. The changes then
-had to be reinstated by hand from `scripts/patches/`. That is how the v13 port
+had to be reinstated by hand from a patch archive. That is how the v13 port
 lost TAK certificate provisioning entirely, lost first-login attribute sync, and
 wrote TAK attributes to a table with no such columns. Five follow-up fix commits.
 
@@ -85,11 +85,9 @@ missing** rather than producing a 1,200-conflict mess.
 
 Conflicts are grouped by kind:
 
-- **both sides changed** — the real work. Upstream and TAK-NZ touched the same
-  code. `scripts/patches/*.patch` and
-  [`scripts/patches/PATCH_AUDIT.md`](../scripts/patches/PATCH_AUDIT.md) explain
-  why each customization exists; use them as reference. They are a historical
-  record, not applicable patches.
+- **both sides changed** — the real work.
+  [`docs/fork/FORK-DELTA.md`](fork/FORK-DELTA.md) explains why each customization
+  exists, grouped by concern and keyed by current paths; use it as reference.
 - **TAK-NZ-only files upstream relocated** — usually just `git add`.
 - **deleted on one side** — decide whether the customization still applies. If
   upstream implemented it properly, drop ours.
@@ -156,8 +154,8 @@ TAK-NZ-only *new* files (`oidc.ts`, `cert-health.ts`, `authentik-provider.ts`,
 inline edit into a new file, an extension point or env-driven config stops
 conflicting forever. `login.ts` and `map.ts` are the two best candidates.
 
-And keep filing upstream feature requests (`UPSTREAM-FEATURE-REQUEST*.md`) —
-every accepted change is a permanent deletion from what we carry.
+And keep filing feature requests against dfpc-coe/CloudTAK — every accepted
+change is a permanent deletion from what we carry.
 
 ## Files involved
 
@@ -167,7 +165,7 @@ every accepted change is a permanent deletion from what we carry.
 | `.upstream-version` | The upstream ref currently merged into `main`. |
 | `scripts/sync-upstream.sh` | Does the sync. Exit codes: 0 merged, 5 up to date, 10 conflicts, 1 error. |
 | `.github/workflows/weekly-sync.yml` | Weekly automation. |
-| `scripts/patches/` | **Historical record** of why each customization exists. Not applied. |
+| `docs/fork/` | Why each customization exists. `FORK-DELTA.md` is the index; the `README-*.md` files are per-topic deep dives. |
 | `scripts/post-sync-validate.sh` | Advisory checks. Hardcodes pre-v13.27 paths (`lib/schema.ts`, `routes/`), so it misreports after an upstream restructure. |
 
 ## First-time setup

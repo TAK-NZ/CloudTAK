@@ -646,5 +646,5 @@ TAK.NZ observability approach.
   to *adopt* upstream's stateless/hub split rather than design a bespoke equivalent, and now depends on
   item 1 here for its infrastructure. Items 2–4 there (streaming inputs, GeoChat agents, KMZ output)
   are unaffected by upstream and remain fork-local work.
-- `scripts/patches/PATCH_AUDIT.md` — application-side patches for the v13.70.0 sync are tracked
+- `docs/fork/FORK-DELTA.md` — application-side patches for the v13.70.0 sync are tracked
   separately there; this document covers infrastructure only.

@@ -4,9 +4,9 @@ name: Weekly Upstream Sync
 # (Saturday 2AM NZST) using a real 3-way merge via the vendor/upstream branch.
 #
 # This workflow used to run `git checkout <upstream> -- api/ tasks/`, which
-# deleted every TAK-NZ customization and required a manual re-port from
-# scripts/patches/. It now merges instead, so our changes are carried forward by
-# git and only genuine overlaps need a human. See docs/UPSTREAM-SYNC.md.
+# deleted every TAK-NZ customization and required a manual re-port from a patch
+# archive. It now merges instead, so our changes are carried forward by git and
+# only genuine overlaps need a human. See docs/UPSTREAM-SYNC.md.
 #
 # Outcomes:
 #   clean merge  -> pushes the sync branch + vendor branch and opens a PR
@@ -194,9 +194,9 @@ jobs:
 
           Open a PR and **merge it with a merge commit, never squash.**
 
-          \`scripts/patches/*.patch\` and \`scripts/patches/PATCH_AUDIT.md\` document
-          why each TAK-NZ customization exists - use them as reference when
-          resolving. Note they are historical records, not applicable patches.
+          \`docs/fork/FORK-DELTA.md\` documents why each TAK-NZ customization
+          exists, grouped by concern and keyed by current paths - use it as
+          reference when resolving.
 
           <details><summary>Conflict report</summary>
 
