@@ -1,7 +1,6 @@
 <template>
     <MenuTemplate
         name='Deleted Features'
-        :loading='!mapStore.isLoaded'
     >
         <template #buttons>
             <TablerDropdown>
@@ -142,8 +141,8 @@ import {
     TablerPager,
 } from '@tak-ps/vue-tabler';
 import { std, server } from '../../../std.ts';
-import { WorkerMessageType } from '../../../base/events.ts';
-import type { WorkerMessage } from '../../../base/events.ts';
+import { WorkerMessageType } from '../../../utils/events.ts';
+import type { WorkerMessage } from '../../../utils/events.ts';
 import type { ComponentExposed } from 'vue-component-type-helpers'
 import type { FeatureCollection } from '../../../types.ts';
 import {

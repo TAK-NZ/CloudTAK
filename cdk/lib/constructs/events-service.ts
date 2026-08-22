@@ -113,11 +113,13 @@ export class EventsService extends Construct {
       }
     });
 
-    // Create task definition — fixed 1024 CPU / 2048 MB per upstream change #11
+    // Create task definition — fixed 1024 CPU / 4096 MB.
+    // Memory raised from 2048 to match upstream v13.70.0 (cloudformation/lib/events.js):
+    // OOM headroom for bulk imports. 1 vCPU supports 2-8 GB on Fargate.
     this.taskDefinition = new ecs.FargateTaskDefinition(this, 'EventsTaskDefinition', {
       family: `TAK-${envConfig.stackName}-CloudTAK-events`,
       cpu: 1024,
-      memoryLimitMiB: 2048,
+      memoryLimitMiB: 4096,
       taskRole: taskRole,
       executionRole: executionRole
     });
@@ -151,7 +153,15 @@ export class EventsService extends Construct {
       logging: ecs.LogDrivers.awsLogs({
         logGroup: logGroup,
         streamPrefix: `TAK-${envConfig.stackName}-CloudTAK`
-      })
+      }),
+      // Restart in place instead of replacing the task. Matches upstream
+      // v13.70.0 (cloudformation/lib/events.js). See cloudtak-api.ts for the
+      // full reasoning and the circuit-breaker trade-off.
+      //
+      // Worth most on this service: it is a single task, so a task replacement
+      // is a complete gap in event processing until the replacement is healthy.
+      enableRestartPolicy: true,
+      restartAttemptPeriod: cdk.Duration.seconds(300)
     });
 
     container.addPortMappings({
@@ -177,7 +187,15 @@ export class EventsService extends Construct {
       enableExecuteCommand: envConfig.ecs.enableEcsExec,
 
       healthCheckGracePeriod: cdk.Duration.seconds(300),
-      propagateTags: ecs.PropagatedTagSource.SERVICE
+      propagateTags: ecs.PropagatedTagSource.SERVICE,
+
+      // Roll forward rather than draining first. Left unset, CDK defaults
+      // minHealthyPercent to 50, and 50% of a single task rounds down to zero
+      // required healthy - so a deploy stopped the only events task before
+      // starting its replacement. Upstream's EventsService declares no
+      // DeploymentConfiguration at all, taking the ECS default of 100/200.
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200
     });
 
     // Add tags

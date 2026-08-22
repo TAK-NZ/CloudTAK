@@ -103,7 +103,7 @@ npm run deploy:prod
 - **ECR Repository** - Container image storage (imported from BaseInfra)
 
 ### Processing & Integration
-- **AWS Batch** - Scalable ETL job processing for data, events, and pmtiles
+- **ECS Tasks** - Uploaded-data conversion (events), tile generation (pmtiles) and data retention
 - **Lambda Functions** - Event-driven processing for S3 notifications and image handling
 - **Secrets Manager** - Application secrets and database credentials
 - **CloudWatch Alarms** - SNS topics and alarms for Lambda function monitoring

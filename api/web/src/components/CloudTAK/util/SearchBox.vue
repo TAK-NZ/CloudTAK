@@ -1,7 +1,5 @@
 <template>
-    <div
-        class='text-white cloudtak-bg rounded position-relative'
-    >
+    <div class='position-relative'>
         <div class='d-flex align-items-end gap-1'>
             <TablerInput
                 ref='searchBoxRef'
@@ -34,7 +32,7 @@
         </div>
 
         <div
-            class='dropdown-menu w-100 mt-2 p-2'
+            class='dropdown-menu cloudtak-panel w-100 mt-2 p-2'
             :class='{
                 "show": shown,
             }'
@@ -280,7 +278,6 @@ async function fetchSearch(
                 zoom: 15
             });
 
-            // Create a draw point on the map
             const now = new Date().toISOString();
             const featureId = randomUUID();
             const feature = {
@@ -350,7 +347,6 @@ async function fetchSearch(
                 }
             });
 
-            // Create a draw point on the map
             const pointName = items[0].address.split(',')[0].trim();
             const now = new Date().toISOString();
             const featureId = randomUUID();
@@ -392,18 +388,9 @@ async function fetchSearch(
 </script>
 
 <style scoped>
-.icon-wrapper {
-    width: 3rem;
-    height: 3rem;
-    min-width: 3rem;
-    min-height: 3rem;
-    flex-shrink: 0;
-}
-
 .location-picker-btn {
     width: 2.375rem;
     height: 2.375rem;
     min-width: 2.375rem;
 }
-
 </style>

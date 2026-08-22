@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div class='card-header sticky-top cloudtak-bg'>
+        <div class='card-header sticky-top cloudtak-header'>
             <h3 class='card-title'>
                 Style Overrides
             </h3>
@@ -24,10 +24,10 @@
 
                         <button
                             class='btn btn-primary btn-icon px-2'
+                            title='Save Style'
                             @click='saveLayer'
                         >
                             <IconDeviceFloppy
-                                v-tooltip='"Save Style"'
                                 :size='32'
                                 stroke='1'
                             />
@@ -81,10 +81,10 @@
                 <div class='ms-auto btn-list'>
                     <button
                         class='btn'
+                        title='JSONata Help'
                         @click='help("query")'
                     >
                         <IconHelp
-                            v-tooltip='"JSONata Help"'
                             :size='32'
                             stroke='1'
                         />
@@ -92,10 +92,10 @@
                     <button
                         v-if='query !== null'
                         class='btn'
+                        title='Return to list'
                         @click='query = null'
                     >
                         <IconX
-                            v-tooltip='"Return to list"'
                             :size='32'
                             stroke='1'
                         />
@@ -104,10 +104,10 @@
                         <button
                             v-if='query === null'
                             class='btn'
+                            title='New Query'
                             @click='newQuery'
                         >
                             <IconPlus
-                                v-tooltip='"New Query"'
                                 :size='32'
                                 stroke='1'
                             />
@@ -229,7 +229,7 @@
 
 <script setup lang='ts'>
 import { ref, onMounted } from 'vue';
-import { openExternalUrl } from '../../../base/capacitor.ts';
+import { openExternalUrl } from '../../../utils/capacitor.ts';
 import { useRoute } from 'vue-router'
 import { server } from '../../../std.ts';
 import type { ETLLayer, ETLLayerTaskCapabilities } from '../../../types.ts';

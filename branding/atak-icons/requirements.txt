@@ -1,0 +1,6 @@
+# Tracing toolchain for branding/atak-icons/*.py
+# Pinned to the versions the committed SVGs were produced with, so a re-trace
+# reproduces them byte-for-byte.
+numpy==2.5.2
+pillow==12.3.0
+potracer==0.0.4

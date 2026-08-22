@@ -60,17 +60,19 @@
                             <TablerEpoch :date='asset.updated' />
                             <div class='ms-auto btn-list'>
                                 <TablerDelete
-                                    v-tooltip='"Delete Asset"'
                                     displaytype='icon'
+                                    title='Delete Asset'
                                     @delete='deleteAsset(asset)'
                                 />
-                                <IconDownload
-                                    v-tooltip='"Download Asset"'
-                                    :size='32'
-                                    stroke='1'
-                                    class='cursor-pointer'
+                                <TablerIconButton
+                                    title='Download Asset'
                                     @click='downloadAsset(asset)'
-                                />
+                                >
+                                    <IconDownload
+                                        :size='32'
+                                        stroke='1'
+                                    />
+                                </TablerIconButton>
                             </div>
                         </td>
                     </tr>
@@ -108,7 +110,7 @@
 import  { useRoute } from 'vue-router'
 import { ref, onMounted } from 'vue';
 import { Preferences } from '@capacitor/preferences';
-import { openExternalUrl } from '../../../base/capacitor.ts';
+import { openExternalUrl } from '../../../utils/capacitor.ts';
 import { server, stdurl } from '../../../std.ts';
 import type { ETLConnectionAssetList } from '../../../types.ts';
 import {

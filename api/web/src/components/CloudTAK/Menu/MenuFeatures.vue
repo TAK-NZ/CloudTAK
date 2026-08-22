@@ -1,7 +1,6 @@
 <template>
     <MenuTemplate
         name='Saved Features'
-        :loading='!mapStore.isLoaded'
     >
         <template #buttons>
             <TablerDropdown>
@@ -248,8 +247,8 @@ import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, useTemplate
 import COT from '../../../base/cot.ts';
 import FeatureManager from '../../../base/feature.ts';
 import type { Feature_ExportFormat } from '../../../base/feature.ts';
-import PathManager from '../../../base/path-manager.ts';
-import type { PathNode } from '../../../base/path-manager.ts';
+import PathManager from '../../../utils/path-manager.ts';
+import type { PathNode } from '../../../utils/path-manager.ts';
 import { FeatureVisibility, GENERAL_SOURCE_ID } from '../../../stores/modules/feature-visibility.ts';
 import { useRouter } from 'vue-router';
 import MenuTemplate from '../util/MenuTemplate.vue';
@@ -269,8 +268,8 @@ import {
     TablerModal,
     TablerButton
 } from '@tak-ps/vue-tabler';
-import type { WorkerMessage } from '../../../base/events.ts';
-import { WorkerMessageType } from '../../../base/events.ts';
+import type { WorkerMessage } from '../../../utils/events.ts';
+import { WorkerMessageType } from '../../../utils/events.ts';
 import {
     IconFile,
     IconFolderPlus,
@@ -496,7 +495,6 @@ async function renameFolder() {
         return;
     }
 
-    // Collect all descendant paths that need updating
     const allPaths = PathManager.flatPaths([node]);
 
     for (const oldP of allPaths) {
@@ -642,7 +640,6 @@ async function refresh(load = false): Promise<void> {
 
     paths.value = PathManager.buildTree<COT>(flatPaths);
 
-    // Reload items for the current folder if navigated into one
     if (currentPath.value !== '/') {
         const node = PathManager.findNode(paths.value, currentPath.value);
         if (node) {
@@ -720,7 +717,6 @@ async function deleteFeatures(): Promise<void> {
 }
 
 async function deletePath(node: PathNode<COT>): Promise<void> {
-    // Destroy sortable instances for this node and all descendants
     const destroySortables = (n: PathNode<COT>) => {
         const sortable = sortables.get(n.id);
         if (sortable) {
@@ -733,7 +729,6 @@ async function deletePath(node: PathNode<COT>): Promise<void> {
     };
     destroySortables(node);
 
-    // Delete COTs for this path and all descendant paths
     const allPaths = PathManager.flatPaths([node]);
     for (const p of allPaths) {
         await FeatureManager.delete({ path: p, permanent: true });

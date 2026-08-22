@@ -1,5 +1,5 @@
 # https://hub.docker.com/_/nginx
-FROM nginx:alpine3.23
+FROM nginx:alpine3.24
 
 EXPOSE 5000
 
@@ -7,31 +7,39 @@ ENV HOME=/home/etl
 WORKDIR $HOME
 
 # Data source configuration
-ARG DATA_SOURCE_URL=https://github.com/dfpc-coe/CloudTAK-Data/archive/refs/tags/v1.1.0.zip
+ARG DATA_SOURCE_URL=https://github.com/dfpc-coe/CloudTAK-Data/archive/refs/tags/v1.2.0.zip
 ARG API_URL
 ARG USE_LOCAL_ZIP=false
 ARG WEB_PLUGINS
 
-RUN apk add --no-cache git nodejs-current npm python3 make bash g++ openssl postgresql-client grep wget unzip
+RUN apk add --no-cache git nodejs-current npm python3 make bash g++ openssl postgresql-client grep wget unzip perf
 
 WORKDIR $HOME/api
 
 ADD package.json ./
 ADD package-lock.json ./
 
-RUN npm install
+# `npm ci` rather than `npm install`, here and for web/ below.
+#
+# The lockfiles are committed, but `npm install` is free to resolve newer
+# versions inside the declared ranges and rewrite the lock during the build - so
+# the committed lock was not authoritative and two builds of the same commit
+# could differ. That is how maplibre-gl 6.4.1 arrived under `^6.0.0` and broke
+# vector-basemap hillshading and flooded the console with source-layer warnings,
+# with no commit of ours to point at.
+#
+# `npm ci` installs exactly the lockfile, so a commit always builds the same way,
+# while upstream stays free to bump ranges whenever it likes. It also fails the
+# build if the lock and package.json disagree, which is where we want to find
+# that out.
+RUN npm ci
 
 COPY ./ $HOME/api
 
-RUN if [ ! -z "$WEB_PLUGINS" ]; then \
-        mkdir -p web/plugins; \
-        for url in $(echo $WEB_PLUGINS | tr "," " "); do \
-            git clone $url web/plugins/$(basename $url .git); \
-        done \
-    fi
+RUN WEB_PLUGINS="$WEB_PLUGINS" node bin/plugin.ts
 
 RUN cd web \
-    && npm install --legacy-peer-deps \
+    && npm ci \
     && npm run lint \
     && npm run check \
     && npm run build \

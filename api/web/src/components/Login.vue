@@ -166,7 +166,7 @@
                                         Login with SSO
                                     </button>
                                 </template>
-                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled'>
+                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled && !isNativePlatform()'>
                                     <div class='my-3 d-flex align-items-center'>
                                         <hr class='flex-grow-1 m-0'>
                                         <span class='mx-2 text-muted small'>or</span>
@@ -345,16 +345,16 @@
 
 <script setup lang='ts'>
 import type { Login_Create, ConfigLogin } from '../types.ts'
-import { ref, computed, onMounted, reactive, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue';
 import { version } from '../../package.json';
 import { IconSettings, IconTrash, IconLock, IconFingerprint, IconUser, IconKey } from '@tabler/icons-vue';
 import { Preferences } from '@capacitor/preferences';
-import { startAuthentication } from '@simplewebauthn/browser';
+import { startAuthentication, WebAuthnAbortService } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
 import Config from '../base/config.ts';
 import type { FullConfig } from '../base/config.ts';
-import { isNativePlatform, supportsServiceWorker } from '../base/capacitor.ts';
-import { getCurrentEntryBuildId } from '../base/service-worker.ts';
+import { isNativePlatform, supportsServiceWorker } from '../utils/capacitor.ts';
+import { getCurrentEntryBuildId } from '../utils/service-worker.ts';
 import { useRouter, useRoute } from 'vue-router'
 import { server } from '../std.ts';
 import { useAppStore } from '../stores/app.ts';
@@ -396,8 +396,6 @@ const customBackgroundColor = computed(() => {
 const footerLogo = computed(() => {
     if (!brandStore.login) return undefined;
 
-    // Check if brand is enabled, if not return undefined (hidden)
-    // If enabled or default, check logic below
     if (brandStore.login.brand?.enabled === 'disabled') {
         return undefined;
     } else if (brandStore.login.brand?.logo) {
@@ -456,6 +454,7 @@ const unregister = async (r: ServiceWorkerRegistration) => {
 }
 
 async function switchServers(): Promise<void> {
+    await appStore.destroySession();
     await Preferences.remove({ key: 'serverUrl' });
     window.location.href = '/setup.html';
 }
@@ -597,7 +596,11 @@ onMounted(async () => {
     brandStore.passkey.enabled = (config as Record<string, unknown>)['passkey::enabled'] !== false;
     brandStore.loaded = true;
 
-    // Check in-app OIDC status (env-var/CDK-driven, see GET /api/server/oidc)
+    // Check in-app OIDC status (env-var/CDK-driven, see GET /api/server/oidc).
+    //
+    // NOTE: upstream calls startConditionalPasskey() here unconditionally. We
+    // deliberately do not - it is called further down gated on !albOidcEnabled,
+    // so passkey conditional mediation stays suppressed while SSO is active.
     try {
         const oidcRes = await fetch('/api/server/oidc');
         if (oidcRes.ok) {
@@ -622,8 +625,7 @@ onMounted(async () => {
     }
 });
 
-// Clear the stored session and wipe the local database. Triggered by the
-// "Not Me" button when the user wants to log in as a different account.
+// Clear the stored session and wipe the local database ("Not Me" button).
 async function notMe(): Promise<void> {
     try {
         await appStore.destroySession();
@@ -636,9 +638,8 @@ async function notMe(): Promise<void> {
     body.value.password = '';
 }
 
-// Persist a successful login. If the authenticated user differs from the one
-// whose data is already cached locally, wipe the database first so the new
-// user does not inherit the previous user's data.
+// Persist a successful login, wiping the database first if a different user
+// than the one cached locally is authenticating.
 async function applySession(login: { token: string; email: string; session: string }): Promise<void> {
     if (storedUsername.value && storedUsername.value !== login.email) {
         await appStore.destroySession();
@@ -700,6 +701,10 @@ async function createLogin() {
         }
     }
 }
+
+onUnmounted(() => {
+    WebAuthnAbortService.cancelCeremony();
+});
 
 async function startConditionalPasskey() {
     try {

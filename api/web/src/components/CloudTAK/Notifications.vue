@@ -2,8 +2,11 @@
     <div
         style='
             width: 400px;
-            max-width: 90vw;
+            max-width: calc(100vw - 16px);
+            min-height: 160px;
             max-height: 50vh;
+            display: flex;
+            flex-direction: column;
         '
     >
         <div class='d-flex align-items-center px-3 py-2 border-bottom'>
@@ -75,6 +78,7 @@
         <div
             v-else
             class='overflow-auto list-group list-group-flush'
+            style='flex: 1; min-height: 0;'
         >
             <div
                 v-for='n in filteredList'

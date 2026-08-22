@@ -5,7 +5,6 @@
  * - Aurora PostgreSQL database (serverless for dev-test, provisioned for prod)
  * - ECS Fargate service for the API
  * - Application Load Balancer with HTTPS
- * - AWS Batch for ETL processing
  * - Lambda functions for event processing
  * - S3 bucket for assets
  * - Secrets Manager for application secrets
@@ -28,11 +27,13 @@ import { LoadBalancer } from './constructs/load-balancer';
 import { CloudTakApi } from './constructs/cloudtak-api';
 import { Route53 } from './constructs/route53';
 import { S3Resources } from './constructs/s3-resources';
-import { Batch } from './constructs/batch';
 import { Secrets } from './constructs/secrets';
 import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
 import { Alarms } from './constructs/alarms';
+import { HubLoadBalancer } from './constructs/hub-load-balancer';
+import { CloudTakStateful } from './constructs/cloudtak-stateful';
+import { Dashboard } from './constructs/dashboard';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
 import { EtlRole } from './constructs/etl-role';
@@ -104,8 +105,7 @@ export class CloudTakStack extends cdk.Stack {
         effect: cdk.aws_iam.Effect.ALLOW,
         principals: [
           new cdk.aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('batch.amazonaws.com')
+          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com')
         ],
         actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
         resources: ['*'],
@@ -154,6 +154,18 @@ export class CloudTakStack extends cdk.Stack {
         },
         exclude: [
           'node_modules/**',
+          // Nested installs. `node_modules/**` above only covers api/node_modules,
+          // the context root - and api/.dockerignore's `node_modules/` is
+          // context-root relative too, so neither of them catches web/. That left
+          // api/web/node_modules (61,226 files, 803 MB) being hashed and copied
+          // into cdk.out on every synth, handed to the Docker daemon as build
+          // context, and baked into a layer by the Dockerfile's `COPY ./` before
+          // `cd web && npm ci` replaced it - so it inflated the image too.
+          // The three root-context assets below already exclude this.
+          '**/node_modules/**',
+          // Built by `npm run build` inside the image; the host's copy is stale
+          // weight at best.
+          'web/dist/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
@@ -185,6 +197,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
@@ -209,6 +226,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
 
@@ -233,6 +255,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
@@ -320,6 +347,14 @@ export class CloudTakStack extends cdk.Stack {
       logsBucket
     });
 
+    // Internal hub ALB. Created before the API service because the stateless
+    // tier needs its DNS name as CLOUDTAK_Hub_URL.
+    const hubLoadBalancer = new HubLoadBalancer(this, 'HubLoadBalancer', {
+      envConfig,
+      vpc,
+      hubAlbSecurityGroup: securityGroups.hubAlb
+    });
+
     // Create Route53 DNS record for the service
     const route53Records = new Route53(this, 'Route53', {
       hostedZone,
@@ -382,16 +417,26 @@ export class CloudTakStack extends cdk.Stack {
       geofenceSecret: secrets.geofenceSecret,
       serviceUrl: route53Records.serviceUrl,
       oidcClientId,
-      oidcClientSecret
+      oidcClientSecret,
+      hubAlbDnsName: hubLoadBalancer.alb.loadBalancerDnsName
     });
 
-    // Create AWS Batch resources for ETL processing
-    const batch = new Batch(this, 'Batch', {
+    // Stateful ("hub") tier: browser WebSockets, the TAK Server connection pool,
+    // geofence/events, and database migrations. Same image and IAM roles as the
+    // API service, differing only by CLOUDTAK_Server_Mode.
+    const cloudtakStateful = new CloudTakStateful(this, 'CloudTakStateful', {
       envConfig,
       vpc,
-      ecrRepository,
-      assetBucketName: s3Resources.assetBucket.bucketName,
-      serviceUrl: route53Records.serviceUrl
+      ecsCluster,
+      statefulSecurityGroup: securityGroups.stateful,
+      httpsListener: loadBalancer.httpsListener,
+      hubRpcTargetGroup: hubLoadBalancer.rpcTargetGroup,
+      containerImage: cloudtakApi.containerImage,
+      containerEnvironment: cloudtakApi.containerEnvironment,
+      containerSecrets: cloudtakApi.containerSecrets,
+      containerEnvironmentFiles: cloudtakApi.containerEnvironmentFiles,
+      taskRole: cloudtakApi.taskRole,
+      executionRole: cloudtakApi.executionRole
     });
 
     // Create ETL role for Lambda layer functions
@@ -406,7 +451,23 @@ export class CloudTakStack extends cdk.Stack {
     // Create monitoring and alarms
     const alarms = new Alarms(this, 'Alarms', {
       envConfig,
-      eventsService: eventsService.service
+      eventsService: eventsService.service,
+      apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
+      loadBalancer: loadBalancer.alb,
+      database: database.cluster
+    });
+
+    // Operational dashboard - stateless and stateful tiers side by side
+    new Dashboard(this, 'Dashboard', {
+      envConfig,
+      loadBalancer: loadBalancer.alb,
+      hubLoadBalancer: hubLoadBalancer.alb,
+      targetGroup: loadBalancer.targetGroup,
+      statefulTargetGroup: cloudtakStateful.targetGroup,
+      apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
+      database: database.cluster
     });
 
     // Create retention service for automated cleanup of expired data
@@ -446,6 +507,16 @@ export class CloudTakStack extends cdk.Stack {
     cloudtakApi.service.node.addDependency(database.connectionStringSecret);
     cloudtakApi.service.node.addDependency(route53Records.aRecord);
     cloudtakApi.service.node.addDependency(route53Records.aaaaRecord);
+
+    // The stateful tier runs migrations, so it must not start before the
+    // database and its connection string exist.
+    cloudtakStateful.service.node.addDependency(database.cluster);
+    cloudtakStateful.service.node.addDependency(database.connectionStringSecret);
+
+    // The stateless tier calls the hub for anything needing a TAK Server
+    // connection, so bring the hub up first. This is ordering only - the
+    // stateless tasks tolerate a hub that is not yet reachable.
+    cloudtakApi.service.node.addDependency(cloudtakStateful.service);
     
     eventsService.service.node.addDependency(database.cluster);
     eventsService.service.node.addDependency(database.connectionStringSecret);

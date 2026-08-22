@@ -1,0 +1,671 @@
+import Err from '@openaddresses/batch-error';
+import S3 from '../../common/aws/s3.js';
+import { sql, and, inArray } from 'drizzle-orm';
+import type ConfigStateless from '../config.js';
+import Auth, { AuthResourceAccess } from '../../common/auth.js';
+import { X509Certificate, createPrivateKey } from 'crypto';
+import { Type } from '@sinclair/typebox';
+import { StandardResponse, ConnectionResponse } from '../../common/types.js';
+import { Connection } from '../../common/schema.js';
+import { ConnectionAuth } from '../../common/connection-config.js';
+import Schema from '@openaddresses/batch-schema';
+import * as Default from '../lib/limits.js';
+import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
+import { needsCertRenewal } from '../lib/cert-health.js';
+import AuthentikProvider from '../lib/authentik-provider.js';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+
+/**
+ * Detect a Postgres unique-constraint violation on the connection name across the
+ * DrizzleQueryError cause chain, as the wrapped error's top-level message does not
+ * always include the underlying Postgres text.
+ */
+function isDuplicateNameError(err: unknown): boolean {
+    let current: unknown = err;
+    while (current) {
+        const parts: string[] = [];
+        if (current instanceof Error) {
+            parts.push(current.message);
+        } else {
+            parts.push(String(current));
+        }
+        if (typeof current === 'object' && 'safe' in current) {
+            parts.push(String((current as { safe?: unknown }).safe));
+        }
+
+        for (const message of parts) {
+            if (
+                message.includes('duplicate key value violates unique constraint')
+                || message.includes('connections_name_unique')
+                || /Key \(name\)=.* already exists/.test(message)
+            ) {
+                return true;
+            }
+        }
+
+        current = current instanceof Error ? current.cause : undefined;
+    }
+    return false;
+}
+
+export default async function router(schema: Schema, config: ConfigStateless) {
+    await schema.get('/connection', {
+        name: 'List Connections',
+        group: 'Connection',
+        description: 'List Connections',
+        query: Type.Object({
+            limit: Default.Limit,
+            page: Default.Page,
+            order: Default.Order,
+            sort: Type.String({
+                default: 'created',
+                enum: Object.keys(Connection),
+            }),
+            filter: Default.Filter,
+        }),
+        res: Type.Object({
+            total: Type.Integer(),
+            status: Type.Object({
+                dead: Type.Integer({ description: 'The connection is not currently connected to a TAK server' }),
+                live: Type.Integer({ description: 'The connection is currently connected to a TAK server' }),
+                unknown: Type.Integer({ description: 'The status of the connection could not be determined' }),
+            }),
+            items: Type.Array(ConnectionResponse),
+        }),
+    }, async (req, res) => {
+        try {
+            const profile = await Auth.as_profile(config, req);
+
+            let where;
+            if (profile.system_admin) {
+                where = sql`name ~* ${req.query.filter}`;
+            } else if (profile.agency_admin.length) {
+                where = and(
+                    sql`name ~* ${req.query.filter}`,
+                    inArray(Connection.agency, profile.agency_admin),
+                );
+            } else {
+                throw new Err(400, null, 'Insufficient Access');
+            }
+
+            const list = await config.models.Connection.list({
+                limit: req.query.limit,
+                page: req.query.page,
+                order: req.query.order,
+                sort: req.query.sort,
+                where,
+            });
+
+            const statuses = await config.hub.connectionStatus(list.items.map(conn => conn.id));
+
+            const json = {
+                total: list.total,
+                status: await config.hub.connectionSummary(),
+                items: list.items.map((conn) => {
+                    const { validFrom, validTo, subject } = new X509Certificate(conn.auth.cert);
+
+                    return {
+                        status: statuses[String(conn.id)],
+                        certificate: { validFrom, validTo, subject },
+                        ...conn,
+                    };
+                }),
+            };
+
+            res.json(json);
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/connection', {
+        name: 'Create Connection',
+        group: 'Connection',
+        description: 'Register a new connection',
+        body: Type.Object({
+            name: Default.NameField,
+            description: Default.DescriptionField,
+            readonly: Type.Boolean({ default: false }),
+            enabled: Type.Boolean({ default: true }),
+            agency: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 1 })])),
+            integrationId: Type.Optional(Type.Integer()),
+            auth: ConnectionAuth,
+        }),
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+            const profile = await config.models.Profile.from(user.email);
+
+            if (!req.body.agency && user.access !== 'admin') {
+                throw new Err(400, null, 'Only System Admins can create a server without an Agency Configured');
+            } else if (req.body.agency && user.access !== 'admin') {
+                if (!profile.agency_admin || !profile.agency_admin.includes(req.body.agency)) {
+                    throw new Err(400, null, 'Cannot create a connection for an Agency you are not an admin of');
+                }
+            }
+
+            if (!config.server) {
+                throw new Err(400, null, 'TAK Server must be configured before a connection can be made');
+            }
+
+            if (req.body.readonly) {
+                req.body.enabled = false;
+            }
+
+            try {
+                new X509Certificate(req.body.auth.cert);
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid X509 Certificate Provided');
+            }
+
+            try {
+                createPrivateKey(req.body.auth.key);
+            } catch (err) {
+                throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid Private Key Provided');
+            }
+
+            const conn = await config.models.Connection.generate({
+                ...req.body,
+                username: user.email,
+            });
+
+            const status = await config.hub.connectionSync(conn.id);
+
+            const { validFrom, validTo, subject } = new X509Certificate(conn.auth.cert);
+
+            const cotak = config.user?.get('cotak');
+            if (req.body.integrationId && cotak && cotak.configured) {
+                if (!profile.id) throw new Err(400, null, 'External ID must be set on profile');
+
+                await cotak.updateMachineUser(profile.id, {
+                    connection_id: conn.id,
+                    integration_id: req.body.integrationId,
+                });
+            }
+
+            res.json({
+                status,
+                certificate: { validFrom, validTo, subject },
+                ...conn,
+            });
+        } catch (err) {
+            if (isDuplicateNameError(err)) {
+                Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'A connection with this name already exists'), res);
+            } else {
+                Err.respond(err, res);
+            }
+        }
+    });
+
+    await schema.post('/connection/refresh', {
+        name: 'Refresh Connections',
+        group: 'Connection',
+        description: 'Refresh all enabled connections',
+        res: StandardResponse,
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+
+            if (user.access !== 'admin') {
+                throw new Err(403, null, 'Only System Admins can refresh all connections');
+            }
+
+            if (!config.server) {
+                throw new Err(400, null, 'TAK Server must be configured before a connection can be made');
+            }
+            for await (const conn of config.models.Connection.iter({
+                where: sql`enabled = true`,
+            })) {
+                try {
+                    await config.hub.connectionSync(conn.id, { force: true });
+                } catch (err) {
+                    console.error(err);
+                }
+            }
+
+            res.json({
+                status: 200,
+                message: 'Connections Refreshed',
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.patch('/connection/:connectionid', {
+        name: 'Update Connection',
+        group: 'Connection',
+        description: 'Update a connection',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        body: Type.Object({
+            name: Type.Optional(Default.NameField),
+            description: Type.Optional(Default.DescriptionField),
+            enabled: Type.Optional(Type.Boolean()),
+            agency: Type.Optional(Type.Union([Type.Null(), Type.Integer({ minimum: 1 })])),
+            auth: Type.Optional(ConnectionAuth),
+        }),
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+            }, req.params.connectionid);
+
+            if (req.body.agency !== undefined && req.body.agency !== connection.agency && await Auth.is_user(config, req)) {
+                const user = await Auth.as_user(config, req, { admin: true });
+                if (!user) throw new Err(400, null, 'Only System Admins can change an agency once a connection is created');
+            }
+
+            if (req.body.auth) {
+                try {
+                    new X509Certificate(req.body.auth.cert);
+                } catch (err) {
+                    throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid X509 Certificate Provided');
+                }
+
+                try {
+                    createPrivateKey(req.body.auth.key);
+                } catch (err) {
+                    throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Invalid Private Key Provided');
+                }
+            }
+
+            if (connection.readonly) {
+                req.body.enabled = false;
+            }
+
+            const conn = await config.models.Connection.commit(req.params.connectionid, {
+                updated: sql`Now()`,
+                ...req.body,
+            });
+
+            const status = await config.hub.connectionSync(conn.id, { force: true });
+
+            const { validFrom, validTo, subject } = new X509Certificate(conn.auth.cert);
+
+            res.json({
+                status,
+                certificate: { validFrom, validTo, subject },
+                ...conn,
+            });
+        } catch (err) {
+            if (isDuplicateNameError(err)) {
+                Err.respond(new Err(400, err instanceof Error ? err : new Error(String(err)), 'A connection with this name already exists'), res);
+            } else {
+                Err.respond(err, res);
+            }
+        }
+    });
+
+    await schema.get('/connection/0', {
+        name: 'Get Admin Connection',
+        group: 'Connection',
+        description: 'Get the admin connection (server-level connection using the server certificate)',
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req, { admin: true });
+
+            if (!config.server.auth.cert || !config.server.auth.key) {
+                throw new Err(400, null, 'Server certificate is not configured');
+            }
+
+            const { validFrom, validTo, subject } = new X509Certificate(config.server.auth.cert);
+
+            res.json({
+                id: 0,
+                status: (await config.hub.connectionStatus([0]))['0'],
+                agency: null,
+                certificate: { validFrom, validTo, subject },
+                created: config.server.created,
+                updated: config.server.updated,
+                readonly: false,
+                username: null,
+                name: 'Admin Connection',
+                description: 'Server-level admin connection. Layers here are managed by server administrators.',
+                enabled: config.server.connection,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/connection/:connectionid', {
+        name: 'Get Connection',
+        group: 'Connection',
+        description: 'Get a connection',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+            }, req.params.connectionid);
+
+            const { validFrom, validTo, subject } = new X509Certificate(connection.auth.cert);
+
+            res.json({
+                status: (await config.hub.connectionStatus([connection.id]))[String(connection.id)],
+                certificate: { validFrom, validTo, subject },
+                ...connection,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/connection/:connectionid/auth', {
+        name: 'Get Connection Auth',
+        group: 'Connection',
+        description: 'Connections that are marked as ReadOnly are used for external integrations and are able to download the X509 Certificate',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        query: Type.Object({
+            token: Type.Optional(Type.String()),
+            password: Type.String({
+                description: 'Password to encrypt the P12 file',
+            }),
+            download: Type.Boolean({
+                default: false,
+                description: 'Download auth as P12 file',
+            }),
+            type: Type.String({
+                default: 'client',
+                description: 'Client or Truststore Data',
+                enum: ['client', 'truststore'],
+            }),
+        }),
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                token: true,
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+            }, req.params.connectionid);
+
+            if (connection.readonly === false) {
+                throw new Err(400, null, 'Connection is not ReadOnly and cannot return auth');
+            }
+
+            if (req.query.type === 'client') {
+                const buff = await generateClientP12(
+                    connection.auth,
+                    config.server.name + ' - ' + connection.name,
+                    req.query.password,
+                );
+
+                if (req.query.download) {
+                    res.setHeader('Content-Disposition', `attachment; filename="connection-auth-${connection.id}.p12"`);
+                }
+
+                res.setHeader('Content-Type', 'application/x-pkcs12');
+                res.write(buff);
+                res.end();
+            } else if (req.query.type === 'truststore') {
+                const buff = await generateTrustP12(
+                    connection.auth,
+                    config.server.name + ' Truststore',
+                    req.query.password,
+                );
+
+                if (req.query.download) {
+                    res.setHeader('Content-Disposition', `attachment; filename="truststore-${connection.id}.p12"`);
+                }
+
+                res.setHeader('Content-Type', 'application/x-pkcs12');
+                res.write(buff);
+                res.end();
+            } else {
+                throw new Err(400, null, 'Invalid type parameter');
+            }
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/connection/:connectionid/refresh', {
+        name: 'Refresh Connection',
+        group: 'Connection',
+        description: 'Refresh a connection',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        res: ConnectionResponse,
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+            }, req.params.connectionid);
+
+            if (!connection.enabled) throw new Err(400, null, 'Connection is not currently enabled');
+
+            const status = await config.hub.connectionSync(connection.id, { force: true });
+
+            const { validFrom, validTo, subject } = new X509Certificate(connection.auth.cert);
+
+            res.json({
+                status,
+                certificate: { validFrom, validTo, subject },
+                ...connection,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.post('/connection/:connectionid/cert/renew', {
+        name: 'Renew Certificate',
+        group: 'Connection',
+        description: 'Check and renew connection certificate if needed',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        res: Type.Object({
+            renewed: Type.Boolean(),
+            message: Type.String(),
+        }),
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {
+                resources: [{ access: AuthResourceAccess.CONNECTION, id: req.params.connectionid }],
+            }, req.params.connectionid);
+
+            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
+            try {
+                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                    authentik = await AuthentikProvider.init(config);
+                }
+            } catch { /* Authentik not configured */ }
+
+            if (!authentik) {
+                return res.json({ renewed: false, message: 'Certificate renewal only supported with Authentik provider' });
+            }
+
+            if (!needsCertRenewal(connection.auth.cert)) {
+                return res.json({ renewed: false, message: 'Certificate does not need renewal' });
+            }
+
+            // Look up the Authentik user by connection username to get their numeric ID
+            const machineUser = await authentik.fetchMachineUser(0, connection.username || '');
+            const renewed = await authentik.renewConnectionCertificate(machineUser.id, String(config.server.api));
+
+            await config.models.Connection.commit(req.params.connectionid, {
+                auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
+            });
+
+            // Rebuild the live connection so it picks up the new certificate.
+            // Upstream moved the connection pool onto ConfigStateful; the hub is
+            // how the stateless side reaches it.
+            if (connection.enabled) {
+                await config.hub.connectionSync(connection.id, { force: true });
+            }
+
+            res.json({ renewed: true, message: `Certificate renewed for connection ${connection.id}` });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/layer/:layerid/health', {
+        name: 'Layer Health Check',
+        group: 'Layer',
+        description: 'Health check endpoint for ETL layers - automatically renews certificate if needed',
+        params: Type.Object({
+            layerid: Type.Integer({ minimum: 1 }),
+        }),
+        res: Type.Object({
+            healthy: Type.Boolean(),
+            cert_renewed: Type.Boolean(),
+            message: Type.Optional(Type.String()),
+        }),
+    }, async (req, res) => {
+        try {
+            const auth = await Auth.as_user(config, req, { token: true });
+            // Layer tokens have access='layer' (AuthResourceAccess) — check via string comparison
+            if ((auth.access as string) !== 'layer' || (auth as { id?: unknown }).id !== req.params.layerid) {
+                throw new Err(401, null, 'Invalid layer token');
+            }
+
+            const layer = await config.models.Layer.from(req.params.layerid);
+            if (!layer.connection) {
+                return res.json({ healthy: true, cert_renewed: false });
+            }
+
+            const connection = await config.models.Connection.from(layer.connection);
+
+            let authentik: InstanceType<typeof AuthentikProvider> | null = null;
+            try {
+                if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                    authentik = await AuthentikProvider.init(config);
+                }
+            } catch { /* Authentik not configured */ }
+
+            if (!authentik || !needsCertRenewal(connection.auth.cert)) {
+                return res.json({ healthy: true, cert_renewed: false });
+            }
+
+            try {
+                const machineUser2 = await authentik.fetchMachineUser(0, connection.username || '');
+                const renewed = await authentik.renewConnectionCertificate(machineUser2.id, String(config.server.api));
+
+                await config.models.Connection.commit(connection.id, {
+                    auth: { ...connection.auth, cert: renewed.cert, key: renewed.key },
+                });
+
+                // Rebuild the live connection so it picks up the new certificate.
+                // Upstream moved the connection pool onto ConfigStateful; the hub
+                // is how the stateless side reaches it.
+                if (connection.enabled) {
+                    await config.hub.connectionSync(connection.id, { force: true });
+                }
+
+                console.log(`Certificate renewed for connection ${connection.id} via layer ${layer.id} health check`);
+                return res.json({ healthy: true, cert_renewed: true, message: 'Certificate renewed' });
+            } catch (err) {
+                console.error(`Certificate renewal failed for connection ${connection.id}:`, err);
+                return res.json({ healthy: true, cert_renewed: false, message: 'Renewal failed, will retry' });
+            }
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.delete('/connection/:connectionid', {
+        name: 'Delete Connection',
+        group: 'Connection',
+        description: 'Delete a connection',
+        params: Type.Object({
+            connectionid: Type.Integer({ minimum: 1 }),
+        }),
+        res: StandardResponse,
+    }, async (req, res) => {
+        try {
+            const { connection } = await Auth.is_connection(config, req, {}, req.params.connectionid);
+
+            if (await config.models.Layer.count({
+                where: sql`connection = ${req.params.connectionid}`,
+            }) > 0) throw new Err(400, null, 'Connection has active Layers - Delete layers before deleting Connection');
+
+            if (await config.models.Data.count({
+                where: sql`connection = ${req.params.connectionid}`,
+            }) > 0) throw new Err(400, null, 'Connection has active Data Syncs - Delete Syncs before deleting Connection');
+
+            if (await config.models.VideoLease.count({
+                where: sql`connection = ${req.params.connectionid}`,
+            }) > 0) throw new Err(400, null, 'Connection has active Video LEases - Delete Leases before deleting Connection');
+
+            await S3.del(`connection/${String(req.params.connectionid)}/`, { recurse: true });
+
+            await config.models.ConnectionToken.delete(sql`
+                connection = ${req.params.connectionid}
+            `);
+
+            await config.models.ConnectionFeature.delete(sql`
+                connection = ${req.params.connectionid}
+            `);
+
+            await config.models.Connection.delete(req.params.connectionid);
+
+            await config.hub.connectionSync(req.params.connectionid, { deleted: true });
+
+            // Revoke the TAK server certificate so the account can no longer authenticate
+            if (connection.auth.cert && config.server.auth.cert && config.server.auth.key) {
+                try {
+                    const x509 = new X509Certificate(connection.auth.cert);
+                    // TAK Server revoke API takes the SHA-256 fingerprint without colons
+                    const certHash = x509.fingerprint256.replace(/:/g, '');
+                    const takApi = await TAKAPI.init(
+                        new URL(String(config.server.api)),
+                        new APIAuthCertificate(config.server.auth.cert, config.server.auth.key),
+                    );
+                    await takApi.Certificate.revoke(certHash);
+                    console.log(`Revoked TAK certificate for connection ${req.params.connectionid}`);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to revoke TAK certificate for connection ${req.params.connectionid}:`, err);
+                }
+            }
+
+            // Delete the Authentik service account associated with this connection
+            if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
+                try {
+                    const authentik = await AuthentikProvider.init(config);
+                    // Reconstruct the machine user's Authentik username from the naming convention
+                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
+                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
+                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+                    await authentik.deleteMachineUser(machineName);
+                } catch (err) {
+                    // Don't block deletion — log and continue
+                    console.error(`Failed to delete Authentik service account for connection ${req.params.connectionid}:`, err);
+                }
+            }
+
+            const cotak = config.user?.get('cotak');
+            if (cotak && cotak.configured) {
+                const user = await Auth.as_user(config, req);
+                const profile = await config.models.Profile.from(user.email);
+
+                if (profile.id) {
+                    // I don't know how to figure out if the connection was created with a machine user and hence registered
+                    // with COTAK, so just firing off the delete, which won't error out if no integration found.
+                    await cotak.deleteMachineUser(profile.id, {
+                        connection_id: req.params.connectionid,
+                    });
+                }
+            }
+
+            res.json({
+                status: 200,
+                message: 'Connection Deleted',
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+}

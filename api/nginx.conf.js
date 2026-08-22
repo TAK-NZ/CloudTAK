@@ -6,6 +6,65 @@ if (!process.env.API_URL) {
 
 const url = new URL(process.env.API_URL);
 
+const csp = {
+    'default-src': [`'self'`],
+    'img-src': [`'self'`, 'data:', 'blob:'],
+    'media-src': [`'self'`, 'blob:'],
+    'font-src': [`'self'`, 'data:'],
+    'worker-src': [`'self'`, 'blob:'],
+    'style-src-elem': [`'self'`, `'unsafe-inline'`],
+    'style-src-attr': [`'unsafe-inline'`],
+    'connect-src': [`'self'`]
+}
+
+// Additional CSP sources can be appended to any directive above via CSV
+// environment variables: NGINX_CSP_IMG_SRC='https://tiles.example.com,data:'
+const cspenv = new Map(Object.keys(csp).map((key) => {
+    return [`NGINX_CSP_${key.toUpperCase().replace(/-/g, '_')}`, key];
+}));
+
+for (const [name, value] of Object.entries(process.env)) {
+    if (!name.startsWith('NGINX_CSP_')) continue;
+
+    const key = cspenv.get(name);
+    if (!key) throw new Error(`Unknown CSP environment variable: ${name} - Supported: ${Array.from(cspenv.keys()).join(', ')}`);
+
+    for (const source of value.split(',').map((s) => s.trim()).filter((s) => s.length)) {
+        if (!/^[A-Za-z0-9.:/*_'~%+-]+$/.test(source)) {
+            throw new Error(`Invalid CSP source "${source}" in ${name}`);
+        }
+
+        csp[key].push(source);
+    }
+}
+
+// TAK-NZ additions. Deliberately expressed as appends to upstream's `csp`
+// object rather than by redefining it (which is what this customization used to
+// do), so that future upstream changes to the default directives merge cleanly.
+//
+// CLOUDTAK_TILE_ORIGINS is a CSV of trusted external tile CDN origins, e.g.
+// "https://basemaps.linz.govt.nz". They go into connect-src and img-src so
+// MapLibre can fetch tiles straight from the CDN instead of going through the
+// CloudTAK tile proxy. Kept as its own variable (rather than moving to
+// upstream's NGINX_CSP_CONNECT_SRC / NGINX_CSP_IMG_SRC) because the same value
+// is also consumed by api/common/config.ts to decide when to bypass the proxy,
+// so there is a single source of truth.
+const tileOrigins = (process.env.CLOUDTAK_TILE_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+for (const origin of tileOrigins) {
+    csp['img-src'].push(origin);
+    csp['connect-src'].push(origin);
+}
+
+// TEMPORARY: allows CloudTAK to be embedded in the ADSS viewers. Remove this
+// block when embedding is no longer needed. Note upstream has no
+// 'frame-ancestors' directive, so this is added after the NGINX_CSP_* loop
+// above - it is intentionally not settable via that mechanism.
+csp['frame-ancestors'] = [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net', 'https://adss.internal/'];
+
 let cspstr = '';
 if (url.hostname === 'localhost') {
     // CSP is disabled when running on localhost
@@ -14,29 +73,6 @@ if (url.hostname === 'localhost') {
     const isIP = net.isIP(url.hostname) || net.isIPv6(url.hostname)
     // FQDN: Check if API_URL is something.example.com vs example.com
     const isSub = process.env.API_URL.match(/.*\.*\..*?\..*?$/)
-
-    // Parse CLOUDTAK_TILE_ORIGINS — a comma-separated list of trusted external
-    // tile CDN origins (e.g. "https://basemaps.linz.govt.nz,https://mts1.google.com").
-    // These are added to connect-src and img-src so MapLibre can fetch tiles
-    // directly from the CDN instead of going through the CloudTAK tile proxy.
-    const tileOrigins = (process.env.CLOUDTAK_TILE_ORIGINS || '')
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-
-    const csp = {
-        'default-src': [`'self'`],
-        'img-src': [`'self'`, 'data:', 'blob:', ...tileOrigins],
-        'media-src': [`'self'`, 'blob:'],
-        'font-src': [`'self'`, 'data:'],
-        'worker-src': [`'self'`, 'blob:'],
-        'style-src-elem': [`'self'`, `'unsafe-inline'`],
-        'style-src-attr': [`'unsafe-inline'`],
-        'connect-src': [`'self'`, ...tileOrigins],
-        // TEMPORARY: added to allow CloudTAK to be embedded in https://d2iy9yezumpf3t.cloudfront.net and https://adss.internal/
-        // Remove the line below when embedding is no longer needed (revert to just 'connect-src' above)
-        'frame-ancestors': [`'self'`, 'https://d2iy9yezumpf3t.cloudfront.net', 'https://adss.internal/']
-    }
 
     cspstr = `add_header 'Content-Security-Policy' "`
     for (const [key, value] of Object.entries(csp)) {

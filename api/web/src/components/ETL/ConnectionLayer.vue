@@ -1,5 +1,10 @@
 <template>
-    <div style='overflow: auto;'>
+    <div
+        class='h-full w-full cloudtak-page'
+        style='overflow: auto;'
+    >
+        <NavHeader title='Connections' />
+
         <div class='page-wrapper'>
             <div class='page-header d-print-none'>
                 <div class='container-xl'>
@@ -125,13 +130,15 @@
                                     desc='Layer is updating'
                                 />
                                 <div class='ms-auto btn-list'>
-                                    <IconX
-                                        v-tooltip='"Cancel Stack Update"'
-                                        class='cursor-pointer'
-                                        :size='32'
-                                        stroke='1'
+                                    <TablerIconButton
+                                        title='Cancel Stack Update'
                                         @click='cancelUpdate'
-                                    />
+                                    >
+                                        <IconX
+                                            :size='32'
+                                            stroke='1'
+                                        />
+                                    </TablerIconButton>
                                 </div>
                             </div>
                             <div class='card-body'>
@@ -217,18 +224,24 @@
                                                 name='layer-direction'
                                             >
                                                 <template #option='{ option }'>
-                                                    <IconWorldDownload
+                                                    <span
                                                         v-if='option.value === "incoming"'
-                                                        v-tooltip='"Incoming"'
-                                                        :size='32'
-                                                        stroke='1'
-                                                    />
-                                                    <IconWorldUpload
+                                                        title='Incoming'
+                                                    >
+                                                        <IconWorldDownload
+                                                            :size='32'
+                                                            stroke='1'
+                                                        />
+                                                    </span>
+                                                    <span
                                                         v-if='option.value === "outgoing"'
-                                                        v-tooltip='"Outgoing"'
-                                                        :size='32'
-                                                        stroke='1'
-                                                    />
+                                                        title='Outgoing'
+                                                    >
+                                                        <IconWorldUpload
+                                                            :size='32'
+                                                            stroke='1'
+                                                        />
+                                                    </span>
                                                     {{ option.label }}
                                                 </template>
                                             </TablerPillGroup>
@@ -394,6 +407,7 @@ import type { ETLLayer, ETLLayerTask, ETLLayerTaskCapabilities } from '../../typ
 import { server, downloadUrl } from '../../std.ts';
 import { useRoute, useRouter } from 'vue-router';
 import PageFooter from '../PageFooter.vue';
+import NavHeader from '../util/NavHeader.vue';
 import LayerStatus from './Layer/utils/StatusDot.vue';
 import InitialAuthor from '../util/InitialAuthor.vue';
 import timeDiff from '../../timediff.ts';

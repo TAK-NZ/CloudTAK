@@ -5,9 +5,12 @@
 import { stdurl } from '../std.ts';
 import type Atlas from './atlas.ts';
 import { version } from '../../package.json'
-import { db } from '../database.ts';
+import Chatroom from '../base/chatroom.ts';
+import { db, ChatStatusRank, ChatStatus } from '../database.ts';
 import TAKNotification, { NotificationType } from '../base/notification.ts';
-import { WorkerMessageType } from '../base/events.ts';
+import { OriginMode } from '../base/cot.ts';
+import { WorkerMessageType } from '../utils/events.ts';
+import type { SyncEvent } from './atlas-sync.ts';
 import type { Feature, Import, Chat } from '../types.ts';
 
 const RECONNECT_BACKOFF_STEP_MS = 5000;
@@ -18,6 +21,7 @@ export default class AtlasConnection {
 
     isDestroyed: boolean;
     isOpen: boolean;
+    hasConnected: boolean;
 
     // Halts reconnection until the user logs in again
     authFailure: boolean;
@@ -25,38 +29,50 @@ export default class AtlasConnection {
     ws: WebSocket | undefined;
     reconnectAttempts: number;
 
-    private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-
     version: string;
+
+    private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     constructor(atlas: Atlas) {
         this.atlas = atlas;
 
         this.isDestroyed = false;
         this.isOpen = false;
+        this.hasConnected = false;
         this.authFailure = false;
         this.ws = undefined;
         this.reconnectAttempts = 0;
-        this.reconnectTimer = undefined;
 
         this.version = version;
+
+        this.reconnectTimer = undefined;
     }
 
     reconnect(connection: string) {
         console.log('Forcing WebSocket reconnection...');
-        this.reconnectAttempts = 0;
-        this.authFailure = false;
-        this.clearReconnectTimer();
+        this.reconnectAttempts = 0;  // Reset counter
         if (this.ws) {
             this.ws.close();
         }
-        this.isDestroyed = false;
         this.connect(connection);
+    }
+
+    /**
+     * Called when the app returns to the foreground. iOS suspension can kill
+     * the TCP connection with no FIN reaching the client (NAT/LB idle
+     * timeout), so no close event ever fires and `isOpen` cannot be trusted -
+     * always rebuild the socket unless the user has logged out.
+     */
+    resume(connection: string) {
+        if (this.isDestroyed || this.authFailure) return;
+        this.reconnect(connection);
     }
 
     // COTs are submitted to pending and picked up by the partial update code every .5s
     connect(connection: string) {
         this.isDestroyed = false;
+        this.authFailure = false;
+        this.clearReconnectTimer();
 
         const url = stdurl('/api');
         url.searchParams.set('format', 'geojson');
@@ -81,8 +97,20 @@ export default class AtlasConnection {
 
             opened = true;
             this.reconnectAttempts = 0;
+
             this.atlas.postMessage({ type: WorkerMessageType.Connection_Open });
             this.isOpen = true;
+
+            // Sync events broadcast while this client was disconnected are
+            // lost (there is no replay), so any reconnect must trigger a full
+            // resync or the client silently drifts until the next page load
+            if (this.hasConnected && this.atlas.sync.started) {
+                this.atlas.sync.fullSync().catch((err: unknown) => {
+                    console.error('Failed to resync after reconnect', err);
+                });
+            }
+
+            this.hasConnected = true;
         });
 
         ws.addEventListener('error', (err) => {
@@ -98,6 +126,7 @@ export default class AtlasConnection {
             this.isOpen = false;
 
             if (this.isDestroyed || this.authFailure) return;
+
             void this.scheduleReconnect(connection, opened);
         });
 
@@ -113,6 +142,11 @@ export default class AtlasConnection {
                 const err = body as unknown as {
                     properties: { message: string }
                 };
+
+                if (/unauthorized|jwt expired|invalid token|no auth/i.test(err.properties.message)) {
+                    this.handleAuthFailure(err.properties.message);
+                    return;
+                }
 
                 console.warn('Warning: Validation Error: received Error from WebSocket:', JSON.stringify(body));
                 throw new Error(err.properties.message);
@@ -199,8 +233,32 @@ export default class AtlasConnection {
                     // Mission Change Tasking
                     await this.atlas.db.subChange(task);
                 } else if (task.properties.type === 't-x-d-d') {
-                    // CoT Delete Tasking
-                    console.error('DELETE', task.properties);
+                    const forcedelete = task.properties.forcedelete === true;
+
+                    for (const link of task.properties.links || []) {
+                        if (!link.uid) continue;
+
+                        const cot = await this.atlas.db.get(link.uid);
+
+                        if (!cot) continue;
+
+                        // Don't allow remote access to a Data Sync Mission (Priv. Escalation)
+                        if (cot.origin.mode === OriginMode.MISSION) {
+                            console.warn(`Ignoring t-x-d-d for ${link.uid} as it originates from a Mission`);
+                            continue;
+                        }
+
+                        if (forcedelete) {
+                            await this.atlas.db.remove(link.uid);
+                        } else {
+                            await cot.update({
+                                properties: {
+                                    ...cot.properties,
+                                    stale: new Date().toISOString()
+                                }
+                            });
+                        }
+                    }
                 } else if (task.properties.type === 't-x-m-n' && task.properties.mission) {
                     await TAKNotification.create(
                         NotificationType.Mission,
@@ -237,25 +295,12 @@ export default class AtlasConnection {
                     console.error('Error getting profile for chat routing', err);
                 }
 
-                // Ensure chatroom record exists without making an API call.
-                // Chatroom.load() calls fetch() which requires auth and fails
-                // in the worker context. Use direct DB operations instead.
-                const existing = await db.chatroom.get(chatroom);
-                if (!existing) {
-                    await db.chatroom.put({
-                        id: chatroom,
-                        name: chatroom,
-                        created: chat.time,
-                        updated: chat.time,
-                        last_read: null,
-                        unread: 1
-                    });
-                } else {
-                    await db.chatroom.update(chatroom, {
-                        updated: chat.time,
-                        unread: (existing.unread || 0) + 1
-                    });
-                }
+                await Chatroom.load(chatroom, { reload: false });
+
+                await db.chatroom.where('id').equals(chatroom).modify(room => {
+                    room.updated = chat.time;
+                    room.unread = (room.unread || 0) + 1;
+                });
 
                 await db.chatroom_chats.put({
                     id: chat.messageId,
@@ -269,10 +314,41 @@ export default class AtlasConnection {
                 await TAKNotification.create(
                     NotificationType.Chat,
                     'New Chat Message',
-                    `${chat.from.callsign} to ${chatroom} says: ${chat.message}`,
-                    `/menu/chats/${encodeURIComponent(chatroom)}`,
+                    `${chat.from.callsign} to ${chat.chatroom} says: ${chat.message}`,
+                    `/menu/chats`,
                     true
                 );
+            } else if (body.type === 'chat:receipt') {
+                const receipt = body.data as {
+                    messageId: string;
+                    status: ChatStatus;
+                    chatroom?: string;
+                    created?: string;
+                };
+
+                if (receipt.messageId && ChatStatusRank[receipt.status] !== undefined) {
+                    const progress = (chat: { status?: ChatStatus, created?: string }) => {
+                        // Messages sort by created - adopt the server-assigned timestamp so
+                        // ordering doesn't depend on the local clock that stamped the optimistic copy
+                        if (receipt.created) {
+                            chat.created = receipt.created;
+                        }
+
+                        if (ChatStatusRank[receipt.status] > ChatStatusRank[chat.status ?? ChatStatus.Sending]) {
+                            chat.status = receipt.status;
+                        }
+                    };
+
+                    await db.chatroom_chats
+                        .where('id')
+                        .equals(receipt.messageId)
+                        .modify(progress);
+
+                    await db.subscription_chat
+                        .where('id')
+                        .equals(receipt.messageId)
+                        .modify(progress);
+                }
             } else if (body.type === 'status') {
                 const status = body.data as { version: string };
 
@@ -315,6 +391,10 @@ export default class AtlasConnection {
                         console.log('No Service Worker available');
                     }
                 }
+            } else if (body.type === 'sync') {
+                // Another of the user's connected clients mutated a data type
+                // via the API - trigger a targeted sync in AtlasSync
+                await this.atlas.sync.event(body.data as SyncEvent);
             } else if (body.type === 'connected') {
                 // Server has finished registering the WebSocket client - no client action needed
             } else {
@@ -364,7 +444,7 @@ export default class AtlasConnection {
 
         this.clearReconnectTimer();
 
-        // The worker cannot clear stored credentials or navigate — the main
+        // The worker cannot clear stored credentials or navigate - the main
         // thread must route the user to login
         this.atlas.postMessage({
             type: WorkerMessageType.Connection_AuthFailure,
@@ -381,6 +461,7 @@ export default class AtlasConnection {
 
     destroy() {
         this.isDestroyed = true;
+
         this.clearReconnectTimer();
 
         if (this.ws) {
