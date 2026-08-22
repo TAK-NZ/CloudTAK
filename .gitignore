@@ -150,3 +150,13 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Large geospatial source archives kept locally for convenience. These are
+# published datasets, not fork content - see data/README.md for provenance and
+# how to re-fetch. Also excluded from the root-context Docker image assets in
+# cdk/lib/cloudtak-stack.ts, or a local `cdk synth` would stage them into
+# cdk.out and hand them to the Docker daemon on every run.
+data/*.pmtiles
+data/*.mbtiles
+data/*.tif
+data/*.laz
