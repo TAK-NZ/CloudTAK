@@ -9,7 +9,8 @@
         />
         <div class='modal-header text-body'>
             <div class='d-flex align-items-center'>
-                <IconFileImport
+                <component
+                    :is='TAKNZ_DRAWTOOL_ICONS["import"]'
                     :size='28'
                     stroke='1'
                 />
@@ -110,11 +111,10 @@ import {
     TablerInlineAlert,
     TablerFileInput,
 } from '@tak-ps/vue-tabler';
+import TAKNZ_DRAWTOOL_ICONS from '../../../base/taknz-drawtool-icons.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import { normalize_geojson } from '@tak-ps/node-cot/normalize_geojson';
-import {
-    IconFileImport,
-} from '@tabler/icons-vue';
+
 import type { LngLatBoundsLike } from 'maplibre-gl';
 import FeatureRow from '../util/FeatureRow.vue';
 import { bbox } from '@turf/bbox';

@@ -121,6 +121,7 @@ import {
     IconCursorText,
     IconPencilPlus,
 } from '@tabler/icons-vue';
+import TAKNZ_DRAWTOOL_ICONS from '../../base/taknz-drawtool-icons.ts';
 import { useMapStore } from '../../stores/map';
 import {
     TablerNone,
@@ -165,7 +166,15 @@ const drawTools: DrawToolItem[] = [
     { key: 'sector', label: 'Draw Sector', icon: IconCone, action: () => { mapStore.draw.start(DrawToolMode.SECTOR); } },
     { key: 'lasso', label: 'Lasso Select', icon: IconLasso, action: () => { mapStore.draw.start(DrawToolMode.FREEHAND); } },
     { key: 'import', label: 'GeoJSON Import', icon: IconFileImport, action: () => { modal.value = ModalInputType.IMPORT; } },
-];
+].map((tool) => {
+    // TAK.NZ swaps in ATAK-CIV icons per tool key. Keys absent from the map keep
+    // whatever upstream ships, so the array above stays byte-identical to
+    // upstream and merges cleanly when upstream adds or reorders tools. The
+    // dropdown trigger is deliberately not in the map - it keeps IconPencilPlus.
+    // See base/taknz-drawtool-icons.ts and branding/atak-icons/DRAWTOOLS.md.
+    const override = TAKNZ_DRAWTOOL_ICONS[tool.key];
+    return override ? { ...tool, icon: override } : tool;
+});
 
 const filteredDrawTools = computed<DrawToolItem[]>(() => {
     const query = search.value.trim().toLowerCase();

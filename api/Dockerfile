@@ -19,14 +19,27 @@ WORKDIR $HOME/api
 ADD package.json ./
 ADD package-lock.json ./
 
-RUN npm install
+# `npm ci` rather than `npm install`, here and for web/ below.
+#
+# The lockfiles are committed, but `npm install` is free to resolve newer
+# versions inside the declared ranges and rewrite the lock during the build - so
+# the committed lock was not authoritative and two builds of the same commit
+# could differ. That is how maplibre-gl 6.4.1 arrived under `^6.0.0` and broke
+# vector-basemap hillshading and flooded the console with source-layer warnings,
+# with no commit of ours to point at.
+#
+# `npm ci` installs exactly the lockfile, so a commit always builds the same way,
+# while upstream stays free to bump ranges whenever it likes. It also fails the
+# build if the lock and package.json disagree, which is where we want to find
+# that out.
+RUN npm ci
 
 COPY ./ $HOME/api
 
 RUN WEB_PLUGINS="$WEB_PLUGINS" node bin/plugin.ts
 
 RUN cd web \
-    && npm install \
+    && npm ci \
     && npm run lint \
     && npm run check \
     && npm run build \

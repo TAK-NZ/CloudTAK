@@ -50,7 +50,6 @@ In your CloudTAK GitHub repository, go to **Settings → Environments** and crea
 - Application Load Balancer replacements
 - Secrets Manager secret deletions
 - ECS service configuration changes
-- AWS Batch job definition changes
 
 ### 5.2 Implementation
 
@@ -243,7 +242,7 @@ Tag v* → Tests → Production (prod profile) [requires approval]
 - **API Changes:** Check for breaking changes in upstream API that affect ETL tasks
 - **Database Schema:** Verify database migrations are compatible with upstream changes
 - **Image Build Failures:** Check Docker build logs for specific errors
-- **ETL Task Failures:** Verify AWS Batch job definitions and container configurations
+- **ETL Task Failures:** Verify the ECS task definitions and container configurations
 
 **Troubleshooting Steps:**
 

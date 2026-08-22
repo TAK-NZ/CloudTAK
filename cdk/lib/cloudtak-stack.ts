@@ -5,7 +5,6 @@
  * - Aurora PostgreSQL database (serverless for dev-test, provisioned for prod)
  * - ECS Fargate service for the API
  * - Application Load Balancer with HTTPS
- * - AWS Batch for ETL processing
  * - Lambda functions for event processing
  * - S3 bucket for assets
  * - Secrets Manager for application secrets
@@ -28,7 +27,6 @@ import { LoadBalancer } from './constructs/load-balancer';
 import { CloudTakApi } from './constructs/cloudtak-api';
 import { Route53 } from './constructs/route53';
 import { S3Resources } from './constructs/s3-resources';
-import { Batch } from './constructs/batch';
 import { Secrets } from './constructs/secrets';
 import { LambdaFunctions } from './constructs/lambda-functions';
 import { EventsService } from './constructs/events-service';
@@ -107,8 +105,7 @@ export class CloudTakStack extends cdk.Stack {
         effect: cdk.aws_iam.Effect.ALLOW,
         principals: [
           new cdk.aws_iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com'),
-          new cdk.aws_iam.ServicePrincipal('batch.amazonaws.com')
+          new cdk.aws_iam.ServicePrincipal('lambda.amazonaws.com')
         ],
         actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
         resources: ['*'],
@@ -157,6 +154,18 @@ export class CloudTakStack extends cdk.Stack {
         },
         exclude: [
           'node_modules/**',
+          // Nested installs. `node_modules/**` above only covers api/node_modules,
+          // the context root - and api/.dockerignore's `node_modules/` is
+          // context-root relative too, so neither of them catches web/. That left
+          // api/web/node_modules (61,226 files, 803 MB) being hashed and copied
+          // into cdk.out on every synth, handed to the Docker daemon as build
+          // context, and baked into a layer by the Dockerfile's `COPY ./` before
+          // `cd web && npm ci` replaced it - so it inflated the image too.
+          // The three root-context assets below already exclude this.
+          '**/node_modules/**',
+          // Built by `npm run build` inside the image; the host's copy is stale
+          // weight at best.
+          'web/dist/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
@@ -188,6 +197,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
@@ -212,6 +226,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
 
@@ -236,6 +255,11 @@ export class CloudTakStack extends cdk.Stack {
           'api/fonts/**',
           'api/web/node_modules/**',
           'api/web/dist/**',
+          // Design-source rasters and tracing tooling. These three assets use
+          // the repository root as their build context, so without this any
+          // change under branding/ rewrites their asset hash and forces a
+          // pointless rebuild and ECR push of images that never read it.
+          'branding/**',
         ]
       });
       
@@ -413,15 +437,6 @@ export class CloudTakStack extends cdk.Stack {
       containerEnvironmentFiles: cloudtakApi.containerEnvironmentFiles,
       taskRole: cloudtakApi.taskRole,
       executionRole: cloudtakApi.executionRole
-    });
-
-    // Create AWS Batch resources for ETL processing
-    const batch = new Batch(this, 'Batch', {
-      envConfig,
-      vpc,
-      ecrRepository,
-      assetBucketName: s3Resources.assetBucket.bucketName,
-      serviceUrl: route53Records.serviceUrl
     });
 
     // Create ETL role for Lambda layer functions

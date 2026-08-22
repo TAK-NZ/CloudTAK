@@ -172,11 +172,29 @@ export class BasemapProtocol implements BasemapProtocolInterface {
         const type = config.type || 'raster';
         const isVectorType = type !== 'raster' && type !== 'raster-dem';
 
+        // Only advertise vector_layers when we actually know them.
+        //
+        // Upstream v13.70.0 defaults this to [{ id: 'out', fields: {} }], which
+        // is CloudTAK's own ETL convention - its generated vector tiles really do
+        // put everything in a layer called `out` (see `sourceLayer: 'out'` in
+        // api/web/src/base/overlay-class.ts). It is wrong for any basemap that
+        // proxies third-party vector tiles: LINZ topographic-v2 serves `land`,
+        // `water_polygons`, `streets`, `pois` and fourteen others.
+        //
+        // There is no vector_layers column on the basemaps table, so
+        // config.vector_layers is always undefined for a database-backed
+        // basemap and the wrong default always won. MapLibre 6.x validates
+        // `source-layer` against this list and fires an error event per layer,
+        // so a 287-layer LINZ style produced ~285 console errors on every load.
+        // The layers still render - MapLibre warns rather than skipping - but the
+        // noise buried a real error (see the hillshade DEM source fix).
+        //
+        // v13.26.0 emitted no vector_layers at all, so nothing was validated.
+        // Omitting when unknown restores that, and is strictly more permissive:
+        // every frontend consumer already guards with Array.isArray().
         let vector_layers: Array<Static<typeof TileJSON_VectorLayer>> | undefined;
-        if (isVectorType) {
-            vector_layers = config.vector_layers
-                ? [...config.vector_layers]
-                : [{ id: 'out', fields: {} }];
+        if (isVectorType && config.vector_layers) {
+            vector_layers = [...config.vector_layers];
         }
 
         return {

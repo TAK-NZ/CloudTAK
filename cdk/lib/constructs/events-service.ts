@@ -153,7 +153,15 @@ export class EventsService extends Construct {
       logging: ecs.LogDrivers.awsLogs({
         logGroup: logGroup,
         streamPrefix: `TAK-${envConfig.stackName}-CloudTAK`
-      })
+      }),
+      // Restart in place instead of replacing the task. Matches upstream
+      // v13.70.0 (cloudformation/lib/events.js). See cloudtak-api.ts for the
+      // full reasoning and the circuit-breaker trade-off.
+      //
+      // Worth most on this service: it is a single task, so a task replacement
+      // is a complete gap in event processing until the replacement is healthy.
+      enableRestartPolicy: true,
+      restartAttemptPeriod: cdk.Duration.seconds(300)
     });
 
     container.addPortMappings({
@@ -179,7 +187,15 @@ export class EventsService extends Construct {
       enableExecuteCommand: envConfig.ecs.enableEcsExec,
 
       healthCheckGracePeriod: cdk.Duration.seconds(300),
-      propagateTags: ecs.PropagatedTagSource.SERVICE
+      propagateTags: ecs.PropagatedTagSource.SERVICE,
+
+      // Roll forward rather than draining first. Left unset, CDK defaults
+      // minHealthyPercent to 50, and 50% of a single task rounds down to zero
+      // required healthy - so a deploy stopped the only events task before
+      // starting its replacement. Upstream's EventsService declares no
+      // DeploymentConfiguration at all, taking the ECS default of 100/200.
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200
     });
 
     // Add tags

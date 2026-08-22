@@ -1,0 +1,121 @@
+NOTICE
+======
+
+This product includes third-party material. CloudTAK itself is distributed under
+the GNU Affero General Public License v3.0; see LICENSE.
+
+
+ATAK-CIV navigation icons
+-------------------------
+
+The right-hand navigation menu ships sixteen icons adapted from ATAK-CIV.
+
+Source:   ATAK-CIV 5.5.1.10
+          commit 9f6893dd657feacc35ec5de03dad721c2e44170e
+          ("Merge branch 'upstream/5.5.1.10'")
+          atak/ATAK/app/src/main/res/drawable-xxxhdpi/
+          atak/ATAK/app/src/main/res/drawable-hdpi/   (missions only)
+
+License:  GNU General Public License v3.0
+
+Form:     The original raster assets were traced to SVG. The rasters retained
+          for provenance are under branding/atak-icons/primary/ and the traced
+          SVGs under branding/atak-icons/svg-traced/. The path data is embedded
+          in api/web/src/base/taknz-nav-icons.ts. No pixels of the originals are
+          distributed in the built application; the traced outlines are
+          derivative works of them and are covered by the same license.
+
+ATAK-CIV states in its README.md and INTENT.md that contributions by US Federal
+employees are ineligible for copyright protection in the United States and are
+licensed under GPLv3 elsewhere, while contractor contributions are copyrighted
+and licensed under GPLv3. These assets carry no per-file authorship metadata, so
+which case applies to any individual icon cannot be determined from the source
+repository. They are therefore treated as GPLv3 throughout.
+
+No TAK or ATAK branding is included. The branded assets in that repository
+(atak_splash.png, ic_mil_atak_launcher.png and the *_atak_*
+themed widgets) were deliberately excluded.
+
+Mapping from CloudTAK menu key to ATAK-CIV asset name:
+
+| Menu key | ATAK-CIV asset |
+|---|---|
+| `basemaps` | `nav_maps` |
+| `channels` | `nav_channels` |
+| `chats` | `nav_group_chat` |
+| `connections` | `nav_radio` |
+| `contacts` | `nav_contacts` |
+| `features` | `nav_marker` |
+| `files` | `nav_file` |
+| `history` | `nav_track_history` |
+| `iconsets` | `nav_gallery` |
+| `imports` | `nav_import` |
+| `missions` | `sync_original` |
+| `overlays` | `nav_overlay_manager` |
+| `packages` | `nav_data_package` |
+| `routes` | `nav_routes` |
+| `settings` | `nav_settings` |
+| `videos` | `nav_video` |
+
+Per-icon notes, the selection rationale and the audit of assets rejected as
+unsuitable are in branding/atak-icons/MAPPING.md.
+
+The Admin and COT Debugger menu entries retain their Tabler icons and are not
+covered by this notice.
+
+
+ATAK-CIV drawing tool icons
+---------------------------
+
+The drawing tools palette ships twelve further icons from the same ATAK-CIV
+source and under the same GPL-3.0 terms as above. Nine come directly from ATAK;
+three are derived, and two of those combine ATAK artwork with Tabler Icons.
+
+Source:   ATAK-CIV 5.5.1.10, commit 9f6893dd657feacc35ec5de03dad721c2e44170e
+          atak/ATAK/app/src/main/res/drawable/            (vector drawables)
+          atak/ATAK/app/src/main/res/drawable-*/          (rasters, 2 icons)
+
+Form:     Seven were converted from Android vector drawables to SVG losslessly,
+          two were traced from rasters, and three were composed. The SVGs are
+          under branding/atak-icons/drawtools/ and their markup is embedded in
+          api/web/src/base/taknz-drawtool-icons.ts.
+
+| Tool key | Source |
+|---|---|
+| `coordinate` | ATAK `ic_target` |
+| `event` | ATAK `ic_edit_calendar` |
+| `range` | ATAK `nav_rb` (traced from raster) |
+| `range_rings` | ATAK `ic_menu_rb_circle` |
+| `point` | derived: ATAK `ic_point` + ATAK create badge |
+| `line` | derived: Tabler `line` + ATAK create badge |
+| `polygon` | ATAK `polygon` |
+| `rectangle` | ATAK `rectangle` |
+| `circle` | ATAK `ic_menu_circle` |
+| `sector` | derived: Tabler `cone` + ATAK create badge |
+| `lasso` | ATAK `ic_lasso` (traced from raster) |
+| `import` | ATAK `ic_navstack_import` |
+
+The `line` and `sector` icons are derived works combining Tabler Icons (MIT)
+with ATAK-CIV artwork (GPL-3.0); both upstreams are covered by this notice. The
+`point` icon is ATAK-only. In every case the create badge is lifted verbatim
+from ATAK's own `rectangle` drawable.
+
+The palette's dropdown trigger keeps its Tabler icon and is not covered here.
+Selection rationale, the rejected candidates and the regeneration commands are
+in branding/atak-icons/DRAWTOOLS.md.
+
+
+Tabler Icons
+------------
+
+The remaining interface icons come from Tabler Icons via the @tabler/icons-vue
+package, under the MIT License. See that package's own license file in the
+dependency tree. Two of the derived drawing tool icons above incorporate Tabler
+artwork under those terms.
+
+
+Noto Sans
+---------
+
+Map label glyphs under api/fonts/ are generated from Noto Sans. See
+api/fonts/LICENSE.

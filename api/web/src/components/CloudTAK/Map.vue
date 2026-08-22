@@ -1137,6 +1137,24 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
     margin-top: 2px;
 }
 
+/*
+ * Upstream's position for the scale bar, with our styling.
+ *
+ * Patch 001 removes upstream's `.maplibregl-ctrl-scale` override so the scale
+ * keeps MapLibre's default visual treatment - an opaque box with dark text -
+ * rather than upstream's transparent white-on-black-text-shadow variant. That is
+ * deliberate and stays.
+ *
+ * But the override also carried `margin: 0`, and dropping the whole block left
+ * the scale on MapLibre's default
+ * `.maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 10px 10px 0 }`,
+ * so it sat inset from the corner instead of flush with the other bottom-right
+ * controls. This is that one positioning declaration and nothing else.
+ */
+.maplibregl-ctrl-scale {
+    margin: 0;
+}
+
 .maplibregl-ctrl-bottom-left {
     bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
     left: 8px;
