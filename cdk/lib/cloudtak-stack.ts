@@ -154,6 +154,18 @@ export class CloudTakStack extends cdk.Stack {
         },
         exclude: [
           'node_modules/**',
+          // Nested installs. `node_modules/**` above only covers api/node_modules,
+          // the context root - and api/.dockerignore's `node_modules/` is
+          // context-root relative too, so neither of them catches web/. That left
+          // api/web/node_modules (61,226 files, 803 MB) being hashed and copied
+          // into cdk.out on every synth, handed to the Docker daemon as build
+          // context, and baked into a layer by the Dockerfile's `COPY ./` before
+          // `cd web && npm ci` replaced it - so it inflated the image too.
+          // The three root-context assets below already exclude this.
+          '**/node_modules/**',
+          // Built by `npm run build` inside the image; the host's copy is stale
+          // weight at best.
+          'web/dist/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
