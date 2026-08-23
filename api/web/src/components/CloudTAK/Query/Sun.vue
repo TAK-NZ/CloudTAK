@@ -1,7 +1,13 @@
 <template>
     <div class='col-12 row g-0'>
-        <div class='col-12'>
+        <div class='col-12 d-flex align-items-center'>
             <label class='subheader mx-2'>Sun Phase</label>
+            <span
+                v-if='sun'
+                class='ms-auto mx-2 small text-muted'
+                :title='"Times shown in the timezone at the queried location: " + timeZone'
+                v-text='timeZoneLabel'
+            />
         </div>
         <TablerLoading
             v-if='loading'
@@ -219,10 +225,33 @@ function getMoonPhase(date: Date) {
 const moon = computed(() => getMoonPhase(new Date()));
 const prevMoon = computed(() => getMoonPhase(new Date(Date.now() - 86400000)));
 
-const timeFormatter = new Intl.DateTimeFormat(undefined, {
+// Sun events are properties of the queried location, so they have to be
+// rendered in that location's timezone - not the viewer's. Leaving the timeZone
+// option unset makes Intl use the browser's zone, which silently mislabels every
+// event when the operator is not in the same zone as the point they are looking
+// at. `timezone` comes back from the API; if it could not be resolved we fall
+// back to UTC and say so, rather than quietly using the browser's zone.
+const timeZone = computed(() => sun.value?.timezone ?? 'UTC');
+
+const timeFormatter = computed(() => new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
+    hour12: false,
+    timeZone: timeZone.value
+}));
+
+// Short label for the zone the times above are in, e.g. 'NZST' or 'GMT+12'.
+const timeZoneLabel = computed(() => {
+    try {
+        const parts = new Intl.DateTimeFormat(undefined, {
+            timeZone: timeZone.value,
+            timeZoneName: 'short'
+        }).formatToParts(new Date());
+
+        return parts.find(part => part.type === 'timeZoneName')?.value ?? timeZone.value;
+    } catch {
+        return timeZone.value;
+    }
 });
 
 const relativeTimeFormatter = new Intl.RelativeTimeFormat(undefined, {
@@ -240,7 +269,7 @@ const relativeTimeUnits = [
 ] as const;
 
 function formatTime(time: string) {
-    return timeFormatter.format(new Date(time));
+    return timeFormatter.value.format(new Date(time));
 }
 
 function fromNow(time: string) {
