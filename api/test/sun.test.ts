@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { timezoneAt, localCivilDate, sunTimesAt } from '../stateless/lib/sun.js';
+import { timezoneAt, localCivilDate, sunTimesAt, wrapLongitude } from '../stateless/lib/sun.js';
 
 /**
  * suncalc types every event as `Date | null`, since events such as sunrise do not
@@ -145,4 +145,105 @@ test('sunTimesAt - Chatham Islands resolve to their own +12:45 day', () => {
 
     assert.equal(zone, 'Pacific/Chatham');
     assert.equal(ymd(sun.solarNoon, zone), ymd(now, zone));
+});
+
+// --- Antimeridian handling -------------------------------------------------
+//
+// MapLibre reports coordinates in whichever unwrapped world copy the pointer is
+// over, so panning east across the antimeridian produces longitudes outside
+// [-180, 180]. New Zealand sits on the antimeridian, so this is routine here.
+// `tz-lookup` rejects such values as invalid coordinates, which previously cost
+// us the timezone for a perfectly well defined point.
+
+test('wrapLongitude - normalises into [-180, 180]', () => {
+    // The longitude from the reported crash.
+    assert.equal(wrapLongitude(204.08162859110183).toFixed(5), '-155.91837');
+
+    // Chatham reached by panning east.
+    assert.equal(wrapLongitude(-176.5597 + 360).toFixed(4), '-176.5597');
+
+    // Already in range: untouched.
+    assert.equal(wrapLongitude(174.7633), 174.7633);
+    assert.equal(wrapLongitude(-176.5597), -176.5597);
+    assert.equal(wrapLongitude(0), 0);
+
+    // Antimeridian itself keeps its sign rather than folding.
+    assert.equal(wrapLongitude(180), 180);
+    assert.equal(wrapLongitude(-180), -180);
+
+    // Multiple revolutions, both directions.
+    assert.equal(wrapLongitude(174.7633 + 720).toFixed(4), '174.7633');
+    assert.equal(wrapLongitude(-190), 170);
+
+    // Non-finite input passes through for the caller to reject.
+    assert.ok(Number.isNaN(wrapLongitude(NaN)));
+});
+
+test('timezoneAt - resolves an unwrapped longitude instead of giving up', () => {
+    // Regression: this returned null, the API then emitted an empty timezone and
+    // the Query panel threw `RangeError: Invalid time zone specified:`.
+    const zone = timezoneAt(-39.89024591091161, 204.08162859110183);
+
+    assert.notEqual(zone, null);
+    assert.equal(zone, timezoneAt(-39.89024591091161, 204.08162859110183 - 360));
+});
+
+test('timezoneAt - Chatham resolves whether reached east or west', () => {
+    assert.equal(timezoneAt(-43.9535, -176.5597), 'Pacific/Chatham');
+    assert.equal(timezoneAt(-43.9535, -176.5597 + 360), 'Pacific/Chatham');
+});
+
+test('sunTimesAt - unwrapped longitude gives the same result as normalised', () => {
+    const zone = timezoneAt(NZ_LAT, NZ_LON);
+    if (zone === null) throw new Error('expected a zone for the query point');
+
+    const normalised = sunTimesAt(NZ_LAT, NZ_LON, 0, zone, REPORTED_NOW);
+    const unwrapped = sunTimesAt(NZ_LAT, NZ_LON + 360, 0, zone, REPORTED_NOW);
+
+    assert.equal(
+        must(unwrapped.sunrise, 'sunrise').getTime(),
+        must(normalised.sunrise, 'sunrise').getTime(),
+    );
+    assert.equal(
+        must(unwrapped.sunset, 'sunset').getTime(),
+        must(normalised.sunset, 'sunset').getTime(),
+    );
+});
+
+test('sunTimesAt - unwrapped longitude still works with no timezone', () => {
+    // The longitude fallback path must normalise too, or the solar offset is
+    // computed from a longitude of 534 and lands on the wrong day entirely.
+    const normalised = sunTimesAt(NZ_LAT, NZ_LON, 0, null, REPORTED_NOW);
+    const unwrapped = sunTimesAt(NZ_LAT, NZ_LON + 360, 0, null, REPORTED_NOW);
+
+    assert.equal(
+        must(unwrapped.solarNoon, 'solarNoon').getTime(),
+        must(normalised.solarNoon, 'solarNoon').getTime(),
+    );
+});
+
+test('every zone tz-lookup returns around New Zealand is usable by Intl', () => {
+    // The crash was ultimately an unusable timezone string reaching
+    // Intl.DateTimeFormat. Sweep the NZ area of responsibility, including ocean
+    // and the Chathams, and assert every resolved zone can actually format.
+    const zones = new Set<string>();
+
+    for (let lat = -50; lat <= -30; lat += 0.5) {
+        for (let lon = 160; lon <= 200; lon += 0.5) {
+            const zone = timezoneAt(lat, lon);
+            if (zone !== null) zones.add(zone);
+        }
+    }
+
+    assert.ok(zones.size > 0, 'expected at least one zone across the region');
+    assert.ok(zones.has('Pacific/Auckland'));
+    assert.ok(zones.has('Pacific/Chatham'));
+
+    for (const zone of zones) {
+        assert.doesNotThrow(
+            () => new Intl.DateTimeFormat('en-NZ', { timeZone: zone, hour: '2-digit' }),
+            `zone ${zone} should be usable by Intl.DateTimeFormat`,
+        );
+        assert.ok(zone.trim() !== '', 'zone should never be blank');
+    }
 });

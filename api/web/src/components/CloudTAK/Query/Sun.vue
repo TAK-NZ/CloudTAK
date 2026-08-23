@@ -231,7 +231,25 @@ const prevMoon = computed(() => getMoonPhase(new Date(Date.now() - 86400000)));
 // event when the operator is not in the same zone as the point they are looking
 // at. `timezone` comes back from the API; if it could not be resolved we fall
 // back to UTC and say so, rather than quietly using the browser's zone.
-const timeZone = computed(() => sun.value?.timezone ?? 'UTC');
+//
+// The value is validated rather than trusted. The API returns null when the zone
+// cannot be resolved, but its response validation coerces null to an empty string
+// (ajv runs with `coerceTypes`, which satisfies the string branch of a
+// string|null union), and `new Intl.DateTimeFormat(..., { timeZone: '' })` throws
+// a RangeError. Throwing inside a computed takes the whole Query panel down, so
+// anything Intl will not accept degrades to UTC instead.
+const timeZone = computed(() => {
+    const candidate = sun.value?.timezone;
+
+    if (!candidate) return 'UTC';
+
+    try {
+        new Intl.DateTimeFormat(undefined, { timeZone: candidate });
+        return candidate;
+    } catch {
+        return 'UTC';
+    }
+});
 
 const timeFormatter = computed(() => new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',

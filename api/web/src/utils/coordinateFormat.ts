@@ -376,3 +376,31 @@ function pad(val: number): string {
     if (val < 10000) return '0' + val;
     return String(val);
 }
+
+/**
+ * Normalise a longitude into [-180, 180].
+ *
+ * MapLibre reports coordinates in whichever unwrapped world copy the pointer is
+ * over, so panning east across the antimeridian produces longitudes beyond the
+ * valid range - a click near the Chatham Islands can arrive as 204. Values like
+ * that are out of spec for GeoJSON and CoT, and the reverse-geocode, sun, weather
+ * and magnetic endpoints all reject them.
+ *
+ * Map event handlers normalise at the point of capture via MapLibre's
+ * `LngLat.wrap()`. This helper covers the paths where a raw number arrives
+ * instead, such as coordinates parsed back out of a bookmarked or shared URL.
+ */
+export function wrapLongitude(longitude: number): number {
+    if (!Number.isFinite(longitude)) return longitude;
+
+    // Return in-range values untouched. Running them through the modulo below
+    // perturbs them by floating point error - 174.7633 comes back as
+    // 174.76329999999996 - which is physically irrelevant but would be displayed
+    // in the UI and written back into the URL.
+    if (longitude >= -180 && longitude <= 180) return longitude;
+
+    const wrapped = ((longitude + 180) % 360 + 360) % 360 - 180;
+
+    // The antimeridian is +/-180; prefer +180 over folding to -180.
+    return wrapped === -180 ? 180 : wrapped;
+}

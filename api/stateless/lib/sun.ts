@@ -3,6 +3,30 @@ import type { SunTimes } from 'suncalc';
 import tzlookup from 'tz-lookup';
 
 /**
+ * Normalise longitude into [-180, 180].
+ *
+ * Clients that derive coordinates from a map viewport can send longitudes outside
+ * that range: MapLibre reports the unwrapped world copy the pointer is over, so
+ * panning east across the antimeridian yields values such as 204. `tz-lookup`
+ * rejects those as invalid coordinates, which would silently cost us the timezone
+ * for a point that is perfectly well defined.
+ */
+export function wrapLongitude(longitude: number): number {
+    if (!Number.isFinite(longitude)) return longitude;
+
+    // Return in-range values untouched. Running them through the modulo below
+    // would perturb them by floating point error - 174.7633 comes back as
+    // 174.76329999999996 - which is physically irrelevant but would leak into
+    // coordinates displayed in the UI and written into URLs.
+    if (longitude >= -180 && longitude <= 180) return longitude;
+
+    const wrapped = ((longitude + 180) % 360 + 360) % 360 - 180;
+
+    // The antimeridian is +/-180; prefer +180 over folding to -180.
+    return wrapped === -180 ? 180 : wrapped;
+}
+
+/**
  * IANA timezone identifier at a coordinate, or null if it can't be resolved.
  *
  * Deliberately returns null instead of throwing or guessing. Callers surface the
@@ -12,7 +36,7 @@ import tzlookup from 'tz-lookup';
  */
 export function timezoneAt(latitude: number, longitude: number): string | null {
     try {
-        return tzlookup(latitude, longitude) || null;
+        return tzlookup(latitude, wrapLongitude(longitude)) || null;
     } catch {
         return null;
     }
@@ -112,6 +136,7 @@ export function sunTimesAt(
     timezone: string | null,
     now: Date = new Date(),
 ): SunTimes {
+    const lon = wrapLongitude(longitude);
     const date = timezone ? localCivilDate(timezone, now) : null;
 
     let anchor: Date;
@@ -119,7 +144,7 @@ export function sunTimesAt(
     if (timezone && date) {
         anchor = localNoonInstant(timezone, date);
     } else {
-        const solarOffsetMs = (longitude / 15) * 3600000;
+        const solarOffsetMs = (lon / 15) * 3600000;
         const solar = new Date(now.getTime() + solarOffsetMs);
 
         anchor = new Date(Date.UTC(
@@ -127,5 +152,5 @@ export function sunTimesAt(
         ) - solarOffsetMs);
     }
 
-    return SunCalc.getTimes(anchor, latitude, longitude, altitude);
+    return SunCalc.getTimes(anchor, latitude, lon, altitude);
 }

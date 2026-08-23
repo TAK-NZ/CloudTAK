@@ -87,6 +87,7 @@
 import { ref, watch, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { SearchReverseReverse } from '../../types.ts';
+import { wrapLongitude } from '../../utils/coordinateFormat.ts';
 import {
     IconRefresh,
     IconRoute
@@ -110,10 +111,16 @@ const refreshKey = ref(0);
 const eventModal = ref(false);
 const reverse = ref<SearchReverseReverse['reverse']>(null);
 
+// Coordinates can also arrive from a bookmarked or shared URL created before map
+// event handlers began normalising, so wrap on the way in as well.
 const coords = computed<number[] | undefined>(() => {
-    return route.params.coords
-        ? String(route.params.coords).split(',').map(c => Number(c))
-        : undefined
+    if (!route.params.coords) return undefined;
+
+    const parsed = String(route.params.coords).split(',').map(c => Number(c));
+
+    if (parsed.length >= 1) parsed[0] = wrapLongitude(parsed[0]);
+
+    return parsed;
 });
 
 watch(coords, () => {
