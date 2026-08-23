@@ -6,6 +6,7 @@ import {
     IconFiles,
     IconUsers,
     IconVideo,
+    IconDeviceTv,
     IconPhoto,
     IconRoute,
     IconMapPin,
@@ -171,6 +172,21 @@ export default class MenuManager {
                 tooltip: 'Videos',
                 description: 'Access live and recorded video feeds',
                 icon: IconVideo,
+                requiresMedia: true,
+            },
+            {
+                // Upstream surfaces the Video Wall from the Application Switcher in
+                // MainMenuContents.vue. This fork drops that switcher, which removed
+                // the only direct link to /video, so the wall is a normal menu entry
+                // here instead - which also gives it the reorder and visibility
+                // handling the switcher never had. Opens in its own tab, like Admin.
+                key: 'videowall',
+                label: 'Video Wall',
+                route: '/video',
+                routeExternal: true,
+                tooltip: 'Video Wall',
+                description: 'Grid of video streams pushed from the map',
+                icon: IconDeviceTv,
                 requiresMedia: true,
             },
             {
