@@ -1539,7 +1539,7 @@ export const useMapStore = defineStore('cloudtak', {
                     this.selected.set(cot.id, cot);
                 } else if (features.length === 1) {
                     this.radialClick(features[0], {
-                        lngLat: e.lngLat,
+                        lngLat: e.lngLat.wrap(),
                         point: e.point
                     })
                 } else if (features.length > 1) {
@@ -1578,6 +1578,15 @@ export const useMapStore = defineStore('cloudtak', {
             map.on('contextmenu', (e) => {
                 if (this.draw.editing) return;
 
+                // MapLibre reports the coordinate in whichever unwrapped world
+                // copy the pointer is over, so panning east across the
+                // antimeridian yields longitudes outside +/-180 - a right-click
+                // near the Chathams can arrive as 204. That is out of spec for
+                // both GeoJSON and CoT, and it would be written straight into
+                // authored geometry and sent to the TAK Server. Normalise here,
+                // at the point of capture.
+                const lngLat = e.lngLat.wrap();
+
                 const id = randomUUID();
                 this.radialClick({
                     id,
@@ -1592,18 +1601,18 @@ export const useMapStore = defineStore('cloudtak', {
                         time: new Date().toISOString(),
                         start: new Date().toISOString(),
                         stale: new Date(Date.now() + 2 * (60 * 60 * 1000)).toISOString(),
-                        center: [ e.lngLat.lng, e.lngLat.lat ],
+                        center: [ lngLat.lng, lngLat.lat ],
                         'marker-color': this.defaultPointType === 'u-d-p' ? '#00ff00' : undefined,
                         'marker-opacity': 1
                     },
                     geometry: {
                         type: 'Point',
-                        coordinates: [e.lngLat.lng, e.lngLat.lat]
+                        coordinates: [lngLat.lng, lngLat.lat]
                     }
                 }, {
                     mode: 'context',
                     point: e.point,
-                    lngLat: e.lngLat
+                    lngLat
                 });
             });
 
@@ -1626,6 +1635,10 @@ export const useMapStore = defineStore('cloudtak', {
                             pressEvent.originalEvent.preventDefault();
                         }
 
+                        // Normalise across the antimeridian - see the contextmenu
+                        // handler above for why.
+                        const lngLat = pressEvent.lngLat.wrap();
+
                         const id = randomUUID();
                         this.radialClick({
                             id,
@@ -1640,18 +1653,18 @@ export const useMapStore = defineStore('cloudtak', {
                                 time: new Date().toISOString(),
                                 start: new Date().toISOString(),
                                 stale: new Date(Date.now() + 2 * (60 * 60 * 1000)).toISOString(),
-                                center: [ pressEvent.lngLat.lng, pressEvent.lngLat.lat ],
+                                center: [ lngLat.lng, lngLat.lat ],
                                 'marker-color': '#00ff00',
                                 'marker-opacity': 1
                             },
                             geometry: {
                                 type: 'Point',
-                                coordinates: [pressEvent.lngLat.lng, pressEvent.lngLat.lat]
+                                coordinates: [lngLat.lng, lngLat.lat]
                             }
                         }, {
                             mode: 'context',
                             point: pressEvent.point,
-                            lngLat: pressEvent.lngLat
+                            lngLat
                         });
 
                         pressEvent = undefined;
@@ -1966,15 +1979,19 @@ export const useMapStore = defineStore('cloudtak', {
             (this.radial as any).cot = feat;
             this.radial.mode = opts.mode;
 
+            // Backstop for the antimeridian: callers normalise at capture, but a
+            // feature's stored `center` may predate that or come from elsewhere,
+            // and this coordinate is what the radial menu hands to /query and to
+            // route planning.
             if (feat.geometry && feat.geometry.type === 'Point' && feat.properties && feat.properties.center) {
                 if (typeof feat.properties.center === 'string') {
                     const parts = JSON.parse(feat.properties.center);
-                    this.radial.lngLat = new mapgl.LngLat(parts[0], parts[1]);
+                    this.radial.lngLat = new mapgl.LngLat(parts[0], parts[1]).wrap();
                 } else {
-                    this.radial.lngLat = mapgl.LngLat.convert(feat.properties.center as LngLatLike);
+                    this.radial.lngLat = mapgl.LngLat.convert(feat.properties.center as LngLatLike).wrap();
                 }
             } else {
-                this.radial.lngLat = opts.lngLat;
+                this.radial.lngLat = opts.lngLat.wrap();
             }
         }
     }

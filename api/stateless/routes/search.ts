@@ -1,5 +1,4 @@
 import { Type, Static } from '@sinclair/typebox';
-import * as SunCalc from 'suncalc';
 import geomagnetism from 'geomagnetism';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
@@ -10,6 +9,7 @@ import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '.
 import { Feature } from '@tak-ps/node-cot';
 import type ConfigStateless from '../config.js';
 import { getElevation } from '../lib/terrain.js';
+import { timezoneAt, sunTimesAt } from '../lib/sun.js';
 
 function optionalISOString(date: Date | null): string | null {
     if (date === null) return null;
@@ -36,6 +36,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             nightEnd: SunTime('night ends (morning astronomical twilight starts)'),
             nauticalDawn: SunTime('nautical dawn (morning nautical twilight starts)'),
             dawn: SunTime('dawn (morning nautical twilight ends, morning civil twilight starts)'),
+            timezone: Type.Union([Type.String(), Type.Null()], {
+                description: 'IANA timezone identifier at the queried coordinate. The times above are UTC instants; render them in this zone, not the viewer\'s. Null if it could not be resolved, in which case present them as UTC.',
+            }),
         }),
         magnetic: Type.Object({
             declination: Type.Number(),
@@ -94,7 +97,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const user = await Auth.as_user(config, req);
             const elevationUnit = await config.models.ProfileConfig.from(user.email).then(p => p['display::elevation'] as string).catch(() => 'feet');
 
-            const sun = SunCalc.getTimes(new Date(), req.params.latitude, req.params.longitude, req.query.altitude);
+            const timezone = timezoneAt(req.params.latitude, req.params.longitude);
+            const sun = sunTimesAt(req.params.latitude, req.params.longitude, req.query.altitude, timezone);
             const magnetic = geomagnetism.model().point([req.params.latitude, req.params.longitude]);
 
             const response: Static<typeof ReverseResponse> = {
@@ -113,6 +117,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     nightEnd: optionalISOString(sun.nightEnd),
                     nauticalDawn: optionalISOString(sun.nauticalDawn),
                     dawn: optionalISOString(sun.dawn),
+                    timezone,
                 },
                 magnetic: {
                     declination: magnetic.decl,
@@ -195,13 +200,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 nightEnd: SunTime('night ends (morning astronomical twilight starts)'),
                 nauticalDawn: SunTime('nautical dawn (morning nautical twilight starts)'),
                 dawn: SunTime('dawn (morning nautical twilight ends, morning civil twilight starts)'),
+                timezone: Type.Union([Type.String(), Type.Null()], {
+                    description: 'IANA timezone identifier at the queried coordinate. The times above are UTC instants; render them in this zone, not the viewer\'s. Null if it could not be resolved, in which case present them as UTC.',
+                }),
             }),
         }),
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req);
 
-            const sun = SunCalc.getTimes(new Date(), req.params.latitude, req.params.longitude, req.query.altitude);
+            const timezone = timezoneAt(req.params.latitude, req.params.longitude);
+            const sun = sunTimesAt(req.params.latitude, req.params.longitude, req.query.altitude, timezone);
 
             res.json({
                 sun: {
@@ -219,6 +228,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     nightEnd: optionalISOString(sun.nightEnd),
                     nauticalDawn: optionalISOString(sun.nauticalDawn),
                     dawn: optionalISOString(sun.dawn),
+                    timezone,
                 },
             });
         } catch (err) {
