@@ -7,6 +7,7 @@ import {
     IconUsers,
     IconVideo,
     IconDeviceTv,
+    IconLayoutKanban,
     IconPhoto,
     IconRoute,
     IconMapPin,
@@ -188,6 +189,18 @@ export default class MenuManager {
                 description: 'Grid of video streams pushed from the map',
                 icon: IconDeviceTv,
                 requiresMedia: true,
+            },
+            {
+                // Event Board lost its menu link the same way the Video Wall did -
+                // it was the switcher's other entry. Ungated, matching upstream:
+                // it is neither media- nor admin-scoped.
+                key: 'eventboard',
+                label: 'Event Board',
+                route: '/board',
+                routeExternal: true,
+                tooltip: 'Event Board',
+                description: 'Track and triage Core Events on a board',
+                icon: IconLayoutKanban,
             },
             {
                 key: 'chats',
