@@ -9,11 +9,7 @@
         />
         <div class='modal-header'>
             <div
-                v-if='wizard > 0'
-                v-text='`Configuration Wizard Step #${wizard}`'
-            />
-            <div
-                v-else-if='disabled'
+                v-if='disabled'
                 class='d-flex align-items-center'
             >
                 <VideoLeaseSourceType :source-type='editLease.source_type' />
@@ -63,70 +59,6 @@
         </div>
 
         <TablerLoading v-if='loading' />
-        <template v-else-if='wizard > 0'>
-            <div class='d-flex align-items-center w-100 justify-content-center'>
-                <div class='py-2'>
-                    <img
-                        style='max-width: 100%; height: auto; max-height: 600px;'
-                        alt='UAS Tool Wizard Image'
-                        :src='`/wizard/Step${wizard}.png`'
-                        class='rounded'
-                    >
-
-                    <div v-if='wizard === 8'>
-                        <div class='subheader pt-4'>
-                            RTSP Path
-                        </div>
-                        <CopyField
-                            v-if='protocols.rtsp'
-                            :model-value='protocols.rtsp.url.replace(/.*\//, "")'
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <div class='modal-footer'>
-                <div class='d-flex align-items-center w-100'>
-                    <button
-                        class='btn btn-secondary'
-                        @click='wizard = wizard -= 1'
-                    >
-                        <IconChevronLeft
-                            :size='20'
-                            stroke='1'
-                        />
-                        <span
-                            v-if='wizard === 1'
-                            class='mx-2'
-                        >Close</span>
-                        <span
-                            v-else
-                            class='mx-2'
-                        >Back</span>
-                    </button>
-
-                    <div class='ms-auto'>
-                        <button
-                            class='btn btn-primary'
-                            @click='wizard = wizard > 10 ? 0 : wizard + 1'
-                        >
-                            <span
-                                v-if='wizard < 10'
-                                class='mx-2'
-                            >Next</span>
-                            <span
-                                v-else
-                                class='mx-2'
-                            >Done</span>
-                            <IconChevronRight
-                                :size='20'
-                                stroke='1'
-                            />
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </template>
         <template v-else-if='disabled'>
             <div class='modal-body row'>
                 <template v-if='Object.keys(protocols).length'>
@@ -314,19 +246,6 @@
                     </div>
                 </div>
             </div>
-            <div class='modal-footer'>
-                <button
-                    v-if='protocols.rtsp && !expired(editLease.expiration)'
-                    class='btn btn-secondary'
-                    @click='wizard = 1'
-                >
-                    <IconWand
-                        :size='20'
-                        stroke='1'
-                    />
-                    <span class='mx-2'>UAS Tool Wizard</span>
-                </button>
-            </div>
         </template>
         <template v-else>
             <div
@@ -494,17 +413,6 @@
 
                 <div class='ms-auto btn-list'>
                     <button
-                        v-if='protocols.rtsp && !expired(editLease.expiration)'
-                        class='btn btn-secondary'
-                        @click='wizard = 1'
-                    >
-                        <IconWand
-                            :size='20'
-                            stroke='1'
-                        />
-                        <span class='mx-2'>UAS Tool Wizard</span>
-                    </button>
-                    <button
                         v-if='!disabled'
                         class='btn btn-primary'
                         @click='saveLease'
@@ -537,12 +445,9 @@ import {
     IconDrone,
     IconServer,
     IconPencil,
-    IconWand,
     IconArrowsLeftRight,
     IconBook2,
     IconAffiliate,
-    IconChevronRight,
-    IconChevronLeft,
 } from '@tabler/icons-vue';
 import {
     TablerRefreshButton,
@@ -570,7 +475,6 @@ const mode = ref('read');
 const loading = ref(true);
 const secure = ref(false);
 const disabled = ref(true);
-const wizard = ref(0);
 const protocols = ref<VideoLeaseProtocols>({});
 
 const channels = ref<string[]>([]);

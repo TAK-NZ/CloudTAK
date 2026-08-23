@@ -126,9 +126,15 @@ let pendingCoord: { lat: number; lng: number } | null = null;
 let rafId: number | null = null;
 
 function onMouseMove(e: MapMouseEvent): void {
+    // MapLibre reports the pointer in whichever unwrapped world copy it is over,
+    // so panning east across the antimeridian yields longitudes beyond +/-180
+    // (a cursor near the Chathams arrives as 204). Normalise here, at the point
+    // of capture, matching the map click/contextmenu handlers in stores/map.ts.
+    const lngLat = e.lngLat.wrap();
+
     pendingCoord = {
-        lat: e.lngLat.lat,
-        lng: e.lngLat.lng,
+        lat: lngLat.lat,
+        lng: lngLat.lng,
     };
 
     if (rafId === null) {

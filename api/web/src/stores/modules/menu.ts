@@ -6,6 +6,8 @@ import {
     IconFiles,
     IconUsers,
     IconVideo,
+    IconDeviceTv,
+    IconLayoutKanban,
     IconPhoto,
     IconRoute,
     IconMapPin,
@@ -172,6 +174,33 @@ export default class MenuManager {
                 description: 'Access live and recorded video feeds',
                 icon: IconVideo,
                 requiresMedia: true,
+            },
+            {
+                // Upstream surfaces the Video Wall from the Application Switcher in
+                // MainMenuContents.vue. This fork drops that switcher, which removed
+                // the only direct link to /video, so the wall is a normal menu entry
+                // here instead - which also gives it the reorder and visibility
+                // handling the switcher never had. Opens in its own tab, like Admin.
+                key: 'videowall',
+                label: 'Video Wall',
+                route: '/video',
+                routeExternal: true,
+                tooltip: 'Video Wall',
+                description: 'Grid of video streams pushed from the map',
+                icon: IconDeviceTv,
+                requiresMedia: true,
+            },
+            {
+                // Event Board lost its menu link the same way the Video Wall did -
+                // it was the switcher's other entry. Ungated, matching upstream:
+                // it is neither media- nor admin-scoped.
+                key: 'eventboard',
+                label: 'Event Board',
+                route: '/board',
+                routeExternal: true,
+                tooltip: 'Event Board',
+                description: 'Track and triage Core Events on a board',
+                icon: IconLayoutKanban,
             },
             {
                 key: 'chats',
