@@ -4,6 +4,7 @@ import Err from '@openaddresses/batch-error';
 import type { Profile } from '../../common/schema.js';
 import { X509Certificate } from 'crypto';
 import { TAKAPI, APIAuthPassword, APIAuthCertificate } from '@tak-ps/node-tak';
+import { isBadCredentialsError } from './cert-health.js';
 import UserControl from './control/user.js';
 
 export enum AuthProviderAccess {
@@ -81,7 +82,7 @@ export default class AuthProvider {
             // pushes a fix to throw a 401 instead of a 500 on bad certs
             await cert_api.Contacts.list();
         } catch (err) {
-            if (err instanceof Error && err.message.includes('org.springframework.security.authentication.BadCredentialsException')) {
+            if (isBadCredentialsError(err)) {
                 if (password) {
                     const api = await TAKAPI.init(new URL(this.config.server.webtak), new APIAuthPassword(profile.username, password));
                     profile = await this.config.models.Profile.commit(profile.username, {
