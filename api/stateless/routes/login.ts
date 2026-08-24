@@ -11,6 +11,7 @@ import Provider from '../lib/provider.js';
 import ProfileControl from '../lib/control/profile.js';
 import { UAParser } from 'ua-parser-js';
 import { X509Certificate } from 'crypto';
+import { isCertRejected } from '../lib/cert-health.js';
 import { discovery, authorizationUrl, exchangeCode, userinfo } from '../lib/oidc.js';
 import type { OIDCConfig } from '../lib/oidc.js';
 import { sql } from 'drizzle-orm';
@@ -326,8 +327,39 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     const authentik = await AuthentikProvider.init(config);
                     const updates: Record<string, unknown> = {};
 
-                    // Certificate provisioning — runs for new users (empty cert) and
-                    // existing users whose cert is expired or expiring within 7 days.
+                    // Certificate provisioning — runs for new users (empty cert),
+                    // existing users whose cert is expired or expiring within 7 days,
+                    // and existing users whose cert TAK Server has revoked.
+                    //
+                    // Expiry is readable straight out of the PEM. Revocation is not,
+                    // and TAK Server exposes no validity endpoint, so it takes a probe.
+                    // Without that probe a revoked SSO user is stranded: the cert still
+                    // looks healthy here so nothing re-enrolls, but GET /login rejects
+                    // it, so the frontend clears the token and bounces back to SSO —
+                    // indefinitely. Local password login has always recovered inside
+                    // AuthProvider.valid(); SSO has no password to re-enroll with,
+                    // which is why it has to be handled here.
+                    let needsCert = certNeedsRenewal(profile.auth?.cert);
+
+                    if (!needsCert && profile.auth?.cert && profile.auth?.key) {
+                        try {
+                            needsCert = await isCertRejected(
+                                String(config.server.api),
+                                profile.auth.cert,
+                                profile.auth.key,
+                            );
+
+                            if (needsCert) {
+                                console.log(`TAK certificate for ${email} was rejected by TAK Server (revoked) - re-enrolling`);
+                            }
+                        } catch (err) {
+                            // Fail safe. An unreachable or erroring TAK Server must not
+                            // be mistaken for revocation, otherwise every login during
+                            // an outage would churn a fresh certificate for no reason.
+                            console.error(`Could not verify TAK certificate for ${email} (assuming still valid):`, err);
+                        }
+                    }
+
                     // This has its own try/catch, deliberately separate from attribute
                     // sync below: cert enrollment mutates a temporary password on the
                     // shared Authentik user account, so two concurrent OIDC callbacks
@@ -335,7 +367,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     // and cause one enrollment attempt to fail with a stale-credential
                     // error from TAK Server. That failure must not prevent the
                     // callsign/group/role sync from running and committing.
-                    if (certNeedsRenewal(profile.auth?.cert)) {
+                    if (needsCert) {
                         try {
                             console.log(`Enrolling TAK certificate for OIDC user: ${email}`);
                             const certs = await authentik.enrollUserCertificate(email, config.server.webtak, tokens.access_token);
