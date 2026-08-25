@@ -8,10 +8,37 @@ import Auth, { AuthResourceAccess } from '../../common/auth.js';
 import Style from '../../common/style.js';
 import type ConfigStateless from '../config.js';
 import { HistoryOptions } from '@tak-ps/node-tak/lib/api/query';
-import { CoTParser, Feature } from '@tak-ps/node-cot';
+import CoT, { CoTParser, Feature } from '@tak-ps/node-cot';
 import { MissionLayerType } from '@tak-ps/node-tak/lib/api/mission-layer';
 import { StandardLayerResponse, LayerError } from '../../common/types.js';
 import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+
+/**
+ * Workaround for a @tak-ps/node-cot bug (reported upstream, dfpc-coe/node-cot):
+ * from_geojson() reads `properties.marti_archive` with a truthy check, so
+ * `marti_archive: false` is indistinguishable from `undefined` and no
+ * <marti archive="false"/> is ever written - the CoT ends up archived on TAK
+ * Server regardless of what the layer's style config asked for. `true` and
+ * `undefined` already round-trip correctly through the library; only the
+ * explicit-`false` case needs correcting here.
+ *
+ * TAK Server treats archive="false" on the CoT as an authoritative per-message
+ * override of the receiving input's own archive default (confirmed against
+ * TAK Server's SubmissionService/RepositoryService source), and archiving
+ * only gates the retention database write - it has no effect on live routing
+ * to subscribed clients. So this only ever removes messages from history; it
+ * never affects delivery.
+ *
+ * Remove this once from_geojson() is fixed upstream and the CloudTAK/node-cot
+ * dependency is bumped past that fix.
+ */
+function applyMartiArchiveWorkaround(cot: CoT, feat: Static<typeof Feature.InputFeature>): void {
+    if (feat.properties.marti_archive !== false) return;
+
+    const detail = cot.detail();
+    if (!detail.marti) detail.marti = {};
+    detail.marti._attributes = { ...detail.marti._attributes, archive: false };
+}
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.post('/layer/:layerid/cot', {
@@ -93,7 +120,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             let cots = [];
             for (const feat of req.body.features) {
                 try {
-                    cots.push(await CoTParser.from_geojson(feat));
+                    const cot = await CoTParser.from_geojson(feat);
+                    applyMartiArchiveWorkaround(cot, feat);
+                    cots.push(cot);
                 } catch (err) {
                     errors.push({
                         error: err instanceof Error ? err.message : String(err),
