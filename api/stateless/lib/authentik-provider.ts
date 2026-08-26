@@ -5,8 +5,42 @@ import { Agency, MachineUser, Channel } from './interface-user.js';
 import crypto from 'crypto';
 import { sql } from 'drizzle-orm';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
+import { TAKGroup, TAKRole } from '@tak-ps/node-tak/lib/api/types';
 import pem from 'pem';
 import xmljs from 'xml-js';
+
+const TAK_GROUPS: ReadonlySet<string> = new Set(Object.values(TAKGroup));
+const TAK_ROLES: ReadonlySet<string> = new Set(Object.values(TAKRole));
+
+/**
+ * Authentik user attributes are free-text, admin-editable strings - they are
+ * not guaranteed to be one of CloudTAK's enum values. A bad value (an unset
+ * attribute serialised as the literal string "None" by an external script,
+ * a typo, a stale value from a renamed team colour, etc.) must not reach
+ * ProfileConfig: `tak_group`/`tak_role` are stored as free text but the
+ * `GET /api/profile` response schema validates them against TAKGroup/TAKRole
+ * (see api/common/types.ts), so a single bad write poisons the profile and
+ * every subsequent profile fetch starts returning 400 until someone finds
+ * and corrects the row by hand. Validate at the boundary instead: drop an
+ * attribute that is not a recognised enum value rather than passing it
+ * through, so `login.ts`'s "only set if truthy" logic leaves the existing,
+ * previously-valid value untouched.
+ */
+export function asTakGroup(value: unknown, username: string): string | undefined {
+    if (typeof value !== 'string' || !value) return undefined;
+    if (TAK_GROUPS.has(value)) return value;
+
+    console.error(`Authentik attribute takColor="${value}" for ${username} is not a valid TAK team colour - ignoring`);
+    return undefined;
+}
+
+export function asTakRole(value: unknown, username: string): string | undefined {
+    if (typeof value !== 'string' || !value) return undefined;
+    if (TAK_ROLES.has(value)) return value;
+
+    console.error(`Authentik attribute takRole="${value}" for ${username} is not a valid TAK role - ignoring`);
+    return undefined;
+}
 
 export default class AuthentikProvider {
     config: Config;
@@ -491,8 +525,8 @@ export default class AuthentikProvider {
             // browser's TAK Server client certificate from colliding with the user's
             // device certificate - and is deliberately left alone.
             tak_callsign: attributes.takCallsign,
-            tak_group: attributes.takColor,
-            tak_role: attributes.takRole,
+            tak_group: asTakGroup(attributes.takColor, username),
+            tak_role: asTakRole(attributes.takRole, username),
         };
     }
 

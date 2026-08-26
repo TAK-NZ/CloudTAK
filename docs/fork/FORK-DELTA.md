@@ -169,6 +169,23 @@ the `profile` table.
 
 `login()` returns `tak_role` from `attributes.takRole`.
 
+**`tak_group`/`tak_role` are validated against the `TAKGroup`/`TAKRole` enums
+before they leave `login()`, not passed through verbatim.** Authentik
+attributes (`takColor`, `takRole`) are admin-editable free text with no
+enforcement that they match CloudTAK's enum values. An invalid value used to
+flow straight through into `ProfileConfig` on every login — `tak_group`/
+`tak_role` are stored as free text, so the write always succeeded — and broke
+that user's account: `GET /api/profile`'s response schema validates both
+fields against the enum, so once a bad value was stored every subsequent
+profile fetch failed with a 400, and the map (which depends on a successful
+profile fetch during boot) could never load for that user. This happened in
+practice from an externally-set `takColor` attribute of the literal string
+`"None"`. `asTakGroup()`/`asTakRole()` (exported for the unit tests in
+`api/test/authentik-provider.test.ts`) now drop an attribute that isn't a
+recognised enum value and log the rejection, rather than writing it — `login.ts`'s
+existing "only set if truthy" logic then leaves any previously-synced valid
+value untouched instead of overwriting it with garbage.
+
 **On the callsign suffix:** `login()` used to append `" (Web)"` to
 `attributes.takCallsign`. That was **removed at v13.70.0** to match upstream. The
 `" (Web)"` suffix is deliberately *kept* on the certificate `clientUid`, which is
