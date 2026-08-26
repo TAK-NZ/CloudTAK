@@ -76,7 +76,7 @@ const SELF_STYLE_PROPERTIES = ['marker-color', 'marker-opacity', 'icon-opacity',
  * which do not represent the named colour at all and made "Yellow" render as
  * amber, "Green" as yellow-green, etc.
  */
-const TEAM_COLORS: Record<string, string> = {
+export const TEAM_COLORS: Record<string, string> = {
     White: '#FFFFFF',
     Yellow: '#FFFF00',
     Orange: '#FF7700',
@@ -105,7 +105,7 @@ const TEAM_COLORS: Record<string, string> = {
  * colour. Falls back to white (matching the prior fixed behaviour) for a
  * value that cannot be parsed as `#rrggbb`.
  */
-function strokeColorFor(hex: string): string {
+export function strokeColorFor(hex: string): string {
     const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
     if (!match) return '#ffffff';
 

@@ -45,7 +45,7 @@ const DEFAULT_PUCK_COLOR = '#1da1f2';
 // CoT marker and the ATAK client rendering the same team colour. These are
 // ATAK's actual RGB values (Icon2525cIconAdapter.teamToColor()), not CSS/UI
 // framework theme colours - see cot.ts for the full rationale.
-const TEAM_COLORS: Record<string, string> = {
+export const TEAM_COLORS: Record<string, string> = {
     White: '#FFFFFF',
     Yellow: '#FFFF00',
     Orange: '#FF7700',
@@ -61,6 +61,26 @@ const TEAM_COLORS: Record<string, string> = {
     'Dark Green': '#007F00',
     Brown: '#A0714F',
 };
+
+/**
+ * Black or white border colour for a fill, chosen by relative luminance
+ * (ITU-R BT.601 coefficients) so the puck stays visible against either a
+ * light or dark basemap. Falls back to white (the prior fixed behaviour)
+ * for a value that cannot be parsed as `#rrggbb`. Mirrors strokeColorFor()
+ * in cot.ts.
+ */
+export function strokeColorFor(hex: string): string {
+    const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!match) return '#ffffff';
+
+    const r = parseInt(match[1], 16);
+    const g = parseInt(match[2], 16);
+    const b = parseInt(match[3], 16);
+
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+
+    return luminance > 0.6 ? '#000000' : '#ffffff';
+}
 
 /**
  * A MapLibre {@link IControl} that renders a live user-location puck (dot,
@@ -300,7 +320,7 @@ export class GeolocateControl implements IControl {
             // teams) against a light basemap. Switch to a black border for a
             // light fill, mirroring the same luminance-based choice made for
             // other users' rendered CoT markers (see strokeColorFor() in cot.ts).
-            this.dotElement.style.borderColor = GeolocateControl.strokeColorFor(this.color);
+            this.dotElement.style.borderColor = strokeColorFor(this.color);
         }
         if (this.headingElement) {
             const c = GeolocateControl.rgba(this.color, 0.55);
@@ -319,26 +339,6 @@ export class GeolocateControl implements IControl {
         const g = (int >> 8) & 255;
         const b = int & 255;
         return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-
-    /**
-     * Black or white border colour for a fill, chosen by relative luminance
-     * (ITU-R BT.601 coefficients) so the puck stays visible against either a
-     * light or dark basemap. Falls back to white (the prior fixed behaviour)
-     * for a value that cannot be parsed as `#rrggbb`. Mirrors strokeColorFor()
-     * in cot.ts.
-     */
-    private static strokeColorFor(hex: string): string {
-        const match = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
-        if (!match) return '#ffffff';
-
-        const r = parseInt(match[1], 16);
-        const g = parseInt(match[2], 16);
-        const b = parseInt(match[3], 16);
-
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
-        return luminance > 0.6 ? '#000000' : '#ffffff';
     }
 
     private static injectStyles(): void {
