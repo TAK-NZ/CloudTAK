@@ -140,6 +140,27 @@ test('GET: api/login/oidc/callback - email claim is lowercased for lookup', asyn
     assert.equal(payload.access, 'admin');
 });
 
+test('GET: api/login/oidc/callback - LOCAL_ONLY_ACCOUNTS redirects with local=true, not just sso_error', async () => {
+    // Regression test for an infinite redirect loop: this redirect used to omit
+    // `local=true`, so under OIDC_FORCED, Login.vue's forced-SSO auto-redirect
+    // (gated on `!route.query.local`) would see no `local` param and immediately
+    // send the browser back to SSO, which re-authenticates as the same
+    // local-only account and lands back here - forever, with the error message
+    // never shown because nothing on the frontend read `sso_error` either.
+    userinfoEmail = 'ckadmin@example.com';
+    userinfoGroups = [];
+    process.env.LOCAL_ONLY_ACCOUNTS = 'ckadmin@example.com';
+
+    try {
+        const location = await ssoLogin();
+        assert.equal(location.pathname, '/login');
+        assert.equal(location.searchParams.get('local'), 'true');
+        assert.ok(location.searchParams.get('sso_error'));
+    } finally {
+        delete process.env.LOCAL_ONLY_ACCOUNTS;
+    }
+});
+
 test('GET: api/login/oidc/callback - invalid state is rejected', async () => {
     const res = await fetch(
         `${flight.base}/api/login/oidc/callback?code=test-code&state=not-a-real-jwt`,

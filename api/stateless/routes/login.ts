@@ -209,7 +209,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         } catch (err) {
             console.error('OIDC login error:', err);
             const message = err instanceof Error ? err.message : 'SSO Login Failed';
-            res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
+            // `local=true` prevents Login.vue's forced-SSO check from immediately
+            // redirecting back here when OIDC_FORCED is set - without it, a
+            // persistent config error (e.g. a bad OIDC_DISCOVERY_URL) would loop
+            // forever with the error never shown. Login.vue additionally treats
+            // the presence of `sso_error` itself as reason not to auto-redirect,
+            // so this is defense in depth rather than the only thing preventing it.
+            res.redirect(`/login?local=true&sso_error=${encodeURIComponent(message)}`);
         }
     });
 
@@ -271,11 +277,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 throw new Err(400, null, 'Server has not been configured');
             }
 
-            // Block accounts configured for local-only login
+            // Block accounts configured for local-only login. The redirect
+            // MUST include `local=true` - without it, Login.vue's forced-SSO
+            // check sees no `local` param and immediately calls loginWithSSO()
+            // again on the very page this redirects to, which re-authenticates
+            // as the same local-only account and lands back here: an infinite
+            // SSO <-> /login redirect loop that never surfaces `sso_error` to
+            // the user (nothing reads it - see Login.vue).
             const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
                 .split(',').map((a: string) => a.trim()).filter(Boolean);
             if (localOnlyAccounts.includes(email)) {
-                return res.redirect(`/login?sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
+                return res.redirect(`/login?local=true&sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
             }
 
             // Parse group membership for role assignment. Authentik includes
@@ -508,7 +520,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         } catch (err) {
             console.error('OIDC login error:', err);
             const message = err instanceof Error ? err.message : 'SSO Login Failed';
-            return res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
+            // See the comment on the equivalent redirect in /login/oidc above -
+            // `local=true` stops this from looping forever under OIDC_FORCED.
+            return res.redirect(`/login?local=true&sso_error=${encodeURIComponent(message)}`);
         }
     });
 
