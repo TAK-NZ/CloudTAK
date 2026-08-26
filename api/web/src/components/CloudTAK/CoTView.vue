@@ -568,10 +568,10 @@
                     </div>
                 </div>
 
-                <PropertyEmail
+                <PropertyAuthor
                     v-if='username'
                     :key='cot.properties.id'
-                    :email='username'
+                    :username='username'
                 />
 
 
@@ -752,7 +752,7 @@ import PropertyBearing from './Property/PropertyBearing.vue';
 import PropertySensor from './Property/PropertySensor.vue';
 import PropertyPhone from './Property/PropertyPhone.vue';
 import PropertyCreator from './Property/PropertyCreator.vue';
-import PropertyEmail from './Property/PropertyEmail.vue';
+import PropertyAuthor from './Property/PropertyAuthor.vue';
 import PropertySpeed from './Property/PropertySpeed.vue';
 import Breadcrumb from './util/Breadcrumb.vue';
 import PropertyElevation from './Property/PropertyElevation.vue';

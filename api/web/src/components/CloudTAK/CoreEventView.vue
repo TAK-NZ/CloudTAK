@@ -186,10 +186,10 @@
                     </div>
                 </div>
 
-                <PropertyEmail
+                <PropertyAuthor
                     v-if='event.username'
                     :key='event.id'
-                    :email='event.username'
+                    :username='event.username'
                 />
 
                 <PropertyCoreEventMission
@@ -306,7 +306,7 @@ import Coordinate from './util/Coordinate.vue';
 import SlideDownHeader from './util/SlideDownHeader.vue';
 import PropertyType from './Property/PropertyType.vue';
 import PropertyStyle from './Property/PropertyStyle.vue';
-import PropertyEmail from './Property/PropertyEmail.vue';
+import PropertyAuthor from './Property/PropertyAuthor.vue';
 import PropertyCoreEventPriority from './Property/PropertyCoreEventPriority.vue';
 import PropertyCoreEventLocation from './Property/PropertyCoreEventLocation.vue';
 import PropertyCoreEventExternalId from './Property/PropertyCoreEventExternalId.vue';

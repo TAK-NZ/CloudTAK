@@ -251,10 +251,21 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const tokens = await exchangeCode(disc, oidc, req.query.code);
             const claims = await userinfo(disc, tokens.access_token);
 
-            if (typeof claims.email !== 'string' || !claims.email) {
-                throw new Err(400, null, 'OIDC UserInfo did not return an email claim');
+            // Identify the user by `preferred_username` first - the OIDC-standard
+            // claim for the name the IdP would use to log the user in - falling
+            // back to `email` for IdPs/configurations that don't populate it.
+            // Unlike `email`, `preferred_username` is not guaranteed to be
+            // case-insensitive (Authentik usernames are a case-sensitive unique
+            // field), so it is used as-is; only the email fallback is lowercased,
+            // matching this route's historical behaviour for that claim.
+            let email: string;
+            if (typeof claims.preferred_username === 'string' && claims.preferred_username) {
+                email = claims.preferred_username;
+            } else if (typeof claims.email === 'string' && claims.email) {
+                email = claims.email.toLowerCase();
+            } else {
+                throw new Err(400, null, 'OIDC UserInfo did not return a preferred_username or email claim');
             }
-            const email = claims.email.toLowerCase();
 
             if (!config.server.auth.key || !config.server.auth.cert || !config.server.webtak) {
                 throw new Err(400, null, 'Server has not been configured');

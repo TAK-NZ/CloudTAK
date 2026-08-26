@@ -543,12 +543,24 @@ export default class AuthentikProvider {
      * fallback path changes if this fails or is never configured.
      */
     private async enrollUserCertificateViaM2M(
-        email: string,
+        identifier: string,
         clientId: string,
         userAccessToken: string,
         takServerUrl: string,
     ): Promise<{ cert: string; key: string; ca: string[] }> {
-        console.log(`[M2M] Attempting bearer-token cert enrollment for ${email} via Authentik JWT-bearer exchange`);
+        console.log(`[M2M] Attempting bearer-token cert enrollment for ${identifier} via Authentik JWT-bearer exchange`);
+
+        // `identifier` here is the OIDC identifier CloudTAK resolved the user by
+        // (preferred_username or email claim), which is not guaranteed to equal
+        // the Authentik user's `username` field. Resolve the real Authentik
+        // username up front so the certificate subject matches exactly what the
+        // temporary-password fallback path below would produce for the same
+        // user - otherwise the CN/clientUid a person gets depends on which of
+        // the two enrollment paths happened to succeed.
+        const creds = await this.auth();
+        const user = await this.findUserByEmailOrUsername(creds.token, identifier);
+        if (!user) throw new Err(404, null, `User ${identifier} not found in Authentik`);
+        const username = user.username;
 
         // Exchange the user's own CloudTAK-issued access token for a new token,
         // using the JWT-bearer client-assertion grant so Authentik ties the
@@ -581,7 +593,7 @@ export default class AuthentikProvider {
             throw new Err(500, null, `[M2M] Authentik token response had no access_token: ${tokenBody}`);
         }
 
-        console.log(`[M2M] Got exchanged token for ${email}, requesting cert from TAK Server`);
+        console.log(`[M2M] Got exchanged token for ${username}, requesting cert from TAK Server`);
 
         // Step 2: build the CSR ourselves - node-tak's Credentials.generate()
         // hardcodes Basic auth (APIAuthPassword) and can't be reused for a
@@ -600,7 +612,7 @@ export default class AuthentikProvider {
         try {
             parsedConfig = xmljs.xml2js(configXml, { compact: true });
         } catch (err) {
-            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${email}: ${configXml.slice(0, 500)}`);
+            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${username}: ${configXml.slice(0, 500)}`);
         }
 
         let organization: string | undefined;
@@ -616,11 +628,11 @@ export default class AuthentikProvider {
         const { csr, clientKey } = await pem.promisified.createCSR({
             organization,
             organizationUnit,
-            commonName: email,
+            commonName: username,
         });
 
         const signUrl = new URL('/Marti/api/tls/signClient/v2', takServerUrl);
-        signUrl.searchParams.append('clientUid', `${email} (Web)`);
+        signUrl.searchParams.append('clientUid', `${username} (Web)`);
         signUrl.searchParams.append('version', '3');
 
         const signResponse = await fetch(signUrl, {
@@ -652,7 +664,7 @@ export default class AuthentikProvider {
         if (signed.ca0) ca.push(signed.ca0);
         if (signed.ca1) ca.push(signed.ca1);
 
-        console.log(`[M2M] Cert enrollment succeeded for ${email} via bearer token exchange`);
+        console.log(`[M2M] Cert enrollment succeeded for ${username} via bearer token exchange`);
 
         return { cert, key: clientKey, ca };
     }
