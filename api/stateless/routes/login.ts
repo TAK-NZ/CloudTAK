@@ -11,7 +11,7 @@ import Provider from '../lib/provider.js';
 import ProfileControl from '../lib/control/profile.js';
 import { UAParser } from 'ua-parser-js';
 import { X509Certificate } from 'crypto';
-import { isCertRejected } from '../lib/cert-health.js';
+import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import { discovery, authorizationUrl, exchangeCode, userinfo } from '../lib/oidc.js';
 import type { OIDCConfig } from '../lib/oidc.js';
 import { sql } from 'drizzle-orm';
@@ -343,14 +343,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
                     if (!needsCert && profile.auth?.cert && profile.auth?.key) {
                         try {
-                            needsCert = await isCertRejected(
-                                String(config.server.api),
-                                profile.auth.cert,
-                                profile.auth.key,
+                            const cert_api = await TAKAPI.init(
+                                new URL(String(config.server.api)),
+                                new APIAuthCertificate(profile.auth.cert, profile.auth.key),
                             );
+                            const probe = await cert_api.Certificate.probe();
 
-                            if (needsCert) {
-                                console.log(`TAK certificate for ${email} was rejected by TAK Server (revoked) - re-enrolling`);
+                            if (!probe.accepted) {
+                                needsCert = true;
+                                console.log(`TAK certificate for ${email} was rejected by TAK Server (${probe.reason}) - re-enrolling`);
                             }
                         } catch (err) {
                             // Fail safe. An unreachable or erroring TAK Server must not
