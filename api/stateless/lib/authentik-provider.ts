@@ -5,8 +5,42 @@ import { Agency, MachineUser, Channel } from './interface-user.js';
 import crypto from 'crypto';
 import { sql } from 'drizzle-orm';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
+import { TAKGroup, TAKRole } from '@tak-ps/node-tak/lib/api/types';
 import pem from 'pem';
 import xmljs from 'xml-js';
+
+const TAK_GROUPS: ReadonlySet<string> = new Set(Object.values(TAKGroup));
+const TAK_ROLES: ReadonlySet<string> = new Set(Object.values(TAKRole));
+
+/**
+ * Authentik user attributes are free-text, admin-editable strings - they are
+ * not guaranteed to be one of CloudTAK's enum values. A bad value (an unset
+ * attribute serialised as the literal string "None" by an external script,
+ * a typo, a stale value from a renamed team colour, etc.) must not reach
+ * ProfileConfig: `tak_group`/`tak_role` are stored as free text but the
+ * `GET /api/profile` response schema validates them against TAKGroup/TAKRole
+ * (see api/common/types.ts), so a single bad write poisons the profile and
+ * every subsequent profile fetch starts returning 400 until someone finds
+ * and corrects the row by hand. Validate at the boundary instead: drop an
+ * attribute that is not a recognised enum value rather than passing it
+ * through, so `login.ts`'s "only set if truthy" logic leaves the existing,
+ * previously-valid value untouched.
+ */
+export function asTakGroup(value: unknown, username: string): string | undefined {
+    if (typeof value !== 'string' || !value) return undefined;
+    if (TAK_GROUPS.has(value)) return value;
+
+    console.error(`Authentik attribute takColor="${value}" for ${username} is not a valid TAK team colour - ignoring`);
+    return undefined;
+}
+
+export function asTakRole(value: unknown, username: string): string | undefined {
+    if (typeof value !== 'string' || !value) return undefined;
+    if (TAK_ROLES.has(value)) return value;
+
+    console.error(`Authentik attribute takRole="${value}" for ${username} is not a valid TAK role - ignoring`);
+    return undefined;
+}
 
 export default class AuthentikProvider {
     config: Config;
@@ -491,8 +525,8 @@ export default class AuthentikProvider {
             // browser's TAK Server client certificate from colliding with the user's
             // device certificate - and is deliberately left alone.
             tak_callsign: attributes.takCallsign,
-            tak_group: attributes.takColor,
-            tak_role: attributes.takRole,
+            tak_group: asTakGroup(attributes.takColor, username),
+            tak_role: asTakRole(attributes.takRole, username),
         };
     }
 
@@ -543,12 +577,24 @@ export default class AuthentikProvider {
      * fallback path changes if this fails or is never configured.
      */
     private async enrollUserCertificateViaM2M(
-        email: string,
+        identifier: string,
         clientId: string,
         userAccessToken: string,
         takServerUrl: string,
     ): Promise<{ cert: string; key: string; ca: string[] }> {
-        console.log(`[M2M] Attempting bearer-token cert enrollment for ${email} via Authentik JWT-bearer exchange`);
+        console.log(`[M2M] Attempting bearer-token cert enrollment for ${identifier} via Authentik JWT-bearer exchange`);
+
+        // `identifier` here is the OIDC identifier CloudTAK resolved the user by
+        // (preferred_username or email claim), which is not guaranteed to equal
+        // the Authentik user's `username` field. Resolve the real Authentik
+        // username up front so the certificate subject matches exactly what the
+        // temporary-password fallback path below would produce for the same
+        // user - otherwise the CN/clientUid a person gets depends on which of
+        // the two enrollment paths happened to succeed.
+        const creds = await this.auth();
+        const user = await this.findUserByEmailOrUsername(creds.token, identifier);
+        if (!user) throw new Err(404, null, `User ${identifier} not found in Authentik`);
+        const username = user.username;
 
         // Exchange the user's own CloudTAK-issued access token for a new token,
         // using the JWT-bearer client-assertion grant so Authentik ties the
@@ -581,7 +627,7 @@ export default class AuthentikProvider {
             throw new Err(500, null, `[M2M] Authentik token response had no access_token: ${tokenBody}`);
         }
 
-        console.log(`[M2M] Got exchanged token for ${email}, requesting cert from TAK Server`);
+        console.log(`[M2M] Got exchanged token for ${username}, requesting cert from TAK Server`);
 
         // Step 2: build the CSR ourselves - node-tak's Credentials.generate()
         // hardcodes Basic auth (APIAuthPassword) and can't be reused for a
@@ -600,7 +646,7 @@ export default class AuthentikProvider {
         try {
             parsedConfig = xmljs.xml2js(configXml, { compact: true });
         } catch (err) {
-            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${email}: ${configXml.slice(0, 500)}`);
+            throw new Err(500, err instanceof Error ? err : null, `[M2M] Failed to parse /tls/config XML for ${username}: ${configXml.slice(0, 500)}`);
         }
 
         let organization: string | undefined;
@@ -616,11 +662,11 @@ export default class AuthentikProvider {
         const { csr, clientKey } = await pem.promisified.createCSR({
             organization,
             organizationUnit,
-            commonName: email,
+            commonName: username,
         });
 
         const signUrl = new URL('/Marti/api/tls/signClient/v2', takServerUrl);
-        signUrl.searchParams.append('clientUid', `${email} (Web)`);
+        signUrl.searchParams.append('clientUid', `${username} (Web)`);
         signUrl.searchParams.append('version', '3');
 
         const signResponse = await fetch(signUrl, {
@@ -652,7 +698,7 @@ export default class AuthentikProvider {
         if (signed.ca0) ca.push(signed.ca0);
         if (signed.ca1) ca.push(signed.ca1);
 
-        console.log(`[M2M] Cert enrollment succeeded for ${email} via bearer token exchange`);
+        console.log(`[M2M] Cert enrollment succeeded for ${username} via bearer token exchange`);
 
         return { cert, key: clientKey, ca };
     }

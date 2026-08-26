@@ -2,10 +2,10 @@
     <div class='col-12'>
         <SlideDownHeader
             v-model='expanded'
-            label='Email'
+            label='Author'
         >
             <template #icon>
-                <IconMail
+                <IconUser
                     :size='18'
                     stroke='1'
                     color='#6b7990'
@@ -14,17 +14,7 @@
             </template>
 
             <div class='mx-2 pt-2'>
-                <CopyField :model-value='props.email'>
-                    <a
-                        :href='`mailto:${props.email}`'
-                        class='cursor-pointer pe-2'
-                    >
-                        <IconMail
-                            :size='24'
-                            stroke='1'
-                        />
-                    </a>
-                </CopyField>
+                <CopyField :model-value='props.username' />
             </div>
         </SlideDownHeader>
     </div>
@@ -35,11 +25,11 @@ import { ref } from 'vue';
 import CopyField from '../util/CopyField.vue';
 import SlideDownHeader from '../util/SlideDownHeader.vue';
 import {
-    IconMail
+    IconUser
 } from '@tabler/icons-vue';
 
 const props = defineProps<{
-    email: string;
+    username: string;
 }>();
 
 const expanded = ref(false);

@@ -32,7 +32,13 @@ why — see each patch file's actual diff for the current behavior, and
 
 2. `api/stateless/routes/login.ts`, `api/stateless/lib/oidc.ts`
    - `GET /api/login/oidc` — redirects to the IdP's authorization endpoint
-   - `GET /api/login/oidc/callback` — exchanges the code, fetches userinfo, syncs roles from the `groups` claim, enrolls a TAK client cert (see `AuthentikProvider.enrollUserCertificate()`), syncs Authentik attributes, and hands the session to the frontend via a `/login#sso=<base64url payload>` URL fragment (not a query string, to keep the session token out of server access logs and browser history)
+   - `GET /api/login/oidc/callback` — exchanges the code, fetches userinfo, identifies the user by the
+     `preferred_username` claim (falling back to `email`, lowercased, if `preferred_username` is absent
+     — this lets users without an email attribute in Authentik log in), syncs roles from the `groups`
+     claim, enrolls a TAK client cert (see `AuthentikProvider.enrollUserCertificate()`), syncs Authentik
+     attributes, and hands the session to the frontend via a `/login#sso=<base64url payload>` URL
+     fragment (not a query string, to keep the session token out of server access logs and browser
+     history)
    - `OIDC_FORCED` system-admin bypass: blocks non-admin users from `POST /api/login` with a 403 when SSO is enforced; system admins can still log in locally via `/login?local=true`
 
 3. `api/stateless/routes/server.ts`

@@ -209,7 +209,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         } catch (err) {
             console.error('OIDC login error:', err);
             const message = err instanceof Error ? err.message : 'SSO Login Failed';
-            res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
+            // `local=true` prevents Login.vue's forced-SSO check from immediately
+            // redirecting back here when OIDC_FORCED is set - without it, a
+            // persistent config error (e.g. a bad OIDC_DISCOVERY_URL) would loop
+            // forever with the error never shown. Login.vue additionally treats
+            // the presence of `sso_error` itself as reason not to auto-redirect,
+            // so this is defense in depth rather than the only thing preventing it.
+            res.redirect(`/login?local=true&sso_error=${encodeURIComponent(message)}`);
         }
     });
 
@@ -251,20 +257,37 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const tokens = await exchangeCode(disc, oidc, req.query.code);
             const claims = await userinfo(disc, tokens.access_token);
 
-            if (typeof claims.email !== 'string' || !claims.email) {
-                throw new Err(400, null, 'OIDC UserInfo did not return an email claim');
+            // Identify the user by `preferred_username` first - the OIDC-standard
+            // claim for the name the IdP would use to log the user in - falling
+            // back to `email` for IdPs/configurations that don't populate it.
+            // Unlike `email`, `preferred_username` is not guaranteed to be
+            // case-insensitive (Authentik usernames are a case-sensitive unique
+            // field), so it is used as-is; only the email fallback is lowercased,
+            // matching this route's historical behaviour for that claim.
+            let email: string;
+            if (typeof claims.preferred_username === 'string' && claims.preferred_username) {
+                email = claims.preferred_username;
+            } else if (typeof claims.email === 'string' && claims.email) {
+                email = claims.email.toLowerCase();
+            } else {
+                throw new Err(400, null, 'OIDC UserInfo did not return a preferred_username or email claim');
             }
-            const email = claims.email.toLowerCase();
 
             if (!config.server.auth.key || !config.server.auth.cert || !config.server.webtak) {
                 throw new Err(400, null, 'Server has not been configured');
             }
 
-            // Block accounts configured for local-only login
+            // Block accounts configured for local-only login. The redirect
+            // MUST include `local=true` - without it, Login.vue's forced-SSO
+            // check sees no `local` param and immediately calls loginWithSSO()
+            // again on the very page this redirects to, which re-authenticates
+            // as the same local-only account and lands back here: an infinite
+            // SSO <-> /login redirect loop that never surfaces `sso_error` to
+            // the user (nothing reads it - see Login.vue).
             const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
                 .split(',').map((a: string) => a.trim()).filter(Boolean);
             if (localOnlyAccounts.includes(email)) {
-                return res.redirect(`/login?sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
+                return res.redirect(`/login?local=true&sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
             }
 
             // Parse group membership for role assignment. Authentik includes
@@ -497,7 +520,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         } catch (err) {
             console.error('OIDC login error:', err);
             const message = err instanceof Error ? err.message : 'SSO Login Failed';
-            return res.redirect(`/login?sso_error=${encodeURIComponent(message)}`);
+            // See the comment on the equivalent redirect in /login/oidc above -
+            // `local=true` stops this from looping forever under OIDC_FORCED.
+            return res.redirect(`/login?local=true&sso_error=${encodeURIComponent(message)}`);
         }
     });
 

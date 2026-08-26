@@ -62,6 +62,13 @@
                                 <h2 class='h2 text-center mb-4'>
                                     Login to your account
                                 </h2>
+                                <TablerInlineAlert
+                                    v-if='ssoError && !loading'
+                                    class='mb-3'
+                                    title='SSO Login Failed'
+                                    :description='ssoError'
+                                    severity='danger'
+                                />
                                 <TablerLoading
                                     v-if='loading'
                                     :desc='loadingMessage'
@@ -471,6 +478,10 @@ const loadingMessage = ref('Logging in');
 const albOidcEnabled = ref(false);
 const albOidcForced = ref(false);
 const storedUsername = ref<string | null>(null);
+// Populated from `?sso_error=` on mount (see below) - the backend redirects
+// here with this set whenever an SSO login fails, or is rejected for an
+// account restricted to local login.
+const ssoError = ref<string | null>(null);
 const body = ref<Login_Create>({
     username: '',
     password: ''
@@ -509,6 +520,13 @@ onMounted(async () => {
         }
     } catch (err) {
         console.error('Failed to read existing session', err);
+    }
+
+    // Surface an SSO failure the backend redirected back with, instead of
+    // discarding it. Read before the forced-SSO auto-redirect check below,
+    // which also checks for it directly to decide whether to redirect again.
+    if (typeof route.query.sso_error === 'string' && route.query.sso_error) {
+        ssoError.value = route.query.sso_error;
     }
 
     // Handle SSO login completion. The backend hands the session back via a
@@ -613,7 +631,12 @@ onMounted(async () => {
             albOidcEnabled.value = oidcStatus.oidc_enabled;
             albOidcForced.value = oidcStatus.oidc_forced || false;
             // If SSO is forced and no explicit local-login override, redirect immediately
-            if (albOidcForced.value && !route.query.local) {
+            // `sso_error` also suppresses the auto-redirect, not just `local` -
+            // a backend redirect that forgot to set `local=true` alongside
+            // `sso_error` (or a future one that does the same) would otherwise
+            // send the browser straight back to SSO with no visible error and
+            // no way out. See ssoError below for how the message is shown.
+            if (albOidcForced.value && !route.query.local && !route.query.sso_error) {
                 loading.value = true;
                 loadingMessage.value = 'Redirecting to SSO...';
                 loginWithSSO();

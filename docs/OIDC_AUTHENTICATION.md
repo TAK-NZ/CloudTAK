@@ -29,6 +29,7 @@ GET /api/login/oidc/callback?code=…&state=…
         ├── verify state JWT (must carry t: 'oidc')
         ├── exchange code for tokens directly with the IdP over TLS
         ├── fetch /userinfo claims (incl. group membership)
+        ├── identify the user by `preferred_username`, falling back to `email`
         ├── create or update the CloudTAK profile
         ├── enroll / renew the TAK client certificate
         └── sync Authentik attributes (callsign, group, role)
@@ -69,6 +70,16 @@ while everything Authentik-specific is isolated in `authentik-provider.ts`.
   through the signed state JWT. On failure redirects to `/login?sso_error=<message>`.
 - **`GET /api/login/oidc/callback`** — Authorization Code callback. Rejects a missing/invalid/expired
   state JWT, or one whose `t` claim isn't `oidc`.
+
+  **Identity claim.** CloudTAK's `Profile.username` (its primary key for the user) is populated from the
+  userinfo `preferred_username` claim, falling back to `email` (lowercased) if `preferred_username` is
+  absent. `preferred_username` is used as-is, without lowercasing, since Authentik usernames are a
+  case-sensitive unique field - lowercasing it could silently merge two distinct accounts that differ
+  only by case. This lets users without an email attribute in Authentik (and users whose Authentik
+  username differs from their email) log in; the callback fails with `400` only if userinfo returns
+  neither claim. `AuthentikProvider.findUserByEmailOrUsername()` (see Certificate enrollment below)
+  resolves whichever identifier was used back to the canonical Authentik user record for cert enrollment
+  and attribute sync, so the two lookups stay consistent even when username and email differ.
 - **`GET /api/logout`** — redirects to the IdP end-session endpoint
   (`{AUTHENTIK_URL}/application/o/{AUTHENTIK_APP_SLUG}/end-session/`) when configured, otherwise to
   `/login`.
@@ -88,7 +99,7 @@ Provider-agnostic OIDC:
 | `OIDC_CLIENT_SECRET` | OAuth2 client secret (injected from Secrets Manager) |
 | `OIDC_SCOPES` | default `openid profile email groups` |
 | `OIDC_REDIRECT_URI` | defaults to `{API_URL}/api/login/oidc/callback` |
-| `LOCAL_ONLY_ACCOUNTS` | comma-separated accounts exempt from forced SSO |
+| `LOCAL_ONLY_ACCOUNTS` | comma-separated usernames (the same identifiers CloudTAK stores as `Profile.username` - see below) exempt from forced SSO |
 
 Authentik-specific:
 

@@ -84,6 +84,18 @@ An Authorization Code flow run by the application itself. `oidcParser()`,
 `GET /server/oidc` exposes `oidc_enabled` / `oidc_forced` publicly so the login
 page can decide what to render, backed by `oidc_enabled` on `ServerResponse`.
 
+**The user is identified by `preferred_username`, falling back to `email`.**
+`Profile.username` (the CloudTAK primary key for a user) used to be populated
+unconditionally from the userinfo `email` claim, which both assumed every
+Authentik account has an email attribute and assumed CloudTAK's own record key
+should be that email rather than the Authentik `username`. Neither holds once
+Authentik usernames diverge from email (some are not email-shaped, some accounts
+have no email at all). `preferred_username` is used as-is if present (no
+lowercasing — Authentik usernames are a case-sensitive unique field, so
+lowercasing risks merging two distinct accounts), falling back to a lowercased
+`email` only if `preferred_username` is absent. The callback still 400s if
+userinfo returns neither claim.
+
 This replaced an earlier ALB-based design where the load balancer performed the
 OIDC handshake and injected JWT headers. Two consequences of that move are easy
 to misread as unnecessary:
@@ -130,6 +142,16 @@ deliberately.** They used to share one, so a cert-enrollment failure aborted the
 block before the callsign/group/role sync ran at all — the sync was never
 reached, let alone failed. Do not recombine them.
 
+**Both enrollment paths must resolve the real Authentik `username` before using
+it as the certificate CN/clientUid.** The M2M path
+(`enrollUserCertificateViaM2M`) now calls `findUserByEmailOrUsername()` up front,
+same as the temp-password fallback always has — it previously built the CSR
+`commonName` and `clientUid` directly from whatever identifier the OIDC callback
+passed in (the `preferred_username`/`email` claim), which is not guaranteed to
+equal the Authentik `username` field. Without the lookup, a person's certificate
+subject would differ depending on which of the two enrollment paths happened to
+succeed for them.
+
 See [`README-CERT-ENROLLMENT-RACE.md`](README-CERT-ENROLLMENT-RACE.md).
 
 ### Authentik attribute sync
@@ -146,6 +168,23 @@ written via `ProfileConfig.commit()`. They were previously passed to
 the `profile` table.
 
 `login()` returns `tak_role` from `attributes.takRole`.
+
+**`tak_group`/`tak_role` are validated against the `TAKGroup`/`TAKRole` enums
+before they leave `login()`, not passed through verbatim.** Authentik
+attributes (`takColor`, `takRole`) are admin-editable free text with no
+enforcement that they match CloudTAK's enum values. An invalid value used to
+flow straight through into `ProfileConfig` on every login — `tak_group`/
+`tak_role` are stored as free text, so the write always succeeded — and broke
+that user's account: `GET /api/profile`'s response schema validates both
+fields against the enum, so once a bad value was stored every subsequent
+profile fetch failed with a 400, and the map (which depends on a successful
+profile fetch during boot) could never load for that user. This happened in
+practice from an externally-set `takColor` attribute of the literal string
+`"None"`. `asTakGroup()`/`asTakRole()` (exported for the unit tests in
+`api/test/authentik-provider.test.ts`) now drop an attribute that isn't a
+recognised enum value and log the rejection, rather than writing it — `login.ts`'s
+existing "only set if truthy" logic then leaves any previously-synced valid
+value untouched instead of overwriting it with garbage.
 
 **On the callsign suffix:** `login()` used to append `" (Web)"` to
 `attributes.takCallsign`. That was **removed at v13.70.0** to match upstream. The
