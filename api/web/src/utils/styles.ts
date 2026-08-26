@@ -271,7 +271,13 @@ export default function styles(id: string, opts: {
             paint: {
                 'circle-color': ['get', 'marker-color'],
                 'circle-opacity': ["number", ["get", "marker-opacity"], 1],
-                'circle-stroke-color': '#ffffff',
+                // `marker-stroke-color` is precomputed per-feature in COT#update
+                // from the fill colour's luminance (see cot.ts's strokeColorFor()),
+                // so a light team colour (White, Yellow, Cyan, ...) gets a black
+                // border and stays visible on a light basemap, rather than the
+                // fixed white border used before, which was invisible against a
+                // light-coloured marker on a light-coloured map.
+                'circle-stroke-color': ["string", ["get", "marker-stroke-color"], "#ffffff"],
                 'circle-stroke-width': [
                     'interpolate',
                     ['linear'],
