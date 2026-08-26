@@ -53634,236 +53634,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/manifest.webmanifest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return the Web Manifest for PWA Use */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            name: string;
-                            short_name: string;
-                            description: string;
-                            start_url: string;
-                            display: string;
-                            background_color: string;
-                            theme_color: string;
-                            lang: string;
-                            scope: string;
-                            icons: {
-                                src: string;
-                                sizes: string;
-                                type: string;
-                            }[];
-                            orientation: string;
-                            categories: string[];
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/manifest.webmanifest/logos/{:size}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return a resized PNG logo for PWA use */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description Logo size in pixels */
-                    ":size": number;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/type/cot": {
         parameters: {
             query?: never;
@@ -54271,6 +54041,236 @@ export interface paths {
                             full?: string;
                         };
                     };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/manifest.webmanifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the Web Manifest for PWA Use */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            name: string;
+                            short_name: string;
+                            description: string;
+                            start_url: string;
+                            display: string;
+                            background_color: string;
+                            theme_color: string;
+                            lang: string;
+                            scope: string;
+                            icons: {
+                                src: string;
+                                sizes: string;
+                                type: string;
+                            }[];
+                            orientation: string;
+                            categories: string[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/manifest.webmanifest/logos/{:size}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return a resized PNG logo for PWA use */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description Logo size in pixels */
+                    ":size": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
                 /** @description Error Response */
                 400: {
