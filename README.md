@@ -14,52 +14,12 @@ Nevertheless others interested in deploying a similar infrastructure can do so b
 
 ### Architecture Layers
 
-This CloudTAK infrastructure requires the base infrastructure layer. Layers can be deployed in multiple independent environments:
+This CloudTAK infrastructure requires the base infrastructure layer, and is itself the foundation
+for higher level layers, each deployed as a separate stack from its own repository.
 
-```
-        PRODUCTION ENVIRONMENT                DEVELOPMENT ENVIRONMENT
-        Domain: tak.nz                        Domain: dev.tak.nz
-
-┌─────────────────────────────────┐    ┌─────────────────────────────────┐
-│        MediaInfra               │    │        MediaInfra               │
-│    CloudFormation Stack         │    │    CloudFormation Stack         │
-└─────────────────────────────────┘    └─────────────────────────────────┘
-                │                                        │
-                ▼                                        ▼
-┌─────────────────────────────────┐    ┌─────────────────────────────────┐
-│         CloudTAK                │    │         CloudTAK                │
-│    CloudFormation Stack         │    │    CloudFormation Stack         │
-│      (This Repository)          │    │      (This Repository)          │
-└─────────────────────────────────┘    └─────────────────────────────────┘
-                │                                        │
-                ▼                                        ▼
-┌─────────────────────────────────┐    ┌─────────────────────────────────┐
-│         TakInfra                │    │         TakInfra                │
-│    CloudFormation Stack         │    │    CloudFormation Stack         │
-└─────────────────────────────────┘    └─────────────────────────────────┘
-                │                                        │
-                ▼                                        ▼
-┌─────────────────────────────────┐    ┌─────────────────────────────────┐
-│        AuthInfra                │    │        AuthInfra                │
-│    CloudFormation Stack         │    │    CloudFormation Stack         │
-└─────────────────────────────────┘    └─────────────────────────────────┘
-                │                                        │
-                ▼                                        ▼
-┌─────────────────────────────────┐    ┌─────────────────────────────────┐
-│        BaseInfra                │    │        BaseInfra                │
-│    CloudFormation Stack         │    │    CloudFormation Stack         │
-└─────────────────────────────────┘    └─────────────────────────────────┘
-```
-
-| Layer | Repository | Description |
-|-------|------------|-------------|
-| **BaseInfra** | [`base-infra`](https://github.com/TAK-NZ/base-infra)  | Foundation: VPC, ECS, S3, KMS, ACM |
-| **AuthInfra** | [`auth-infra`](https://github.com/TAK-NZ/auth-infra) | SSO via Authentik, LDAP |
-| **TakInfra** | [`tak-infra`](https://github.com/TAK-NZ/tak-infra) | TAK Server |
-| **CloudTAK** | `CloudTAK` (this repo) | CloudTAK web interface and ETL |
-| **MediaInfra** | [`media-infra`](https://github.com/TAK-NZ/media-infra) | Video Server based on Mediamtx |
-
-**Deployment Order**: BaseInfra must be deployed first, followed by AuthInfra, then TakInfra, CloudTAK, and finally MediaInfra. Each layer imports outputs from the layer below via CloudFormation exports.
+For the full layer diagram and deployment order across all TAK.NZ repositories, see the
+[TAK.NZ organization overview](https://github.com/TAK-NZ). That diagram is maintained in one place
+so it stays current as layers are added.
 
 ## Quick Start
 
@@ -151,13 +111,10 @@ This stack uses a **hybrid Docker image strategy** that supports both pre-built 
 
 ## Available Environments
 
-| Environment | Stack Name | Description | Domain | CloudTAK Cost* | Complete Stack Cost** |
-|-------------|------------|-------------|--------|----------------|----------------------|
-| `dev-test` | `TAK-Dev-CloudTAK` | Cost-optimized development | `map.dev.tak.nz` | ~$45 | ~$200 |
-| `prod` | `TAK-Prod-CloudTAK` | Production-ready deployment | `map.tak.nz` | ~$180 | ~$650 |
-
-*CloudTAK Infrastructure only, **Complete deployment (BaseInfra + AuthInfra + TakInfra + VideoInfra + CloudTAK)  
-Estimated AWS costs for ap-southeast-2, excluding data transfer and usage
+| Environment | Stack Name | Description | Domain |
+|-------------|------------|-------------|--------|
+| `dev-test` | `TAK-Dev-CloudTAK` | Cost-optimized development | `map.dev.tak.nz` |
+| `prod` | `TAK-Prod-CloudTAK` | Production-ready deployment | `map.tak.nz` |
 
 ## Development Workflow
 
@@ -217,7 +174,6 @@ npm run deploy:local:dev
 - **[🏗️ Architecture Guide](docs/ARCHITECTURE.md)** - Technical architecture and design decisions  
 - **[⚙️ Configuration Guide](docs/PARAMETERS.md)** - Complete configuration management reference
 - **[🐳 Docker Image Strategy](docs/DOCKER_IMAGE_STRATEGY.md)** - Hybrid image strategy for fast CI/CD and flexible development
-- **[🔧 Environment Variables](docs/ENVIRONMENT_VARIABLES.md)** - CloudTAK application configuration via environment variables
 - **[🪝 Webhooks Guide](docs/WEBHOOKS.md)** - Incoming webhook support for ETL layers
 - **[🔐 OIDC Authentication](docs/OIDC_AUTHENTICATION.md)** - In-app Single Sign-On setup with Authentik
 - **[📜 Certificate Management](docs/fork/README-CERT-RENEWAL.md)** - Automatic certificate monitoring and renewal

@@ -103,13 +103,10 @@ All configurations are stored in [`cdk/cdk.json`](../cdk/cdk.json) under the `co
 
 ### **Environment Comparison**
 
-| Environment | Stack Name | Description | CloudTAK Cost* | Complete Stack Cost** |
-|-------------|------------|-------------|----------------|----------------------|
-| `dev-test` | `TAK-Dev-CloudTAK` | Cost-optimized development | ~$70 | ~$290 |
-| `prod` | `TAK-Prod-CloudTAK` | High-availability production | ~$380 | ~$1158 |
-
-*CloudTAK Infrastructure only, **Complete deployment (BaseInfra + AuthInfra + TakInfra + VideoInfra + CloudTAK)  
-Estimated AWS costs for ap-southeast-2, excluding data processing and storage usage
+| Environment | Stack Name | Description |
+|-------------|------------|-------------|
+| `dev-test` | `TAK-Dev-CloudTAK` | Cost-optimized development |
+| `prod` | `TAK-Prod-CloudTAK` | High-availability production |
 
 ### **Key Configuration Differences**
 
@@ -233,7 +230,7 @@ npm run deploy:dev -- --context useS3CloudTAKConfigFile=true
 ## **Cost Optimization**
 
 ### **Development Environment Optimizations**
-- **Single ECS Task**: Minimal compute allocation (~$25/month savings)
+- **Single ECS Task**: Minimal compute allocation
 - **No Container Insights**: Reduces CloudWatch costs
 - **Smaller CPU/Memory**: Lower ECS task costs
 - **Fewer ECR Images**: Reduced storage costs

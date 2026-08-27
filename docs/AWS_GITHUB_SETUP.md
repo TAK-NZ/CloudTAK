@@ -60,11 +60,8 @@ CloudTAK uses the same breaking change detection system as BaseInfra:
 
 ### 5.3 Override Mechanism
 
-To deploy breaking changes intentionally:
-
-1. **Include `[force-deploy]` in commit message**
-2. **The workflows will detect the override and proceed with deployment**
-3. **Use with caution** - ensure dependent stacks are updated accordingly
+See [BaseInfra's override mechanism](https://github.com/TAK-NZ/base-infra/blob/main/docs/AWS_GITHUB_SETUP.md#54-override-mechanism)
+(`[force-deploy]` in the commit message) - identical here.
 
 ## 6. GitHub Actions Workflows
 
@@ -141,26 +138,15 @@ upstream code plus our own changes and nothing branding-specific.
 
 ## 7. Required Secrets and Variables
 
-### 7.1 Organization Secrets (configured in BaseInfra)
+### 7.1 Organization Secrets and Variables
 
-| Secret | Description | Used For |
-|--------|-------------|----------|
-| `DEMO_AWS_ACCOUNT_ID` | Demo AWS account ID | Demo environment |
-| `DEMO_AWS_ROLE_ARN` | Demo GitHub Actions IAM role ARN | Demo environment |
-| `DEMO_AWS_REGION` | Demo AWS deployment region | Demo environment |
-| `PROD_AWS_ACCOUNT_ID` | Production AWS account ID | Production environment |
-| `PROD_AWS_ROLE_ARN` | Production GitHub Actions IAM role ARN | Production environment |
-| `PROD_AWS_REGION` | Production AWS deployment region | Production environment |
+The core organization secrets (`DEMO_AWS_ACCOUNT_ID`, `DEMO_AWS_ROLE_ARN`, `DEMO_AWS_REGION`,
+`PROD_AWS_ACCOUNT_ID`, `PROD_AWS_ROLE_ARN`, `PROD_AWS_REGION`) and variables (`DEMO_STACK_NAME`,
+`DEMO_TEST_DURATION`, `DEMO_R53_ZONE_NAME`) are configured once at the organization level in
+[BaseInfra's setup guide](https://github.com/TAK-NZ/base-infra/blob/main/docs/AWS_GITHUB_SETUP.md#3-github-organization-setup-one-time-configuration)
+and used by every layer, including this one.
 
-### 7.2 Organization Variables (configured in BaseInfra)
-
-| Variable | Description | Used For |
-|----------|-------------|----------|
-| `DEMO_STACK_NAME` | Stack name suffix for demo | Demo environment |
-| `DEMO_TEST_DURATION` | Test wait time in seconds | Demo environment |
-| `DEMO_R53_ZONE_NAME` | Demo Route53 zone name | Demo environment |
-
-### 7.3 Repository Variables
+### 7.2 Repository Variables
 
 | Variable | Description | Values | Usage |
 |----------|-------------|--------|-------|
@@ -171,21 +157,9 @@ workflow are gone — syncing is manual, see section 6.4.
 
 ## 8. Composite Actions
 
-### 8.1 Setup CDK Environment Action
-
-Location: `.github/actions/setup-cdk/action.yml`
-
-**Purpose:** Reduces code duplication by consolidating common setup steps:
-- Repository checkout
-- Node.js setup with npm caching
-- AWS credentials configuration
-- Dependency installation
-
-**Benefits:**
-- Consistent setup across all workflows
-- Easier maintenance and updates
-- Reduced workflow file size
-- Centralized Node.js and AWS configuration
+Location: `.github/actions/setup-cdk/action.yml`. Same purpose and benefits as
+[BaseInfra's composite action](https://github.com/TAK-NZ/base-infra/blob/main/docs/AWS_GITHUB_SETUP.md#8-composite-actions) -
+consolidates checkout, Node.js setup, AWS credentials, and dependency installation into one step.
 
 ## 9. Verification
 
@@ -220,15 +194,11 @@ Tag v* → Tests → Production (prod profile) [requires approval]
 
 ### 10.1 Common Workflow Issues
 
-| Issue | Symptoms | Solution |
-|-------|----------|----------|
-| **Missing Secrets** | `Error: Could not assume role` | Verify organization secrets are set correctly |
-| **Missing Variables** | `Error: Required variable not set` | Ensure organization variables are configured |
-| **Breaking Changes** | Workflow stops at validation | Use `[force-deploy]` in commit message or fix changes |
-| **Image Build Fails** | Docker build errors | Check Dockerfile and build context |
-| **CDK Synthesis Fails** | `cdk synth` command fails | Verify cdk.json context values |
-| **Deployment Timeout** | Job runs for hours | Check AWS resources and add timeout settings |
-| **Composite Action Error** | `Can't find action.yml` | Ensure checkout step runs before composite action |
+Generic workflow issues (missing secrets/variables, breaking-change validation, image build
+failures, CDK synthesis errors, deployment timeouts, composite action errors) and their solutions
+are covered in
+[BaseInfra's troubleshooting table](https://github.com/TAK-NZ/base-infra/blob/main/docs/AWS_GITHUB_SETUP.md#10-troubleshooting) -
+identical here.
 
 ### 10.2 CloudTAK Specific Issues
 

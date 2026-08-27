@@ -298,23 +298,6 @@ dig webhooks.tak.nz
 nslookup webhooks.tak.nz
 ```
 
-## Cost Estimation
-
-### API Gateway V2 HTTP API
-
-- **Requests:** $1.00 per million requests
-- **Data Transfer:** $0.09/GB (first 10TB)
-
-### Example Monthly Costs
-
-| Webhook Volume | API Gateway Cost | Lambda Cost* | Total |
-|----------------|------------------|--------------|-------|
-| 1M requests/month | $1.00 | ~$0.20 | ~$1.20 |
-| 10M requests/month | $10.00 | ~$2.00 | ~$12.00 |
-| 100M requests/month | $100.00 | ~$20.00 | ~$120.00 |
-
-*Lambda costs assume 128MB memory, 100ms duration per request
-
 ## Future Enhancements
 
 ### Potential Improvements
