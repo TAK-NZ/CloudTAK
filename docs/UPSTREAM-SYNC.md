@@ -169,7 +169,6 @@ change is a permanent deletion from what we carry.
 | `.upstream-version` | The upstream ref currently merged into `main`. |
 | `scripts/sync-upstream.sh` | Does the sync, run manually. Exit codes: 0 merged, 5 up to date, 10 conflicts, 1 error. |
 | `docs/fork/` | Why each customization exists. `FORK-DELTA.md` is the index; the `README-*.md` files are per-topic deep dives. |
-| `scripts/post-sync-validate.sh` | Advisory checks. Hardcodes pre-v13.27 paths (`lib/schema.ts`, `routes/`), so it misreports after an upstream restructure. |
 
 ## First-time setup
 

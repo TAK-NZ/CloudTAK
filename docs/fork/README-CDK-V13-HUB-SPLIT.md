@@ -1,11 +1,18 @@
-# Upstream CloudFormation → CDK Implementation Guide
+# Upstream CloudFormation → CDK Implementation Guide: v13 hub split
+
+> **Status: complete.** All five items below are implemented and deployed (see the Audit Status
+> table). This document is kept as a historical record of *why* the CDK differs from upstream's
+> CloudFormation in the ways it does — the "Deliberate deviations from upstream" table and the
+> restart-policy/health-check notes remain accurate and useful if you're debugging a deploy issue.
+> It does not need to be updated for future upstream syncs; each sync's CloudFormation delta (if
+> any) is its own separate piece of work.
 
 Upstream CloudTAK ships its infrastructure as CloudFormation (`cloudformation/`). TAK.NZ maintains an
 equivalent CDK stack (`cdk/`). Whenever we sync the application code to a newer upstream release, the
 CloudFormation changes made in that range have to be re-implemented in CDK by hand.
 
-This document covers the **v13.26.0 → v13.70.0** range, which is the CloudFormation half of the
-in-progress application upgrade to v13.70.0.
+This document covers the **v13.26.0 → v13.70.0** range, which was the CloudFormation half of that
+application upgrade.
 
 Reference diff: `git diff v13.26.0 v13.70.0 -- cloudformation/`
 

@@ -331,14 +331,6 @@ git commit --no-edit -m "chore(sync): upstream ${SYNC_PATHS[*]} ${CURRENT_VERSIO
 ok "merged cleanly with no conflicts"
 
 echo
-echo "🔍 post-sync validation ${DIM}(advisory - this script hardcodes pre-v13.27 paths)${OFF}"
-if ./scripts/post-sync-validate.sh; then
-    ok "post-sync validation passed"
-else
-    warn "post-sync validation reported problems - review them before merging"
-fi
-
-echo
 echo "📋 next steps:"
 echo "   1. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
 echo "   2. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"

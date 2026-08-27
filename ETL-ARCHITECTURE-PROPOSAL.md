@@ -98,7 +98,8 @@ Two implementations: `stateful/lib/hub/local.ts` (in-process) and `stateless/lib
 `stateless/routes/connection-layer-cot.ts` now calls
 `config.hub.submitCots({ connection, cots, broadcast: true })` instead of touching `ConnectionPool`.
 
-Infrastructure side of this change is tracked separately in **`UPSTREAM-CDK-CHANGES.md` item 1**.
+Infrastructure side of this change is tracked separately in
+**`docs/fork/README-CDK-V13-HUB-SPLIT.md` item 1**.
 
 ## Options considered
 
@@ -136,9 +137,9 @@ specified map almost exactly onto what upstream shipped:
 | Inbound publish for browser fan-out | `HubClient.wsNotify()` / `wsPresence()`, `stateful/routes/cots.ts` |
 | Replace in-memory `config.conns.get()` in layer delivery | already done in `stateless/routes/connection-layer-cot.ts` |
 
-**Action for us:** none beyond the in-flight sync plus the CDK work in `UPSTREAM-CDK-CHANGES.md`
-item 1 (new stateful service, internal hub ALB, WebSocket listener rule, `CLOUDTAK_Server_Mode` /
-`CLOUDTAK_Hub_URL` env vars). Do not deploy that CDK change until the v13.70.0 image is deployed.
+**Action for us:** none — the v13.70.0 sync and the CDK work in
+`docs/fork/README-CDK-V13-HUB-SPLIT.md` item 1 (new stateful service, internal hub ALB, WebSocket
+listener rule, `CLOUDTAK_Server_Mode` / `CLOUDTAK_Hub_URL` env vars) are both complete and deployed.
 
 **One difference from the original proposal:** upstream's hub is a plain HTTP RPC over an internal
 ALB rather than an SQS/EventBridge publish for the inbound direction. For the agent trigger (item 3)
@@ -229,8 +230,8 @@ beyond CoT" pattern.
 
 ## Recommended sequencing
 
-1. **Complete the v13.70.0 sync** (in flight, parallel) — delivers requirement 4 and the hub contract
-   that items 2–3 build against. Includes `UPSTREAM-CDK-CHANGES.md` item 1.
+1. **v13.70.0 sync** — complete. Delivered requirement 4 and the hub contract that items 2–3 build
+   against, including `docs/fork/README-CDK-V13-HUB-SPLIT.md` item 1.
 2. **KMZ output** — smallest surface area, independent of everything else, proves the
    "Layer output ≠ CoT" pattern. Can start before the sync lands, but the file paths it touches move,
    so implementing after the sync avoids rework.
@@ -338,8 +339,8 @@ it is noise.
 
 ## Cross-references
 
-- **`UPSTREAM-CDK-CHANGES.md`** — infrastructure for the v13.70.0 hub split (item 1 there). Item 1 of
-  this document depends entirely on it.
+- **`docs/fork/README-CDK-V13-HUB-SPLIT.md`** — infrastructure for the v13.70.0 hub split (item 1
+  there). Item 1 of this document depended entirely on it; both are now complete and deployed.
 - **Upstream [#1678](https://github.com/dfpc-coe/CloudTAK/issues/1678)** — the filed feature request for
   item 2 (persistent-connection ETL inputs). The local draft that became it has been removed.
 - **`docs/fork/FORK-DELTA.md`** — where any fork-local changes from items 2–4 must be
