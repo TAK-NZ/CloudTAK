@@ -28,7 +28,8 @@ export const TAK_EXPORT_NAMES = {
 
 export const AUTH_EXPORT_NAMES = {
   AUTHENTIK_URL: 'AuthentikUrl',
-  AUTHENTIK_ADMIN_TOKEN_ARN: 'AuthentikAdminTokenArn'
+  AUTHENTIK_ADMIN_TOKEN_ARN: 'AuthentikAdminTokenArn',
+  AUTHENTIK_CLOUDTAK_TOKEN_ARN: 'AuthentikCloudTakTokenArn'
 } as const;
 
 export function createBaseImportValue(stackNameComponent: string, exportName: string): string {
