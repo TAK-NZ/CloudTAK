@@ -386,18 +386,25 @@ export class CloudTakApi extends Construct {
     adminPasswordSecret.grantRead(executionRole);
     geofenceSecret.grantRead(executionRole);
     
-    // Grant access to Authentik admin secret if OIDC is enabled
+    // Grant access to the scoped Authentik service-account token if OIDC is
+    // enabled. This is a dedicated, non-superuser token (tak-cloudtak-service)
+    // limited to exactly what AuthentikProvider calls: view/add/delete_user,
+    // add_token, reset_user_password on Users; view_group, add_user_to_group
+    // on Groups. Nothing on Applications/Providers/Outposts/Flows/Stages/
+    // Policies/Blueprints - do not widen this without checking every call in
+    // authentik-provider.ts against that set first, since a missing
+    // permission surfaces as a runtime 403, not a build error.
     if (envConfig.cloudtak.oidcEnabled) {
-      const authentikAdminSecret = secretsmanager.Secret.fromSecretCompleteArn(
+      const authentikCloudTakSecret = secretsmanager.Secret.fromSecretCompleteArn(
         this,
-        'AuthentikAdminSecretForGrant',
-        cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN))
+        'AuthentikCloudTakSecretForGrant',
+        cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_CLOUDTAK_TOKEN_ARN))
       );
-      authentikAdminSecret.grantRead(taskRole);
+      authentikCloudTakSecret.grantRead(taskRole);
 
       // OIDC_CLIENT_SECRET is injected via ecs.Secret.fromSecretsManager() below,
       // which is resolved by the execution role at container startup (not the
-      // task role, which is only for in-app SDK calls like the Authentik admin token).
+      // task role, which is only for in-app SDK calls like the Authentik API token).
       if (oidcClientSecret) {
         oidcClientSecret.grantRead(executionRole);
       }
@@ -481,7 +488,7 @@ export class CloudTakApi extends Construct {
           'OIDC_SCOPES': 'openid profile email groups',
           'AUTHENTIK_URL': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_URL)),
           'AUTHENTIK_APP_SLUG': envConfig.cloudtak.authentikAppSlug || 'cloudtak',
-          'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_ADMIN_TOKEN_ARN)),
+          'AUTHENTIK_API_TOKEN_SECRET_ARN': cdk.Fn.importValue(createAuthImportValue(envConfig.stackName, AUTH_EXPORT_NAMES.AUTHENTIK_CLOUDTAK_TOKEN_ARN)),
           'SYNC_AUTHENTIK_ATTRIBUTES_ON_LOGIN': envConfig.cloudtak.syncAuthentikAttributesOnLogin !== false ? 'true' : 'false',
           'OIDC_FORCED': envConfig.cloudtak.oidcForced !== false ? 'true' : 'false',
           'OIDC_SYSTEM_ADMIN_GROUP': envConfig.cloudtak.oidcSystemAdminGroup || 'CloudTAKSystemAdmin',
