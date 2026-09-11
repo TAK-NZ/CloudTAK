@@ -158,6 +158,15 @@ onMounted(async () => {
 
     isSystemAdmin.value = profile.system_admin;
 
+    // The "No Owning Agency" option is system-admin-only: the toggle that
+    // controls `noAgency` is rendered `v-if='isSystemAdmin'`. On a new
+    // connection `noAgency` defaults to true (modelValue === null), so a
+    // non-system-admin would be stuck on the "No Agency" panel with no way
+    // to turn it off, and the auto-selected agency below would never emit
+    // (the `selected` watcher is gated on !noAgency). Force it off for
+    // non-system-admins so the agency picker and auto-select apply.
+    if (!isSystemAdmin.value) noAgency.value = false;
+
     if (props.modelValue) await fetch();
     await listData();
     loading.value.main = false;
