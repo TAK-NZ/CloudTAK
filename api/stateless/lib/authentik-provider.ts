@@ -560,16 +560,17 @@ export default class AuthentikProvider {
 
         const isSystemAdmin = groups.includes(systemAdminGroup);
 
-        const agencyAdminIds: number[] = [];
+        const agencyAdminIdSet = new Set<number>();
         for (const group of groups) {
             if (group.startsWith(agencyAdminPrefix)) {
                 const agencyIdStr = group.substring(agencyAdminPrefix.length);
                 const agencyId = parseInt(agencyIdStr, 10);
                 if (!isNaN(agencyId) && agencyId > 0) {
-                    agencyAdminIds.push(agencyId);
+                    agencyAdminIdSet.add(agencyId);
                 }
             }
         }
+        const agencyAdminIds: number[] = [...agencyAdminIdSet];
 
         const attributes = user.attributes || {};
 
