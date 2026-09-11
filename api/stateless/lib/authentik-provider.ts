@@ -91,6 +91,50 @@ export default class AuthentikProvider {
         return this.cache;
     }
 
+    /**
+     * Fetch every Authentik group across all pages of `/api/v3/core/groups/`.
+     *
+     * Authentik paginates this endpoint (default page size ~20-100), returning
+     * only one page per request along with a `pagination.next` page number
+     * (0 when there is no next page). Reading only `data.results` from the
+     * first request silently drops every group beyond page one, which meant
+     * agencies/channels defined later in the alphabetical ordering never
+     * appeared in CloudTAK. This walks the `pagination.next` links until they
+     * run out and concatenates the results.
+     *
+     * `search` is forwarded to Authentik verbatim when provided. The larger
+     * `page_size` reduces the number of round-trips for the common case.
+     */
+    private async fetchAllGroups(token: string, search?: string): Promise<any[]> {
+        const results: any[] = [];
+        let page = 1;
+
+        for (;;) {
+            const url = new URL('/api/v3/core/groups/', this.authentikUrl);
+            if (search) url.searchParams.append('search', search);
+            url.searchParams.append('page', String(page));
+            url.searchParams.append('page_size', '100');
+
+            const response = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                },
+            });
+
+            if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Groups Fetch Error');
+
+            const data: any = await response.json();
+            if (Array.isArray(data.results)) results.push(...data.results);
+
+            const next = data.pagination?.next;
+            if (!next || next === page) break;
+            page = next;
+        }
+
+        return results;
+    }
+
     async agencies(uid: number, filter: string): Promise<{
         total: number;
         items: Array<Static<typeof Agency>>;
@@ -99,20 +143,8 @@ export default class AuthentikProvider {
 
         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
-        const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-        if (filter) url.searchParams.append('search', filter);
-
-        const response = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${creds.token}`,
-                Accept: 'application/json',
-            },
-        });
-
-        if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Agency List Error');
-
-        const data: any = await response.json();
-        const filteredResults = data.results.filter((g: any) => g.name.startsWith(agencyPrefix));
+        const groups = await this.fetchAllGroups(creds.token, filter);
+        const filteredResults = groups.filter((g: any) => g.name.startsWith(agencyPrefix));
 
         return {
             total: filteredResults.length,
@@ -285,20 +317,8 @@ export default class AuthentikProvider {
         const creds = await this.auth();
         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
 
-        const url = new URL('/api/v3/core/groups/', this.authentikUrl);
-        if (query.filter) url.searchParams.append('search', query.filter);
-
-        const response = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${creds.token}`,
-                Accept: 'application/json',
-            },
-        });
-
-        if (!response.ok) throw new Err(500, new Error(await response.text()), 'Authentik Channel List Error');
-
-        const data: any = await response.json();
-        let channels = data.results.filter((g: any) => g.name.startsWith(channelPrefix));
+        const groups = await this.fetchAllGroups(creds.token, query.filter);
+        let channels = groups.filter((g: any) => g.name.startsWith(channelPrefix));
 
         if (query.agency) {
             channels = channels.filter((g: any) => g.attributes?.agencyId === query.agency);
@@ -323,18 +343,8 @@ export default class AuthentikProvider {
         const creds = await this.auth();
         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
 
-        const groupsUrl = new URL('/api/v3/core/groups/', this.authentikUrl);
-        const groupsResponse = await fetch(groupsUrl, {
-            headers: {
-                Authorization: `Bearer ${creds.token}`,
-                Accept: 'application/json',
-            },
-        });
-
-        if (!groupsResponse.ok) throw new Err(500, new Error(await groupsResponse.text()), 'Authentik Groups Fetch Error');
-
-        const groupsData: any = await groupsResponse.json();
-        const group = groupsData.results.find((g: any) =>
+        const groups = await this.fetchAllGroups(creds.token);
+        const group = groups.find((g: any) =>
             g.name.startsWith(channelPrefix)
             && (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id),
         );
