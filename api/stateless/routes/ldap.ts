@@ -7,7 +7,7 @@ import Auth from '../../common/auth.js';
 import { ConnectionAuth } from '../../common/connection-config.js';
 import { Channel, ChannelAccess } from '../lib/interface-user.js';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
-import AuthentikProvider from '../lib/authentik-provider.js';
+import AuthentikProvider, { SCOPE_ALL, agencyScope } from '../lib/authentik-provider.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/ldap/channel', {
@@ -39,7 +39,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 res.json(list);
             } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
                 const authentik = await AuthentikProvider.init(config);
-                const list = await authentik.channels(0, req.query);
+
+                // A non-system-admin may only list channels within an agency
+                // they administer. Reject an explicit request for an agency
+                // outside their scope; otherwise the provider filters the list
+                // down to their agencies.
+                const scope = profile.system_admin ? SCOPE_ALL : agencyScope(profile.agency_admin || []);
+                if (!profile.system_admin && req.query.agency && !(profile.agency_admin || []).includes(req.query.agency)) {
+                    throw new Err(403, null, 'Cannot list channels for an Agency you are not an admin of');
+                }
+
+                const list = await authentik.channels(0, req.query, scope);
                 res.json(list);
             } else {
                 throw new Err(400, null, 'External LDAP API not configured - Contact your administrator');
@@ -111,6 +121,19 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
                 // Authentik does not support channel-locking; the machine user is created
                 // and a TAK certificate is generated via password auth — same as CoTAK flow.
+
+                // Authorization gate (mirrors POST /connection): a machine user
+                // is always owned by an agency. A system admin may create one in
+                // any agency; anyone else may only create one in an agency they
+                // administer. Enforced before any Authentik write.
+                if (!profile.system_admin) {
+                    if (!req.body.agency_id) {
+                        throw new Err(403, null, 'Only System Admins can create a machine user without an Agency');
+                    } else if (!(profile.agency_admin || []).includes(req.body.agency_id)) {
+                        throw new Err(403, null, 'Cannot create a machine user for an Agency you are not an admin of');
+                    }
+                }
+
                 const authentik = await AuthentikProvider.init(config);
 
                 const password = Array.from({ length: 16 }, () => {

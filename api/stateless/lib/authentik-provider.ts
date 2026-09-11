@@ -42,6 +42,38 @@ export function asTakRole(value: unknown, username: string): string | undefined 
     return undefined;
 }
 
+/**
+ * The caller's agency authorization scope, resolved at the route from the
+ * CloudTAK profile (system_admin / agency_admin). It is passed into the
+ * provider so agency/channel listings can be filtered to what the caller may
+ * see, independent of any route-level gate (defense in depth).
+ *
+ * - `{ all: true }`  — system admin: no filtering.
+ * - `{ all: false, agencyIds }` — scoped to the given agency ids. An empty set
+ *   means "no agencies" and yields empty results.
+ */
+export type AgencyScope = { all: true } | { all: false; agencyIds: ReadonlySet<number> };
+
+/** Convenience: system-admin scope (sees everything). */
+export const SCOPE_ALL: AgencyScope = { all: true };
+
+/** Build a scoped AgencyScope from a list of agency ids. */
+export function agencyScope(agencyIds: Array<number>): AgencyScope {
+    return { all: false, agencyIds: new Set(agencyIds) };
+}
+
+/**
+ * Is an agency (identified by its own `agencyId`) visible under this scope?
+ * System-admin scope sees everything; otherwise the id must be in the set.
+ * The id is coerced with Number() because Authentik attributes are free-text
+ * and may arrive as a numeric string.
+ */
+export function agencyInScope(scope: AgencyScope, agencyId: unknown): boolean {
+    if (scope.all) return true;
+    const id = Number(agencyId);
+    return Number.isFinite(id) && scope.agencyIds.has(id);
+}
+
 export default class AuthentikProvider {
     config: Config;
     authentikUrl: string;
@@ -135,7 +167,7 @@ export default class AuthentikProvider {
         return results;
     }
 
-    async agencies(uid: number, filter: string): Promise<{
+    async agencies(uid: number, filter: string, scope: AgencyScope = SCOPE_ALL): Promise<{
         total: number;
         items: Array<Static<typeof Agency>>;
     }> {
@@ -144,7 +176,16 @@ export default class AuthentikProvider {
         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
         const groups = await this.fetchAllGroups(creds.token, filter);
-        const filteredResults = groups.filter((g: any) => g.name.startsWith(agencyPrefix));
+        let filteredResults = groups.filter((g: any) => g.name.startsWith(agencyPrefix));
+
+        // Defense in depth: even if a route forgets to gate, a non-system-admin
+        // only ever sees the agencies they administer. agencyId is the agency
+        // group's own id (see interface-user mapping); compare numerically.
+        if (!scope.all) {
+            filteredResults = filteredResults.filter((g: any) =>
+                agencyInScope(scope, g.attributes?.agencyId),
+            );
+        }
 
         return {
             total: filteredResults.length,
@@ -156,7 +197,14 @@ export default class AuthentikProvider {
         };
     }
 
-    async agency(uid: number, agencyId: number): Promise<Static<typeof Agency>> {
+    async agency(uid: number, agencyId: number, scope: AgencyScope = SCOPE_ALL): Promise<Static<typeof Agency>> {
+        // Defense in depth: a non-system-admin may only look up an agency they
+        // administer. Treated as 404 (not 403) to avoid confirming existence of
+        // agencies the caller has no business knowing about.
+        if (!agencyInScope(scope, agencyId)) {
+            throw new Err(404, null, 'Agency not found');
+        }
+
         const creds = await this.auth();
 
         const agencyPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
@@ -310,7 +358,7 @@ export default class AuthentikProvider {
     async channels(uid: number, query: {
         filter: string;
         agency?: number;
-    }): Promise<{
+    }, scope: AgencyScope = SCOPE_ALL): Promise<{
         total: number;
         items: Array<Static<typeof Channel>>;
     }> {
@@ -319,6 +367,17 @@ export default class AuthentikProvider {
 
         const groups = await this.fetchAllGroups(creds.token, query.filter);
         let channels = groups.filter((g: any) => g.name.startsWith(channelPrefix));
+
+        // On a tak_* channel group, agencyId is a FOREIGN KEY to the owning
+        // agency (not the channel's own id). Restrict to channels owned by an
+        // agency in scope before honouring the client-supplied agency filter,
+        // so a non-system-admin can never enumerate channels outside their
+        // agencies regardless of the query param they pass.
+        if (!scope.all) {
+            channels = channels.filter((g: any) =>
+                agencyInScope(scope, g.attributes?.agencyId),
+            );
+        }
 
         if (query.agency) {
             channels = channels.filter((g: any) => g.attributes?.agencyId === query.agency);
