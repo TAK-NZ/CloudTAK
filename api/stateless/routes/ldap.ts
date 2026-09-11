@@ -147,6 +147,22 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     integration: { description: req.body.description },
                 });
 
+                // Attach the new service account to each selected channel's
+                // Authentik group. createMachineUser only provisions the
+                // account; without this the channels chosen in the UI are
+                // silently dropped and the machine user joins nothing. The
+                // access level selects which group variant the user joins:
+                // duplex -> base tak_<Channel>, read -> _READ, write -> _WRITE
+                // (see attachMachineUser). A requested access level whose group
+                // does not exist fails loudly rather than over-granting.
+                for (const channel of req.body.channels) {
+                    await authentik.attachMachineUser(0, {
+                        machine_id: user.id,
+                        channel_id: channel.id,
+                        access: channel.access,
+                    });
+                }
+
                 const api = await TAKAPI.init(
                     new URL(config.server.webtak),
                     new APIAuthPassword(user.email, password),

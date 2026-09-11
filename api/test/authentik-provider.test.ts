@@ -6,6 +6,10 @@ import {
     agencyScope,
     agencyInScope,
     SCOPE_ALL,
+    machineUsernameFor,
+    machineUsernameFromCertSubject,
+    isMachineUser,
+    channelGroupName,
 } from '../stateless/lib/authentik-provider.js';
 
 /**
@@ -138,4 +142,79 @@ test('agencyScope: collapses duplicate agency ids into a single membership', () 
     // The internal set must hold one entry, not two.
     assert.equal(scope.all, false);
     if (!scope.all) assert.equal(scope.agencyIds.size, 1);
+});
+
+/**
+ * Machine-user identity + naming.
+ *
+ * The connection-delete flow must find and delete exactly the right Authentik
+ * service account. It derives the username from the connection's certificate
+ * CN (authoritative, survives a rename), falling back to re-deriving from the
+ * connection name. isMachineUser() is the guard that stops us ever deleting a
+ * human account - it cannot use a `machineUser` attribute because the
+ * service_account create endpoint drops custom attributes.
+ */
+
+test('machineUsernameFor: agency-owned uses etl-agency{id}- prefix and sanitises', () => {
+    assert.equal(machineUsernameFor('Amazon Web Services', 1), 'etl-agency1-amazon-web-services');
+});
+
+test('machineUsernameFor: no agency omits the agency segment', () => {
+    assert.equal(machineUsernameFor('Amazon Web Services'), 'etl-amazon-web-services');
+    assert.equal(machineUsernameFor('Amazon Web Services', null), 'etl-amazon-web-services');
+});
+
+test('machineUsernameFor: collapses non-alphanumerics to hyphens, lowercases', () => {
+    assert.equal(machineUsernameFor('Foo/Bar 99!', 3), 'etl-agency3-foo-bar-99-');
+});
+
+test('machineUsernameFromCertSubject: extracts CN from comma-separated subject', () => {
+    assert.equal(
+        machineUsernameFromCertSubject('CN=etl-agency1-amazon-web-services, O=TAK, OU=CloudTAK'),
+        'etl-agency1-amazon-web-services',
+    );
+});
+
+test('machineUsernameFromCertSubject: handles CN not first and newline-separated', () => {
+    assert.equal(
+        machineUsernameFromCertSubject('O=TAK\nCN=etl-foo\nOU=CloudTAK'),
+        'etl-foo',
+    );
+});
+
+test('machineUsernameFromCertSubject: returns undefined when no CN or empty input', () => {
+    assert.equal(machineUsernameFromCertSubject('O=TAK, OU=CloudTAK'), undefined);
+    assert.equal(machineUsernameFromCertSubject(''), undefined);
+    assert.equal(machineUsernameFromCertSubject(undefined), undefined);
+    assert.equal(machineUsernameFromCertSubject(null), undefined);
+});
+
+test('isMachineUser: true only for service accounts with the etl- username prefix', () => {
+    assert.equal(isMachineUser({ type: 'service_account', username: 'etl-agency1-aws' }), true);
+    // A human (internal) account, even if named like one, is never a machine user.
+    assert.equal(isMachineUser({ type: 'internal', username: 'etl-agency1-aws' }), false);
+    // A service account that is not an ETL machine user must not be deleted.
+    assert.equal(isMachineUser({ type: 'service_account', username: 'ak-outpost-abc' }), false);
+    assert.equal(isMachineUser({ type: 'service_account' }), false);
+    assert.equal(isMachineUser({ username: 'etl-agency1-aws' }), false);
+});
+
+/**
+ * Channel access -> Authentik group name mapping.
+ *   duplex -> base tak_<Channel>
+ *   read   -> tak_<Channel>_READ
+ *   write  -> tak_<Channel>_WRITE
+ */
+
+test('channelGroupName: duplex resolves to the base group', () => {
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'duplex'), 'tak_Teams - AWS');
+    // Anything unrecognised also falls back to the base (duplex) group.
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'whatever'), 'tak_Teams - AWS');
+});
+
+test('channelGroupName: read/write resolve to the suffixed variants (case-insensitive)', () => {
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'read'), 'tak_Teams - AWS_READ');
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'write'), 'tak_Teams - AWS_WRITE');
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'READ'), 'tak_Teams - AWS_READ');
+    assert.equal(channelGroupName('tak_', 'Teams - AWS', 'Write'), 'tak_Teams - AWS_WRITE');
 });
