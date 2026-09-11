@@ -296,7 +296,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             // Lambda / CDK construct).
             const groups: string[] = Array.isArray(claims.groups) ? claims.groups as string[] : [];
             const systemAdminGroup = process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin';
-            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgencyAdmin';
+            const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
             const isSystemAdmin = groups.includes(systemAdminGroup);
             const agencyAdminIds: number[] = [];

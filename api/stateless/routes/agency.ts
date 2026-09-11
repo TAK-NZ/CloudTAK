@@ -4,7 +4,7 @@ import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
 import * as Default from '../lib/limits.js';
-import AuthentikProvider from '../lib/authentik-provider.js';
+import AuthentikProvider, { SCOPE_ALL, agencyScope } from '../lib/authentik-provider.js';
 
 export const AgencyResponse = Type.Object({
     id: Type.Integer(),
@@ -46,7 +46,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
             } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
                 const authentik = await AuthentikProvider.init(config);
-                const list = await authentik.agencies(0, req.query.filter);
+
+                // Scope the agency list to what the caller may administer. A
+                // system admin sees all; anyone else sees only their
+                // agency_admin agencies (empty for a user with none).
+                const scope = profile.system_admin ? SCOPE_ALL : agencyScope(profile.agency_admin || []);
+                const list = await authentik.agencies(0, req.query.filter, scope);
 
                 res.json({
                     ...list,
@@ -85,7 +90,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 res.json(agency);
             } else if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
                 const authentik = await AuthentikProvider.init(config);
-                const agency = await authentik.agency(0, req.params.agencyid);
+
+                const scope = profile.system_admin ? SCOPE_ALL : agencyScope(profile.agency_admin || []);
+                const agency = await authentik.agency(0, req.params.agencyid, scope);
                 res.json(agency);
             } else {
                 throw new Err(404, null, 'External API not configured');

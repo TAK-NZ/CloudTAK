@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import { asTakGroup, asTakRole } from '../stateless/lib/authentik-provider.js';
+import {
+    asTakGroup,
+    asTakRole,
+    agencyScope,
+    agencyInScope,
+    SCOPE_ALL,
+} from '../stateless/lib/authentik-provider.js';
 
 /**
  * Regression coverage for an outage where an Authentik `takColor` attribute
@@ -66,4 +72,51 @@ test('asTakRole: rejects empty string, undefined, null and non-string values', (
     assert.equal(asTakRole(undefined, 'user@example.com'), undefined);
     assert.equal(asTakRole(null, 'user@example.com'), undefined);
     assert.equal(asTakRole(7, 'user@example.com'), undefined);
+});
+
+/**
+ * Agency scoping — the guard behind the privilege-escalation fix.
+ *
+ * The ETL agency/channel listings and machine-user creation used to ignore the
+ * caller's CloudTAK role and return/allow everything. agencyInScope() is the
+ * predicate the provider now applies to every agency group (agencies()) and to
+ * a channel group's owning-agency FK (channels()). If this predicate is wrong,
+ * a non-system-admin agency admin either sees agencies/channels they shouldn't
+ * (the original bug) or is locked out of their own.
+ */
+
+test('agencyInScope: system-admin scope sees every agency', () => {
+    assert.equal(agencyInScope(SCOPE_ALL, 1), true);
+    assert.equal(agencyInScope(SCOPE_ALL, 999), true);
+    // Even a missing/garbage id is "visible" to a system admin.
+    assert.equal(agencyInScope(SCOPE_ALL, undefined), true);
+});
+
+test('agencyInScope: scoped caller sees only their agencies', () => {
+    const scope = agencyScope([1, 3]);
+    assert.equal(agencyInScope(scope, 1), true);
+    assert.equal(agencyInScope(scope, 3), true);
+    assert.equal(agencyInScope(scope, 2), false);
+    assert.equal(agencyInScope(scope, 4), false);
+});
+
+test('agencyInScope: an empty scope (no agency_admin) sees nothing', () => {
+    const scope = agencyScope([]);
+    assert.equal(agencyInScope(scope, 1), false);
+    assert.equal(agencyInScope(scope, 0), false);
+});
+
+test('agencyInScope: coerces numeric-string ids (Authentik attributes are free text)', () => {
+    const scope = agencyScope([1]);
+    assert.equal(agencyInScope(scope, '1'), true);
+    assert.equal(agencyInScope(scope, '2'), false);
+});
+
+test('agencyInScope: rejects a missing or non-numeric agencyId for a scoped caller', () => {
+    const scope = agencyScope([1]);
+    assert.equal(agencyInScope(scope, undefined), false);
+    assert.equal(agencyInScope(scope, null), false);
+    assert.equal(agencyInScope(scope, 'not-a-number'), false);
+    // NaN must never match a scoped caller (would otherwise leak unowned groups).
+    assert.equal(agencyInScope(scope, NaN), false);
 });
