@@ -299,13 +299,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const agencyAdminPrefix = process.env.OIDC_AGENCY_ADMIN_GROUP_PREFIX || 'CloudTAKAgency';
 
             const isSystemAdmin = groups.includes(systemAdminGroup);
-            const agencyAdminIds: number[] = [];
+            const agencyAdminIdSet = new Set<number>();
             for (const group of groups) {
                 if (group.startsWith(agencyAdminPrefix)) {
                     const agencyId = parseInt(group.substring(agencyAdminPrefix.length), 10);
-                    if (!isNaN(agencyId) && agencyId > 0) agencyAdminIds.push(agencyId);
+                    if (!isNaN(agencyId) && agencyId > 0) agencyAdminIdSet.add(agencyId);
                 }
             }
+            const agencyAdminIds: number[] = [...agencyAdminIdSet];
 
             const profileControl = new ProfileControl(config);
             let profile;

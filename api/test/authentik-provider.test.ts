@@ -120,3 +120,22 @@ test('agencyInScope: rejects a missing or non-numeric agencyId for a scoped call
     // NaN must never match a scoped caller (would otherwise leak unowned groups).
     assert.equal(agencyInScope(scope, NaN), false);
 });
+
+/**
+ * De-duplication of agency ids.
+ *
+ * A real profile was observed with agency_admin = [1, 1] — the login group
+ * parser pushed an id per matching CloudTAKAgency* group without de-duping,
+ * and a caller could arrive with the same agency listed twice. agencyScope()
+ * must collapse duplicates so downstream membership checks and any
+ * count-based UI logic (e.g. auto-select-when-single-agency) behave correctly.
+ */
+
+test('agencyScope: collapses duplicate agency ids into a single membership', () => {
+    const scope = agencyScope([1, 1]);
+    assert.equal(agencyInScope(scope, 1), true);
+    assert.equal(agencyInScope(scope, 2), false);
+    // The internal set must hold one entry, not two.
+    assert.equal(scope.all, false);
+    if (!scope.all) assert.equal(scope.agencyIds.size, 1);
+});
