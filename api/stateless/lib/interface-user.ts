@@ -19,13 +19,6 @@ export const MachineUser = Type.Object({
     integrations: Type.Array(Integration),
 });
 
-export const Channel = Type.Object({
-    id: Type.Number(),
-    rdn: Type.String(),
-    name: Type.String(),
-    description: Type.Any(),
-});
-
 export enum ChannelAccessEnum {
     write = 'write',
     read = 'read',
@@ -33,6 +26,19 @@ export enum ChannelAccessEnum {
 }
 
 export const ChannelAccess = Type.Enum(ChannelAccessEnum);
+
+export const Channel = Type.Object({
+    id: Type.Number(),
+    rdn: Type.String(),
+    name: Type.String(),
+    description: Type.Any(),
+    // Access levels available for this channel, derived from which Authentik
+    // group variants exist (base = duplex, _READ = read, _WRITE = write). The
+    // UI uses this to only offer options that are actually provisioned. Optional
+    // for providers (e.g. CoTAK) that don't express access this way; absent
+    // means "no per-channel restriction advertised".
+    access: Type.Optional(Type.Array(Type.Enum(ChannelAccessEnum))),
+});
 
 export interface UserInterface {
     _id: string;

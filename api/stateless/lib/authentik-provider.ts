@@ -1,7 +1,7 @@
 import Err from '@openaddresses/batch-error';
 import Config from '../../common/config.js';
 import { Static } from '@sinclair/typebox';
-import { Agency, MachineUser, Channel } from './interface-user.js';
+import { Agency, MachineUser, Channel, ChannelAccessEnum } from './interface-user.js';
 import crypto from 'crypto';
 import { sql } from 'drizzle-orm';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
@@ -72,6 +72,73 @@ export function agencyInScope(scope: AgencyScope, agencyId: unknown): boolean {
     if (scope.all) return true;
     const id = Number(agencyId);
     return Number.isFinite(id) && scope.agencyIds.has(id);
+}
+
+/**
+ * All ETL machine-user service accounts are named with this prefix. It is both
+ * the creation convention (see machineUsernameFor) and the guard used to avoid
+ * ever deleting a non-ETL account (see isMachineUser).
+ */
+export const MACHINE_USER_PREFIX = 'etl-';
+
+/**
+ * Canonical Authentik username for a connection's machine user:
+ *   etl-agency{agencyId}-{sanitised-name}   (agency-owned)
+ *   etl-{sanitised-name}                    (no agency)
+ * This is the single source of truth for the naming convention, used at both
+ * create and delete time so they can never drift.
+ */
+export function machineUsernameFor(name: string, agencyId?: number | null): string {
+    const agencyPrefix = agencyId ? `agency${agencyId}-` : '';
+    const sanitised = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    return `${MACHINE_USER_PREFIX}${agencyPrefix}${sanitised}`;
+}
+
+/**
+ * Extract the machine username from an X.509 certificate subject string. TAK
+ * Server issues the machine user's client cert with the Authentik username as
+ * the CN, so the connection's stored certificate is an authoritative record of
+ * which account it belongs to - more reliable than re-deriving from the
+ * (mutable) connection name at delete time. Returns undefined if no CN is
+ * present. Handles both "CN=x, O=y" and "CN=x\nO=y" subject renderings.
+ */
+export function machineUsernameFromCertSubject(subject: string | undefined | null): string | undefined {
+    if (!subject) return undefined;
+    const match = subject.split(/[,\n]/).map(s => s.trim()).find(s => s.toUpperCase().startsWith('CN='));
+    if (!match) return undefined;
+    const cn = match.slice(3).trim();
+    return cn || undefined;
+}
+
+/**
+ * Is this Authentik user an ETL machine user we are allowed to delete? We can
+ * not rely on a `machineUser` attribute (the service_account create endpoint
+ * drops custom attributes), so identify by service-account type plus the
+ * `etl-` username convention. Both must hold to avoid deleting a human.
+ */
+export function isMachineUser(user: { type?: string; username?: string }): boolean {
+    return user.type === 'service_account'
+        && typeof user.username === 'string'
+        && user.username.startsWith(MACHINE_USER_PREFIX);
+}
+
+/**
+ * Resolve the Authentik channel-group name for a base channel + access level.
+ *   duplex -> tak_<Channel>          (base group; read + write)
+ *   read   -> tak_<Channel>_READ
+ *   write  -> tak_<Channel>_WRITE
+ * `baseName` is the group name WITHOUT the channel prefix (i.e. the `rdn`).
+ * The _READ / _WRITE variant groups are managed externally (TAK Server side)
+ * and carry no attributes of their own - all channel metadata lives on the
+ * base duplex group.
+ */
+export function channelGroupName(prefix: string, baseName: string, access: string): string {
+    const base = `${prefix}${baseName}`;
+    switch (access.toLowerCase()) {
+        case ChannelAccessEnum.read: return `${base}_READ`;
+        case ChannelAccessEnum.write: return `${base}_WRITE`;
+        default: return base; // duplex
+    }
 }
 
 export default class AuthentikProvider {
@@ -366,7 +433,18 @@ export default class AuthentikProvider {
         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
 
         const groups = await this.fetchAllGroups(creds.token, query.filter);
-        let channels = groups.filter((g: any) => g.name.startsWith(channelPrefix));
+
+        // A channel is represented by its BASE (duplex) group. The _READ /
+        // _WRITE variants are access grants, not channels in their own right,
+        // so they must not appear as separate list entries. Track which variant
+        // names exist so we can advertise the available access levels per
+        // channel.
+        const groupNames = new Set<string>(groups.map((g: any) => g.name));
+        let channels = groups.filter((g: any) =>
+            g.name.startsWith(channelPrefix)
+            && !g.name.endsWith('_READ')
+            && !g.name.endsWith('_WRITE'),
+        );
 
         // On a tak_* channel group, agencyId is a FOREIGN KEY to the owning
         // agency (not the channel's own id). Restrict to channels owned by an
@@ -385,12 +463,23 @@ export default class AuthentikProvider {
 
         return {
             total: channels.length,
-            items: channels.map((g: any) => ({
-                id: g.attributes?.channelId || g.num_pk || 0,
-                rdn: g.name.replace(/^tak_/, ''),
-                name: g.attributes?.channelName || g.name.replace(/^tak_/, ''),
-                description: g.attributes?.description || '',
-            })),
+            items: channels.map((g: any) => {
+                const rdn = g.name.slice(channelPrefix.length);
+
+                // Duplex is always available (it is the base group itself);
+                // read/write only if their variant groups are provisioned.
+                const access: ChannelAccessEnum[] = [ChannelAccessEnum.duplex];
+                if (groupNames.has(`${g.name}_READ`)) access.push(ChannelAccessEnum.read);
+                if (groupNames.has(`${g.name}_WRITE`)) access.push(ChannelAccessEnum.write);
+
+                return {
+                    id: g.attributes?.channelId || g.num_pk || 0,
+                    rdn,
+                    name: g.attributes?.channelName || rdn,
+                    description: g.attributes?.description || '',
+                    access,
+                };
+            }),
         };
     }
 
@@ -403,14 +492,32 @@ export default class AuthentikProvider {
         const channelPrefix = process.env.AUTHENTIK_CHANNEL_GROUP_PREFIX || 'tak_';
 
         const groups = await this.fetchAllGroups(creds.token);
-        const group = groups.find((g: any) =>
+
+        // The channel is identified by the BASE (duplex) group, which is the
+        // only variant carrying channelId/channelName. Its `rdn` (name without
+        // the prefix) is what the _READ / _WRITE variant names are built from.
+        const baseGroup = groups.find((g: any) =>
             g.name.startsWith(channelPrefix)
             && (g.attributes?.channelId === body.channel_id || g.num_pk === body.channel_id),
         );
 
-        if (!group) throw new Err(404, null, `Channel ${body.channel_id} not found`);
+        if (!baseGroup) throw new Err(404, null, `Channel ${body.channel_id} not found`);
 
-        const url = new URL(`/api/v3/core/groups/${group.pk}/add_user/`, this.authentikUrl);
+        // Map the requested access level to the concrete group name:
+        //   duplex -> base group, read -> _READ, write -> _WRITE.
+        const rdn = baseGroup.name.slice(channelPrefix.length);
+        const targetName = channelGroupName(channelPrefix, rdn, body.access);
+        const targetGroup = groups.find((g: any) => g.name === targetName);
+
+        // The _READ / _WRITE variant groups are provisioned externally (TAK
+        // Server side). If the requested access level's group does not exist we
+        // must NOT silently fall back to the base group - that would grant more
+        // access than asked. Fail with a clear, actionable message instead.
+        if (!targetGroup) {
+            throw new Err(422, null, `Channel "${rdn}" is not configured for ${body.access} access (missing group "${targetName}")`);
+        }
+
+        const url = new URL(`/api/v3/core/groups/${targetGroup.pk}/add_user/`, this.authentikUrl);
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -459,9 +566,15 @@ export default class AuthentikProvider {
                 return;
             }
 
-            // Only delete if it's a machine user (service account)
-            if (!user.attributes?.machineUser) {
-                console.log(`User ${username} is not a machine user, skipping deletion`);
+            // Only delete an actual ETL machine user. We identify one by its
+            // service-account type and the `etl-` username convention rather
+            // than a `machineUser` attribute: the service_account create
+            // endpoint silently drops custom attributes (and the CloudTAK token
+            // cannot PATCH them back), so that attribute is never present. This
+            // guard prevents ever deleting a human account that happens to share
+            // a username with a connection.
+            if (!isMachineUser(user)) {
+                console.log(`User ${username} is not an ETL machine user, skipping deletion`);
                 return;
             }
 

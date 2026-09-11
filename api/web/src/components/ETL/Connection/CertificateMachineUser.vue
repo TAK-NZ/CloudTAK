@@ -15,11 +15,7 @@
                         <TablerEnum
                             v-model='sel.access'
                             default='Duplex'
-                            :options='[
-                                "Read",
-                                "Write",
-                                "Duplex"
-                            ]'
+                            :options='accessOptions(sel.channel)'
                         />
 
                         <TablerIconButton
@@ -168,14 +164,37 @@ onMounted(async () => {
     await listChannels();
 });
 
+// Map a channel's available access levels (lowercase, from the backend, based
+// on which Authentik group variants exist) to the capitalised option labels
+// the TablerEnum expects. Falls back to all three when the backend does not
+// advertise `access` (e.g. the CoTAK provider), preserving prior behaviour.
+const ACCESS_LABELS: Record<string, string> = {
+    read: 'Read',
+    write: 'Write',
+    duplex: 'Duplex',
+};
+function accessOptions(channel: ETLLdapChannel): string[] {
+    const available = (channel as { access?: string[] }).access;
+    if (!available || !available.length) return ['Read', 'Write', 'Duplex'];
+    // Preserve a stable Read, Write, Duplex ordering.
+    return (['read', 'write', 'duplex'] as const)
+        .filter((a) => available.includes(a))
+        .map((a) => ACCESS_LABELS[a]);
+}
+
 function push(channel: ETLLdapChannel) {
     paging.value.filter = '';
 
     for (const sel of selected.value) {
         if (sel.channel.id === channel.id) return;
     }
+
+    // Default to Duplex when the channel offers it, otherwise the first
+    // available access level, so we never default to an option the channel
+    // does not support.
+    const options = accessOptions(channel);
     selected.value.push({
-        access: 'Duplex',
+        access: options.includes('Duplex') ? 'Duplex' : options[0],
         channel
     });
 }

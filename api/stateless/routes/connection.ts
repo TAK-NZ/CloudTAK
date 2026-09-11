@@ -12,7 +12,7 @@ import Schema from '@openaddresses/batch-schema';
 import * as Default from '../lib/limits.js';
 import { generateClientP12, generateTrustP12 } from '../lib/certificate.js';
 import { needsCertRenewal } from '../lib/cert-health.js';
-import AuthentikProvider from '../lib/authentik-provider.js';
+import AuthentikProvider, { machineUsernameFor, machineUsernameFromCertSubject } from '../lib/authentik-provider.js';
 import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 
 /**
@@ -631,14 +631,29 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
             }
 
-            // Delete the Authentik service account associated with this connection
+            // Delete the Authentik service account associated with this connection.
+            // Deleting the user removes its channel-group memberships too, so no
+            // separate detach is needed.
             if (process.env.AUTHENTIK_URL && process.env.AUTHENTIK_API_TOKEN_SECRET_ARN) {
                 try {
                     const authentik = await AuthentikProvider.init(config);
-                    // Reconstruct the machine user's Authentik username from the naming convention
-                    // used in createMachineUser: etl-agency{id}-{sanitised-name}
-                    const agencyPrefix = connection.agency ? `agency${connection.agency}-` : '';
-                    const machineName = `etl-${agencyPrefix}${connection.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+                    // Prefer the machine username recorded in the connection's
+                    // client certificate (CN), which is authoritative and immune
+                    // to the connection being renamed after creation. Fall back
+                    // to re-deriving from the connection name for older
+                    // connections whose cert predates a machine-user cert.
+                    let machineName: string | undefined;
+                    if (connection.auth.cert) {
+                        try {
+                            const { subject } = new X509Certificate(connection.auth.cert);
+                            machineName = machineUsernameFromCertSubject(subject);
+                        } catch { /* fall through to name-based derivation */ }
+                    }
+                    if (!machineName) {
+                        machineName = machineUsernameFor(connection.name, connection.agency);
+                    }
+
                     await authentik.deleteMachineUser(machineName);
                 } catch (err) {
                     // Don't block deletion — log and continue
