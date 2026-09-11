@@ -6,111 +6,12 @@ import { CloudTakApi } from '../../../lib/constructs/cloudtak-api';
 import { CDKTestHelper } from '../../__helpers__/cdk-test-utils';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
+// The plain "creates a FARGATE service / awsvpc task definition" restatements
+// were removed — the full-stack synth in stack-synth.test.ts already exercises
+// the API service. What remains is the one wiring detail the synth does not
+// assert: the ETL repository name injected into the container environment,
+// which the ETL layer subsystem reads.
 describe('CloudTakApi Construct', () => {
-  it('creates ECS service', () => {
-    const app = new App();
-    const stack = new Stack(app, 'TestStack1', {
-      env: { account: '123456789012', region: 'us-east-1' }
-    });
-    const infrastructure = CDKTestHelper.createMockInfrastructure(stack);
-    const { vpc, ecsCluster, ecsSecurityGroup } = infrastructure;
-    const ecrRepository = CDKTestHelper.createMockEcrRepository(stack);
-    const assetBucket = CDKTestHelper.createMockS3Bucket(stack, 'AssetBucket');
-    
-    const targetGroup = new elbv2.ApplicationTargetGroup(stack, 'TestTargetGroup', {
-      vpc,
-      port: 5000,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targetType: elbv2.TargetType.IP
-    });
-
-    const signingSecret = secretsmanager.Secret.fromSecretCompleteArn(stack, 'SigningSecret', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret-AbCdEf');
-    const adminSecret = secretsmanager.Secret.fromSecretCompleteArn(stack, 'AdminSecret', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:admin-secret-AbCdEf');
-    const dbSecret = secretsmanager.Secret.fromSecretCompleteArn(stack, 'DatabaseSecret', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:db-secret-AbCdEf');
-    const geofenceSecret = secretsmanager.Secret.fromSecretCompleteArn(stack, 'GeofenceSecret', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:geofence-secret-AbCdEf');
-
-    const etlEcrRepository = CDKTestHelper.createMockEcrRepository(stack, 'EtlEcrRepository');
-
-    const cloudtakApi = new CloudTakApi(stack, 'TestCloudTakApi', {
-      environment: 'dev-test',
-      envConfig: MOCK_CONFIGS.DEV_TEST,
-      ecsCluster,
-      vpc,
-      ecsSecurityGroup,
-      mediaSecurityGroup: ecsSecurityGroup,
-      ecrRepository,
-      etlEcrRepository,
-      albTargetGroup: targetGroup,
-      assetBucketName: 'test-bucket',
-      serviceUrl: 'https://test.example.com',
-      signingSecret,
-      adminPasswordSecret: adminSecret,
-      geofenceSecret,
-      databaseHostname: 'db.example.com',
-      databaseSecret: dbSecret,
-      connectionStringSecret: dbSecret
-    });
-
-    expect(cloudtakApi.service).toBeDefined();
-    expect(cloudtakApi.taskDefinition).toBeDefined();
-
-    const template = Template.fromStack(stack);
-    template.hasResourceProperties('AWS::ECS::Service', {
-      LaunchType: 'FARGATE'
-    });
-  });
-
-  it('creates task definition', () => {
-    const app = new App();
-    const stack = new Stack(app, 'TestStack2', {
-      env: { account: '123456789012', region: 'us-east-1' }
-    });
-    const infrastructure = CDKTestHelper.createMockInfrastructure(stack);
-    const { vpc, ecsCluster, ecsSecurityGroup } = infrastructure;
-    const ecrRepository = CDKTestHelper.createMockEcrRepository(stack);
-    const assetBucket = CDKTestHelper.createMockS3Bucket(stack, 'AssetBucket');
-    
-    const targetGroup = new elbv2.ApplicationTargetGroup(stack, 'TestTargetGroup', {
-      vpc,
-      port: 5000,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targetType: elbv2.TargetType.IP
-    });
-
-    const signingSecret2 = secretsmanager.Secret.fromSecretCompleteArn(stack, 'SigningSecret2', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:test-secret2-AbCdEf');
-    const adminSecret2 = secretsmanager.Secret.fromSecretCompleteArn(stack, 'AdminSecret2', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:admin-secret2-AbCdEf');
-    const dbSecret2 = secretsmanager.Secret.fromSecretCompleteArn(stack, 'DatabaseSecret2', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:db-secret2-AbCdEf');
-    const geofenceSecret2 = secretsmanager.Secret.fromSecretCompleteArn(stack, 'GeofenceSecret2', 'arn:aws:secretsmanager:us-east-1:123456789012:secret:geofence-secret2-AbCdEf');
-
-    const etlEcrRepository2 = CDKTestHelper.createMockEcrRepository(stack, 'EtlEcrRepository2');
-
-    new CloudTakApi(stack, 'TestCloudTakApi', {
-      environment: 'dev-test',
-      envConfig: MOCK_CONFIGS.DEV_TEST,
-      ecsCluster,
-      vpc,
-      ecsSecurityGroup,
-      mediaSecurityGroup: ecsSecurityGroup,
-      ecrRepository,
-      etlEcrRepository: etlEcrRepository2,
-      albTargetGroup: targetGroup,
-      assetBucketName: 'test-bucket',
-      serviceUrl: 'https://test.example.com',
-      signingSecret: signingSecret2,
-      adminPasswordSecret: adminSecret2,
-      geofenceSecret: geofenceSecret2,
-      databaseHostname: 'db.example.com',
-      databaseSecret: dbSecret2,
-      connectionStringSecret: dbSecret2
-    });
-
-    const template = Template.fromStack(stack);
-    template.hasResourceProperties('AWS::ECS::TaskDefinition', {
-      NetworkMode: 'awsvpc',
-      RequiresCompatibilities: ['FARGATE']
-    });
-  });
-
   it('sets ETL ECR repository name in environment variables', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack3', {
