@@ -28,4 +28,32 @@ describe('Context Overrides', () => {
     expect(result.ecs.taskMemory).toBe(MOCK_CONFIGS.DEV_TEST.ecs.taskMemory);
     expect(result.stackName).toBe(MOCK_CONFIGS.DEV_TEST.stackName);
   });
+
+  // Boolean context overrides are armed only by the exact string 'true'
+  // (applyContextOverrides compares `=== 'true'`). This guards against a
+  // refactor to `Boolean(raw)` or a loose truthy check, which would let a
+  // near-miss like 'TRUE'/'1'/'yes' silently flip a flag.
+  describe('strict-boolean override parsing', () => {
+    // Start from a base where the flag is OFF so an override flipping it ON is
+    // observable.
+    const baseOff = {
+      ...MOCK_CONFIGS.DEV_TEST,
+      ecs: { ...MOCK_CONFIGS.DEV_TEST.ecs, enableEcsExec: false },
+    };
+
+    it("arms the flag for the exact string 'true'", () => {
+      const app = new App({ context: { enableEcsExec: 'true' } });
+      const result = applyContextOverrides(app, baseOff);
+      expect(result.ecs.enableEcsExec).toBe(true);
+    });
+
+    it.each(['TRUE', '1', 'yes', ' true '])(
+      "does not arm the flag for near-miss %p",
+      (raw) => {
+        const app = new App({ context: { enableEcsExec: raw } });
+        const result = applyContextOverrides(app, baseOff);
+        expect(result.ecs.enableEcsExec).toBe(false);
+      }
+    );
+  });
 });

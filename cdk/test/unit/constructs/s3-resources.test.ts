@@ -5,22 +5,12 @@ import { S3Resources } from '../../../lib/constructs/s3-resources';
 import { CDKTestHelper } from '../../__helpers__/cdk-test-utils';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
+// The bare "creates without errors" smoke case was removed — the full-stack
+// synth in stack-synth.test.ts already exercises S3Resources end to end. What
+// remains here are the conditional branches (encryption, versioning flag,
+// removalPolicy, optional event-notification Lambda) that the synth does not
+// vary.
 describe('S3Resources Construct', () => {
-  it('creates S3 bucket without errors', () => {
-    const app = new App();
-    const stack = new Stack(app, 'TestStack', {
-      env: { account: '123456789012', region: 'us-east-1' }
-    });
-    const kmsKey = CDKTestHelper.createMockInfrastructure(stack).kmsKey;
-
-    expect(() => {
-      new S3Resources(stack, 'TestS3Resources', {
-        envConfig: MOCK_CONFIGS.DEV_TEST,
-        kmsKey
-      });
-    }).not.toThrow();
-  });
-
   it('creates S3 bucket with encryption', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack', {

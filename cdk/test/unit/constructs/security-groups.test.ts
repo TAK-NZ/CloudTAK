@@ -5,35 +5,9 @@ import { CDKTestHelper } from '../../__helpers__/cdk-test-utils';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
 describe('SecurityGroups Construct', () => {
-  it('creates security groups without errors', () => {
-    const app = new App();
-    const stack = new Stack(app, 'TestStack');
-    const vpc = CDKTestHelper.createMockVpc(stack);
-
-    expect(() => {
-      new SecurityGroups(stack, 'TestSecurityGroups', {
-        vpc,
-        envConfig: MOCK_CONFIGS.DEV_TEST
-      });
-    }).not.toThrow();
-  });
-
-  it('creates ALB security group', () => {
-    const app = new App();
-    const stack = new Stack(app, 'TestStack');
-    const vpc = CDKTestHelper.createMockVpc(stack);
-
-    new SecurityGroups(stack, 'TestSecurityGroups', {
-      vpc,
-      envConfig: MOCK_CONFIGS.DEV_TEST
-    });
-
-    const template = Template.fromStack(stack);
-    template.hasResourceProperties('AWS::EC2::SecurityGroup', {
-      GroupDescription: 'TAK-DevTest-CloudTAK ALB Security Group'
-    });
-  });
-
+  // Security-property test worth keeping: the exact set of media ports exposed
+  // to 0.0.0.0/0. Accidentally opening or closing one of these is a real,
+  // security-relevant defect — not a restatement of incidental construct code.
   it('creates media security group with required ports', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack');

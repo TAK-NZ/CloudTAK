@@ -1,22 +1,17 @@
+import { ConfigValidator } from '../../../lib/utils/config-validator';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
+// Decision-logic tests: ConfigValidator encodes required-field rules. Each
+// case names the bug it catches — a required field silently dropped from the
+// validator would let a broken config synth.
 describe('ConfigValidator', () => {
-  it('can import config validator', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
-    expect(ConfigValidator).toBeDefined();
-    expect(ConfigValidator.validateEnvironmentConfig).toBeDefined();
-  });
-
-  it('validates valid configuration', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
-    
+  it('accepts a valid configuration', () => {
     expect(() => {
       ConfigValidator.validateEnvironmentConfig(MOCK_CONFIGS.DEV_TEST, 'dev-test');
     }).not.toThrow();
   });
 
-  it('throws error for missing stackName', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
+  it('throws when stackName is missing', () => {
     const invalidConfig = { ...MOCK_CONFIGS.DEV_TEST };
     delete (invalidConfig as any).stackName;
 
@@ -25,8 +20,7 @@ describe('ConfigValidator', () => {
     }).toThrow('stackName is required');
   });
 
-  it('throws error for missing database config', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
+  it('throws when database config is missing', () => {
     const invalidConfig = { ...MOCK_CONFIGS.DEV_TEST };
     delete (invalidConfig as any).database;
 
@@ -35,8 +29,7 @@ describe('ConfigValidator', () => {
     }).toThrow('database configuration is required');
   });
 
-  it('throws error for missing ecs config', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
+  it('throws when ecs config is missing', () => {
     const invalidConfig = { ...MOCK_CONFIGS.DEV_TEST };
     delete (invalidConfig as any).ecs;
 
@@ -45,8 +38,7 @@ describe('ConfigValidator', () => {
     }).toThrow('ecs configuration is required');
   });
 
-  it('throws error for missing cloudtak config', () => {
-    const { ConfigValidator } = require('../../../lib/utils/config-validator');
+  it('throws when cloudtak config is missing', () => {
     const invalidConfig = { ...MOCK_CONFIGS.DEV_TEST };
     delete (invalidConfig as any).cloudtak;
 

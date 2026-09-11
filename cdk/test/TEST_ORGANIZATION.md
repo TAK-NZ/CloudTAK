@@ -1,225 +1,119 @@
-# Test Organization Summary
+# CDK Test Organization
 
-## Test Suite Structure
+## Testing philosophy
 
-### 📁 **test/unit/constructs/** - CDK Construct Tests
+This suite follows one rule: **a test is worth keeping only if it can fail when
+something is wrong, and cannot fail merely because the infrastructure changed on
+purpose or a CDK library version bumped.**
 
-#### **alarms.test.ts** - CloudWatch Alarms Construct
-- **Purpose**: Tests CloudWatch alarm configurations for monitoring
-- **Coverage**:
-  - ECS service health alarms
-  - Database performance alarms
-  - Lambda function error alarms
-  - Environment-specific alarm thresholds
+We do not chase a coverage percentage. `npm run test:coverage` reports coverage,
+it does not gate on it, and there is no `coverageThreshold`. A line-percentage
+goal pushes toward tautological tests (asserting a value the construct just
+typed three lines away) that pass because someone typed the same literal twice
+and go red the moment you legitimately change the config. The gate is: **synth
+succeeds, and the behavioral/safety assertions pass.**
 
-#### **batch.test.ts** - AWS Batch Construct
-- **Purpose**: Tests Batch compute environment and job definitions
-- **Coverage**:
-  - Fargate compute environment creation
-  - ETL job definition configuration
-  - Security group and IAM role setup
-  - Environment-specific resource allocation
+Concretely, we keep:
 
-#### **database.test.ts** - Database Construct
-- **Purpose**: Tests Aurora PostgreSQL cluster configurations
-- **Coverage**:
-  - Serverless vs provisioned instance types
-  - Performance insights configuration
-  - Error handling for missing configuration
-  - Environment-specific settings (prod vs dev-test)
-  - Backup and monitoring configurations
+- **Decision-logic unit tests** — pure functions with interesting boundaries:
+  context/override resolution (including the strict-boolean flag rule — a flag
+  is armed only by the exact string `'true'`), config validation, tag builders.
+- **The full-stack synth-smoke test** — the single highest-value CDK test.
+- **Behavioral / safety-property assertions** — properties whose meaning goes
+  beyond restating construct code: prod data-loss safety, feature-flag-gated
+  wiring, security-relevant network exposure, and the cross-stack export
+  contract.
 
-#### **ecs-service.test.ts** - ECS Service Construct
-- **Purpose**: Tests Fargate ECS service and task definitions
-- **Coverage**:
-  - Task definition creation with container configurations
-  - Service auto-scaling and load balancer integration
-  - Environment variable and secrets management
-  - Security group and IAM role configuration
+We deliberately do **not** keep full-template snapshots, "config has property X"
+tautologies, one-assertion-per-resource restatements, or assertions on CDK's own
+output (logical-id hashes, `Ref`/`Fn::GetAtt` shapes, `DeletionPolicy`
+attributes that a construct produced automatically).
 
-#### **lambda-functions.test.ts** - Lambda Functions Construct
-- **Purpose**: Tests Lambda functions for ETL and PMTiles processing
-- **Coverage**:
-  - Event Lambda function for S3/SQS processing
-  - PMTiles Lambda function for map tile serving
-  - API Gateway integration for PMTiles
-  - Container image deployment configuration
+## Suite structure
 
-#### **load-balancer.test.ts** - Load Balancer Construct
-- **Purpose**: Tests Application Load Balancer functionality
-- **Coverage**:
-  - ALB creation with HTTPS listeners
-  - Target group configuration for ECS services
-  - SSL certificate integration
-  - Health check configuration
+### `test/unit/stack-synth.test.ts` — full-stack synth (highest value)
 
-#### **route53.test.ts** - Route53 DNS Construct
-- **Purpose**: Tests DNS record management
-- **Coverage**:
-  - A record creation for CloudTAK endpoints
-  - Hosted zone integration
-  - Environment-specific domain configuration
+Synthesizes the whole `CloudTakStack` for each environment (`dev-test`, `prod`)
+and each image path (local Docker build vs prebuilt ECR), asserting synth does
+not throw. On top of the same synthesized templates it makes a small number of
+behavioral/safety assertions:
 
-#### **s3-resources.test.ts** - S3 Resources Construct
-- **Purpose**: Tests S3 bucket configurations
-- **Coverage**:
-  - Asset bucket creation with encryption
-  - Versioning configuration (conditional)
-  - KMS encryption integration
-  - Environment-specific policies
+- **Database safety shape** — prod carries `DeletionProtection: true` and runs
+  provisioned instances (`db.t4g.large` × 2); dev-test is serverless v2 and
+  destroyable (`DeletionProtection: false`).
+- **Feature-flag-gated wiring** — `usePreBuiltImages` switches the container
+  image source: local build sources from the CDK bootstrap asset repo, the
+  prebuilt path from the imported BaseInfra ECR repo. Both branches are pinned.
+- **Cross-stack export contract** — the `TAK-<Env>-CloudTAK-*` export names that
+  other stacks import by name. A rename here breaks a consumer stack.
 
-#### **secrets.test.ts** - Secrets Manager Construct
-- **Purpose**: Tests secrets management for CloudTAK
-- **Coverage**:
-  - Signing secret creation
-  - Admin password secret generation
-  - KMS encryption for secrets
-  - Environment-specific configurations
+> Note: the prebuilt-image path resolves tags from a `cloudtakImageTag` context
+> value that CI supplies. The synth helper mirrors this; without it the events
+> and retention services throw at synth.
 
-#### **security-groups.test.ts** - Security Groups Construct
-- **Purpose**: Tests network security group configurations
-- **Coverage**:
-  - ECS service security groups
-  - Database access security groups
-  - Load balancer security groups
-  - Environment-specific rules
+### `test/unit/utils/` — decision-logic unit tests
 
-### 📁 **test/unit/utils/** - Utility Function Tests
+- **context-overrides.test.ts** — override merging, and the strict-boolean rule
+  (`'true'` arms a flag; `'TRUE'`/`'1'`/`'yes'`/`' true '` do not). Guards
+  against a refactor to a loose truthy check.
+- **tag-helpers.test.ts** — standard tag generation and the project/component
+  default fallbacks.
 
-#### **config-validator.test.ts** - Configuration Validator
-- **Purpose**: Tests ConfigValidator utility class methods
-- **Coverage**:
-  - Environment configuration validation
-  - Database configuration validation
-  - ECS configuration validation
-  - CloudTAK configuration validation
-  - Error handling for missing configurations
+### `test/unit/constructs/` — targeted behavioral tests
 
-#### **constants.test.ts** - Constants Validation
-- **Purpose**: Tests application constants
-- **Coverage**:
-  - Environment type constants
-  - Default configuration values
-  - Application-specific constants
+These assert construct behavior the full-stack synth does not vary or does not
+assert. Each names the bug it guards against:
 
-#### **context-overrides.test.ts** - Context Override Utility
-- **Purpose**: Tests dynamic context override functionality
-- **Coverage**:
-  - CDK context parameter overrides
-  - Environment-specific overrides
-  - Configuration merging logic
+- **alarms.test.ts** — alarm thresholds/statistics, the ELB 5XX fast + sustained
+  windows, p99 latency, RDS `FreeLocalStorage` (a deliberate deviation from
+  upstream's `FreeStorageSpace`), and stateful-alarm gating on the hub service.
+- **cloudtak-stateful.test.ts** — hub-mode selection, single-task/no-autoscale
+  invariant, port mappings (5000/5002), WebSocket-only routing on `/api`,
+  private-subnet placement, and the hub RPC listener not being open to
+  `0.0.0.0/0`.
+- **dashboard.test.ts** — one dashboard per stack/region, the full widget set,
+  and Aurora capacity/storage metrics (not upstream `FreeStorageSpace`).
+- **etl-role.test.ts** — the ETL IAM role's assume-role principal and its S3 /
+  KMS / Secrets Manager grants.
+- **cloudtak-api.test.ts** — the ETL repository name injected into the container
+  environment (read by the ETL layer subsystem).
+- **lambda-functions.test.ts** — the PMTiles API Gateway name.
+- **load-balancer.test.ts** — ALB scheme, HTTPS listener, and target-group
+  wiring for the ECS service.
+- **database.test.ts** — serverless vs provisioned selection, performance
+  insights, and the missing-config error path.
+- **route53.test.ts** — `serviceUrl` derivation and dual-stack (A + AAAA) record
+  creation.
+- **s3-resources.test.ts** — encryption, the versioning flag, `removalPolicy`
+  branch, and optional S3-event-notification wiring.
+- **secrets.test.ts** — the four API secrets, their names, KMS encryption, and
+  the generated admin-password policy.
+- **security-groups.test.ts** — the exact media ports exposed to `0.0.0.0/0`
+  (a security-relevant contract).
 
-#### **tag-helpers.test.ts** - Tag Helper Utilities
-- **Purpose**: Tests standardized resource tagging
-- **Coverage**:
-  - Standard tag generation
-  - Environment-specific tagging
-  - Project and component tagging
+### `test/__helpers__/` and `test/__fixtures__/`
 
-### 📁 **test/unit/** - Core Configuration Tests
+- **synth-stack.ts** — `synthTemplate(envType, extraContext)`: reads the env's
+  `cdk.json` context, applies overrides, instantiates `CloudTakStack` with an
+  explicit `env: { account, region }` (so `stack.availabilityZones` resolves
+  real AZs), and returns `Template.fromStack(stack)`.
+- **cdk-test-utils.ts** — mock VPC / infrastructure / network / secret helpers
+  for the targeted construct tests.
+- **mock-configs.ts** — reusable `DEV_TEST` / `PROD` / `MINIMAL` config objects.
 
-#### **stack-config.test.ts** - Stack Configuration
-- **Purpose**: Tests stack configuration loading and validation
-- **Coverage**:
-  - Environment configuration loading
-  - Configuration validation
-  - Default value handling
-  - Environment-specific settings
+## The litmus test before keeping any test
 
-## Test Helper Infrastructure
+1. Could this fail for a reason other than a real defect (a purposeful infra
+   change, a library bump)? → maintenance tax; delete or narrow it.
+2. Does it assert something typed verbatim nearby? → tautology; delete.
+3. If you introduce the bug it's meant to catch, does it actually go red? → if
+   you can't name the bug, it isn't guarding anything.
 
-### 📁 **test/__helpers__/** - Test Utilities
-
-#### **cdk-test-utils.ts** - CDK Testing Helpers
-- **Purpose**: Provides reusable CDK testing utilities
-- **Coverage**:
-  - Mock AWS resource creation
-  - Test stack and app creation
-  - Infrastructure mocking (VPC, ECS, KMS)
-  - Network resource mocking (Route53, ACM)
-
-### 📁 **test/__fixtures__/** - Test Data
-
-#### **mock-configs.ts** - Mock Configurations
-- **Purpose**: Provides standardized test configurations
-- **Coverage**:
-  - Dev-test environment configuration
-  - Production environment configuration
-  - Complete configuration objects for testing
-
-## Running Tests
+## Running tests
 
 ```bash
-# Run all tests
-npm test
-
-# Run tests with coverage report
-npm run test:coverage
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run specific test patterns
-npm test -- --testPathPattern=constructs
-npm test -- --testPathPattern=utils
-
-# Run specific test suite
-npm test -- constructs/database.test.ts
-npm test -- constructs/lambda-functions.test.ts
-npm test -- utils/config-validator.test.ts
-
-# Build and verify TypeScript compilation
-npm run build
+npm test               # run everything
+npm run test:unit      # run test/unit
+npm run test:coverage  # report coverage (does not gate)
+npm run test:watch     # watch mode
 ```
-
-## Test Coverage Summary
-
-- **Total Test Suites**: 15
-- **Total Tests**: 38
-- **Overall Coverage**: 99.1% statements, 74.54% branches, 94.44% functions
-- **All Main Constructs Covered**: ✅ Yes
-- **Utility Functions**: ✅ Yes
-- **Configuration Validation**: ✅ Yes
-- **Error Handling**: ✅ Yes
-
-## Coverage by Component
-
-| Component | Coverage | Status |
-|-----------|----------|--------|
-| **cloudformation-imports.ts** | 100% | ✅ Complete |
-| **alarms.ts** | 100% | ✅ Complete |
-| **load-balancer.ts** | 100% | ✅ Complete |
-| **route53.ts** | 100% | ✅ Complete |
-| **security-groups.ts** | 100% | ✅ Complete |
-| **batch.ts** | 100% | ✅ Complete |
-| **ecs-service.ts** | 100% | ✅ Complete |
-| **lambda-functions.ts** | 100% | ✅ Complete |
-| **secrets.ts** | 100% | ✅ Complete |
-| **config-validator.ts** | 100% | ✅ Complete |
-| **constants.ts** | 100% | ✅ Complete |
-| **context-overrides.ts** | 100% | ✅ Complete |
-| **tag-helpers.ts** | 100% | ✅ Complete |
-| **database.ts** | 96.29% | 🟡 High |
-| **s3-resources.ts** | 90% | 🟡 High |
-
-## Test Organization Principles
-
-1. **Separation by Purpose**: Unit tests are clearly organized by construct and utility type
-2. **Construct-Focused**: Each CDK construct has dedicated test coverage
-3. **Error Handling**: Edge cases and error conditions are thoroughly tested
-4. **Environment Variants**: Both production and dev-test configurations are validated
-5. **Type Safety**: All TypeScript compilation errors are resolved
-6. **Performance**: Tests complete in under 90 seconds without CDK synthesis
-7. **Maintainability**: Tests are organized for easy maintenance and extension
-8. **Mock Infrastructure**: Comprehensive mocking reduces test complexity and execution time
-
-## Recent Updates
-
-- ✅ **Implemented** comprehensive test suite with 99.1% statement coverage
-- ✅ **Added** unit tests for all 11 constructs (Database, ECS, Lambda, Batch, etc.)
-- ✅ **Created** test helpers and mock configurations following reference project patterns
-- ✅ **Enhanced** branch coverage to 74.54% with conditional testing
-- ✅ **Added** missing utility tests (context-overrides, tag-helpers)
-- ✅ **Optimized** test performance with proper mocking strategies
-- ✅ **Achieved** superior coverage compared to reference projects
-- ✅ **Maintained** alignment with TAK-NZ infrastructure testing standards

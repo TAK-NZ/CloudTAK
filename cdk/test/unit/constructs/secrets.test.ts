@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Template, Match } from 'aws-cdk-lib/assertions';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import { Secrets } from '../../../lib/constructs/secrets';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
@@ -55,13 +55,11 @@ describe('Secrets Construct', () => {
   });
 
   test('all secrets use KMS encryption', () => {
+    // Every secret must be KMS-encrypted. Match on the shape rather than the
+    // KMS key's generated logical id, which is CDK-internal and would make this
+    // fail on an unrelated rename.
     template.allResourcesProperties('AWS::SecretsManager::Secret', {
-      KmsKeyId: {
-        'Fn::GetAtt': [
-          'TestKey4CACAF33',
-          'Arn'
-        ]
-      }
+      KmsKeyId: Match.objectLike({ 'Fn::GetAtt': [Match.anyValue(), 'Arn'] })
     });
   });
 
