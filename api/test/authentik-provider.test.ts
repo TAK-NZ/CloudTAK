@@ -10,6 +10,7 @@ import {
     machineUsernameFromCertSubject,
     isMachineUser,
     channelGroupName,
+    isDuplicateUsernameError,
 } from '../stateless/lib/authentik-provider.js';
 
 /**
@@ -217,4 +218,30 @@ test('channelGroupName: read/write resolve to the suffixed variants (case-insens
     assert.equal(channelGroupName('tak_', 'Teams - AWS', 'write'), 'tak_Teams - AWS_WRITE');
     assert.equal(channelGroupName('tak_', 'Teams - AWS', 'READ'), 'tak_Teams - AWS_READ');
     assert.equal(channelGroupName('tak_', 'Teams - AWS', 'Write'), 'tak_Teams - AWS_WRITE');
+});
+
+/**
+ * Duplicate-username detection on service-account creation.
+ *
+ * The machine-user username is derived deterministically from the connection
+ * name + agency, so creating a second one collides on Authentik's unique
+ * constraint. We classify that specific 400 so the route can return an
+ * actionable 409 instead of an opaque 500 "Authentik Service Account Creation
+ * Error". Verified live: a duplicate returns 400 {"name":["This field must be
+ * unique."]}.
+ */
+
+test('isDuplicateUsernameError: true for the Authentik unique-constraint 400', () => {
+    assert.equal(isDuplicateUsernameError(400, '{"name":["This field must be unique."]}'), true);
+    // Case-insensitive on the message.
+    assert.equal(isDuplicateUsernameError(400, '{"name":["This Field Must Be Unique."]}'), true);
+});
+
+test('isDuplicateUsernameError: false for other 400s and non-400 statuses', () => {
+    // A different 400 (e.g. validation) is not a duplicate.
+    assert.equal(isDuplicateUsernameError(400, '{"username":["This field is required."]}'), false);
+    // Same message text but a non-400 status is not treated as a duplicate.
+    assert.equal(isDuplicateUsernameError(500, 'must be unique'), false);
+    assert.equal(isDuplicateUsernameError(403, 'forbidden'), false);
+    assert.equal(isDuplicateUsernameError(400, ''), false);
 });

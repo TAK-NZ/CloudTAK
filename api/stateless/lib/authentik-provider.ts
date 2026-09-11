@@ -123,6 +123,18 @@ export function isMachineUser(user: { type?: string; username?: string }): boole
 }
 
 /**
+ * Does an Authentik service-account create response indicate the username is
+ * already taken? Authentik returns 400 with a body like
+ * {"name":["This field must be unique."]}. Because the machine-user username is
+ * derived deterministically from the connection name + agency, a duplicate
+ * means a machine user for this connection already exists - which we want to
+ * report as an actionable 409, not an opaque 500.
+ */
+export function isDuplicateUsernameError(status: number, body: string): boolean {
+    return status === 400 && /must be unique/i.test(body);
+}
+
+/**
  * Resolve the Authentik channel-group name for a base channel + access level.
  *   duplex -> tak_<Channel>          (base group; read + write)
  *   read   -> tak_<Channel>_READ
@@ -345,7 +357,22 @@ export default class AuthentikProvider {
             }),
         });
 
-        if (!createResponse.ok) throw new Err(500, new Error(await createResponse.text()), 'Authentik Service Account Creation Error');
+        if (!createResponse.ok) {
+            const errorText = await createResponse.text();
+
+            // A service account with this username already exists. Authentik
+            // returns 400 {"name":["This field must be unique."]}. The username
+            // is derived deterministically from the connection name + agency, so
+            // this happens when a machine user for the same connection already
+            // exists (e.g. a leftover from a previous connection, or a retry).
+            // Surface an actionable 409 instead of an opaque 500 so the user
+            // knows to remove the existing machine user / connection first.
+            if (isDuplicateUsernameError(createResponse.status, errorText)) {
+                throw new Err(409, null, `A machine user "${username}" already exists. Delete the existing connection or machine user before creating a new one.`);
+            }
+
+            throw new Err(500, new Error(errorText), 'Authentik Service Account Creation Error');
+        }
 
         const userData: any = await createResponse.json();
         const userId = userData.user_pk;
