@@ -125,7 +125,7 @@ export class Database extends Construct {
     // Create parameter group for PostgreSQL
     const engineVersionString = dbConfig.engineVersion || '17.5';
     const engineVersion = engineVersionString.startsWith('17') ? 
-      rds.AuroraPostgresEngineVersion.VER_17_4 : 
+      rds.AuroraPostgresEngineVersion.VER_17_5 : 
       rds.AuroraPostgresEngineVersion.VER_16_6;
     const parameterGroup = new rds.ParameterGroup(this, 'DBParameterGroup', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
