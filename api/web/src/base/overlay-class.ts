@@ -2,13 +2,14 @@ import type {
     ProfileOverlay,
     ProfileOverlay_Create
 } from '../types.ts';
+import { Preferences } from '@capacitor/preferences';
 import { shallowReactive } from 'vue';
 import { DrawToolMode } from '../stores/modules/draw.ts';
 import type { FeatureCollection } from 'geojson';
 import { bbox } from '@turf/bbox'
 import type { LngLatBoundsLike, LayerSpecification, SourceSpecification, VectorTileSource, RasterTileSource, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl'
 import cotStyles from '../utils/styles.ts'
-import { std, server } from '../std.js';
+import { std, server, stdurl } from '../std.js';
 import { db, type DBOverlay } from '../database.ts';
 import {
     registerTileJSONProtocol,

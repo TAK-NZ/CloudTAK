@@ -1021,63 +1021,6 @@ export const useMapStore = defineStore('cloudtak', {
             return sub;
         },
         /**
-         * Recover IndexedDB connections and the TAK WebSocket after the app
-         * returns to the foreground.
-         */
-        resumeFromBackground: async function(): Promise<void> {
-            if (this._resumeRecovery) return this._resumeRecovery;
-
-            this._resumeRecovery = (async () => {
-                if (isNativePlatform() && this._map) {
-                    try {
-                        await withTimeout(
-                            mapgl.importScriptInWorkers(MAPLIBRE_WORKER_PROBE_URL),
-                            MAPLIBRE_WORKER_PROBE_TIMEOUT_MS,
-                            'MapLibre worker response check'
-                        );
-                    } catch (err) {
-                        reloadAfterMapLibreFailure(err);
-                        return;
-                    }
-                }
-
-                try {
-                    await recoverDatabase();
-                } catch (err) {
-                    console.error('Failed to recover IndexedDB on resume:', err);
-                }
-
-                if (!this._worker) return;
-
-                try {
-                    // Still booting - Map.vue owns recovery until init completes
-                    if (!(await withTimeout(this.worker.initialized, 5000, 'Worker init probe'))) return;
-
-                    await withTimeout(this.worker.recover(), 10000, 'Worker database recovery');
-
-                    // iOS suspension can kill the TCP connection without a
-                    // close event ever firing, so the worker's isOpen flag
-                    // cannot be trusted - always rebuild the socket
-                    await withTimeout(
-                        this.worker.conn.resume(await this.worker.username),
-                        10000,
-                        'WebSocket resume'
-                    );
-
-                    // Diff state may have been consumed while suspended -
-                    // rebuild the source wholesale rather than trusting the
-                    // increments
-                    await this.resyncCOT();
-                } catch (err) {
-                    console.error('Resume recovery failed:', err);
-                }
-            })().finally(() => {
-                this._resumeRecovery = undefined;
-            });
-
-            return this._resumeRecovery;
-        },
-        /**
          * Build the MapLibre instance and everything hanging off it.
          *
          * @returns true once initialization completed, false when this call was
