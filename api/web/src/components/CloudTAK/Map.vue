@@ -1,11 +1,10 @@
 <template>
     <div
-        class='d-flex position-relative'
+        class='d-flex position-relative map-shell'
         style='height: calc(100vh) !important;'
         :style='{
             "--map-side-offset": `${mapSideOffset}px`,
-            "--map-compact-menu-size": "60px",
-            "--map-bottom-bar-size": "50px"
+            "--map-compact-menu-size": "60px"
         }'
         data-bs-theme-base='neutral'
         data-bs-theme-primary='blue'
@@ -38,7 +37,8 @@
 
             <WarnConfiguration
                 v-if='warnConfiguration'
-                @close='warnConfiguration = false'
+                :page='warnConfiguration'
+                @close='warnConfiguration = undefined'
             />
             <WarnChannels
                 v-else-if='warnChannels'
@@ -46,7 +46,7 @@
             />
 
             <DrawOverlay
-                v-if='mapStore.draw.mode !== DrawToolMode.STATIC'
+                v-if='isDrawing'
             />
 
             <GeoJSONInput
@@ -94,32 +94,27 @@
                     </div>
                 </div>
             </GenericBottomPane>
-            <BottomBar
+            <GPSPanel
                 :mode='mode'
                 @set-location='setLocation'
                 @to-location='toLocation'
             />
+            <PluginPane v-if='mode === "Default" && !isDrawing' />
             <div
                 v-if='mapStore.selected.size'
                 class='position-absolute'
                 style='
-                    bottom: calc(var(--map-bottom-bar-size, 50px) + 8px);
-                    left: 8px;
+                    bottom: calc(var(--map-gps-panel-size, 84px) + 16px + var(--map-bottom-inset, 0px));
+                    left: calc(8px + env(safe-area-inset-left, 0px));
                 '
             >
                 <SelectFeats :selected='mapStore.selected' />
             </div>
 
-            <div
+            <TopBar
                 v-if='mode === "Default"'
-                class='position-absolute'
-                style='
-                    top: calc(8px + var(--status-bar-height, 0px));
-                    left: 8px;
-                '
-            >
-                <ActiveMission />
-            </div>
+                :menu-shown='!noMenuShown'
+            />
             <div
                 v-if='mapStore.navigation.active'
                 class='position-absolute start-50 translate-middle-x'
@@ -231,7 +226,7 @@
                         tabindex='0'
                         :title='mapStore.terrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
                         class='cloudtak-ctrl-btn'
-                        @click='mapStore.terrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
+                        @click='mapStore.toggleTerrain()'
                     >
                         <IconMountain
                             :size='24'
@@ -283,85 +278,6 @@
                 </div>
             </TablerModal>
 
-            <div
-                v-if='mapStore.isMapLoaded && mode === "Default"'
-                class='position-absolute cloudtak-panel d-flex align-items-center px-2'
-                style='
-                    z-index: 5;
-                    height: 60px;
-                    max-width: calc(100vw - 16px);
-                    top: calc(8px + var(--status-bar-height, 0px));
-                    right: 8px;
-                '
-            >
-                <TablerDropdown>
-                    <TablerIconButton
-                        id='map-notifications'
-                        title='Notifications Icon'
-                        class='cloudtak-hover'
-                        :class='{ "alert-pulse": alertNotifications }'
-                        :hover='false'
-                    >
-                        <IconAlertTriangle
-                            v-if='alertNotifications'
-                            :size='40'
-                            stroke='1'
-                            class='text-danger'
-                        />
-                        <IconBell
-                            v-else
-                            :size='40'
-                            stroke='1'
-                        />
-                    </TablerIconButton>
-                    <template #dropdown>
-                        <Notifications />
-                    </template>
-                </TablerDropdown>
-
-                <span
-                    v-if='notifications'
-                    class='badge bg-red mb-2'
-                />
-                <span
-                    v-else
-                    style='width: 10px;'
-                />
-
-                <DrawTools />
-
-                <div
-                    class='border-start mx-1'
-                    style='height: 32px;'
-                />
-
-                <TablerIconButton
-                    v-if='noMenuShown'
-                    title='Open Menu'
-                    class='ms-1 cloudtak-hover'
-                    :hover='false'
-                    @click='router.push("/menu")'
-                >
-                    <IconMenu2
-                        :size='40'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-                <TablerIconButton
-                    v-else
-                    title='Close Menu'
-                    class='ms-1 cloudtak-hover'
-                    :hover='false'
-                    @click='closeAllMenu'
-                >
-                    <IconX
-                        :size='40'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-            </div>
-
-
             <MainMenu
                 v-if='
                     mapStore.isMapLoaded
@@ -378,8 +294,8 @@
                 class='position-absolute'
                 style='
                     z-index: 4;
-                    bottom: var(--map-bottom-bar-size, 50px);
-                    right: 0;
+                    bottom: var(--map-bottom-inset, 0px);
+                    right: env(safe-area-inset-right, 0px);
                     padding: 8px;
                 '
             >
@@ -450,22 +366,21 @@
 import GeoJSONInput from './Inputs/GeoJSONInput.vue';
 import BufferInput from './Inputs/BufferInput.vue';
 import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, useTemplateRef } from 'vue';
-import BottomBar from './BottomBar/BottomBar.vue';
+import GPSPanel from './GPSPanel/GPSPanel.vue';
+import PluginPane from './PluginPane.vue';
 import {useRoute, useRouter } from 'vue-router';
-import ActiveMission from './ActiveMission.vue';
 import Navigating from './Navigating.vue';
+import TopBar from './TopBar.vue';
 import DrawOverlay from './util/DrawOverlay.vue';
 import WarnChannels from './util/WarnChannels.vue';
-import Notifications from './Notifications.vue';
 import SearchBox from './util/SearchBox.vue';
 import WarnConfiguration from './util/WarnConfiguration.vue';
-import DrawTools from './DrawTools.vue';
+import type { WarnConfigurationPage } from './util/WarnConfiguration.vue';
 import GenericBottomPane from './GenericBottomPane.vue';
 import type { MapGeoJSONFeature, LngLatLike, MapMouseEvent } from 'maplibre-gl';
 import type { Feature } from '../../types.ts';
 import {
     IconCircleArrowUp,
-    IconAlertTriangle,
     IconLocationPin,
     IconLockAccess,
     IconLocation,
@@ -473,26 +388,20 @@ import {
     IconCompass,
     IconSearch,
     IconMinus,
-    IconMenu2,
     IconAngle,
     IconPlus,
-    IconBell,
     IconX,
 } from '@tabler/icons-vue';
 import SelectFeats from './util/SelectFeats.vue';
 import MultipleSelect from './util/MultipleSelect.vue';
 import MainMenu from './MainMenu.vue';
 import ServerStatus from './ServerStatus.vue';
-import { from } from 'rxjs';
-import { useObservable } from '@vueuse/rxjs';
 import {
     TablerIconButton,
-    TablerDropdown,
     TablerModal,
 } from '@tak-ps/vue-tabler';
 import { LocationState, WorkerMessageType } from '../../utils/events.ts';
 import type { WorkerMessage } from '../../utils/events.ts';
-import TAKNotification, { NotificationType } from '../../base/notification.ts';
 import { v4 as randomUUID } from 'uuid';
 import { lineString as turfLineString, point as turfPoint } from '@turf/helpers';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
@@ -502,29 +411,28 @@ import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
 import { useMapStore } from '../../stores/map.ts';
+import { useDeviceStore } from '../../stores/device.ts';
 import { useAppStore } from '../../stores/app.ts';
 import { DrawToolMode } from '../../stores/modules/draw.ts';
 import { useFloatStore } from '../../stores/float.ts';
-import { liveQuery } from 'dexie';
 import Upload from '../util/Upload.vue';
 import { stdurl } from '../../std.ts';
 import ProfileConfig from '../../base/profile.ts';
-import Config from '../../base/config.ts';
+import OverlayManager from '../../base/overlay.ts';
 import { cutOverlayFeature } from './util/featureCut.ts';
-import { isNativePlatform, isIOSPlatform, addBackgroundStateListener } from '../../utils/capacitor.ts';
+import { isIOSPlatform, isNativePlatform, addAppLifecycleListeners } from '../../utils/capacitor.ts';
+import { TimeoutError } from '../../utils/async.ts';
 import { copyFeatureToClipboard, readFeatureFromClipboard } from '../../stores/device/clipboard.ts';
 import MissionInviteModal from './Menu/Mission/MissionInviteModal.vue';
 
 const mapStore = useMapStore();
+const deviceStore = useDeviceStore();
 const appStore = useAppStore();
 const floatStore = useFloatStore();
 
 const isIOS = isIOSPlatform();
 
-const hasTerrain = ref<boolean>(false);
-Config.list(['map::terrain'], { defaults: { 'map::terrain': null } }).then((cfg) => {
-    hasTerrain.value = cfg['map::terrain'] !== null && cfg['map::terrain'] !== undefined;
-}).catch(() => { /* non-fatal */ });
+const hasTerrain = computed(() => OverlayManager.loaded.some((overlay) => overlay.type === 'raster-dem'));
 const router = useRouter();
 const route = useRoute();
 
@@ -539,7 +447,7 @@ appStore.isMobileDetected = detectMobile();
 
 const warnChannels = ref<boolean>(false)
 
-const warnConfiguration = ref<boolean>(false);
+const warnConfiguration = ref<WarnConfigurationPage | undefined>();
 
 const searchBoxShown = ref(false);
 
@@ -563,43 +471,43 @@ let inviteChannel: BroadcastChannel | undefined;
 
 const loading = ref(true)
 
-// If the app backgrounds mid-boot, awaits inside mapStore.init() can wedge
-// permanently (suspended networking, invalidated IndexedDB). Reload once -
-// the Hard Reset recovery, but automatic - when the boot still hasn't
-// completed this long after returning to the foreground.
-const BOOT_STALL_RELOAD_MS = 30000;
-const BOOT_STALL_RELOAD_KEY = 'cloudtak::boot-stall-reloaded';
+// A boot suspended by a background transition can wedge - reload on resume
 let bootComplete = false;
-let bootStallTimer: ReturnType<typeof setTimeout> | undefined;
-let removeBootWatchdog: (() => void) | undefined;
+let bootInterrupted = false;
+let unmounted = false;
+let removeAppLifecycleListeners: (() => void) | undefined;
 
-function onBootStalled(): void {
-    if (bootComplete) return;
+// A boot stage that times out on native is reloaded rather than retried in
+// place - terminating a worker mid-open can wedge the next attempt. Once per
+// page session, so a second timeout falls through to the error and Hard Reset.
+const BOOT_TIMEOUT_RELOAD_KEY = 'cloudtak::boot-timeout-reloaded';
 
+function reloadOnceForBootTimeout(): boolean {
     try {
-        if (sessionStorage.getItem(BOOT_STALL_RELOAD_KEY)) return;
-        sessionStorage.setItem(BOOT_STALL_RELOAD_KEY, '1');
-    } catch (err) {
-        // Unguarded automatic reloads could loop - fall back to the Hard Reset button
-        console.warn('Boot stall reload guard unavailable, skipping automatic reload', err);
-        return;
+        if (sessionStorage.getItem(BOOT_TIMEOUT_RELOAD_KEY)) return false;
+        sessionStorage.setItem(BOOT_TIMEOUT_RELOAD_KEY, '1');
+    } catch {
+        return false;
     }
 
-    console.error('Map boot stalled after app resume - reloading');
     location.reload();
+    return true;
 }
 
-const notifications = useObservable<number>(
-    from(liveQuery(async () => {
-        return await TAKNotification.count()
-    }))
-);
+// A stage that hung, or the worker's storage probe giving up, both mean
+// IndexedDB is not answering. The probe's error arrives through Comlink,
+// which keeps the name but not the class.
+function isStorageStall(err: Error): boolean {
+    return err instanceof TimeoutError || err.name === 'DatabaseUnavailableError';
+}
 
-const alertNotifications = useObservable<number>(
-    from(liveQuery(async () => {
-        return await TAKNotification.countByType(NotificationType.Alert)
-    }))
-);
+function clearBootTimeoutReloadGuard(): void {
+    try {
+        sessionStorage.removeItem(BOOT_TIMEOUT_RELOAD_KEY);
+    } catch {
+        // storage unavailable - the guard was never set either
+    }
+}
 
 function detectMobile() {
   //TODO: This needs to follow something like:
@@ -612,6 +520,10 @@ function detectMobile() {
 
 const isMobileDetected = computed(() => {
     return detectMobile();
+});
+
+const isDrawing = computed(() => {
+    return mapStore.draw.mode !== DrawToolMode.STATIC;
 });
 
 watch(isMobileDetected, () => {
@@ -685,11 +597,27 @@ onMounted(async () => {
     if (!mapRef.value) throw new Error('Map Element could not be found - Please refresh the page and try again');
 
     if (isNativePlatform()) {
-        removeBootWatchdog = await addBackgroundStateListener((isBackgrounded) => {
-            clearTimeout(bootStallTimer);
-            if (bootComplete || isBackgrounded) return;
+        removeAppLifecycleListeners = await addAppLifecycleListeners({
+            pause: () => {
+                // A new background gets its own reload attempt
+                clearBootTimeoutReloadGuard();
 
-            bootStallTimer = setTimeout(onBootStalled, BOOT_STALL_RELOAD_MS);
+                if (!bootComplete) {
+                    bootInterrupted = true;
+                    return;
+                }
+
+                // Storage must be idle while backgrounded - see mapStore.suspend()
+                void mapStore.suspend();
+            },
+            resume: () => {
+                if (bootInterrupted) {
+                    location.reload();
+                    return;
+                }
+
+                if (bootComplete) void mapStore.resume();
+            }
         });
     }
 
@@ -708,6 +636,15 @@ onMounted(async () => {
             console.error(`Map boot attempt ${attempt} failed:`, err);
 
             if (attempt === 3) break;
+            if (unmounted) return;
+
+            // Native never retries a stalled stage in place: destroy would
+            // terminate a worker mid-open, and its teardown is unbounded.
+            // Reload once per background, otherwise surface the error.
+            if (isNativePlatform() && isStorageStall(bootError)) {
+                if (reloadOnceForBootTimeout()) return;
+                break;
+            }
 
             await mapStore.destroy();
             mapStore.loadingStage = 'Load failed - retrying…';
@@ -716,12 +653,6 @@ onMounted(async () => {
     }
 
     bootComplete = true;
-    clearTimeout(bootStallTimer);
-    try {
-        sessionStorage.removeItem(BOOT_STALL_RELOAD_KEY);
-    } catch (err) {
-        console.warn('Failed to clear boot stall reload guard', err);
-    }
 
     if (bootError) {
         emit('err', bootError);
@@ -729,12 +660,19 @@ onMounted(async () => {
     }
 
     // Superseded mid-boot: none of the wiring below applies, and touching
-    // mapStore.map would throw.
+    // mapStore.map would throw. A newer mount owns the boot-timeout guard and
+    // clears it when it completes, so leave it for that mount.
     if (!started) return;
+
+    clearBootTimeoutReloadGuard();
 
     // TODO these are no longer reactive, does it matter?
     warnChannels.value = await mapStore.worker.profile.hasNoChannels();
-    warnConfiguration.value = await mapStore.worker.profile.hasNoConfiguration();
+    if (await mapStore.worker.profile.hasNoConfiguration()) {
+        warnConfiguration.value = 'details';
+    } else if (!deviceStore.hasRequiredPermissions()) {
+        warnConfiguration.value = 'permissions';
+    }
 
     loading.value = false;
 
@@ -779,9 +717,9 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+    unmounted = true;
     bootComplete = true;
-    clearTimeout(bootStallTimer);
-    if (removeBootWatchdog) removeBootWatchdog();
+    removeAppLifecycleListeners?.();
     inviteChannel?.close();
     // Lifecycle hooks are synchronous, so this teardown cannot be awaited here.
     // mapStore.init() waits on it instead, which is what keeps a remount from
@@ -812,10 +750,6 @@ function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
         mapStore.viewedFeature = selectedFeat;
         router.push(`/menu/feature`);
     }
-}
-
-function closeAllMenu() {
-    router.push('/');
 }
 
 function closeRadial() {
@@ -860,6 +794,7 @@ function setLocation() {
 }
 
 function cancelLocationSetting() {
+    mapStore.manualLocationMode = false;
     mode.value = 'Default';
     mapStore.map.getCanvas().style.cursor = '';
 
@@ -1072,15 +1007,6 @@ async function handleRadial(event: string): Promise<void> {
 </script>
 
 <style>
-@keyframes alert-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-}
-
-.alert-pulse {
-    animation: alert-pulse 1.2s ease-in-out infinite;
-}
-
 /*
  * Drops the left controls below the navigation banner once it wraps to its own
  * row on small screens - `.cloudtak-navigating` itself is styled in style.scss
@@ -1088,7 +1014,7 @@ async function handleRadial(event: string): Promise<void> {
  */
 @media (max-width: 767.98px) {
     .cloudtak-left-controls--nav {
-        top: 134px !important;
+        top: calc(134px + var(--status-bar-height, 0px)) !important;
     }
 }
 
@@ -1155,9 +1081,20 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
     margin: 0;
 }
 
+/*
+ * Patch 001 deliberately does NOT re-add upstream's `.maplibregl-ctrl-scale::before`
+ * transparent white-on-black scale-bar styling - we keep MapLibre's default box.
+ * The `.map-shell` GPS-panel CSS variables below are new and load-bearing (the
+ * bottom-control rules reference --map-gps-panel-size / --map-bottom-inset).
+ */
+.map-shell {
+    --map-gps-panel-size: 84px;
+    --map-bottom-inset: env(safe-area-inset-bottom, 0px);
+}
+
 .maplibregl-ctrl-bottom-left {
-    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
-    left: 8px;
+    bottom: calc(var(--map-gps-panel-size, 84px) + 12px + var(--map-bottom-inset, 0px));
+    left: calc(8px + env(safe-area-inset-left, 0px));
     right: auto;
     margin: 0;
     z-index: 3 !important;
@@ -1165,8 +1102,8 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
 }
 
 .maplibregl-ctrl-bottom-right {
-    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
-    right: calc(var(--map-side-offset, 0px) + 8px);
+    bottom: calc(4px + var(--map-bottom-inset, 0px));
+    right: calc(var(--map-side-offset, 0px) + 8px + env(safe-area-inset-right, 0px));
     left: auto;
     z-index: 3 !important;
     color: black !important;
@@ -1194,11 +1131,11 @@ html[data-bs-theme='light'] .use-gps-btn {
 
 @media (max-width: 600px) {
     .maplibregl-ctrl-bottom-left {
-        left: 4px;
+        left: calc(4px + env(safe-area-inset-left, 0px));
     }
 
     .maplibregl-ctrl-bottom-right {
-        right: 58px;
+        right: calc(58px + env(safe-area-inset-right, 0px));
     }
 }
 </style>

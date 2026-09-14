@@ -836,14 +836,14 @@ async function navigateAfterLogin(): Promise<void> {
         })();
 
         if (resolved.matched.length > 0) {
-            await router.push(redirectPath);
+            router.replace(redirectPath);
         } else if (isSafeRedirect) {
             window.location.href = redirectPath;
         } else {
-            await router.push("/");
+            router.replace("/");
         }
     } else {
-        await router.push("/");
+        router.replace("/");
     }
 }
 

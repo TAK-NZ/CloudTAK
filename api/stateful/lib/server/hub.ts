@@ -128,11 +128,13 @@ export function attachWebsocket(srv: Server, config: ConfigStateful): ws.WebSock
 
                 ws.send(JSON.stringify({ type: 'connected' }));
             } else if (auth instanceof AuthUser && parsedParams.connection === auth.email) {
+                config.conns.keep(parsedParams.connection);
+
                 let client: ConnectionClient;
                 let created = false;
                 if (!config.conns.has(parsedParams.connection)) {
                     const profile = await config.models.Profile.from(parsedParams.connection);
-                    if (!profile.auth.cert || !profile.auth.key) throw new Error('No Cert Found on profile');
+                    if (!profile.auth || !profile.auth.cert || !profile.auth.key) throw new Error('No Cert Found on profile');
 
                     client = await config.conns.add(new ProfileConnConfig(config, parsedParams.connection, profile.auth));
                     created = true;
@@ -160,7 +162,7 @@ export function attachWebsocket(srv: Server, config: ConfigStateful): ws.WebSock
 
                     config.wsClients.delete(parsedParams.connection);
 
-                    config.conns.delete(parsedParams.connection);
+                    config.conns.deleteLater(parsedParams.connection);
                 });
 
                 if (created) {

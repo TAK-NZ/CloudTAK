@@ -409,11 +409,17 @@ export const CertificateResponse = Type.Object({
 
 export const ProfileListResponse = Type.Object({
     username: Type.String(),
+    name: Type.String(),
     created: Type.String(),
     updated: Type.String(),
-    last_login: Type.String(),
+    last_login: Type.Union([Type.String(), Type.Null()], {
+        description: 'Null until the user has logged in for the first time',
+    }),
     active: Type.Boolean({
         description: 'Does the user have an active CloudTAK Session',
+    }),
+    disabled: Type.Boolean({
+        description: 'User has been deprovisioned and cannot log in',
     }),
     system_admin: Type.Boolean(),
     agency_admin: Type.Array(Type.Integer()),
@@ -468,9 +474,14 @@ export const ProfileResponse = Type.Composite([
         username: Type.String(),
         created: Type.String(),
         updated: Type.String(),
-        last_login: Type.String(),
+        last_login: Type.Union([Type.String(), Type.Null()], {
+            description: 'Null until the user has logged in for the first time',
+        }),
         active: Type.Boolean({
             description: 'Does the user have an active CloudTAK Session',
+        }),
+        disabled: Type.Boolean({
+            description: 'User has been deprovisioned and cannot log in',
         }),
         system_admin: Type.Boolean(),
         agency_admin: Type.Array(Type.Integer()),
@@ -600,6 +611,7 @@ export const ProfileFileResponse = Type.Object({
     created: Type.String(),
     updated: Type.String(),
     username: Type.String(),
+    parent: Type.Union([Type.Null(), Type.String()]),
     path: Type.String(),
     name: Type.String(),
     iconset: Type.Union([Type.Null(), Type.String()]),
@@ -639,6 +651,8 @@ export const ConnectionTokenResponse = Type.Object({
     id: Type.Integer(),
     connection: Type.Integer(),
     name: Type.String(),
+    username: Type.Union([Type.String(), Type.Null()], { description: 'Username of the user that created the token - null for tokens created before authorship was recorded' }),
+    permissions: Type.Array(Type.String()),
     created: Type.String(),
     updated: Type.String(),
 });
@@ -783,6 +797,8 @@ export const FullConfig = Type.Object({
     'group::Dark Green': Type.String(),
     'group::Brown': Type.String(),
     'passkey::enabled': Type.Boolean({ description: 'Enable Passkey Authentication' }),
+    'scim::enabled': Type.Boolean({ description: 'Enable incoming SCIM 2.0 user provisioning at /api/scim/v2' }),
+    'scim::token': Type.String({ description: 'Bearer token an Identity Provider must present to the SCIM API' }),
     'provider::url': Type.String(),
     'provider::secret': Type.String(),
     'provider::client': Type.String(),

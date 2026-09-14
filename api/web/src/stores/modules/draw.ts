@@ -286,7 +286,9 @@ export default class DrawTool {
                 }),
                 routeSnapMode,
                 new terraDraw.TerraDrawAngledRectangleMode(),
-                new terraDraw.TerraDrawFreehandMode(),
+                new terraDraw.TerraDrawFreehandMode({
+                    drawInteraction: 'click-move-or-drag',
+                }),
                 new terraDraw.TerraDrawSectorMode(),
                 new terraDraw.TerraDrawCircleMode({
                     drawInteraction: 'click-move-or-drag',
@@ -348,6 +350,18 @@ export default class DrawTool {
                     } else {
                         const ov = OverlayManager.loadedByName(this.lasso.overlay);
                         if (!ov) throw new Error('Could not find overlay');
+
+                        if (ov.mode === 'mission' && ov.mode_id) {
+                            const touching = await this.mapStore.worker.db.touching(feat.geometry as Polygon, {
+                                mission: ov.mode_id
+                            });
+
+                            for (const cot of touching.values()) {
+                                this.mapStore.selected.set(cot.id, cot);
+                            }
+
+                            return;
+                        }
 
                         this.lasso.loading = true;
 

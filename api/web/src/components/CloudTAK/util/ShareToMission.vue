@@ -9,7 +9,7 @@
         />
         <div class='modal-header text-body'>
             <div class='d-flex align-items-center'>
-                <IconReplace
+                <IconCloudPin
                     :size='28'
                     stroke='1'
                 />
@@ -50,7 +50,7 @@
                                         stroke='1'
                                         style='margin-left: 16px;'
                                     />
-                                    <IconReplace
+                                    <IconCloudPin
                                         v-else
                                         :size='32'
                                         stroke='1'
@@ -109,7 +109,7 @@ import {
 } from '@tak-ps/vue-tabler';
 import {
     IconCheck,
-    IconReplace,
+    IconCloudPin,
     IconShare2
 } from '@tabler/icons-vue';
 import type { Feature } from '../../../types.ts';
@@ -197,10 +197,10 @@ async function share(): Promise<void> {
 
     if (props.assets.length) {
         for (const mission of selected.value) {
-            const res = await server.PUT('/api/marti/missions/{:name}/upload', {
+            const res = await server.PUT('/api/marti/missions/{:guid}/upload', {
                 params: {
                     path: {
-                        ':name': mission.name
+                        ':guid': mission.guid
                     }
                 },
                 body: {

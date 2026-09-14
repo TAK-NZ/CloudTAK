@@ -35,10 +35,7 @@
             </template>
             <div class='col-12'>
                 <div class='mx-2 py-2'>
-                    <div
-                        class='rounded px-2 py-2'
-                        :class='{ "cloudtak-accent": !isEmpty }'
-                    >
+                    <div class='px-2 py-2'>
                         <TablerLoading
                             v-if='loading'
                             :inline='true'
@@ -48,7 +45,14 @@
                             v-else-if='error'
                             :err='error'
                             @close='refresh'
-                        />
+                        >
+                            <template #advanced='{ body }'>
+                                <CopyField
+                                    mode='pre'
+                                    :model-value='body'
+                                />
+                            </template>
+                        </TablerError>
                         <div
                             v-else-if='upload'
                             class='py-2 px-4'
@@ -110,8 +114,9 @@
 
                                             <div class='ms-auto d-flex'>
                                                 <TablerDelete
-                                                    v-if='subscription && subscription.role && subscription.role.permissions.includes("MISSION_WRITE")'
+                                                    v-if='canRemove'
                                                     displaytype='icon'
+                                                    title='Remove Attachment'
                                                     :size='24'
                                                     @delete='deleteAttachment(file)'
                                                 />
@@ -138,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import CopyField from '../util/CopyField.vue';
 import { ref, computed, onMounted, watch } from 'vue';
 import { Preferences } from '@capacitor/preferences';
 import { server, std, stdurl } from '../../../std.ts';
@@ -182,12 +188,6 @@ const error = ref<Error | undefined>(undefined);
 const files = ref<Attachment[]>([]);
 const token = ref<string | null>(null);
 
-// The "No Items" state drops the inset surface so it reads as part of the
-// slide-down body instead of an empty raised block
-const isEmpty = computed(() => {
-    return !loading.value && !error.value && !upload.value && !files.value.length;
-});
-
 watch(() => props.modelValue, async (newVal, oldVal) => {
     if (newVal.length === oldVal.length && newVal.every((h, i) => h === oldVal[i])) return;
     await refresh();
@@ -212,10 +212,17 @@ function attachmentPane(file: Attachment): void {
     floatStore.addAttachment(file);
 }
 
-async function deleteAttachment(file: Attachment): Promise<void> {
-    if (!props.subscription) return;
+// Mission attachments are removed from the mission itself (requires
+// MISSION_WRITE); otherwise the hash is simply dropped from the marker
+const canRemove = computed(() => {
+    if (!props.subscription) return true;
+    return !!props.subscription.role?.permissions.includes('MISSION_WRITE');
+});
 
-    await props.subscription.contents.delete(file.hash);
+async function deleteAttachment(file: Attachment): Promise<void> {
+    if (props.subscription) {
+        await props.subscription.contents.delete(file.hash);
+    }
 
     files.value = files.value.filter(f => f.hash !== file.hash);
 }
