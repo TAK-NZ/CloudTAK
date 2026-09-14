@@ -25,25 +25,58 @@
                                 label='Callsign'
                                 description='The name other users will see you as on the map'
                                 placeholder='Enter your callsign'
-                                :autofocus='true'
-                                :required='true'
-                                :error='callsignError'
+                                :autofocus='!locked.tak_callsign'
+                                :disabled='locked.tak_callsign'
+                                :required='!locked.tak_callsign'
+                                :error='locked.tak_callsign ? "" : callsignError'
                                 @keyup.enter='submitDetails'
                             />
+                            <div
+                                v-if='locked.tak_callsign'
+                                class='d-flex align-items-center gap-1 text-secondary mt-1'
+                            >
+                                <IconLock
+                                    :size='14'
+                                    stroke='1.5'
+                                />
+                                <span class='small'>Managed by your single sign-on account and cannot be changed here</span>
+                            </div>
                         </div>
                         <div class='col-12 col-md-6'>
                             <TablerEnum
                                 v-model='form.tak_group'
                                 label='Team'
                                 :options='groupOptions'
+                                :disabled='locked.tak_group'
                             />
+                            <div
+                                v-if='locked.tak_group'
+                                class='d-flex align-items-center gap-1 text-secondary mt-1'
+                            >
+                                <IconLock
+                                    :size='14'
+                                    stroke='1.5'
+                                />
+                                <span class='small'>Managed by your single sign-on account</span>
+                            </div>
                         </div>
                         <div class='col-12 col-md-6'>
                             <TablerEnum
                                 v-model='form.tak_role'
                                 label='Role'
                                 :options='roles'
+                                :disabled='locked.tak_role'
                             />
+                            <div
+                                v-if='locked.tak_role'
+                                class='d-flex align-items-center gap-1 text-secondary mt-1'
+                            >
+                                <IconLock
+                                    :size='14'
+                                    stroke='1.5'
+                                />
+                                <span class='small'>Managed by your single sign-on account</span>
+                            </div>
                         </div>
                         <div class='col-12'>
                             <TablerInput
@@ -126,7 +159,7 @@
                 <div class='ms-auto'>
                     <button
                         class='btn btn-primary'
-                        :disabled='loading || saving || !!callsignError'
+                        :disabled='loading || saving || (!locked.tak_callsign && !!callsignError)'
                         @click='submitDetails'
                     >
                         <TablerLoading
@@ -183,6 +216,7 @@ import {
     IconBell,
     IconInfoSquare,
     IconMapPin,
+    IconLock,
 } from '@tabler/icons-vue';
 import StandardItem from './StandardItem.vue';
 import type { Profile } from '../../../types.ts';
@@ -241,6 +275,18 @@ const form = ref({
     tak_phone: '',
 });
 
+/**
+ * Fields the IdP supplies (and re-applies on every login), reported by the API as
+ * `tak_*_locked` on the profile. Shown read-only rather than editable, and
+ * excluded from submitDetails()'s update payload - same treatment as the
+ * Settings > Callsign & Device page.
+ */
+const locked = ref({
+    tak_callsign: false,
+    tak_group: false,
+    tak_role: false,
+});
+
 const groupOptions = computed(() => {
     return Object.entries(groups.value).map(([name, description]) => {
         return description ? `${name} - ${description}` : name;
@@ -260,10 +306,25 @@ onMounted(async () => {
     }
     groups.value = result;
 
+    // Refresh the cached profile before reading the lock flags. ProfileConfig.sync()
+    // is a no-op once the local store is populated, so without forcing it a
+    // session that predates the lock flags would render these fields as
+    // editable when they are not.
+    await ProfileConfig.sync({ refresh: true });
+    locked.value = {
+        tak_callsign: Boolean((await ProfileConfig.get('tak_callsign_locked'))?.value),
+        tak_group: Boolean((await ProfileConfig.get('tak_group_locked'))?.value),
+        tak_role: Boolean((await ProfileConfig.get('tak_role_locked'))?.value),
+    };
+
+    const callsign = (await ProfileConfig.get('tak_callsign'))?.value;
     const group = (await ProfileConfig.get('tak_group'))?.value;
     const role = (await ProfileConfig.get('tak_role'))?.value;
     const phone = (await ProfileConfig.get('tak_phone'))?.value;
 
+    // Only a locked callsign is pre-filled - unlocked callsigns stay blank so
+    // the required-field validation still does its job for a genuinely new user.
+    form.value.tak_callsign = locked.value.tak_callsign ? (callsign || '') : '';
     form.value.tak_group = group && groups.value[group]
         ? `${group} - ${groups.value[group]}`
         : (group || groupOptions.value[0] || '');
@@ -274,17 +335,21 @@ onMounted(async () => {
 });
 
 async function submitDetails() {
-    if (callsignError.value || saving.value) return;
+    if ((!locked.value.tak_callsign && callsignError.value) || saving.value) return;
 
     saving.value = true;
     try {
         const group = form.value.tak_group.replace(/\s-\s.*$/, '');
 
+        // IdP-managed fields are never persisted from here - the inputs are
+        // disabled, but this also covers programmatic mutation reaching this
+        // payload. Editing them locally would be silently reverted on the
+        // next login's attribute sync anyway.
         await mapStore.worker.profile.update({
-            tak_callsign: form.value.tak_callsign.trim(),
-            tak_role: form.value.tak_role,
+            ...(locked.value.tak_callsign ? {} : { tak_callsign: form.value.tak_callsign.trim() }),
+            ...(locked.value.tak_role ? {} : { tak_role: form.value.tak_role }),
             tak_phone: form.value.tak_phone.trim(),
-            ...(group ? { tak_group: group as Profile['tak_group'] } : {}),
+            ...(!locked.value.tak_group && group ? { tak_group: group as Profile['tak_group'] } : {}),
         });
     } finally {
         saving.value = false;
