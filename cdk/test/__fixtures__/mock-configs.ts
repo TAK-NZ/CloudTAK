@@ -9,7 +9,7 @@ export const MOCK_CONFIGS = {
     database: {
       instanceClass: 'db.serverless',
       instanceCount: 1,
-      engineVersion: '17.5',
+      engineVersion: '17.10',
       allocatedStorage: 20,
       maxAllocatedStorage: 100,
       enablePerformanceInsights: false,
@@ -51,7 +51,7 @@ export const MOCK_CONFIGS = {
     database: {
       instanceClass: 'db.t4g.large',
       instanceCount: 2,
-      engineVersion: '17.5',
+      engineVersion: '17.10',
       allocatedStorage: 100,
       maxAllocatedStorage: 1000,
       enablePerformanceInsights: true,
