@@ -1,17 +1,22 @@
 import type {
     ProfileOverlay,
-    ProfileOverlay_Create,
-    TileJSON
+    ProfileOverlay_Create
 } from '../types.ts';
-import { Preferences } from '@capacitor/preferences';
 import { shallowReactive } from 'vue';
 import { DrawToolMode } from '../stores/modules/draw.ts';
 import type { FeatureCollection } from 'geojson';
 import { bbox } from '@turf/bbox'
-import type { LngLatBoundsLike, LayerSpecification, VectorTileSource, RasterTileSource, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl'
+import type { LngLatBoundsLike, LayerSpecification, SourceSpecification, VectorTileSource, RasterTileSource, GeoJSONSource, MapLayerMouseEvent } from 'maplibre-gl'
 import cotStyles from '../utils/styles.ts'
-import { std, stdurl } from '../std.js';
+import { std, server } from '../std.js';
 import { db, type DBOverlay } from '../database.ts';
+import {
+    registerTileJSONProtocol,
+    setOverlayTileJSON,
+    clearOverlayTileJSON,
+    tileJSONSourceUrl,
+    type OverlayTileJSON
+} from '../stores/modules/tilejson.ts';
 import { useMapStore } from '../stores/map.js';
 import ProfileConfig from './profile.ts';
 import Subscription from './subscription.ts';
@@ -54,12 +59,14 @@ export default class Overlay {
     mode: string;
     mode_id: string | null;
     encoding: 'mapbox' | 'terrarium' | null;
+    attribution: string;
 
     actions: ProfileOverlay["actions"];
 
     url?: string;
     styles: Array<LayerSpecification>;
     token: string | null;
+    tilejson: OverlayTileJSON | null;
 
     static async create(
         body: ProfileOverlay | ProfileOverlay_Create,
@@ -133,6 +140,7 @@ export default class Overlay {
             created: new Date().toISOString(),
             updated: new Date().toISOString(),
             token: undefined,
+            tilejson: null,
             mode: 'internal',
             mode_id: undefined,
             styles: body.styles || [],
@@ -188,9 +196,11 @@ export default class Overlay {
         this.mode = overlay.mode;
         this.mode_id = overlay.mode_id || null;
         this.encoding = overlay.encoding || null;
+        this.attribution = overlay.attribution || '';
         this.url = overlay.url;
         this.styles = overlay.styles as Array<LayerSpecification>;
         this.token = overlay.token;
+        this.tilejson = overlay.tilejson ?? null;
 
         if (this.frequency) {
             this._timer = setInterval(async () => {
@@ -208,6 +218,46 @@ export default class Overlay {
 
     healthy(): boolean {
         return !this._error;
+    }
+
+    isTiled(): boolean {
+        return this.type === 'raster' || this.type === 'vector' || this.type === 'raster-dem';
+    }
+
+    private sourceSpec(): SourceSpecification {
+        const url = tileJSONSourceUrl(this.id);
+
+        if (this.type === 'raster-dem') {
+            return { type: 'raster-dem', url, encoding: this.encoding || 'mapbox' };
+        } else if (this.type === 'vector') {
+            return { type: 'vector', url };
+        }
+
+        return { type: 'raster', url };
+    }
+
+    // Visibility maps onto the map's single terrain source; pitch eases only on user toggles
+    applyTerrain(opts: { ease?: boolean } = {}): void {
+        const mapStore = useMapStore();
+        const sourceId = String(this.id);
+        const active = mapStore.map.getTerrain()?.source === sourceId;
+
+        if (this.visible && !this._error && mapStore.map.getSource(sourceId)) {
+            if (!active) mapStore.map.setTerrain({ source: sourceId, exaggeration: 1.5 });
+            mapStore.terrainEnabled = true;
+            mapStore.map.setGlobalStateProperty('3d', true);
+            if (opts.ease && mapStore.map.getPitch() === 0) mapStore.map.easeTo({ pitch: 45 });
+        } else if (active) {
+            this.disableTerrain(opts);
+        }
+    }
+
+    private disableTerrain(opts: { ease?: boolean } = {}): void {
+        const mapStore = useMapStore();
+        mapStore.map.setTerrain(null);
+        mapStore.terrainEnabled = false;
+        mapStore.map.setGlobalStateProperty('3d', false);
+        if (opts.ease) mapStore.map.easeTo({ pitch: 0 });
     }
 
     hasBounds(): boolean {
@@ -272,6 +322,8 @@ export default class Overlay {
             }
             mapStore.map.setLayoutProperty(l.id, 'visibility', this.visible ? 'visible' : 'none');
         }
+
+        if (this.type === 'raster-dem') this.applyTerrain();
 
         await FeatureVisibility.applyToOverlay(this);
 
@@ -370,48 +422,20 @@ export default class Overlay {
         skipLayers?: boolean;
     } = {}) {
         const mapStore = useMapStore();
-        const { value: token } = await Preferences.get({ key: 'token' });
 
         this._error = undefined;
 
-        if (this.type === 'raster' && this.url) {
-            const url = stdurl(this.url);
-            if (token) url.searchParams.set('token', token);
-
-            // A failed /tiles lookup (network blip, expired token, deleted
-            // basemap upstream, etc.) must NOT abort map initialization or
-            // every other overlay disappears with it. Capture the error on
-            // the overlay so MenuOverlays.vue surfaces an "Issue" badge,
-            // and skip addSource so addLayers later no-ops cleanly.
-            try {
-                const tileJSON = await std(url.toString()) as TileJSON
-
-                if (!mapStore.map.getSource(String(this.id))) {
-                    mapStore.map.addSource(String(this.id), {
-                        ...tileJSON,
-                        type: 'raster',
-                    });
-                }
-            } catch (err) {
-                this._error = err instanceof Error ? err : new Error(String(err));
-                console.error(`Failed to load raster tiles for overlay ${this.id} (${this.name}):`, err);
-            }
-        } else if (this.type === 'vector' && this.url) {
-            const url = stdurl(this.url);
-            if (token) url.searchParams.set('token', token);
-
+        if (this.isTiled() && this.url) {
             if (!mapStore.map.getSource(String(this.id))) {
-                // MapLibre resolves the vector TileJSON lazily on first tile
-                // request, so addSource itself does not throw on a bad URL.
-                // Still wrap defensively for parity with the raster branch.
+                // TileJSON load failures surface via the map `error` event (see map store)
+                registerTileJSONProtocol();
+                setOverlayTileJSON(this.id, { url: this.url, tilejson: this.tilejson });
+
                 try {
-                    mapStore.map.addSource(String(this.id), {
-                        type: 'vector',
-                        url: String(url)
-                    });
+                    mapStore.map.addSource(String(this.id), this.sourceSpec());
                 } catch (err) {
                     this._error = err instanceof Error ? err : new Error(String(err));
-                    console.error(`Failed to add vector source for overlay ${this.id} (${this.name}):`, err);
+                    console.error(`Failed to add ${this.type} source for overlay ${this.id} (${this.name}):`, err);
                 }
             }
         } else if (this.type === 'geojson') {
@@ -489,6 +513,8 @@ export default class Overlay {
 
         this.removeHoverListeners();
 
+        if (mapStore.map.getTerrain()?.source === String(this.id)) this.disableTerrain();
+
         for (const l of this.styles) {
             if (mapStore.map.getLayer(String(l.id))) {
                 mapStore.map.removeLayer(String(l.id));
@@ -499,6 +525,17 @@ export default class Overlay {
             // Don't crash the map if it already  removed
             mapStore.map.removeSource(String(this.id));
         }
+
+        clearOverlayTileJSON(this.id);
+    }
+
+    /**
+     * First renderable layer id of this overlay that is present on the map
+     */
+    anchorLayerId(): string | undefined {
+        const mapStore = useMapStore();
+        const anchor = this.styles.find((l) => l.type !== 'background' && mapStore.map.getLayer(l.id));
+        return anchor ? String(anchor.id) : undefined;
     }
 
     moveBefore(overlay?: Overlay): void {
@@ -529,8 +566,10 @@ export default class Overlay {
             mode?: string;
             mode_id?: string;
             encoding?: 'mapbox' | 'terrarium' | null;
+            attribution?: string;
             url?: string;
             token?: string;
+            tilejson?: OverlayTileJSON | null;
             styles?: Array<LayerSpecification>;
         },
         opts: {
@@ -540,6 +579,8 @@ export default class Overlay {
         this.remove();
 
         const oldType = this.type;
+        const oldUrl = this.url;
+        const oldModeId = this.mode_id;
 
         if (overlay.name) this.name = overlay.name;
         if (overlay.active !== undefined) this.active = overlay.active;
@@ -556,8 +597,14 @@ export default class Overlay {
         if (overlay.mode) this.mode = overlay.mode;
         if (overlay.mode_id) this.mode_id = overlay.mode_id || null;
         if (overlay.encoding !== undefined) this.encoding = overlay.encoding;
+        if (overlay.attribution !== undefined) this.attribution = overlay.attribution;
         if (overlay.url) this.url = overlay.url;
         if (overlay.token) this.token = overlay.token;
+        if (overlay.tilejson !== undefined) {
+            this.tilejson = overlay.tilejson;
+        } else if (this.url !== oldUrl || this.mode_id !== oldModeId) {
+            this.tilejson = null;
+        }
         if (overlay.styles) {
             if (overlay.styles && overlay.styles.length) {
                 for (const layer of overlay.styles) {
@@ -614,11 +661,17 @@ export default class Overlay {
         if (this._internal) return;
 
         if (this.id) {
-            await std(`/api/profile/overlay?id=${this.id}`, {
-                method: 'DELETE'
+            await db.overlay.delete(this.id);
+
+            const { error, response } = await server.DELETE('/api/profile/overlay', {
+                params: {
+                    query: {
+                        id: String(this.id),
+                    }
+                }
             });
 
-            await db.overlay.delete(this.id);
+            if (error && response.status !== 404) throw new Error(error.message);
         }
 
         // If the remaining basemaps provide no background color the CloudTAK
@@ -647,6 +700,8 @@ export default class Overlay {
         const sourceChanged = record.type !== current.type
             || record.url !== current.url
             || record.token !== current.token
+            || (record.encoding ?? null) !== (current.encoding ?? null)
+            || (!!record.tilejson && !!current.tilejson && JSON.stringify(record.tilejson) !== JSON.stringify(current.tilejson))
             || (record.styles.length > 0 && JSON.stringify(record.styles) !== JSON.stringify(current.styles));
 
         if (sourceChanged) this.remove();
@@ -663,8 +718,10 @@ export default class Overlay {
         this.mode = record.mode;
         this.mode_id = record.mode_id || null;
         this.encoding = record.encoding || null;
+        this.attribution = record.attribution || '';
         this.url = record.url;
         this.token = record.token;
+        this.tilejson = record.tilejson ?? this.tilejson;
 
         if (record.frequency !== current.frequency) {
             if (this._timer) clearInterval(this._timer);
@@ -701,6 +758,8 @@ export default class Overlay {
                 if (l.type === 'background') continue;
                 mapStore.map.setLayoutProperty(l.id, 'visibility', this.visible ? 'visible' : 'none');
             }
+
+            if (this.type === 'raster-dem') this.applyTerrain();
         }
     }
 
@@ -708,7 +767,6 @@ export default class Overlay {
         pos?: number;
         visible?: boolean;
         opacity?: number;
-        encoding?: 'mapbox' | 'terrarium' | null;
     }): Promise<void> {
         const mapStore = useMapStore();
 
@@ -730,6 +788,8 @@ export default class Overlay {
                 if (l.type === 'background') continue;
                 mapStore.map.setLayoutProperty(l.id, 'visibility', this.visible ? 'visible' : 'none');
             }
+
+            if (this.type === 'raster-dem') this.applyTerrain({ ease: true });
             changed = true;
         }
 
@@ -740,11 +800,6 @@ export default class Overlay {
 
         if (body.pos !== undefined && body.pos !== this.pos) {
             this.pos = body.pos;
-            changed = true;
-        }
-
-        if (body.encoding !== undefined && body.encoding !== this.encoding) {
-            this.encoding = body.encoding;
             changed = true;
         }
 
@@ -761,7 +816,9 @@ export default class Overlay {
         // We only want to save the style on custom datasources
         const dropStyles = ['mission', 'internal'].includes(this.mode);
 
-        await std(`/api/profile/overlay/${this.id}`, {
+        await db.overlay.put(this.toDBOverlay());
+
+        const saved = await std(`/api/profile/overlay/${this.id}`, {
             method: 'PATCH',
             body: {
                 pos: this.pos,
@@ -772,12 +829,14 @@ export default class Overlay {
                 mode_id: this.mode_id,
                 url: this.url,
                 visible: this.visible,
-                encoding: this.encoding,
                 styles: dropStyles ? [] : this.styles
             }
-        })
+        }) as ProfileOverlay;
 
-        await db.overlay.put(this.toDBOverlay());
+        if (saved.tilejson && JSON.stringify(saved.tilejson) !== JSON.stringify(this.tilejson)) {
+            this.tilejson = saved.tilejson;
+            await db.overlay.put(this.toDBOverlay());
+        }
     }
 
     toDBOverlay(): DBOverlay {
@@ -804,10 +863,12 @@ export default class Overlay {
             mode: this.mode,
             mode_id: this.mode_id,
             encoding: this.encoding,
+            attribution: this.attribution,
             actions: this.actions,
             url: this.url,
             styles,
-            token: this.token
+            token: this.token,
+            tilejson: this.tilejson
         } as DBOverlay;
     }
 }

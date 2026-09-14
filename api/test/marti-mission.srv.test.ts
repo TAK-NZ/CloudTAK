@@ -81,9 +81,9 @@ test('GET: api/marti/mission - Sorted List (Oldest => Newest)', async () => {
         assert.equal(res.body.items[2].name, 'Mission C');
     } catch (err) {
         assert.ifError(err);
+    } finally {
+        flight.tak.reset();
     }
-
-    flight.tak.reset();
 });
 
 test('GET: api/marti/mission - Sorted List (Newest => Oldest)', async () => {
@@ -157,9 +157,9 @@ test('GET: api/marti/mission - Sorted List (Newest => Oldest)', async () => {
         assert.equal(res.body.items[2].name, 'Mission A');
     } catch (err) {
         assert.ifError(err);
+    } finally {
+        flight.tak.reset();
     }
-
-    flight.tak.reset();
 });
 
 test('GET: api/marti/mission - Filter Groups', async () => {
@@ -244,12 +244,12 @@ test('GET: api/marti/mission - Filter Groups', async () => {
         assert.equal(res2.body.items[2].name, 'Mission C');
     } catch (err) {
         assert.ifError(err);
+    } finally {
+        flight.tak.reset();
     }
-
-    flight.tak.reset();
 });
 
-test('PATCH: api/marti/missions/:name - returns refreshed groups after update', async () => {
+test('PATCH: api/marti/missions/:guid - returns refreshed groups after update', async () => {
     let postedGroups: string[] = [];
     let missionAuthorization: string | undefined;
     let allowGroupChange: string | null = null;
@@ -264,6 +264,7 @@ test('PATCH: api/marti/missions/:name - returns refreshed groups after update', 
             && (
                 url.pathname === '/Marti/api/missions/Test%20Mission'
                 || url.pathname === '/Marti/api/missions/test-mission-guid'
+                || url.pathname === '/Marti/api/missions/guid/9d2b7a6e-3c4f-4e8a-9b1d-2f6a8c0e4b71'
             )
         ) {
             response.setHeader('Content-Type', 'application/json');
@@ -324,7 +325,7 @@ test('PATCH: api/marti/missions/:name - returns refreshed groups after update', 
     });
 
     try {
-        const res = await flight.fetch('/api/marti/missions/Test Mission', {
+        const res = await flight.fetch('/api/marti/missions/9d2b7a6e-3c4f-4e8a-9b1d-2f6a8c0e4b71', {
             method: 'PATCH',
             auth: {
                 bearer: flight.token.admin,
@@ -343,9 +344,9 @@ test('PATCH: api/marti/missions/:name - returns refreshed groups after update', 
         assert.deepEqual(res.body.groups, ['updated-group']);
     } catch (err) {
         assert.ifError(err);
+    } finally {
+        flight.tak.reset();
     }
-
-    flight.tak.reset();
 });
 
 flight.landing();

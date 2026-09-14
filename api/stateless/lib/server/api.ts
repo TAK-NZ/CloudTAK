@@ -39,6 +39,24 @@ export default async function buildApi(config: Config): Promise<express.Applicat
                         type: 'http',
                         scheme: 'bearer',
                         bearerFormat: 'JWT',
+                        description: 'CloudTAK User JWT',
+                    },
+                    connectionAuth: {
+                        type: 'http',
+                        scheme: 'bearer',
+                        bearerFormat: 'JWT',
+                        description: 'Connection token (`etl.<jwt>`)',
+                    },
+                    layerAuth: {
+                        type: 'http',
+                        scheme: 'bearer',
+                        bearerFormat: 'JWT',
+                        description: 'Layer ETL token (`etl.<jwt>`) - the listed scopes must be present in the Layer\'s `permissions`',
+                    },
+                    scimAuth: {
+                        type: 'http',
+                        scheme: 'bearer',
+                        description: 'SCIM token configured by a System Administrator (`scim::token`)',
                     },
                 },
             },
@@ -77,6 +95,7 @@ export default async function buildApi(config: Config): Promise<express.Applicat
         });
     });
 
+    app.use('/api/scim', express.json({ type: 'application/scim+json', limit: '50mb' }));
     app.use('/api', schema.router);
 
     await schema.api();

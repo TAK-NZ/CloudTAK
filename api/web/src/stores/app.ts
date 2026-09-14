@@ -3,12 +3,13 @@ import { liveQuery, type Subscription } from 'dexie';
 import { Preferences } from '@capacitor/preferences';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import KV from '../base/kv.ts';
-import { db, withDbRetry } from '../database.ts';
+import { db } from '../database.ts';
 import { withTimeout } from '../utils/async.ts';
 import Config from '../base/config.ts';
 import ServerManager from '../base/server.ts';
 import router from '../router.ts';
 import { isNativePlatform, isAndroidPlatform } from '../utils/capacitor.ts';
+import { GeolocationPermission } from './device.ts';
 
 export type DisplayStyleMode = 'System Default' | 'Light' | 'Dark';
 export type ResolvedThemeMode = 'light' | 'dark';
@@ -75,26 +76,16 @@ export const useAppStore = defineStore('cloudtak-app', {
     actions: {
         async setServerUrl(serverUrl: string): Promise<void> {
             await Preferences.set({ key: 'serverUrl', value: serverUrl });
-            await this.mirrorServerUrl(serverUrl);
-        },
-
-        // Best-effort KV copy for web workers; must not block boot.
-        async mirrorServerUrl(serverUrl: string): Promise<void> {
-            try {
-                await withTimeout(
-                    withDbRetry(() => KV.generate('serverUrl', serverUrl)),
-                    BOOT_LOCAL_TIMEOUT_MS,
-                    'serverUrl KV mirror'
-                );
-            } catch (err) {
-                console.warn('Failed to mirror serverUrl into KV store', err);
-            }
         },
 
         async persistSession(opts: { token: string; username: string; session: string }): Promise<void> {
             await Preferences.set({ key: 'token', value: opts.token });
             await KV.generate('token', opts.token);
             await KV.generate('username', opts.username);
+
+            // Native location delivery authenticates with its own copy of the
+            // token - keep it current if a watch is already running
+            await GeolocationPermission.updateNativeHeaders({ Authorization: `Bearer ${opts.token}` });
 
             await Preferences.set({
                 key: 'sessionId',
@@ -149,7 +140,7 @@ export const useAppStore = defineStore('cloudtak-app', {
         async routeLogin(): Promise<void> {
             const redirect = encodeURIComponent(window.location.pathname);
             if (router.hasRoute('login')) {
-                await router.push(`/login?redirect=${redirect}`);
+                await router.replace(`/login?redirect=${redirect}`);
             } else {
                 window.location.href = `/login?redirect=${redirect}`;
             }
@@ -210,8 +201,6 @@ export const useAppStore = defineStore('cloudtak-app', {
                     window.location.href = '/setup.html';
                     return false;
                 }
-
-                await this.mirrorServerUrl(serverUrl);
             }
 
             this.loadingStage = 'Setting up styles…';
@@ -248,16 +237,17 @@ export const useAppStore = defineStore('cloudtak-app', {
 
             systemThemeQuery?.addEventListener('change', handleSystemThemeChange);
 
-            // Branding is cosmetic and must never block boot: paint cached or
-            // default values now, refresh in the background.
+            // Branding must never block boot: cached values now, network only for missing keys
             brandingSub = liveQuery(() => db.config.bulkGet(['login::logo', 'login::name'])).subscribe(([logo, name]) => {
                 this.loginLogo = logo?.value as string | undefined;
                 this.loginName = name?.value as string | undefined;
             });
 
-            void Config.refresh([...BRANDING_CONFIG_KEYS]).catch((err) => {
-                console.warn('Failed to refresh login branding', err);
-            });
+            void Config.list([...BRANDING_CONFIG_KEYS])
+                .then(() => Config.sync())
+                .catch((err) => {
+                    console.warn('Failed to load login branding', err);
+                });
 
             this.loadingStage = 'Checking your account…';
 
