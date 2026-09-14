@@ -122,11 +122,16 @@ export class Database extends Construct {
       }
     });
 
-    // Create parameter group for PostgreSQL
-    const engineVersionString = dbConfig.engineVersion || '17.5';
-    const engineVersion = engineVersionString.startsWith('17') ? 
-      rds.AuroraPostgresEngineVersion.VER_17_5 : 
-      rds.AuroraPostgresEngineVersion.VER_16_6;
+    // Create parameter group for PostgreSQL.
+    // Derive the Aurora engine version directly from the configured version
+    // string so the config is the single source of truth. Using
+    // AuroraPostgresEngineVersion.of(fullVersion, majorVersion) (rather than a
+    // hard-coded VER_x_y constant) means a new minor can be adopted from config
+    // alone, without waiting for the aws-cdk-lib enum to add it - the enum lags
+    // behind AWS engine releases (e.g. 17.10 has no VER_17_10 constant yet).
+    const engineVersionString = dbConfig.engineVersion || '17.10';
+    const majorVersion = engineVersionString.split('.')[0];
+    const engineVersion = rds.AuroraPostgresEngineVersion.of(engineVersionString, majorVersion);
     const parameterGroup = new rds.ParameterGroup(this, 'DBParameterGroup', {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: engineVersion
