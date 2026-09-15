@@ -39,15 +39,25 @@ const loadedOverlays = shallowReactive<Overlay[]>([]) as Overlay[];
 
 /**
  * Sorts real (persisted) overlays by their stored `pos`, but always keeps
- * `_internal` overlays (currently just "Map Features", id -1) above every
- * real overlay regardless of `pos` - it's given a placeholder `pos` (see
- * Overlay.internal()) that is never persisted and isn't guaranteed to stay
- * above whatever `pos` real overlays end up with, so comparing internal and
- * real overlays by `pos` alone can slot "Map Features" into the middle of
- * the stack instead of leaving it stacked on top, where it actually renders.
+ * `_internal` overlays (currently just "Map Features", id -1) above, and the
+ * current basemap below, every other overlay regardless of `pos`.
+ *
+ * Both pins used to rely solely on a sentinel `pos` value staying put
+ * ("Map Features" gets a placeholder `pos` from Overlay.internal(), and
+ * MenuBasemaps gives the basemap `pos: -1`) - but nothing enforced that the
+ * sentinel actually stayed smaller/larger than every real overlay's `pos`,
+ * so both were vulnerable to drifting into the middle of the stack. Deciding
+ * top/bottom placement structurally, from `_internal`/`mode === 'basemap'`
+ * rather than from a `pos` value that can be reassigned, means a stale or
+ * corrupted `pos` on either can no longer misplace them.
  */
 export function byPosInternalLast(a: Overlay, b: Overlay): number {
     if (a._internal !== b._internal) return a._internal ? 1 : -1;
+
+    const aIsBasemap = a.mode === 'basemap';
+    const bIsBasemap = b.mode === 'basemap';
+    if (aIsBasemap !== bIsBasemap) return aIsBasemap ? -1 : 1;
+
     return a.pos - b.pos;
 }
 
@@ -114,10 +124,36 @@ export default class OverlayManager extends BaseInterface {
         if (movedIndex === -1) throw new Error('Could not find Overlay in order');
 
         const postId = orderedIds[movedIndex + 1];
-        const post = postId === undefined ? undefined : this.loadedFrom(postId);
+        let post = postId === undefined ? undefined : this.loadedFrom(postId);
+
+        // `orderedIds` comes from MenuOverlays.vue's Sortable container, which
+        // only ever contains the freely-reorderable middle overlays - pinned
+        // overlays (Map Features on top, the basemap on bottom) are rendered
+        // outside it and never appear here. So when the dragged overlay ends
+        // up as the topmost of the middle section, `postId` is undefined, and
+        // without this fallback `moveBefore(undefined)` would move its layers
+        // to the literal top of the map, above Map Features. Fall back to
+        // whichever loaded overlay is `_internal` (Map Features) so the
+        // dragged overlay is placed directly beneath it instead.
+        if (post === undefined) {
+            post = this.loaded.find((current) => current._internal);
+        }
+
         overlay.moveBefore(post);
 
         const changed = this.loaded.filter((current) => {
+            // Pinned overlays (the "Map Features" internal overlay, and
+            // whichever overlay is the current basemap) carry sentinel `pos`
+            // values (see byPosInternalLast / MenuBasemaps' `pos: -1`) that
+            // guarantee they always sort to the top/bottom of the stack.
+            // MenuOverlays.vue keeps both out of the draggable Sortable
+            // container, so `orderedIds` (built from that container) should
+            // never contain their ids anyway - but skip them here too, so a
+            // future caller can't accidentally renumber a pinned overlay's
+            // `pos` just because its id happened to appear in `orderedIds`
+            // at an index that differs from its sentinel.
+            if (current._internal || current.mode === 'basemap') return false;
+
             const pos = orderedIds.indexOf(current.id);
             if (pos === -1 || pos === current.pos) return false;
             current.pos = pos;

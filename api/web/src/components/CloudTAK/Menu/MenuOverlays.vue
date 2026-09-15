@@ -58,209 +58,77 @@
 
                 <template v-else>
                     <div
-                        v-if='overlayCards.length'
-                        ref='sortableRef'
+                        v-if='overlayCount'
                         class='d-flex flex-column gap-3'
                     >
-                        <StandardItem
-                            v-for='card in overlayCards'
-                            :id='String(card.overlay.id)'
+                        <!--
+                            Map Features (the internal CoT overlay) is always
+                            the top of the map layer stack, and the basemap is
+                            always the bottom - the user explicitly asked for
+                            both to be locked in place rather than draggable.
+                            They're rendered in their own fixed lists outside
+                            the `ref='sortableRef'` div so SortableJS never
+                            manages them: it can't let another dragged card be
+                            dropped above/below a card it doesn't control, so
+                            there's no way for a drag on the freely-orderable
+                            middle section to visually displace either pinned
+                            card. OverlayManager.reorderLoaded() also refuses
+                            to touch their `pos` even if an id for one of them
+                            somehow ended up in the ordered-id list handed to
+                            it, as defense in depth.
+                        -->
+                        <div
+                            v-for='card in pinnedTopCards'
                             :key='card.overlay.id'
-                            class='p-3'
-                            :class='{
-                                "border-primary": isDraggable
-                            }'
-                            :hover='!isDraggable && card.overlay.id !== 0 && hasOverlayDetails(card.overlay)'
-                            @click='handleCardClick(card.overlay)'
-                            @keydown.enter.prevent='handleCardKeydown(card.overlay)'
-                            @keydown.space.prevent='handleCardKeydown(card.overlay)'
                         >
-                            <div
-                                class='d-flex justify-content-between gap-3'
-                            >
-                                <div
-                                    class='d-flex align-items-center gap-2 flex-grow-1 w-100 overflow-hidden'
-                                    :aria-disabled='isDraggable || card.overlay.id === 0'
-                                >
-                                    <span
-                                        v-if='isDraggable'
-                                        title='Drag to reorder'
-                                    >
-                                        <IconGripVertical
-                                            class='drag-handle cursor-move text-white-50'
-                                            role='button'
-                                            tabindex='0'
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </span>
-                                    <span
-                                        v-if='card.overlay.type === "raster"'
-                                        class='flex-shrink-0 text-white-50'
-                                        title='Raster'
-                                    >
-                                        <IconMap
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </span>
-                                    <span
-                                        v-else-if='card.overlay.type === "raster-dem"'
-                                        class='flex-shrink-0 text-white-50'
-                                        title='Terrain'
-                                    >
-                                        <IconMap
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </span>
-                                    <span
-                                        v-else-if='card.overlay.type === "geojson" && card.overlay.mode === "mission"'
-                                        class='flex-shrink-0 text-white-50'
-                                        title='Data Sync'
-                                    >
-                                        <IconCloudPin
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </span>
-                                    <span
-                                        v-else
-                                        class='flex-shrink-0 text-white-50'
-                                        title='Vector'
-                                    >
-                                        <IconVector
-                                            :size='20'
-                                            stroke='1'
-                                        />
-                                    </span>
+                            <OverlayCard
+                                :card='card'
+                                :is-draggable='isDraggable'
+                                :draggable='false'
+                                locked-title='Map Features always renders on top and cannot be reordered'
+                                :is-opened='opened.has(card.overlay.id)'
+                                @toggle-open='toggleOverlay(card.overlay.id)'
+                                @update:visible='(value) => updateOverlay(card.overlay, { visible: value })'
+                                @update:opacity='(value) => updateOverlay(card.overlay, { opacity: value })'
+                                @remove='removeOverlay(card.overlay.id)'
+                            />
+                        </div>
 
-                                    <div class='flex-grow-1 w-100 overflow-hidden'>
-                                        <div class='d-flex align-items-center gap-2 w-100'>
-                                            <div class='d-flex align-items-center flex-grow-1 w-100'>
-                                                <a
-                                                    v-if='card.overlay.mode === "mission"'
-                                                    class='fw-semibold text-decoration-underline d-inline-flex align-items-center text-break'
-                                                    @click.stop='router.push(`/menu/missions/${card.overlay.mode_id}`)'
-                                                    v-text='card.overlay.name'
-                                                />
-                                                <span
-                                                    v-else
-                                                    class='fw-semibold d-inline-flex align-items-center flex-grow-1 text-break'
-                                                    v-text='card.overlay.name'
-                                                />
-                                            </div>
-                                        </div>
-                                        <div
-                                            v-if='card.badges.length || card.offline'
-                                            class='d-flex flex-wrap align-items-center gap-2 mt-2'
-                                        >
-                                            <span
-                                                v-for='badge in card.badges'
-                                                :key='`${card.overlay.id}-${badge.label}`'
-                                                class='badge rounded-pill'
-                                                :class='`text-bg-${badge.variant}`'
-                                            >
-                                                {{ badge.label }}
-                                            </span>
-                                            <TablerBadge
-                                                v-if='card.offline'
-                                                class='small'
-                                                background-color='rgba(32, 107, 196, 0.15)'
-                                                border-color='rgba(32, 107, 196, 0.35)'
-                                                text-color='#206bc4'
-                                                title='Tiles are available offline on this device'
-                                            >
-                                                Offline
-                                            </TablerBadge>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div
+                            v-if='middleCards.length'
+                            ref='sortableRef'
+                            class='d-flex flex-column gap-3'
+                        >
+                            <OverlayCard
+                                v-for='card in middleCards'
+                                :key='card.overlay.id'
+                                :card='card'
+                                :is-draggable='isDraggable'
+                                :draggable='true'
+                                :is-opened='opened.has(card.overlay.id)'
+                                @toggle-open='toggleOverlay(card.overlay.id)'
+                                @update:visible='(value) => updateOverlay(card.overlay, { visible: value })'
+                                @update:opacity='(value) => updateOverlay(card.overlay, { opacity: value })'
+                                @remove='removeOverlay(card.overlay.id)'
+                            />
+                        </div>
 
-                                <div
-                                    style='min-width: 100px;'
-                                    class='d-flex flex-column align-items-end gap-2'
-                                >
-                                    <span
-                                        class='badge rounded-pill'
-                                        :class='`text-bg-${card.status.variant}`'
-                                        :title='card.status.tooltip || ""'
-                                    >
-                                        {{ card.status.label }}
-                                    </span>
-
-                                    <div class='d-flex align-items-center gap-2 flex-wrap justify-content-end w-100'>
-                                        <TablerIconButton
-                                            v-if='card.overlay.hasBounds()'
-                                            title='Zoom To Overlay'
-                                            @click.stop.prevent='card.overlay.zoomTo()'
-                                        >
-                                            <IconMaximize
-                                                :size='20'
-                                                stroke='1'
-                                            />
-                                        </TablerIconButton>
-
-                                        <TablerIconButton
-                                            v-if='card.visible'
-                                            title='Hide Layer'
-                                            @click.stop.prevent='void updateOverlay(card.overlay, { visible: !card.visible })'
-                                        >
-                                            <IconEye
-                                                :size='20'
-                                                stroke='1'
-                                            />
-                                        </TablerIconButton>
-
-                                        <TablerIconButton
-                                            v-else
-                                            title='Show Layer'
-                                            @click.stop.prevent='void updateOverlay(card.overlay, { visible: !card.visible })'
-                                        >
-                                            <IconEyeOff
-                                                :size='20'
-                                                stroke='1'
-                                            />
-                                        </TablerIconButton>
-
-                                        <TablerDelete
-                                            v-if='["mission", "data", "profile", "overlay"].includes(card.overlay.mode)'
-                                            :key='card.overlay.id'
-                                            title='Delete Overlay'
-                                            :size='20'
-                                            role='button'
-                                            tabindex='0'
-                                            displaytype='icon'
-                                            @delete='removeOverlay(card.overlay.id)'
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div
-                                v-if='!isDraggable && opened.has(card.overlay.id) && hasOverlayDetails(card.overlay)'
-                                class='mt-3 p-3 rounded-3 border border-white border-opacity-10 bg-black bg-opacity-25'
-                                @click.stop
-                            >
-                                <div
-                                    v-if='card.overlay.type === "raster"'
-                                    class='mb-3'
-                                >
-                                    <TablerRange
-                                        :model-value='card.overlay.opacity'
-                                        label='Opacity'
-                                        :min='0'
-                                        :max='1'
-                                        :step='0.1'
-                                        @update:model-value='void updateOverlay(card.overlay, { opacity: $event })'
-                                    />
-                                </div>
-                                <TreeVector
-                                    v-if='card.overlay.type === "vector"'
-                                    :overlay='card.overlay'
-                                />
-                            </div>
-                        </StandardItem>
+                        <div
+                            v-for='card in pinnedBottomCards'
+                            :key='card.overlay.id'
+                        >
+                            <OverlayCard
+                                :card='card'
+                                :is-draggable='isDraggable'
+                                :draggable='false'
+                                locked-title='The basemap always renders on the bottom and cannot be reordered'
+                                :is-opened='opened.has(card.overlay.id)'
+                                @toggle-open='toggleOverlay(card.overlay.id)'
+                                @update:visible='(value) => updateOverlay(card.overlay, { visible: value })'
+                                @update:opacity='(value) => updateOverlay(card.overlay, { opacity: value })'
+                                @remove='removeOverlay(card.overlay.id)'
+                            />
+                        </div>
                     </div>
 
                     <TablerNone
@@ -280,28 +148,18 @@ import { useRouter } from 'vue-router';
 import type { Subscription } from 'dexie';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import {
-    TablerBadge,
-    TablerDelete,
     TablerIconButton,
     TablerInput,
     TablerLoading,
-    TablerNone,
-    TablerRange
+    TablerNone
 } from '@tak-ps/vue-tabler';
-import TreeVector from './Overlays/TreeVector.vue';
 import {
-    IconGripVertical,
-    IconCloudPin,
-    IconMaximize,
-    IconVector,
-    IconEyeOff,
     IconPencil,
     IconPencilCheck,
-    IconPlus,
-    IconEye,
-    IconMap
+    IconPlus
 } from '@tabler/icons-vue';
-import StandardItem from '../util/StandardItem.vue';
+import OverlayCard from './Overlays/OverlayCard.vue';
+import type { OverlayCard as OverlayCardData, OverlayBadge, OverlayStatus } from './Overlays/overlay-card.ts';
 import Sortable from 'sortablejs';
 import type { SortableEvent } from 'sortablejs';
 import type Overlay from '../../../../src/base/overlay-class.ts';
@@ -310,10 +168,7 @@ import OverlayManager from '../../../../src/base/overlay.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import { profileAssetIdFromUrl } from '../../../utils/offline-tiles.ts';
 
-type OverlayBadge = { label: string; variant: string };
-type OverlayStatus = { label: string; variant: string; tooltip?: string };
 type OverlayUpdate = Parameters<Overlay['update']>[0];
-type OverlayCard = { overlay: Overlay; visible: boolean; status: OverlayStatus; badges: OverlayBadge[]; offline: boolean };
 
 const router = useRouter();
 const mapStore = useMapStore();
@@ -342,12 +197,12 @@ function overlayMatchesTerm(overlay: Overlay, term: string): boolean {
     );
 }
 
-const overlayCards = computed<OverlayCard[]>(() => {
+const overlayCards = computed<OverlayCardData[]>(() => {
     void overlayRenderTick.value;
 
     const term = overlayFilter.value.trim().toLowerCase();
     const seen = new Set<number>();
-    const cards: OverlayCard[] = [];
+    const cards: OverlayCardData[] = [];
 
     const consider = (overlay: Overlay | undefined): void => {
         if (!overlay || seen.has(overlay.id)) return;
@@ -389,11 +244,25 @@ const overlayCards = computed<OverlayCard[]>(() => {
     return cards.sort((a, b) => OverlayManager.loaded.indexOf(b.overlay) - OverlayManager.loaded.indexOf(a.overlay));
 });
 
+// Map Features is always the top of the real map layer stack; splitting it
+// into its own pinned list (rendered outside the Sortable container) is what
+// actually enforces that, rather than just displaying it that way.
+const pinnedTopCards = computed(() => overlayCards.value.filter((card) => card.overlay._internal));
+
+// The basemap is always the bottom of the real map layer stack, pinned for
+// the same reason as pinnedTopCards above.
+const pinnedBottomCards = computed(() => overlayCards.value.filter((card) => card.overlay.mode === 'basemap'));
+
+// Everything else is freely reorderable, and is the only thing handed to SortableJS.
+const middleCards = computed(() => overlayCards.value.filter((card) => !card.overlay._internal && card.overlay.mode !== 'basemap'));
+
 const overlayCount = computed(() => overlayCards.value.length);
 
-const canEditOrder = computed(() => !hasSearchTerm.value && overlayCount.value > 1);
+// Reordering only makes sense with two or more freely-orderable overlays -
+// the pinned top/bottom overlays never move, so they don't count here.
+const canEditOrder = computed(() => !hasSearchTerm.value && middleCards.value.length > 1);
 
-const showDragHint = computed(() => overlayCount.value > 1 && !isDraggable.value && !canEditOrder.value);
+const showDragHint = computed(() => middleCards.value.length > 1 && !isDraggable.value && !canEditOrder.value);
 
 const dragHintCopy = computed(() => {
     if (!showDragHint.value) return '';
@@ -403,7 +272,7 @@ const dragHintCopy = computed(() => {
 const reorderButtonTitle = computed(() => {
     if (isDraggable.value) return 'Save Order';
     if (!canEditOrder.value) {
-        if (overlayCount.value <= 1) return 'Add another overlay to reorder';
+        if (middleCards.value.length <= 1) return 'Add another overlay to reorder';
         return 'Clear the search to reorder overlays';
     }
     return 'Edit Order';
@@ -490,26 +359,6 @@ function toggleOverlay(id: number) {
     }
 }
 
-// TAK-NZ: keyboard equivalent for the card's click affordance, so overlay
-// details can be toggled without a pointer. Takes the Overlay to match
-// handleCardClick's signature.
-function handleCardKeydown(overlay: Overlay) {
-    handleCardClick(overlay);
-}
-
-function handleCardClick(overlay: Overlay) {
-    if (isDraggable.value) return;
-    if (overlay.id === 0) return;
-    if (!hasOverlayDetails(overlay)) return;
-    toggleOverlay(overlay.id);
-}
-
-/** Whether an overlay has an expandable details panel. Mission overlays are managed from MenuMission and are not expandable here. */
-function hasOverlayDetails(overlay: Overlay): boolean {
-    return overlay.type === 'raster'
-        || overlay.type === 'vector';
-}
-
 function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
     if (!overlay.healthy()) {
         return {
@@ -591,7 +440,9 @@ async function saveOrder(sortableEv: SortableEvent) {
     // The list renders top-of-stack-first (see overlayCards), but
     // OverlayManager.reorderLoaded() expects ids bottom-of-stack-first, the
     // same convention as OverlayManager.loaded itself - reverse DOM order
-    // back to that convention before handing it off.
+    // back to that convention before handing it off. sortable only manages
+    // the middle, freely-reorderable cards, so this never contains the
+    // pinned Map Features/basemap ids.
     const overlay_ids = sortable.toArray().map((i) => parseInt(i)).reverse();
 
     try {
@@ -622,4 +473,3 @@ async function removeOverlay(id: number) {
     }
 }
 </script>
-
