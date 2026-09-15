@@ -16,7 +16,7 @@
                     class='me-2 flex-shrink-0'
                 />
                 <div class='me-2 font-weight-bold text-truncate'>
-                    No Active Mission
+                    No Active Data Sync
                 </div>
             </div>
         </template>

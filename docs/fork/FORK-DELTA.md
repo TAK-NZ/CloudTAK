@@ -521,8 +521,10 @@ fire before it was populated.
 
 - The Application Switcher dropdown is removed; logout redirects to
   `/api/logout`.
-- Upstream's "Data Syncs" is presented as "Missions" where it faces the user, and
-  the `EmptyInfo` type check was corrected to match.
+- Upstream's "Missions" are presented as "Data Syncs" where they face the user
+  (route paths, store/prop names and DB fields stay `mission`/`missions`), and
+  the `EmptyInfo` type check was corrected to match. Not yet applied
+  everywhere - some menu titles under `Menu/Mission/` still say "Mission".
 - The contacts badge count is fixed and a manual refresh added.
 - The video menu is hidden when no media server is configured.
 - Upstream's `.maplibregl-ctrl-scale` CSS overrides are removed to keep MapLibre's
