@@ -293,10 +293,7 @@
             <div
                 v-if='mapStore.isMapLoaded && isMobileDetected && mode === "Default"'
                 class='position-absolute server-status-wrap'
-                style='
-                    z-index: 4;
-                    padding: 8px;
-                '
+                style='z-index: 4;'
             >
                 <ServerStatus :size='38' />
             </div>
@@ -1097,11 +1094,20 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
      * stack's width so expanded attribution text can never stretch over it.
      */
     --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 8px - env(safe-area-inset-right, 0px));
+    /*
+     * Extra breathing room between the GPS panel's right edge and the
+     * attribution/scale stack's left edge, on top of the 8px each already
+     * keeps from its own side of the viewport. Desktop has enough natural
+     * gap without this; mobile doesn't, so it's zero here and set below.
+     */
+    --map-attrib-gps-gap: 0px;
 }
 
 @media (max-width: 600px) {
     .map-shell {
         --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 62px - env(safe-area-inset-right, 0px));
+        /* Half of the 8px inset each box keeps from its own side of the viewport. */
+        --map-attrib-gps-gap: 4px;
     }
 }
 
@@ -1125,8 +1131,9 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
     z-index: 3 !important;
     color: black !important;
     /* Caps the box so expanded attribution text can't stretch left over the
-       GPS/callsign panel. */
-    max-width: calc(100vw - var(--map-gps-panel-right) - 8px - var(--map-side-offset, 0px) - env(safe-area-inset-right, 0px));
+       GPS/callsign panel, leaving --map-attrib-gps-gap of clear space
+       between the two when the box is at its widest. */
+    max-width: calc(100vw - var(--map-gps-panel-right) - 8px - var(--map-side-offset, 0px) - var(--map-attrib-gps-gap, 0px) - env(safe-area-inset-right, 0px));
 }
 
 /*
