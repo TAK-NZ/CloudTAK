@@ -35,12 +35,24 @@
         :back='false'
     >
         <template #buttons>
+            <!--
+                A single toggle button rather than two mutually-exclusive
+                ones (one per layout) - with two, whichever one is visible
+                changes which side of it the Reorder button below renders
+                on, so the Reorder button appeared to swap sides every time
+                the layout was switched.
+            -->
             <TablerIconButton
-                v-if='preferredLayout !== "list"'
-                title='List View'
-                @click='mapStore.menu.setLayout("list")'
+                :title='preferredLayout === "list" ? "Tile View" : "List View"'
+                @click='mapStore.menu.setLayout(preferredLayout === "list" ? "tiles" : "list")'
             >
+                <IconLayoutGrid
+                    v-if='preferredLayout === "list"'
+                    :size='32'
+                    stroke='1'
+                />
                 <IconLayoutList
+                    v-else
                     :size='32'
                     stroke='1'
                 />
@@ -58,16 +70,6 @@
                 />
                 <IconPencilCheck
                     v-else
-                    :size='32'
-                    stroke='1'
-                />
-            </TablerIconButton>
-            <TablerIconButton
-                v-if='preferredLayout !== "tiles"'
-                title='Tile View'
-                @click='mapStore.menu.setLayout("tiles")'
-            >
-                <IconLayoutGrid
                     :size='32'
                     stroke='1'
                 />
