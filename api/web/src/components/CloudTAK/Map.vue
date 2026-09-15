@@ -1131,14 +1131,17 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
 /*
  * Both scale and attribution get the same 8px rhythm between/below them,
  * with the container's own 8px bottom inset (above) providing the only gap
- * below the last one. MapLibre's own bottom-right margin
+ * below the last one - MapLibre's own bottom-right margin
  * (`0 10px 10px 0`) has equal-or-greater specificity than a bare
  * `.maplibregl-ctrl-scale` override, so it must be overridden via the same
  * compound selector it uses, or the scale bar keeps a stray 10px gap under
- * it regardless of what `.maplibregl-ctrl-scale` alone says.
+ * it regardless of what `.maplibregl-ctrl-scale` alone says. The 10px right
+ * margin is kept (not zeroed) - on desktop this is the only breathing room
+ * between the controls and the menu sidebar (MainMenu.vue), which floats at
+ * its own `right: 8px` independent of this container's own inset.
  */
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
-    margin: 0 0 8px 0;
+    margin: 0 10px 8px 0;
 }
 
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl:last-child {
