@@ -68,6 +68,7 @@
                 </div>
             </StandardItem>
             <StandardItem
+                v-if='mapStore.menu.isSystemAdmin.value'
                 @click='router.push("/menu/settings/sessions")'
             >
                 <div class='d-flex align-items-center px-2 py-2'>
@@ -126,8 +127,10 @@ import {
     IconBell,
 } from '@tabler/icons-vue';
 import { useDeviceStore } from '../../../stores/device.ts';
+import { useMapStore } from '../../../stores/map.ts';
 
 const deviceStore = useDeviceStore();
+const mapStore = useMapStore();
 const router = useRouter();
 
 async function refreshApp() {
