@@ -30,7 +30,7 @@ import { normalizePointType } from '../utils/point-type.ts';
 import { WorkerMessageType, LocationState } from '../utils/events.ts';
 import type { WorkerMessage, SyncTriggerReason } from '../utils/events.ts';
 import Overlay from '../base/overlay-class.ts';
-import OverlayManager from '../base/overlay.ts';
+import OverlayManager, { byPosInternalLast } from '../base/overlay.ts';
 import { invalidateOfflinePMTiles } from './modules/pmtiles.ts';
 import { FeatureVisibility } from './modules/feature-visibility.ts';
 import Subscription from '../base/subscription.ts';
@@ -1927,7 +1927,7 @@ export const useMapStore = defineStore('cloudtak', {
 
             if (!this._map) return;
 
-            OverlayManager.loaded.sort((a, b) => a.pos - b.pos);
+            OverlayManager.loaded.sort(byPosInternalLast);
             if (posChanged) OverlayManager.applyLoadedOrder();
 
             this.updateBackground();

@@ -37,6 +37,20 @@ export type Overlay_CreateLoadedOptions = NonNullable<Parameters<typeof Overlay.
 
 const loadedOverlays = shallowReactive<Overlay[]>([]) as Overlay[];
 
+/**
+ * Sorts real (persisted) overlays by their stored `pos`, but always keeps
+ * `_internal` overlays (currently just "Map Features", id -1) above every
+ * real overlay regardless of `pos` - it's given a placeholder `pos` (see
+ * Overlay.internal()) that is never persisted and isn't guaranteed to stay
+ * above whatever `pos` real overlays end up with, so comparing internal and
+ * real overlays by `pos` alone can slot "Map Features" into the middle of
+ * the stack instead of leaving it stacked on top, where it actually renders.
+ */
+export function byPosInternalLast(a: Overlay, b: Overlay): number {
+    if (a._internal !== b._internal) return a._internal ? 1 : -1;
+    return a.pos - b.pos;
+}
+
 export default class OverlayManager extends BaseInterface {
     static readonly listCacheKey = OVERLAY_LIST_CACHE_KEY;
     static readonly loaded = loadedOverlays;
@@ -110,7 +124,14 @@ export default class OverlayManager extends BaseInterface {
             return true;
         });
 
-        this.loaded.sort((a, b) => a.pos - b.pos);
+        this.loaded.sort(byPosInternalLast);
+
+        // moveBefore() above only repositioned the dragged overlay's own map
+        // layers; every other overlay's real MapLibre layers are still where
+        // they were before the array was just re-sorted, so re-apply the full
+        // order or the menu (driven off `loaded`'s index) and the map disagree
+        // for anything that wasn't the one overlay actually dragged.
+        this.applyLoadedOrder();
 
         const results = await Promise.allSettled(changed.map((current) => current.save()));
         const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');

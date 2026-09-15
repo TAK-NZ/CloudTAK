@@ -382,8 +382,11 @@ const overlayCards = computed<OverlayCard[]>(() => {
         consider(overlay);
     }
 
-    // Menu order mirrors the map stacking order held by the manager
-    return cards.sort((a, b) => OverlayManager.loaded.indexOf(a.overlay) - OverlayManager.loaded.indexOf(b.overlay));
+    // Descending: OverlayManager.loaded is bottom-of-map-stack-first (index 0
+    // = bottom), but a layers panel is expected to read top-of-stack-first -
+    // the topmost-rendered overlay (usually "Map Features") at the top of the
+    // list, the basemap at the bottom - matching how the map actually looks.
+    return cards.sort((a, b) => OverlayManager.loaded.indexOf(b.overlay) - OverlayManager.loaded.indexOf(a.overlay));
 });
 
 const overlayCount = computed(() => overlayCards.value.length);
@@ -585,7 +588,11 @@ async function saveOrder(sortableEv: SortableEvent) {
     const id = sortableEv.item.getAttribute('id');
     if (!id) return;
 
-    const overlay_ids = sortable.toArray().map((i) => parseInt(i));
+    // The list renders top-of-stack-first (see overlayCards), but
+    // OverlayManager.reorderLoaded() expects ids bottom-of-stack-first, the
+    // same convention as OverlayManager.loaded itself - reverse DOM order
+    // back to that convention before handing it off.
+    const overlay_ids = sortable.toArray().map((i) => parseInt(i)).reverse();
 
     try {
         await OverlayManager.reorderLoaded(overlay_ids, id);
