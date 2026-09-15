@@ -291,11 +291,9 @@
 
             <div
                 v-if='mapStore.isMapLoaded && isMobileDetected && mode === "Default"'
-                class='position-absolute'
+                class='position-absolute server-status-wrap'
                 style='
                     z-index: 4;
-                    bottom: var(--map-bottom-inset, 0px);
-                    right: env(safe-area-inset-right, 0px);
                     padding: 8px;
                 '
             >
@@ -476,6 +474,7 @@ let bootComplete = false;
 let bootInterrupted = false;
 let unmounted = false;
 let removeAppLifecycleListeners: (() => void) | undefined;
+let ctrlStackObserver: ResizeObserver | undefined;
 
 // A boot stage that times out on native is reloaded rather than retried in
 // place - terminating a worker mid-open can wedge the next attempt. Once per
@@ -666,6 +665,22 @@ onMounted(async () => {
 
     clearBootTimeoutReloadGuard();
 
+    // The Return Home button sits just above the MapLibre bottom-right
+    // control stack (scale + attribution) and needs to track its live
+    // height, since the attribution box's expanded/collapsed state changes
+    // it - see .server-status-wrap in <style> below. MapLibre creates
+    // .maplibregl-ctrl-bottom-right as a child of the map container itself
+    // (mapRef.value), not of .map-shell, which is why the lookup and the
+    // CSS variable target different elements.
+    const ctrlBottomRightEl = mapRef.value?.querySelector('.maplibregl-ctrl-bottom-right');
+    const shellEl = mapRef.value?.parentElement as HTMLElement | undefined;
+    if (ctrlBottomRightEl && shellEl) {
+        ctrlStackObserver = new ResizeObserver(() => {
+            shellEl.style.setProperty('--map-ctrl-stack-height', `${ctrlBottomRightEl.getBoundingClientRect().height}px`);
+        });
+        ctrlStackObserver.observe(ctrlBottomRightEl);
+    }
+
     // TODO these are no longer reactive, does it matter?
     warnChannels.value = await mapStore.worker.profile.hasNoChannels();
     if (await mapStore.worker.profile.hasNoConfiguration()) {
@@ -720,6 +735,7 @@ onBeforeUnmount(() => {
     unmounted = true;
     bootComplete = true;
     removeAppLifecycleListeners?.();
+    ctrlStackObserver?.disconnect();
     inviteChannel?.close();
     // Lifecycle hooks are synchronous, so this teardown cannot be awaited here.
     // mapStore.init() waits on it instead, which is what keeps a remount from
@@ -1064,32 +1080,28 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
 }
 
 /*
- * Upstream's position for the scale bar, with our styling.
- *
- * Patch 001 removes upstream's `.maplibregl-ctrl-scale` override so the scale
- * keeps MapLibre's default visual treatment - an opaque box with dark text -
- * rather than upstream's transparent white-on-black-text-shadow variant. That is
- * deliberate and stays.
- *
- * But the override also carried `margin: 0`, and dropping the whole block left
- * the scale on MapLibre's default
- * `.maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 10px 10px 0 }`,
- * so it sat inset from the corner instead of flush with the other bottom-right
- * controls. This is that one positioning declaration and nothing else.
- */
-.maplibregl-ctrl-scale {
-    margin: 0;
-}
-
-/*
  * Patch 001 deliberately does NOT re-add upstream's `.maplibregl-ctrl-scale::before`
- * transparent white-on-black scale-bar styling - we keep MapLibre's default box.
- * The `.map-shell` GPS-panel CSS variables below are new and load-bearing (the
- * bottom-control rules reference --map-gps-panel-size / --map-bottom-inset).
+ * transparent white-on-black scale-bar styling - we keep MapLibre's default
+ * box, an opaque background with dark text. The `.map-shell` GPS-panel CSS
+ * variables below are load-bearing (the bottom-control rules reference
+ * --map-gps-panel-size / --map-bottom-inset).
  */
 .map-shell {
     --map-gps-panel-size: 84px;
     --map-bottom-inset: env(safe-area-inset-bottom, 0px);
+    /*
+     * The GPS/callsign panel's right edge (its own left inset + responsive
+     * width, mirroring GPSPanel.vue's `left`/`width`/`max-width` formulas so
+     * the two can't drift apart) - used below to cap the attribution/scale
+     * stack's width so expanded attribution text can never stretch over it.
+     */
+    --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 8px - env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 600px) {
+    .map-shell {
+        --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 62px - env(safe-area-inset-right, 0px));
+    }
 }
 
 .maplibregl-ctrl-bottom-left {
@@ -1101,16 +1113,46 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
     pointer-events: none;
 }
 
+/*
+ * Bottom/right inset matches the GPS panel's own bottom/left inset (8px) for
+ * visual symmetry.
+ */
 .maplibregl-ctrl-bottom-right {
-    bottom: calc(4px + var(--map-bottom-inset, 0px));
+    bottom: calc(8px + var(--map-bottom-inset, 0px));
     right: calc(var(--map-side-offset, 0px) + 8px + env(safe-area-inset-right, 0px));
     left: auto;
     z-index: 3 !important;
     color: black !important;
+    /* Caps the box so expanded attribution text can't stretch left over the
+       GPS/callsign panel. */
+    max-width: calc(100vw - var(--map-gps-panel-right) - 8px - var(--map-side-offset, 0px) - env(safe-area-inset-right, 0px));
+}
+
+/*
+ * Both scale and attribution get the same 8px rhythm between/below them,
+ * with the container's own 8px bottom inset (above) providing the only gap
+ * below the last one. MapLibre's own bottom-right margin
+ * (`0 10px 10px 0`) has equal-or-greater specificity than a bare
+ * `.maplibregl-ctrl-scale` override, so it must be overridden via the same
+ * compound selector it uses, or the scale bar keeps a stray 10px gap under
+ * it regardless of what `.maplibregl-ctrl-scale` alone says.
+ */
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+    margin: 0 0 8px 0;
+}
+
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl:last-child {
+    margin-bottom: 0;
 }
 
 .maplibregl-ctrl-attrib a {
     color: black !important;
+}
+
+/* Attribution has no font-size of its own, so it inherits the map's base
+   12px - 2px larger than the scale bar's own explicit 10px. Match them. */
+.maplibregl-ctrl-attrib {
+    font-size: 10px;
 }
 
 html[data-bs-theme='dark'] .use-gps-btn {
@@ -1133,9 +1175,29 @@ html[data-bs-theme='light'] .use-gps-btn {
     .maplibregl-ctrl-bottom-left {
         left: calc(4px + env(safe-area-inset-left, 0px));
     }
+}
 
-    .maplibregl-ctrl-bottom-right {
-        right: calc(58px + env(safe-area-inset-right, 0px));
-    }
+/*
+ * Return Home button (below, in the template). Only rendered while
+ * appStore.isMobileDetected, which trips on either narrow WIDTH or short
+ * HEIGHT - e.g. a phone in landscape is wide but short. Deliberately NOT
+ * gated behind a width media query here: a width-only breakpoint
+ * disagreeing with that width-or-height condition is exactly how this
+ * button ended up floating over the attribution/scale stack in landscape,
+ * where width alone never crosses a mobile breakpoint. Since the element
+ * only exists in the DOM when isMobileDetected is already true, this rule
+ * needs no matching width condition of its own.
+ *
+ * Anchored above the bottom-right MapLibre control stack via
+ * --map-ctrl-stack-height, kept in sync with its live height by a
+ * ResizeObserver (see onMounted below), so it rides up when attribution
+ * expands and back down when it collapses. +8px for the stack's own bottom
+ * inset (matches .maplibregl-ctrl-bottom-right's `bottom` above) and +8px
+ * gap above it - the same 8px rhythm used everywhere else.
+ */
+.server-status-wrap {
+    bottom: calc(8px + var(--map-ctrl-stack-height, 76px) + 8px + var(--map-bottom-inset, 0px)) !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+    transition: bottom 0.15s ease;
 }
 </style>
