@@ -176,11 +176,34 @@ export default class OverlayManager extends BaseInterface {
 
     /**
      * Move every loaded overlay's map layers so their stacking matches the
-     * `loaded` order (index 0 at the bottom)
+     * `loaded` order (index 0 at the bottom).
+     *
+     * Anchors each overlay to the nearest overlay above it that actually has
+     * a layer on the map, rather than blindly to its immediate array
+     * neighbour. An overlay can be in `loaded` with zero real map layers -
+     * e.g. the auto-provisioned raster-dem terrain overlay
+     * (ensureDefaultTerrain(), always present, styleless, hidden from the
+     * Overlays menu) - and `Overlay.moveBefore()` has no layer id to anchor
+     * before when its `before` overlay has none of its own, so it falls back
+     * to pushing every layer to the literal top of the map. Using the
+     * immediate neighbour there corrupted the entire stack below it: any
+     * overlay anchored to that layerless neighbour got shoved above
+     * everything, including "Map Features", the moment its layers were
+     * touched. Searching upward for the nearest overlay that resolves an
+     * anchorLayerId() (the same pattern loadedAnchorFrom()/
+     * loadedBeforeOverlay() already use elsewhere) skips straight past it.
      */
     static applyLoadedOrder(): void {
         for (let i = this.loaded.length - 1; i >= 0; i--) {
-            this.loaded[i].moveBefore(this.loaded[i + 1]);
+            let anchor: Overlay | undefined;
+            for (let j = i + 1; j < this.loaded.length; j++) {
+                if (this.loaded[j].anchorLayerId()) {
+                    anchor = this.loaded[j];
+                    break;
+                }
+            }
+
+            this.loaded[i].moveBefore(anchor);
         }
     }
 
