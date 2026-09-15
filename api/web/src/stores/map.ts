@@ -34,6 +34,7 @@ import OverlayManager from '../base/overlay.ts';
 import { invalidateOfflinePMTiles } from './modules/pmtiles.ts';
 import { FeatureVisibility } from './modules/feature-visibility.ts';
 import Subscription from '../base/subscription.ts';
+import { MinMaxFilter } from '../utils/styles.ts';
 import { stdurl, getRuntimeToken, serverUrl } from '../std.js';
 import * as mapgl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
@@ -1942,20 +1943,26 @@ export const useMapStore = defineStore('cloudtak', {
 
                     const courseLayerId = `${overlay.id}-course`;
                     if (this.map.getLayer(courseLayerId)) {
+                        // Must match Overlay.course's filter in utils/styles.ts exactly
+                        // apart from the has('group') clause below, or a course arrow
+                        // whose feature is outside its per-feature minzoom/maxzoom
+                        // bounds re-appears the moment this setting is touched.
                         if (enabled) {
                             // When rotation enabled, only show course arrows for grouped features
                             this.map.setFilter(courseLayerId, [
                                 'all',
                                 ['==', ['geometry-type'], 'Point'],
                                 ['has', 'course'],
-                                ['has', 'group']
+                                ['has', 'group'],
+                                ...MinMaxFilter
                             ]);
                         } else {
                             // When rotation disabled, show course arrows for all features with course
                             this.map.setFilter(courseLayerId, [
                                 'all',
                                 ['==', ['geometry-type'], 'Point'],
-                                ['has', 'course']
+                                ['has', 'course'],
+                                ...MinMaxFilter
                             ]);
                         }
                     }

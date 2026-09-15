@@ -260,14 +260,25 @@ watch(
     async (newProfile) => {
         if (!newProfile || loading.value) return;
 
-        // Determine which key changed by comparing against the snapshot taken after last save
+        // Determine which key changed by comparing against the snapshot taken after last save.
+        // `loading` above does not actually guard the initial mount - this watcher runs
+        // asynchronously and loading.value is already false again by the time it fires - so
+        // this is the real guard: on mount every key still matches its snapshot, nothing has
+        // changed, and the save/update calls below must not run. Without it, simply opening
+        // this page pushed every mapStore.update*() call (including updateIconRotation(),
+        // which rewrites the course-arrow layer filter without its zoom bounds) on every visit.
+        let changedKey: string | undefined;
         for (const item of settings) {
             const current = (newProfile as DisplayProfile)[item.key as keyof DisplayProfile];
             if (current !== previousValues[item.key]) {
-                savedKey.value = item.key;
+                changedKey = item.key;
                 break;
             }
         }
+
+        if (!changedKey) return;
+
+        savedKey.value = changedKey;
 
         // Snapshot current values before the async save
         previousValues = {};
