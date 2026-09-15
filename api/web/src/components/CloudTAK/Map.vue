@@ -4,7 +4,8 @@
         style='height: calc(100vh) !important;'
         :style='{
             "--map-side-offset": `${mapSideOffset}px`,
-            "--map-compact-menu-size": "60px"
+            "--map-compact-menu-size": "60px",
+            "--map-ctrl-margin-right": isMobileDetected ? "0px" : "10px"
         }'
         data-bs-theme-base='neutral'
         data-bs-theme-primary='blue'
@@ -1135,13 +1136,22 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
  * (`0 10px 10px 0`) has equal-or-greater specificity than a bare
  * `.maplibregl-ctrl-scale` override, so it must be overridden via the same
  * compound selector it uses, or the scale bar keeps a stray 10px gap under
- * it regardless of what `.maplibregl-ctrl-scale` alone says. The 10px right
- * margin is kept (not zeroed) - on desktop this is the only breathing room
- * between the controls and the menu sidebar (MainMenu.vue), which floats at
- * its own `right: 8px` independent of this container's own inset.
+ * it regardless of what `.maplibregl-ctrl-scale` alone says.
+ *
+ * The right margin (--map-ctrl-margin-right, set alongside --map-side-offset
+ * below) is 10px on desktop - the only breathing room between the controls
+ * and the menu sidebar (MainMenu.vue), which floats at its own `right: 8px`
+ * independent of this container's own inset - and 0 on mobile, where there
+ * is no sidebar and the container's own `right: 8px` (above) must be the
+ * *entire* gap to the viewport edge, matching the GPS panel's own 8px on
+ * the left. This has to key off the same isMobileDetected JS condition as
+ * --map-side-offset, not a width media query: isMobileDetected trips on
+ * width OR height (e.g. a short landscape phone), and a width-only
+ * breakpoint disagreeing with that is exactly what caused the Return Home
+ * button to float over this stack before it was anchored the same way.
  */
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
-    margin: 0 10px 8px 0;
+    margin: 0 var(--map-ctrl-margin-right, 10px) 8px 0;
 }
 
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl:last-child {
