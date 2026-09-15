@@ -352,6 +352,16 @@ const overlayCards = computed<OverlayCard[]>(() => {
     const consider = (overlay: Overlay | undefined): void => {
         if (!overlay || seen.has(overlay.id)) return;
         seen.add(overlay.id);
+
+        // The terrain basemap's raster-dem overlay is auto-provisioned hidden
+        // for every user (ensureDefaultTerrain()) purely so its visibility flag
+        // can drive 3D terrain - it has no styling/ordering/opacity of its own
+        // to manage here, and the map's dedicated 3D toggle (the mountain icon,
+        // which flips this same overlay's `visible` flag) is the intended
+        // control surface. Showing it as a card just reads as a stray "Hidden"
+        // item the user is expected to fix.
+        if (overlay.type === 'raster-dem') return;
+
         if (term && !overlayMatchesTerm(overlay, term)) return;
 
         cards.push({
