@@ -45,6 +45,7 @@ export default class IconManager {
     private inflight = new Map<string, Promise<void>>();
     private loggedErrors = new Set<string>();
     private fallbackBitmap: ImageBitmap | null = null;
+    private mapPinFallbackBitmap: ImageBitmap | null = null;
     /**
      * Image ids registered with the generic fallback bitmap (or recolored
      * from one) because the real icon couldn't be loaded at resolve time.
@@ -183,11 +184,22 @@ export default class IconManager {
                 await this.loadIconsetImage(id);
             }
         } else {
+            // Plain CoT-type ids (e.g. `a-u-A-C-F-q`) fall through here when
+            // the type has no entry in the built-in spritesheet -
+            // COT.styleProperties() assigns `properties.icon = type` for any
+            // type not in TYPES_WITHOUT_ICON without checking the sprite
+            // actually contains it (see cot.ts). Without a fallback here the
+            // feature would render with no icon at all, even though the
+            // Icon Picker UI already shows a generic map-pin placeholder for
+            // the same case - register that same placeholder on the map so
+            // the two agree.
             this.logWarnOnce(
                 `unhandled:${id}`,
-                'Unhandled missing style image',
+                'Unhandled missing style image, using map-pin fallback',
                 { imageId: id }
             );
+
+            this.addImage(id, await this.getMapPinFallbackBitmap());
         }
     }
 
@@ -384,6 +396,27 @@ export default class IconManager {
         } finally {
             URL.revokeObjectURL(url);
         }
+    }
+
+    /**
+     * Generic map-pin placeholder for a CoT type with no icon in the
+     * built-in spritesheet (see the `resolveImage()` unhandled-id branch).
+     * Matches the `IconMapPin` fallback the Icon Picker UI (FeatureIcon.vue)
+     * already shows for the same types, so map and picker agree. White
+     * fill / black stroke, like every other marker, so `-colored-` recolor
+     * requests still work against it.
+     */
+    private async getMapPinFallbackBitmap(): Promise<ImageBitmap> {
+        if (this.mapPinFallbackBitmap) return this.mapPinFallbackBitmap;
+
+        const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#ffffff" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+            + '<path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>'
+            + '<path d="M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0"/>'
+            + '</svg>';
+
+        this.mapPinFallbackBitmap = await this.decodeSvgBlob(new Blob([svg], { type: 'image/svg+xml' }));
+
+        return this.mapPinFallbackBitmap;
     }
 
     private async getFallbackBitmap(): Promise<ImageBitmap> {
