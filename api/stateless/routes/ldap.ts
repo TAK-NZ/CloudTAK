@@ -4,6 +4,7 @@ import type ConfigStateless from '../config.js';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
+import { authenticatedProfile } from '../../common/control/profile.js';
 import { ConnectionAuth } from '../../common/connection-config.js';
 import { Channel, ChannelAccess } from '../lib/interface-user.js';
 import { TAKAPI, APIAuthPassword } from '@tak-ps/node-tak';
@@ -32,7 +33,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 if (!profile.id) {
                     const response = await cotak.login(profile.username);
                     await config.models.Profile.commit(profile.username, { id: response.id });
-                    profile = await config.models.Profile.from(profile.username);
+                    // A logged-in profile already holds a TAK certificate, and this
+                    // call only refreshes `id` - re-fetch through the same
+                    // non-null-auth-asserting helper as as_profile() above, rather
+                    // than the raw model whose `auth` is nullable for provisioned
+                    // (never logged in) profiles.
+                    profile = await authenticatedProfile(config, profile.username);
                 }
 
                 const list = await cotak.channels(profile.id!, req.query);
@@ -89,7 +95,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 if (!profile.id) {
                     const response = await cotak.login(profile.username);
                     await config.models.Profile.commit(profile.username, { id: response.id });
-                    profile = await config.models.Profile.from(profile.username);
+                    // A logged-in profile already holds a TAK certificate, and this
+                    // call only refreshes `id` - re-fetch through the same
+                    // non-null-auth-asserting helper as as_profile() above, rather
+                    // than the raw model whose `auth` is nullable for provisioned
+                    // (never logged in) profiles.
+                    profile = await authenticatedProfile(config, profile.username);
                 }
 
                 const password = Array.from({ length: 16 }, () => {
@@ -203,7 +214,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 if (!profile.id) {
                     const response = await cotak.login(profile.username);
                     await config.models.Profile.commit(profile.username, { id: response.id });
-                    profile = await config.models.Profile.from(profile.username);
+                    // A logged-in profile already holds a TAK certificate, and this
+                    // call only refreshes `id` - re-fetch through the same
+                    // non-null-auth-asserting helper as as_profile() above, rather
+                    // than the raw model whose `auth` is nullable for provisioned
+                    // (never logged in) profiles.
+                    profile = await authenticatedProfile(config, profile.username);
                 }
 
                 const password = Array.from({ length: 16 }, () => String.fromCharCode(crypto.randomInt(33, 127)))

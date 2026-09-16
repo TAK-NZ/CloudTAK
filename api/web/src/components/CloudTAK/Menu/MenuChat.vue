@@ -184,7 +184,8 @@ async function sendMessage(message: string): Promise<void> {
 
     if (route.params.chatroom === 'new') {
         skipNextRefresh = true;
-        await router.push({
+        // Replace so Back skips the empty new-chat entry
+        await router.replace({
             name: 'home-menu-chat',
             params: { chatroom: name.value }
         });

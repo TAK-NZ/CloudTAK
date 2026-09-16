@@ -13,15 +13,16 @@ import {
     TAKList,
 } from '@tak-ps/node-tak/lib/api/types';
 import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import { authenticatedProfile } from '../../common/control/profile.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     const profileControl = new ProfileControl(config);
 
-    await schema.get('/marti/missions/:name/layer', {
+    await schema.get('/marti/missions/:guid/layer', {
         name: 'List Layers',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
         }),
         description: 'Helper API list mission layers',
         res: TAKList(MissionLayer),
@@ -29,15 +30,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             const list = await api.MissionLayer.list(
-                req.params.name,
+                req.params.guid,
                 opts,
             );
 
@@ -47,11 +48,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.get('/marti/missions/:name/layer/:layerid', {
+    await schema.get('/marti/missions/:guid/layer/:layerid', {
         name: 'Get Layer',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
             layerid: Type.String(),
         }),
         description: 'Helper API to get mission layer',
@@ -60,15 +61,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             const layer = await api.MissionLayer.get(
-                req.params.name,
+                req.params.guid,
                 req.params.layerid,
                 opts,
             );
@@ -79,11 +80,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.post('/marti/missions/:name/layer', {
+    await schema.post('/marti/missions/:guid/layer', {
         name: 'Create Layer',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
         }),
         body: Type.Object({
             name: Default.NameField,
@@ -98,15 +99,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             const create = await api.MissionLayer.create(
-                req.params.name,
+                req.params.guid,
                 {
                     ...req.body,
                     creatorUid: user.email,
@@ -120,11 +121,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.put('/marti/missions/:name/layer/:uid/cot', {
+    await schema.put('/marti/missions/:guid/layer/:uid/cot', {
         name: 'Attach Layer CoTs',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
             uid: Type.String(),
         }),
         body: Type.Object({
@@ -136,15 +137,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             await api.MissionLayer.attachUids(
-                req.params.name,
+                req.params.guid,
                 req.params.uid,
                 {
                     uids: req.body.uids,
@@ -162,11 +163,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.delete('/marti/missions/:name/layer/:uid/cot/:cotuid', {
+    await schema.delete('/marti/missions/:guid/layer/:uid/cot/:cotuid', {
         name: 'Detach Layer CoT',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
             uid: Type.String(),
             cotuid: Type.String(),
         }),
@@ -176,15 +177,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             await api.MissionLayer.setParent(
-                req.params.name,
+                req.params.guid,
                 {
                     layerUids: [req.params.cotuid],
                     creatorUid: user.email,
@@ -201,11 +202,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.patch('/marti/missions/:name/layer/:uid', {
+    await schema.patch('/marti/missions/:guid/layer/:uid', {
         name: 'Update Layer',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
             uid: Type.String(),
         }),
         body: Type.Object({
@@ -217,16 +218,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             if (req.body.name) {
                 const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                     ? { token: String(req.headers['missionauthorization']) }
-                    : await profileControl.subscription(user.email, req.params.name);
+                    : await profileControl.subscription(user.email, req.params.guid);
 
                 await api.MissionLayer.rename(
-                    req.params.name,
+                    req.params.guid,
                     req.params.uid,
                     {
                         name: req.body.name,
@@ -245,11 +246,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
-    await schema.delete('/marti/missions/:name/layer/:uid', {
+    await schema.delete('/marti/missions/:guid/layer/:uid', {
         name: 'Delete Layer',
         group: 'MartiMissionLayer',
         params: Type.Object({
-            name: Type.String(),
+            guid: Type.String(),
             uid: Type.String(),
         }),
         description: 'Helper API to delete mission layers',
@@ -258,15 +259,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             const user = await Auth.as_user(config, req);
 
-            const auth = (await config.models.Profile.from(user.email)).auth;
+            const auth = (await authenticatedProfile(config, user.email)).auth;
             const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(auth.cert, auth.key));
 
             const opts: Static<typeof MissionOptions> = req.headers['missionauthorization']
                 ? { token: String(req.headers['missionauthorization']) }
-                : await profileControl.subscription(user.email, req.params.name);
+                : await profileControl.subscription(user.email, req.params.guid);
 
             await api.MissionLayer.delete(
-                req.params.name,
+                req.params.guid,
                 {
                     uid: [req.params.uid],
                     creatorUid: user.email,

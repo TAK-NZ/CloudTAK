@@ -7,7 +7,7 @@ import type {
     FillLayerSpecification,
 }  from 'maplibre-gl';
 
-const MinMaxFilter: Array<mapgl.ExpressionSpecification> = [
+export const MinMaxFilter: Array<mapgl.ExpressionSpecification> = [
     [ 'any',
         ["!", ['has', 'maxzoom']],
         ['<=', ["zoom"], ['get', 'maxzoom']]

@@ -10,7 +10,7 @@ const currentYear = import.meta.env.BUILD_YEAR;
                     <ul class='list-inline list-inline-dots mb-0'>
                         <li class='list-inline-item'>
                             <a
-                                href='./docs/'
+                                href='/docs'
                                 class='link-secondary'
                             >Documentation</a>
                         </li>

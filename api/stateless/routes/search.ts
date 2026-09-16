@@ -2,7 +2,7 @@ import { Type, Static } from '@sinclair/typebox';
 import geomagnetism from 'geomagnetism';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import Auth from '../../common/auth.js';
+import Auth, { AuthUser } from '../../common/auth.js';
 import { FetchHourly } from '../lib/interface-weather.js';
 import { SearchManager } from '../lib/interface-search.js';
 import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '../lib/search/types.js';
@@ -20,26 +20,28 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     const searchManager = await SearchManager.init(config);
     const SunTime = (description: string) => Type.Union([Type.String(), Type.Null()], { description });
 
-    const ReverseResponse = Type.Object({
-        sun: Type.Object({
-            sunrise: SunTime('sunrise (top edge of the sun appears on the horizon)'),
-            sunriseEnd: SunTime('sunrise ends (bottom edge of the sun touches the horizon)'),
-            goldenHourEnd: SunTime('morning golden hour (soft light, best time for photography) ends'),
-            solarNoon: SunTime('solar noon (sun is in the highest position)'),
-            goldenHour: SunTime('evening golden hour starts'),
-            sunsetStart: SunTime('sunset starts (bottom edge of the sun touches the horizon)'),
-            sunset: SunTime('sunset (sun disappears below the horizon, evening civil twilight starts)'),
-            dusk: SunTime('dusk (evening nautical twilight starts)'),
-            nauticalDusk: SunTime('nautical dusk (evening astronomical twilight starts)'),
-            night: SunTime('night starts (dark enough for astronomical observations)'),
-            nadir: SunTime('nadir (darkest moment of the night, sun is in the lowest position)'),
-            nightEnd: SunTime('night ends (morning astronomical twilight starts)'),
-            nauticalDawn: SunTime('nautical dawn (morning nautical twilight starts)'),
-            dawn: SunTime('dawn (morning nautical twilight ends, morning civil twilight starts)'),
-            timezone: Type.Union([Type.String(), Type.Null()], {
-                description: 'IANA timezone identifier at the queried coordinate. The times above are UTC instants; render them in this zone, not the viewer\'s. Null if it could not be resolved, in which case present them as UTC.',
-            }),
+    const SunResponse = Type.Object({
+        sunrise: SunTime('sunrise (top edge of the sun appears on the horizon)'),
+        sunriseEnd: SunTime('sunrise ends (bottom edge of the sun touches the horizon)'),
+        goldenHourEnd: SunTime('morning golden hour (soft light, best time for photography) ends'),
+        solarNoon: SunTime('solar noon (sun is in the highest position)'),
+        goldenHour: SunTime('evening golden hour starts'),
+        sunsetStart: SunTime('sunset starts (bottom edge of the sun touches the horizon)'),
+        sunset: SunTime('sunset (sun disappears below the horizon, evening civil twilight starts)'),
+        dusk: SunTime('dusk (evening nautical twilight starts)'),
+        nauticalDusk: SunTime('nautical dusk (evening astronomical twilight starts)'),
+        night: SunTime('night starts (dark enough for astronomical observations)'),
+        nadir: SunTime('nadir (darkest moment of the night, sun is in the lowest position)'),
+        nightEnd: SunTime('night ends (morning astronomical twilight starts)'),
+        nauticalDawn: SunTime('nautical dawn (morning nautical twilight starts)'),
+        dawn: SunTime('dawn (morning nautical twilight ends, morning civil twilight starts)'),
+        timezone: Type.Union([Type.String(), Type.Null()], {
+            description: 'IANA timezone identifier at the queried coordinate. The times above are UTC instants; render them in this zone, not the viewer\'s. Null if it could not be resolved, in which case present them as UTC.',
         }),
+    });
+
+    const ReverseResponse = Type.Object({
+        sun: SunResponse,
         magnetic: Type.Object({
             declination: Type.Number(),
             inclination: Type.Number(),
@@ -79,6 +81,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/search/reverse/:longitude/:latitude', {
         name: 'Reverse Geocode',
         group: 'Search',
+        security: Auth.security('search:read'),
         description: 'Get information about a given point',
         params: Type.Object({
             latitude: Type.Number(),
@@ -94,8 +97,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: ReverseResponse,
     }, async (req, res) => {
         try {
-            const user = await Auth.as_user(config, req);
-            const elevationUnit = await config.models.ProfileConfig.from(user.email).then(p => p['display::elevation'] as string).catch(() => 'feet');
+            const auth = await Auth.as_user_or_scope(config, req, 'search:read');
+            const elevationUnit = auth instanceof AuthUser
+                ? await config.models.ProfileConfig.from(auth.email).then(p => p['display::elevation'] as string).catch(() => 'feet')
+                : 'feet';
 
             const timezone = timezoneAt(req.params.latitude, req.params.longitude);
             const sun = sunTimesAt(req.params.latitude, req.params.longitude, req.query.altitude, timezone);
@@ -185,25 +190,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }),
         }),
         res: Type.Object({
-            sun: Type.Object({
-                sunrise: SunTime('sunrise (top edge of the sun appears on the horizon)'),
-                sunriseEnd: SunTime('sunrise ends (bottom edge of the sun touches the horizon)'),
-                goldenHourEnd: SunTime('morning golden hour (soft light, best time for photography) ends'),
-                solarNoon: SunTime('solar noon (sun is in the highest position)'),
-                goldenHour: SunTime('evening golden hour starts'),
-                sunsetStart: SunTime('sunset starts (bottom edge of the sun touches the horizon)'),
-                sunset: SunTime('sunset (sun disappears below the horizon, evening civil twilight starts)'),
-                dusk: SunTime('dusk (evening nautical twilight starts)'),
-                nauticalDusk: SunTime('nautical dusk (evening astronomical twilight starts)'),
-                night: SunTime('night starts (dark enough for astronomical observations)'),
-                nadir: SunTime('nadir (darkest moment of the night, sun is in the lowest position)'),
-                nightEnd: SunTime('night ends (morning astronomical twilight starts)'),
-                nauticalDawn: SunTime('nautical dawn (morning nautical twilight starts)'),
-                dawn: SunTime('dawn (morning nautical twilight ends, morning civil twilight starts)'),
-                timezone: Type.Union([Type.String(), Type.Null()], {
-                    description: 'IANA timezone identifier at the queried coordinate. The times above are UTC instants; render them in this zone, not the viewer\'s. Null if it could not be resolved, in which case present them as UTC.',
-                }),
-            }),
+            sun: SunResponse,
         }),
     }, async (req, res) => {
         try {
@@ -440,6 +427,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/search/forward', {
         name: 'Forward',
         group: 'Search',
+        security: Auth.security('search:read'),
         description: 'Get information about a given string',
         query: Type.Object({
             provider: Type.Optional(Type.String()),
@@ -452,7 +440,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: ForwardResponse,
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            await Auth.as_user_or_scope(config, req, 'search:read');
 
             const response: Static<typeof ForwardResponse> = {
                 items: [],

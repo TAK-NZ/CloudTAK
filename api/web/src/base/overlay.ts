@@ -2,7 +2,6 @@ import { liveQuery, type Observable } from 'dexie';
 import { shallowReactive } from 'vue';
 import { db, type DBOverlay } from '../database.ts';
 import type { paths } from '@cloudtak/api-types';
-import type { ProfileOverlay } from '../types.ts';
 import { server } from '../std.ts';
 import BaseInterface from './interface.ts';
 import Overlay from './overlay-class.ts';
@@ -38,6 +37,30 @@ export type Overlay_CreateLoadedOptions = NonNullable<Parameters<typeof Overlay.
 
 const loadedOverlays = shallowReactive<Overlay[]>([]) as Overlay[];
 
+/**
+ * Sorts real (persisted) overlays by their stored `pos`, but always keeps
+ * `_internal` overlays (currently just "Map Features", id -1) above, and the
+ * current basemap below, every other overlay regardless of `pos`.
+ *
+ * Both pins used to rely solely on a sentinel `pos` value staying put
+ * ("Map Features" gets a placeholder `pos` from Overlay.internal(), and
+ * MenuBasemaps gives the basemap `pos: -1`) - but nothing enforced that the
+ * sentinel actually stayed smaller/larger than every real overlay's `pos`,
+ * so both were vulnerable to drifting into the middle of the stack. Deciding
+ * top/bottom placement structurally, from `_internal`/`mode === 'basemap'`
+ * rather than from a `pos` value that can be reassigned, means a stale or
+ * corrupted `pos` on either can no longer misplace them.
+ */
+export function byPosInternalLast(a: Overlay, b: Overlay): number {
+    if (a._internal !== b._internal) return a._internal ? 1 : -1;
+
+    const aIsBasemap = a.mode === 'basemap';
+    const bIsBasemap = b.mode === 'basemap';
+    if (aIsBasemap !== bIsBasemap) return aIsBasemap ? -1 : 1;
+
+    return a.pos - b.pos;
+}
+
 export default class OverlayManager extends BaseInterface {
     static readonly listCacheKey = OVERLAY_LIST_CACHE_KEY;
     static readonly loaded = loadedOverlays;
@@ -61,14 +84,7 @@ export default class OverlayManager extends BaseInterface {
     }
 
     private static loadedBeforeId(): string | undefined {
-        if (this.loaded.length > 1 && this.loaded[1].styles.length > 0) {
-            // Background layers are never added to the map so they cannot
-            // anchor an insert - use the first renderable layer
-            const anchor = this.loaded[1].styles.find((l) => l.type !== 'background');
-            if (anchor) return String(anchor.id);
-        }
-
-        return undefined;
+        return this.loadedAnchorFrom(1);
     }
 
     static appendLoaded(...overlays: Overlay[]): void {
@@ -108,25 +124,86 @@ export default class OverlayManager extends BaseInterface {
         if (movedIndex === -1) throw new Error('Could not find Overlay in order');
 
         const postId = orderedIds[movedIndex + 1];
-        const post = postId === undefined ? undefined : this.loadedFrom(postId);
-        overlay.moveBefore(post);
+        let post = postId === undefined ? undefined : this.loadedFrom(postId);
 
-        for (const current of this.loaded) {
-            await current.update({
-                pos: orderedIds.indexOf(current.id)
-            });
+        // `orderedIds` comes from MenuOverlays.vue's Sortable container, which
+        // only ever contains the freely-reorderable middle overlays - pinned
+        // overlays (Map Features on top, the basemap on bottom) are rendered
+        // outside it and never appear here. So when the dragged overlay ends
+        // up as the topmost of the middle section, `postId` is undefined, and
+        // without this fallback `moveBefore(undefined)` would move its layers
+        // to the literal top of the map, above Map Features. Fall back to
+        // whichever loaded overlay is `_internal` (Map Features) so the
+        // dragged overlay is placed directly beneath it instead.
+        if (post === undefined) {
+            post = this.loaded.find((current) => current._internal);
         }
 
-        this.loaded.sort((a, b) => a.pos - b.pos);
+        overlay.moveBefore(post);
+
+        const changed = this.loaded.filter((current) => {
+            // Pinned overlays (the "Map Features" internal overlay, and
+            // whichever overlay is the current basemap) carry sentinel `pos`
+            // values (see byPosInternalLast / MenuBasemaps' `pos: -1`) that
+            // guarantee they always sort to the top/bottom of the stack.
+            // MenuOverlays.vue keeps both out of the draggable Sortable
+            // container, so `orderedIds` (built from that container) should
+            // never contain their ids anyway - but skip them here too, so a
+            // future caller can't accidentally renumber a pinned overlay's
+            // `pos` just because its id happened to appear in `orderedIds`
+            // at an index that differs from its sentinel.
+            if (current._internal || current.mode === 'basemap') return false;
+
+            const pos = orderedIds.indexOf(current.id);
+            if (pos === -1 || pos === current.pos) return false;
+            current.pos = pos;
+            return true;
+        });
+
+        this.loaded.sort(byPosInternalLast);
+
+        // moveBefore() above only repositioned the dragged overlay's own map
+        // layers; every other overlay's real MapLibre layers are still where
+        // they were before the array was just re-sorted, so re-apply the full
+        // order or the menu (driven off `loaded`'s index) and the map disagree
+        // for anything that wasn't the one overlay actually dragged.
+        this.applyLoadedOrder();
+
+        const results = await Promise.allSettled(changed.map((current) => current.save()));
+        const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (failed) throw failed.reason;
     }
 
     /**
      * Move every loaded overlay's map layers so their stacking matches the
-     * `loaded` order (index 0 at the bottom)
+     * `loaded` order (index 0 at the bottom).
+     *
+     * Anchors each overlay to the nearest overlay above it that actually has
+     * a layer on the map, rather than blindly to its immediate array
+     * neighbour. An overlay can be in `loaded` with zero real map layers -
+     * e.g. the auto-provisioned raster-dem terrain overlay
+     * (ensureDefaultTerrain(), always present, styleless, hidden from the
+     * Overlays menu) - and `Overlay.moveBefore()` has no layer id to anchor
+     * before when its `before` overlay has none of its own, so it falls back
+     * to pushing every layer to the literal top of the map. Using the
+     * immediate neighbour there corrupted the entire stack below it: any
+     * overlay anchored to that layerless neighbour got shoved above
+     * everything, including "Map Features", the moment its layers were
+     * touched. Searching upward for the nearest overlay that resolves an
+     * anchorLayerId() (the same pattern loadedAnchorFrom()/
+     * loadedBeforeOverlay() already use elsewhere) skips straight past it.
      */
     static applyLoadedOrder(): void {
         for (let i = this.loaded.length - 1; i >= 0; i--) {
-            this.loaded[i].moveBefore(this.loaded[i + 1]);
+            let anchor: Overlay | undefined;
+            for (let j = i + 1; j < this.loaded.length; j++) {
+                if (this.loaded[j].anchorLayerId()) {
+                    anchor = this.loaded[j];
+                    break;
+                }
+            }
+
+            this.loaded[i].moveBefore(anchor);
         }
     }
 
@@ -138,9 +215,21 @@ export default class OverlayManager extends BaseInterface {
         const idx = this.loaded.indexOf(overlay);
         if (idx === -1) return undefined;
 
-        const next = this.loaded[idx + 1];
-        const anchor = next?.styles.find((l) => l.type !== 'background');
-        return anchor ? String(anchor.id) : undefined;
+        return this.loadedAnchorFrom(idx + 1);
+    }
+
+    /**
+     * First renderable layer id present on the map, searching `loaded`
+     * upward from the given index - overlays that failed to load or are
+     * still initializing have no layers and are skipped
+     */
+    static loadedAnchorFrom(idx: number): string | undefined {
+        for (let i = idx; i < this.loaded.length; i++) {
+            const anchor = this.loaded[i].anchorLayerId();
+            if (anchor) return anchor;
+        }
+
+        return undefined;
     }
 
     static async deleteLoaded(idOrOverlay: string | number | Overlay): Promise<void> {
@@ -155,7 +244,11 @@ export default class OverlayManager extends BaseInterface {
 
     static queryableOverlayNames(): string[] {
         return this.loaded
-            .filter((overlay) => overlay.actions.feature.includes('query') || overlay.id === -1)
+            .filter((overlay) => {
+                return overlay.id === -1
+                    || (overlay.mode === 'mission' && overlay.mode_id)
+                    || overlay.actions.feature.includes('query');
+            })
             .map((overlay) => overlay.name);
     }
 
@@ -249,7 +342,7 @@ export default class OverlayManager extends BaseInterface {
         });
     }
 
-    static async get(id: string | number): Promise<ProfileOverlay> {
+    static async get(id: string | number): Promise<DBOverlay> {
         const overlayId = this.overlayId(id);
         const res = await server.GET('/api/profile/overlay/{:overlay}', {
             params: {
@@ -264,12 +357,12 @@ export default class OverlayManager extends BaseInterface {
 
         await db.overlay.put(res.data as DBOverlay);
 
-        return res.data;
+        return res.data as DBOverlay;
     }
 
     static async generate(
         body: paths['/api/profile/overlay']['post']['requestBody']['content']['application/json']
-    ): Promise<ProfileOverlay> {
+    ): Promise<DBOverlay> {
         const res = await server.POST('/api/profile/overlay', {
             body
         });
@@ -279,7 +372,7 @@ export default class OverlayManager extends BaseInterface {
 
         await db.overlay.put(res.data as DBOverlay);
 
-        return res.data;
+        return res.data as DBOverlay;
     }
 
     static async update(

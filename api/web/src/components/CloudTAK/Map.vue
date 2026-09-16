@@ -1,11 +1,11 @@
 <template>
     <div
-        class='d-flex position-relative'
+        class='d-flex position-relative map-shell'
         style='height: calc(100vh) !important;'
         :style='{
             "--map-side-offset": `${mapSideOffset}px`,
             "--map-compact-menu-size": "60px",
-            "--map-bottom-bar-size": "50px"
+            "--map-ctrl-margin-right": isMobileDetected ? "0px" : "10px"
         }'
         data-bs-theme-base='neutral'
         data-bs-theme-primary='blue'
@@ -38,7 +38,8 @@
 
             <WarnConfiguration
                 v-if='warnConfiguration'
-                @close='warnConfiguration = false'
+                :page='warnConfiguration'
+                @close='warnConfiguration = undefined'
             />
             <WarnChannels
                 v-else-if='warnChannels'
@@ -46,7 +47,7 @@
             />
 
             <DrawOverlay
-                v-if='mapStore.draw.mode !== DrawToolMode.STATIC'
+                v-if='isDrawing'
             />
 
             <GeoJSONInput
@@ -94,32 +95,27 @@
                     </div>
                 </div>
             </GenericBottomPane>
-            <BottomBar
+            <GPSPanel
                 :mode='mode'
                 @set-location='setLocation'
                 @to-location='toLocation'
             />
+            <PluginPane v-if='mode === "Default" && !isDrawing' />
             <div
                 v-if='mapStore.selected.size'
                 class='position-absolute'
                 style='
-                    bottom: calc(var(--map-bottom-bar-size, 50px) + 8px);
-                    left: 8px;
+                    bottom: calc(var(--map-gps-panel-size, 84px) + 16px + var(--map-bottom-inset, 0px));
+                    left: calc(8px + env(safe-area-inset-left, 0px));
                 '
             >
                 <SelectFeats :selected='mapStore.selected' />
             </div>
 
-            <div
+            <TopBar
                 v-if='mode === "Default"'
-                class='position-absolute'
-                style='
-                    top: calc(8px + var(--status-bar-height, 0px));
-                    left: 8px;
-                '
-            >
-                <ActiveMission />
-            </div>
+                :menu-shown='!noMenuShown'
+            />
             <div
                 v-if='mapStore.navigation.active'
                 class='position-absolute start-50 translate-middle-x'
@@ -231,7 +227,7 @@
                         tabindex='0'
                         :title='mapStore.terrainEnabled ? "Disable 3D Terrain" : "Enable 3D Terrain"'
                         class='cloudtak-ctrl-btn'
-                        @click='mapStore.terrainEnabled ? mapStore.removeTerrain() : mapStore.addTerrain()'
+                        @click='mapStore.toggleTerrain()'
                     >
                         <IconMountain
                             :size='24'
@@ -283,85 +279,6 @@
                 </div>
             </TablerModal>
 
-            <div
-                v-if='mapStore.isMapLoaded && mode === "Default"'
-                class='position-absolute cloudtak-panel d-flex align-items-center px-2'
-                style='
-                    z-index: 5;
-                    height: 60px;
-                    max-width: calc(100vw - 16px);
-                    top: calc(8px + var(--status-bar-height, 0px));
-                    right: 8px;
-                '
-            >
-                <TablerDropdown>
-                    <TablerIconButton
-                        id='map-notifications'
-                        title='Notifications Icon'
-                        class='cloudtak-hover'
-                        :class='{ "alert-pulse": alertNotifications }'
-                        :hover='false'
-                    >
-                        <IconAlertTriangle
-                            v-if='alertNotifications'
-                            :size='40'
-                            stroke='1'
-                            class='text-danger'
-                        />
-                        <IconBell
-                            v-else
-                            :size='40'
-                            stroke='1'
-                        />
-                    </TablerIconButton>
-                    <template #dropdown>
-                        <Notifications />
-                    </template>
-                </TablerDropdown>
-
-                <span
-                    v-if='notifications'
-                    class='badge bg-red mb-2'
-                />
-                <span
-                    v-else
-                    style='width: 10px;'
-                />
-
-                <DrawTools />
-
-                <div
-                    class='border-start mx-1'
-                    style='height: 32px;'
-                />
-
-                <TablerIconButton
-                    v-if='noMenuShown'
-                    title='Open Menu'
-                    class='ms-1 cloudtak-hover'
-                    :hover='false'
-                    @click='router.push("/menu")'
-                >
-                    <IconMenu2
-                        :size='40'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-                <TablerIconButton
-                    v-else
-                    title='Close Menu'
-                    class='ms-1 cloudtak-hover'
-                    :hover='false'
-                    @click='closeAllMenu'
-                >
-                    <IconX
-                        :size='40'
-                        stroke='1'
-                    />
-                </TablerIconButton>
-            </div>
-
-
             <MainMenu
                 v-if='
                     mapStore.isMapLoaded
@@ -375,13 +292,8 @@
 
             <div
                 v-if='mapStore.isMapLoaded && isMobileDetected && mode === "Default"'
-                class='position-absolute'
-                style='
-                    z-index: 4;
-                    bottom: var(--map-bottom-bar-size, 50px);
-                    right: 0;
-                    padding: 8px;
-                '
+                class='position-absolute server-status-wrap'
+                style='z-index: 4;'
             >
                 <ServerStatus :size='38' />
             </div>
@@ -450,22 +362,21 @@
 import GeoJSONInput from './Inputs/GeoJSONInput.vue';
 import BufferInput from './Inputs/BufferInput.vue';
 import { ref, watch, computed, toRaw, onMounted, onBeforeUnmount, useTemplateRef } from 'vue';
-import BottomBar from './BottomBar/BottomBar.vue';
+import GPSPanel from './GPSPanel/GPSPanel.vue';
+import PluginPane from './PluginPane.vue';
 import {useRoute, useRouter } from 'vue-router';
-import ActiveMission from './ActiveMission.vue';
 import Navigating from './Navigating.vue';
+import TopBar from './TopBar.vue';
 import DrawOverlay from './util/DrawOverlay.vue';
 import WarnChannels from './util/WarnChannels.vue';
-import Notifications from './Notifications.vue';
 import SearchBox from './util/SearchBox.vue';
 import WarnConfiguration from './util/WarnConfiguration.vue';
-import DrawTools from './DrawTools.vue';
+import type { WarnConfigurationPage } from './util/WarnConfiguration.vue';
 import GenericBottomPane from './GenericBottomPane.vue';
 import type { MapGeoJSONFeature, LngLatLike, MapMouseEvent } from 'maplibre-gl';
 import type { Feature } from '../../types.ts';
 import {
     IconCircleArrowUp,
-    IconAlertTriangle,
     IconLocationPin,
     IconLockAccess,
     IconLocation,
@@ -473,26 +384,20 @@ import {
     IconCompass,
     IconSearch,
     IconMinus,
-    IconMenu2,
     IconAngle,
     IconPlus,
-    IconBell,
     IconX,
 } from '@tabler/icons-vue';
 import SelectFeats from './util/SelectFeats.vue';
 import MultipleSelect from './util/MultipleSelect.vue';
 import MainMenu from './MainMenu.vue';
 import ServerStatus from './ServerStatus.vue';
-import { from } from 'rxjs';
-import { useObservable } from '@vueuse/rxjs';
 import {
     TablerIconButton,
-    TablerDropdown,
     TablerModal,
 } from '@tak-ps/vue-tabler';
 import { LocationState, WorkerMessageType } from '../../utils/events.ts';
 import type { WorkerMessage } from '../../utils/events.ts';
-import TAKNotification, { NotificationType } from '../../base/notification.ts';
 import { v4 as randomUUID } from 'uuid';
 import { lineString as turfLineString, point as turfPoint } from '@turf/helpers';
 import nearestPointOnLine from '@turf/nearest-point-on-line';
@@ -502,29 +407,28 @@ import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
 import { useMapStore } from '../../stores/map.ts';
+import { useDeviceStore } from '../../stores/device.ts';
 import { useAppStore } from '../../stores/app.ts';
 import { DrawToolMode } from '../../stores/modules/draw.ts';
 import { useFloatStore } from '../../stores/float.ts';
-import { liveQuery } from 'dexie';
 import Upload from '../util/Upload.vue';
 import { stdurl } from '../../std.ts';
 import ProfileConfig from '../../base/profile.ts';
-import Config from '../../base/config.ts';
+import OverlayManager from '../../base/overlay.ts';
 import { cutOverlayFeature } from './util/featureCut.ts';
-import { isNativePlatform, isIOSPlatform, addBackgroundStateListener } from '../../utils/capacitor.ts';
+import { isIOSPlatform, isNativePlatform, addAppLifecycleListeners } from '../../utils/capacitor.ts';
+import { TimeoutError } from '../../utils/async.ts';
 import { copyFeatureToClipboard, readFeatureFromClipboard } from '../../stores/device/clipboard.ts';
 import MissionInviteModal from './Menu/Mission/MissionInviteModal.vue';
 
 const mapStore = useMapStore();
+const deviceStore = useDeviceStore();
 const appStore = useAppStore();
 const floatStore = useFloatStore();
 
 const isIOS = isIOSPlatform();
 
-const hasTerrain = ref<boolean>(false);
-Config.list(['map::terrain'], { defaults: { 'map::terrain': null } }).then((cfg) => {
-    hasTerrain.value = cfg['map::terrain'] !== null && cfg['map::terrain'] !== undefined;
-}).catch(() => { /* non-fatal */ });
+const hasTerrain = computed(() => OverlayManager.loaded.some((overlay) => overlay.type === 'raster-dem'));
 const router = useRouter();
 const route = useRoute();
 
@@ -539,7 +443,7 @@ appStore.isMobileDetected = detectMobile();
 
 const warnChannels = ref<boolean>(false)
 
-const warnConfiguration = ref<boolean>(false);
+const warnConfiguration = ref<WarnConfigurationPage | undefined>();
 
 const searchBoxShown = ref(false);
 
@@ -563,43 +467,44 @@ let inviteChannel: BroadcastChannel | undefined;
 
 const loading = ref(true)
 
-// If the app backgrounds mid-boot, awaits inside mapStore.init() can wedge
-// permanently (suspended networking, invalidated IndexedDB). Reload once -
-// the Hard Reset recovery, but automatic - when the boot still hasn't
-// completed this long after returning to the foreground.
-const BOOT_STALL_RELOAD_MS = 30000;
-const BOOT_STALL_RELOAD_KEY = 'cloudtak::boot-stall-reloaded';
+// A boot suspended by a background transition can wedge - reload on resume
 let bootComplete = false;
-let bootStallTimer: ReturnType<typeof setTimeout> | undefined;
-let removeBootWatchdog: (() => void) | undefined;
+let bootInterrupted = false;
+let unmounted = false;
+let removeAppLifecycleListeners: (() => void) | undefined;
+let ctrlStackObserver: ResizeObserver | undefined;
 
-function onBootStalled(): void {
-    if (bootComplete) return;
+// A boot stage that times out on native is reloaded rather than retried in
+// place - terminating a worker mid-open can wedge the next attempt. Once per
+// page session, so a second timeout falls through to the error and Hard Reset.
+const BOOT_TIMEOUT_RELOAD_KEY = 'cloudtak::boot-timeout-reloaded';
 
+function reloadOnceForBootTimeout(): boolean {
     try {
-        if (sessionStorage.getItem(BOOT_STALL_RELOAD_KEY)) return;
-        sessionStorage.setItem(BOOT_STALL_RELOAD_KEY, '1');
-    } catch (err) {
-        // Unguarded automatic reloads could loop - fall back to the Hard Reset button
-        console.warn('Boot stall reload guard unavailable, skipping automatic reload', err);
-        return;
+        if (sessionStorage.getItem(BOOT_TIMEOUT_RELOAD_KEY)) return false;
+        sessionStorage.setItem(BOOT_TIMEOUT_RELOAD_KEY, '1');
+    } catch {
+        return false;
     }
 
-    console.error('Map boot stalled after app resume - reloading');
     location.reload();
+    return true;
 }
 
-const notifications = useObservable<number>(
-    from(liveQuery(async () => {
-        return await TAKNotification.count()
-    }))
-);
+// A stage that hung, or the worker's storage probe giving up, both mean
+// IndexedDB is not answering. The probe's error arrives through Comlink,
+// which keeps the name but not the class.
+function isStorageStall(err: Error): boolean {
+    return err instanceof TimeoutError || err.name === 'DatabaseUnavailableError';
+}
 
-const alertNotifications = useObservable<number>(
-    from(liveQuery(async () => {
-        return await TAKNotification.countByType(NotificationType.Alert)
-    }))
-);
+function clearBootTimeoutReloadGuard(): void {
+    try {
+        sessionStorage.removeItem(BOOT_TIMEOUT_RELOAD_KEY);
+    } catch {
+        // storage unavailable - the guard was never set either
+    }
+}
 
 function detectMobile() {
   //TODO: This needs to follow something like:
@@ -612,6 +517,10 @@ function detectMobile() {
 
 const isMobileDetected = computed(() => {
     return detectMobile();
+});
+
+const isDrawing = computed(() => {
+    return mapStore.draw.mode !== DrawToolMode.STATIC;
 });
 
 watch(isMobileDetected, () => {
@@ -685,11 +594,27 @@ onMounted(async () => {
     if (!mapRef.value) throw new Error('Map Element could not be found - Please refresh the page and try again');
 
     if (isNativePlatform()) {
-        removeBootWatchdog = await addBackgroundStateListener((isBackgrounded) => {
-            clearTimeout(bootStallTimer);
-            if (bootComplete || isBackgrounded) return;
+        removeAppLifecycleListeners = await addAppLifecycleListeners({
+            pause: () => {
+                // A new background gets its own reload attempt
+                clearBootTimeoutReloadGuard();
 
-            bootStallTimer = setTimeout(onBootStalled, BOOT_STALL_RELOAD_MS);
+                if (!bootComplete) {
+                    bootInterrupted = true;
+                    return;
+                }
+
+                // Storage must be idle while backgrounded - see mapStore.suspend()
+                void mapStore.suspend();
+            },
+            resume: () => {
+                if (bootInterrupted) {
+                    location.reload();
+                    return;
+                }
+
+                if (bootComplete) void mapStore.resume();
+            }
         });
     }
 
@@ -708,6 +633,15 @@ onMounted(async () => {
             console.error(`Map boot attempt ${attempt} failed:`, err);
 
             if (attempt === 3) break;
+            if (unmounted) return;
+
+            // Native never retries a stalled stage in place: destroy would
+            // terminate a worker mid-open, and its teardown is unbounded.
+            // Reload once per background, otherwise surface the error.
+            if (isNativePlatform() && isStorageStall(bootError)) {
+                if (reloadOnceForBootTimeout()) return;
+                break;
+            }
 
             await mapStore.destroy();
             mapStore.loadingStage = 'Load failed - retrying…';
@@ -716,12 +650,6 @@ onMounted(async () => {
     }
 
     bootComplete = true;
-    clearTimeout(bootStallTimer);
-    try {
-        sessionStorage.removeItem(BOOT_STALL_RELOAD_KEY);
-    } catch (err) {
-        console.warn('Failed to clear boot stall reload guard', err);
-    }
 
     if (bootError) {
         emit('err', bootError);
@@ -729,12 +657,35 @@ onMounted(async () => {
     }
 
     // Superseded mid-boot: none of the wiring below applies, and touching
-    // mapStore.map would throw.
+    // mapStore.map would throw. A newer mount owns the boot-timeout guard and
+    // clears it when it completes, so leave it for that mount.
     if (!started) return;
+
+    clearBootTimeoutReloadGuard();
+
+    // The Return Home button sits just above the MapLibre bottom-right
+    // control stack (scale + attribution) and needs to track its live
+    // height, since the attribution box's expanded/collapsed state changes
+    // it - see .server-status-wrap in <style> below. MapLibre creates
+    // .maplibregl-ctrl-bottom-right as a child of the map container itself
+    // (mapRef.value), not of .map-shell, which is why the lookup and the
+    // CSS variable target different elements.
+    const ctrlBottomRightEl = mapRef.value?.querySelector('.maplibregl-ctrl-bottom-right');
+    const shellEl = mapRef.value?.parentElement as HTMLElement | undefined;
+    if (ctrlBottomRightEl && shellEl) {
+        ctrlStackObserver = new ResizeObserver(() => {
+            shellEl.style.setProperty('--map-ctrl-stack-height', `${ctrlBottomRightEl.getBoundingClientRect().height}px`);
+        });
+        ctrlStackObserver.observe(ctrlBottomRightEl);
+    }
 
     // TODO these are no longer reactive, does it matter?
     warnChannels.value = await mapStore.worker.profile.hasNoChannels();
-    warnConfiguration.value = await mapStore.worker.profile.hasNoConfiguration();
+    if (await mapStore.worker.profile.hasNoConfiguration()) {
+        warnConfiguration.value = 'details';
+    } else if (!deviceStore.hasRequiredPermissions()) {
+        warnConfiguration.value = 'permissions';
+    }
 
     loading.value = false;
 
@@ -779,9 +730,10 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+    unmounted = true;
     bootComplete = true;
-    clearTimeout(bootStallTimer);
-    if (removeBootWatchdog) removeBootWatchdog();
+    removeAppLifecycleListeners?.();
+    ctrlStackObserver?.disconnect();
     inviteChannel?.close();
     // Lifecycle hooks are synchronous, so this teardown cannot be awaited here.
     // mapStore.init() waits on it instead, which is what keeps a remount from
@@ -812,10 +764,6 @@ function selectFeat(selectedFeat: MapGeoJSONFeature | COT) {
         mapStore.viewedFeature = selectedFeat;
         router.push(`/menu/feature`);
     }
-}
-
-function closeAllMenu() {
-    router.push('/');
 }
 
 function closeRadial() {
@@ -860,6 +808,7 @@ function setLocation() {
 }
 
 function cancelLocationSetting() {
+    mapStore.manualLocationMode = false;
     mode.value = 'Default';
     mapStore.map.getCanvas().style.cursor = '';
 
@@ -1072,15 +1021,6 @@ async function handleRadial(event: string): Promise<void> {
 </script>
 
 <style>
-@keyframes alert-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-}
-
-.alert-pulse {
-    animation: alert-pulse 1.2s ease-in-out infinite;
-}
-
 /*
  * Drops the left controls below the navigation banner once it wraps to its own
  * row on small screens - `.cloudtak-navigating` itself is styled in style.scss
@@ -1088,7 +1028,7 @@ async function handleRadial(event: string): Promise<void> {
  */
 @media (max-width: 767.98px) {
     .cloudtak-left-controls--nav {
-        top: 134px !important;
+        top: calc(134px + var(--status-bar-height, 0px)) !important;
     }
 }
 
@@ -1138,42 +1078,101 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
 }
 
 /*
- * Upstream's position for the scale bar, with our styling.
- *
- * Patch 001 removes upstream's `.maplibregl-ctrl-scale` override so the scale
- * keeps MapLibre's default visual treatment - an opaque box with dark text -
- * rather than upstream's transparent white-on-black-text-shadow variant. That is
- * deliberate and stays.
- *
- * But the override also carried `margin: 0`, and dropping the whole block left
- * the scale on MapLibre's default
- * `.maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 10px 10px 0 }`,
- * so it sat inset from the corner instead of flush with the other bottom-right
- * controls. This is that one positioning declaration and nothing else.
+ * Patch 001 deliberately does NOT re-add upstream's `.maplibregl-ctrl-scale::before`
+ * transparent white-on-black scale-bar styling - we keep MapLibre's default
+ * box, an opaque background with dark text. The `.map-shell` GPS-panel CSS
+ * variables below are load-bearing (the bottom-control rules reference
+ * --map-gps-panel-size / --map-bottom-inset).
  */
-.maplibregl-ctrl-scale {
-    margin: 0;
+.map-shell {
+    --map-gps-panel-size: 84px;
+    --map-bottom-inset: env(safe-area-inset-bottom, 0px);
+    /*
+     * The GPS/callsign panel's right edge (its own left inset + responsive
+     * width, mirroring GPSPanel.vue's `left`/`width`/`max-width` formulas so
+     * the two can't drift apart) - used below to cap the attribution/scale
+     * stack's width so expanded attribution text can never stretch over it.
+     */
+    --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 8px - env(safe-area-inset-right, 0px));
+    /*
+     * Extra breathing room between the GPS panel's right edge and the
+     * attribution/scale stack's left edge, on top of the 8px each already
+     * keeps from its own side of the viewport. Desktop has enough natural
+     * gap without this; mobile doesn't, so it's zero here and set below.
+     */
+    --map-attrib-gps-gap: 0px;
+}
+
+@media (max-width: 600px) {
+    .map-shell {
+        --map-gps-panel-right: min(228px + env(safe-area-inset-left, 0px), 100vw - 62px - env(safe-area-inset-right, 0px));
+        /* Half of the 8px inset each box keeps from its own side of the viewport. */
+        --map-attrib-gps-gap: 4px;
+    }
 }
 
 .maplibregl-ctrl-bottom-left {
-    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
-    left: 8px;
+    bottom: calc(var(--map-gps-panel-size, 84px) + 12px + var(--map-bottom-inset, 0px));
+    left: calc(8px + env(safe-area-inset-left, 0px));
     right: auto;
     margin: 0;
     z-index: 3 !important;
     pointer-events: none;
 }
 
+/*
+ * Bottom/right inset matches the GPS panel's own bottom/left inset (8px) for
+ * visual symmetry.
+ */
 .maplibregl-ctrl-bottom-right {
-    bottom: calc(var(--map-bottom-bar-size, 50px) + 4px);
-    right: calc(var(--map-side-offset, 0px) + 8px);
+    bottom: calc(8px + var(--map-bottom-inset, 0px));
+    right: calc(var(--map-side-offset, 0px) + 8px + env(safe-area-inset-right, 0px));
     left: auto;
     z-index: 3 !important;
     color: black !important;
+    /* Caps the box so expanded attribution text can't stretch left over the
+       GPS/callsign panel, leaving --map-attrib-gps-gap of clear space
+       between the two when the box is at its widest. */
+    max-width: calc(100vw - var(--map-gps-panel-right) - 8px - var(--map-side-offset, 0px) - var(--map-attrib-gps-gap, 0px) - env(safe-area-inset-right, 0px));
+}
+
+/*
+ * Both scale and attribution get the same 8px rhythm between/below them,
+ * with the container's own 8px bottom inset (above) providing the only gap
+ * below the last one - MapLibre's own bottom-right margin
+ * (`0 10px 10px 0`) has equal-or-greater specificity than a bare
+ * `.maplibregl-ctrl-scale` override, so it must be overridden via the same
+ * compound selector it uses, or the scale bar keeps a stray 10px gap under
+ * it regardless of what `.maplibregl-ctrl-scale` alone says.
+ *
+ * The right margin (--map-ctrl-margin-right, set alongside --map-side-offset
+ * below) is 10px on desktop - the only breathing room between the controls
+ * and the menu sidebar (MainMenu.vue), which floats at its own `right: 8px`
+ * independent of this container's own inset - and 0 on mobile, where there
+ * is no sidebar and the container's own `right: 8px` (above) must be the
+ * *entire* gap to the viewport edge, matching the GPS panel's own 8px on
+ * the left. This has to key off the same isMobileDetected JS condition as
+ * --map-side-offset, not a width media query: isMobileDetected trips on
+ * width OR height (e.g. a short landscape phone), and a width-only
+ * breakpoint disagreeing with that is exactly what caused the Return Home
+ * button to float over this stack before it was anchored the same way.
+ */
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+    margin: 0 var(--map-ctrl-margin-right, 10px) 8px 0;
+}
+
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl:last-child {
+    margin-bottom: 0;
 }
 
 .maplibregl-ctrl-attrib a {
     color: black !important;
+}
+
+/* Attribution has no font-size of its own, so it inherits the map's base
+   12px - 2px larger than the scale bar's own explicit 10px. Match them. */
+.maplibregl-ctrl-attrib {
+    font-size: 10px;
 }
 
 html[data-bs-theme='dark'] .use-gps-btn {
@@ -1194,11 +1193,31 @@ html[data-bs-theme='light'] .use-gps-btn {
 
 @media (max-width: 600px) {
     .maplibregl-ctrl-bottom-left {
-        left: 4px;
+        left: calc(4px + env(safe-area-inset-left, 0px));
     }
+}
 
-    .maplibregl-ctrl-bottom-right {
-        right: 58px;
-    }
+/*
+ * Return Home button (below, in the template). Only rendered while
+ * appStore.isMobileDetected, which trips on either narrow WIDTH or short
+ * HEIGHT - e.g. a phone in landscape is wide but short. Deliberately NOT
+ * gated behind a width media query here: a width-only breakpoint
+ * disagreeing with that width-or-height condition is exactly how this
+ * button ended up floating over the attribution/scale stack in landscape,
+ * where width alone never crosses a mobile breakpoint. Since the element
+ * only exists in the DOM when isMobileDetected is already true, this rule
+ * needs no matching width condition of its own.
+ *
+ * Anchored above the bottom-right MapLibre control stack via
+ * --map-ctrl-stack-height, kept in sync with its live height by a
+ * ResizeObserver (see onMounted below), so it rides up when attribution
+ * expands and back down when it collapses. +8px for the stack's own bottom
+ * inset (matches .maplibregl-ctrl-bottom-right's `bottom` above) and +8px
+ * gap above it - the same 8px rhythm used everywhere else.
+ */
+.server-status-wrap {
+    bottom: calc(8px + var(--map-ctrl-stack-height, 76px) + 8px + var(--map-bottom-inset, 0px)) !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+    transition: bottom 0.15s ease;
 }
 </style>

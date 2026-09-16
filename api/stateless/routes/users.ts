@@ -1,5 +1,5 @@
 import { Type, Static } from '@sinclair/typebox';
-import { sql, eq } from 'drizzle-orm';
+import { sql, eq, asc, desc, getTableColumns } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
@@ -44,9 +44,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             order: Default.Order,
             sort: Type.String({
                 default: 'last_login',
-                enum: Object.keys(Profile),
+                enum: Object.keys(getTableColumns(Profile)),
             }),
             filter: Default.Filter,
+            disabled: Type.Optional(Type.Boolean({
+                description: 'Only return users that have (true) or have not (false) been deprovisioned',
+            })),
         }),
         res: Type.Object({
             total: Type.Integer(),
@@ -56,28 +59,43 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             await Auth.as_user(config, req, { admin: true });
 
-            const list = await config.models.Profile.list({
-                limit: req.query.limit,
-                page: req.query.page,
-                order: req.query.order,
-                sort: req.query.sort,
-                where: sql`
-                    username ~* ${req.query.filter}
-                `,
+            const columns = getTableColumns(Profile);
+            const column = columns[req.query.sort as keyof typeof columns];
+            if (!column) throw new Err(400, null, `Invalid sort: ${req.query.sort}`);
+
+            // Users that have never logged in (SCIM provisioned) sort after every real login
+            let orderBy = req.query.order === 'desc' ? desc(column) : asc(column);
+            if (req.query.sort === 'last_login') {
+                orderBy = req.query.order === 'desc' ? sql`${column} DESC NULLS LAST` : sql`${column} ASC NULLS FIRST`;
+            }
+
+            const pgres = await config.models.Profile.pool.select({
+                count: sql<string>`count(*) OVER()`.as('count'),
+                profile: Profile,
+            })
+                .from(Profile)
+                .where(sql`
+                    (username ~* ${req.query.filter} OR name ~* ${req.query.filter})
+                    ${req.query.disabled === undefined ? sql`` : sql`AND disabled = ${req.query.disabled}`}
+                `)
+                .orderBy(orderBy)
+                .limit(req.query.limit)
+                .offset(req.query.page * req.query.limit);
+
+            const profiles = pgres.map(row => row.profile);
+            const presence = await config.hub.wsPresence(profiles.map(user => user.username));
+
+            res.json({
+                total: pgres.length ? parseInt(pgres[0].count) : 0,
+                items: profiles.map((user) => {
+                    return {
+                        active: presence[user.username].active,
+                        certificate: Provider.certificate(user.auth?.cert),
+                        ...user,
+                        name: user.name || 'Unknown',
+                    };
+                }),
             });
-
-            const presence = await config.hub.wsPresence(list.items.map(user => user.username));
-
-            list.items = list.items.map((user) => {
-                return {
-                    active: presence[user.username].active,
-                    certificate: Provider.certificate(user.auth.cert),
-                    ...user,
-                };
-            });
-
-            // @ts-expect-error Update Batch-Generic to specify actual geometry type (Point) instead of Geometry
-            res.json(list);
         } catch (err) {
             Err.respond(err, res);
         }
@@ -120,7 +138,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             res.json({
                 ...profile,
-                certificate: Provider.certificate((await config.models.Profile.from(req.params.username)).auth.cert),
+                certificate: Provider.certificate((await config.models.Profile.from(req.params.username)).auth?.cert),
             });
         } catch (err) {
             Err.respond(err, res);
@@ -141,10 +159,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const profile = await profileControl.from(req.params.username);
 
-            const cert = (await config.models.Profile.from(req.params.username)).auth.cert;
+            const cert = (await config.models.Profile.from(req.params.username)).auth?.cert;
             const certificate = Provider.certificate(cert);
 
-            if (certificate) {
+            if (certificate && cert) {
                 // Best effort - the TAK Server revocation record supplements the local metadata
                 try {
                     const status = await new Provider(config).status(cert);
@@ -170,7 +188,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/user/:username/session', {
         name: 'List User Sessions',
         group: 'User',
-        description: 'Let Admins list login sessions for a given user',
+        description: 'List login sessions for a given user - users may list their own sessions, Admins may list any user',
         params: Type.Object({
             username: Type.String(),
         }),
@@ -199,7 +217,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { admin: true });
+            const user = await Auth.as_user(config, req);
+
+            if (!user.is_admin() && req.params.username !== user.email) {
+                throw new Err(403, null, 'Only a System Administrator can list login sessions for another user');
+            }
 
             const list = await config.models.ProfileSession.list({
                 limit: req.query.limit,

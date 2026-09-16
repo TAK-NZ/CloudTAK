@@ -2,7 +2,7 @@ import path from 'node:path';
 import jwt from 'jsonwebtoken';
 import Err from '@openaddresses/batch-error';
 import { bbox } from '@turf/bbox';
-import { BasemapProtocol, TileJSONActions } from '../lib/interface-basemap.js';
+import { TileJSONActions } from '../lib/interface-basemap.js';
 import { fromProtocol } from '../lib/factory-basemap.js';
 import Auth, { AuthUserAccess, AuthUser, AuthResource, ResourceCreationScope, AuthResourceAccess } from '../../common/auth.js';
 import { Busboy } from '@fastify/busboy';
@@ -22,6 +22,7 @@ import { Basemap as BasemapParser, Feature } from '@tak-ps/node-cot';
 import { Basemap } from '../../common/schema.js';
 import { toEnum, Basemap_Format, Basemap_Protocol, Basemap_Scheme, Basemap_Type, Basemap_FeatureAction, AllBoolean, AllBooleanCast, BasemapTerrain_Encoding } from '../../common/enums.js';
 import { EsriBase, EsriProxyLayer } from '../lib/esri.js';
+import { AugmentedTileJSON, basemapTileJSON, isEsriLayerURL } from '../lib/tilejson.js';
 import { isSafeUrl } from '@tak-ps/node-safeurl';
 import * as Default from '../lib/limits.js';
 
@@ -44,13 +45,6 @@ const AugmentedBasemapWithChildrenResponse = Type.Composite([
 ]);
 
 const OptionalTileJSON = Type.Partial(TileJSON);
-
-const AugmentedTileJSON = Type.Composite([
-    TileJSON,
-    Type.Object({
-        actions: TileJSONActions,
-    }),
-]);
 
 const BasemapImportAuth = Type.Object({
     username: Type.Optional(Type.String()),
@@ -114,14 +108,6 @@ async function validateParent(
     if (parent.parent !== null) {
         throw new Err(400, null, 'Basemaps can only be nested a single level deep');
     }
-}
-
-function isEsriLayerURL(url: string): boolean {
-    return !!(
-        String(url).match(/\/FeatureServer\/\d+$/)
-        || String(url).match(/\/MapServer\/\d+$/)
-        || String(url).match(/\/ImageServer$/)
-    );
 }
 
 function normalizeBasemapFormat(value: string): string {
@@ -849,164 +835,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
             }
 
-            let tileURL: string;
+            const tilejson = await basemapTileJSON(config, basemap, {
+                token: req.query.token,
+                upstreamToken: auth.token,
+            });
 
-            if (basemap.url.includes(new URL(config.PMTILES_URL || 'http://localhost:5001').hostname)) {
-                // Hosted PMTiles — pass the direct URL through; already on the same trusted host.
-                tileURL = basemap.url;
-                if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
-            } else {
-                // For external basemaps, check if the hostname is in the trusted-origins
-                // allowlist (CLOUDTAK_TILE_ORIGINS). If so, return the direct URL so the
-                // browser fetches tiles straight from the CDN instead of through the proxy.
-                // The CSP in nginx.conf.js adds these same origins to connect-src/img-src.
-                let isTrustedOrigin = false;
-                try {
-                    const storedHostname = new URL(basemap.url).hostname;
-                    isTrustedOrigin = config.tileOriginHostnames.has(storedHostname);
-                } catch {
-                    // malformed URL — fall through to proxy
-                }
-
-                if (isTrustedOrigin) {
-                    // Translate CloudTAK's {$z}/{$x}/{$y} storage notation to MapLibre's
-                    // standard {z}/{x}/{y} — the proxy handles both via regex, but the
-                    // browser receives the URL verbatim so it must use the standard form.
-                    tileURL = basemap.url
-                        .replace(/\{\$?z\}/g, '{z}')
-                        .replace(/\{\$?x\}/g, '{x}')
-                        .replace(/\{\$?y\}/g, '{y}')
-                        .replace(/\{\$?q\}/g, '{q}');
-                } else {
-                    tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
-                    if (req.query.token) tileURL = tileURL + `?token=${req.query.token}`;
-                }
-            }
-
-            const esriMetadataURL = basemap.tilejson || basemap.url;
-
-            if (isEsriLayerURL(esriMetadataURL)) {
-                const base = new EsriBase(new URL(esriMetadataURL));
-                const layer = new EsriProxyLayer(base);
-                const metadata = await layer.tilejson();
-                const json = BasemapProtocol.json({
-                    ...basemap,
-                    ...metadata,
-                    type: basemap.type,
-                    minzoom: basemap.minzoom ?? metadata.minzoom,
-                    maxzoom: basemap.maxzoom ?? metadata.maxzoom,
-                    bounds: basemap.bounds ? bbox(basemap.bounds) : metadata.bounds,
-                    center: basemap.center ?? metadata.center,
-                    url: tileURL,
-                });
-
-                res.json({
-                    ...json,
-                    actions: fromProtocol(basemap.protocol, basemap).actions(),
-                });
-
-                return;
-            }
-
-            if (basemap.tilejson && (basemap.tilejson.startsWith('http://') || basemap.tilejson.startsWith('https://'))) {
-                const url = new URL(basemap.tilejson);
-
-                if (url.hostname === new URL(config.PMTILES_URL).hostname) {
-                    url.searchParams.set('token', auth.token);
-                } else {
-                    // Skip isSafeUrl check when StackName=test (test mode)
-                    if (process.env.StackName !== 'test') {
-                        const { safe, reason } = await isSafeUrl(basemap.tilejson);
-                        if (!safe) throw new Err(400, null, `Blocked URL: ${reason}`);
-                    }
-                }
-
-                const tj = await fetch(url);
-
-                if (!tj.ok) {
-                    throw new Err(400, null, 'Unable to fetch TileJSON from source URL');
-                }
-
-                const json = await tj.json() as any;
-
-                // Strip sprite/glyphs — same reason as the PMTiles branch: external
-                // URLs from upstream TileJSON can't be proxied and will 404.
-                delete json.sprite;
-                delete json.glyphs;
-
-                res.json({
-                    ...json,
-                    type: basemap.type,
-                    actions: fromProtocol(basemap.protocol, basemap).actions(),
-                });
-            } else if (basemap.url.includes(new URL(config.PMTILES_URL || 'http://localhost:5001').hostname)) {
-                // Hosted PMTiles basemap without a stored tilejson URL.
-                // Reconstruct the TileJSON endpoint using the known PMTiles host and the
-                // path up to (but not including) the tile-coordinate template segment.
-                const parsedUrl = new URL(basemap.url);
-                const tilejsonUrl = new URL(config.PMTILES_URL);
-                // URL.pathname percent-encodes the `{z}/{x}/{y}` template braces to
-                // `%7B`/`%7D`, so decode before stripping the tile-coordinate segment.
-                tilejsonUrl.pathname = decodeURIComponent(parsedUrl.pathname).replace(/\/tiles\/\{[^}]+\}.*$/, '');
-                tilejsonUrl.searchParams.set('token', auth.token);
-
-                const tj = await fetch(tilejsonUrl);
-                if (!tj.ok) {
-                    throw new Err(400, null, 'Unable to fetch TileJSON from hosted basemap');
-                }
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const tjJson = await tj.json() as any;
-
-                // Strip sprite/glyphs from the upstream PMTiles TileJSON — those
-                // reference external URLs that cannot be proxied unless the basemap
-                // record has an explicit tilejson blob overriding them. The blob
-                // spread below will restore them for basemaps that do have a sprite.
-                delete tjJson.sprite;
-                delete tjJson.glyphs;
-
-                // Merge tilejson blob (e.g. sprite) if stored as JSON on the basemap record
-                let tilejsonBlobPmtiles: Record<string, unknown> = {};
-                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
-                    try {
-                        tilejsonBlobPmtiles = JSON.parse(basemap.tilejson);
-                    } catch {
-                        // Not valid JSON — ignore
-                    }
-                }
-
-                res.json({
-                    ...tjJson,
-                    ...tilejsonBlobPmtiles,
-                    type: basemap.type,
-                    tiles: [tileURL],
-                    actions: fromProtocol(basemap.protocol, basemap).actions(),
-                });
-            } else {
-                const json = BasemapProtocol.json({
-                    ...basemap,
-                    bounds: basemap.bounds ? bbox(basemap.bounds) : undefined,
-                    center: basemap.center ?? undefined,
-                    url: tileURL,
-                });
-
-                // If tilejson is a JSON blob (not a URL), merge its fields into the
-                // response — this allows sprite/glyphs and other MapLibre style
-                // properties to be stored per-basemap without a schema change.
-                let tilejsonBlob: Record<string, unknown> = {};
-                if (basemap.tilejson && !basemap.tilejson.startsWith('http://') && !basemap.tilejson.startsWith('https://')) {
-                    try {
-                        tilejsonBlob = JSON.parse(basemap.tilejson);
-                    } catch {
-                        // Not valid JSON — ignore
-                    }
-                }
-
-                res.json({
-                    ...json,
-                    ...tilejsonBlob,
-                    actions: fromProtocol(basemap.protocol, basemap).actions(),
-                });
-            }
+            res.json({
+                ...tilejson,
+                actions: fromProtocol(basemap.protocol, basemap).actions(),
+            });
         } catch (err) {
             Err.respond(err, res);
         }

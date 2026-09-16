@@ -590,9 +590,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 await Filter.validate(req.body.filters);
             }
 
+            const capabilities = await layerControl.capabilities(layer.task);
+
             const incoming = await config.models.LayerOutgoing.generate({
                 layer: layer.id,
                 ...req.body,
+                ...(capabilities ? { subscriptions: CommonLayerControl.outgoingSubscriptions(capabilities) } : {}),
             });
 
             layer = await layerControl.from(connection, req.params.layerid);
@@ -781,8 +784,25 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
             } else {
                 const auth = await Auth.is_connection(config, req, { resources }, req.params.connectionid);
+
+                if (req.body.permissions !== undefined && auth.layer) {
+                    throw new Err(403, null, 'Layer tokens cannot modify Layer permissions');
+                }
+
                 connection = auth.connection;
                 layer = await layerControl.from(connection, req.params.layerid);
+            }
+
+            const task = req.body.task || layer.task;
+            const taskChanged = req.body.task !== undefined && req.body.task !== layer.task;
+
+            let capabilities = null;
+            if (req.body.permissions !== undefined || (taskChanged && layer.outgoing)) {
+                capabilities = await layerControl.capabilities(task);
+            }
+
+            if (req.body.permissions !== undefined && capabilities) {
+                CommonLayerControl.validateManifestPermissions(req.body.permissions, capabilities, task);
             }
 
             let changed = false;
@@ -803,6 +823,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 updated: sql`Now()`,
                 ...req.body,
             });
+
+            if (taskChanged && layer.outgoing && capabilities) {
+                await config.models.LayerOutgoing.commit(layer.id, {
+                    updated: sql`Now()`,
+                    subscriptions: CommonLayerControl.outgoingSubscriptions(capabilities),
+                });
+            }
 
             layer = await layerControl.from(connection, req.params.layerid);
 

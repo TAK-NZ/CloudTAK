@@ -79,32 +79,22 @@
                                 <span class='ms-2'>External Stream URL</span>
                             </div>
                             <div
-                                v-else-if='!secure'
-                                class='d-flex align-items-center user-select-none'
-                                title='Read/Write User'
-                            >
-                                <IconArrowsLeftRight
-                                    :size='24'
-                                    stroke='1'
-                                />
-                                <span class='ms-2'>Read-Write User</span>
-                            </div>
-                            <div
                                 v-else
                                 class='col-12'
                             >
+                                <!-- Read vs Publish is always selectable - SRT URLs differ by mode even without credentials -->
                                 <TablerPillGroup
                                     v-model='mode'
                                     :options='[
-                                        { value: "read", label: "Read User" },
-                                        { value: "publish", label: "Write User" }
+                                        { value: "read", label: secure ? "Read User" : "Read" },
+                                        { value: "publish", label: secure ? "Write User" : "Publish" }
                                     ]'
                                     padding='p-1'
                                 >
                                     <template #option='{ option }'>
                                         <span
                                             v-if='option.value === "read"'
-                                            title='Read User'
+                                            :title='secure ? "Read User" : "Read"'
                                         >
                                             <IconBook2
                                                 :size='24'
@@ -113,7 +103,7 @@
                                         </span>
                                         <span
                                             v-else
-                                            title='Write User'
+                                            :title='secure ? "Write User" : "Publish"'
                                         >
                                             <IconPencil
                                                 :size='24'
@@ -445,7 +435,6 @@ import {
     IconDrone,
     IconServer,
     IconPencil,
-    IconArrowsLeftRight,
     IconBook2,
     IconAffiliate,
 } from '@tabler/icons-vue';
