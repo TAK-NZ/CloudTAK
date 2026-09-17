@@ -103,10 +103,6 @@ ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${ECR_REPO_NAME}"
 
 echo "ECR URI: $ECR_URI"
 
-# Build Docker image
-echo "Building Docker image..."
-docker build -t etl .
-
 # Login to ECR
 echo "Logging in to ECR..."
 aws ecr get-login-password --region "$REGION" $AWS_OPTS | docker login --username AWS --password-stdin "$ECR_URI"
@@ -115,12 +111,42 @@ aws ecr get-login-password --region "$REGION" $AWS_OPTS | docker login --usernam
 IMAGE_TAG="${ETL_NAME}-${TAG}"
 FULL_IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
 
-echo "Tagging image: $FULL_IMAGE_URI"
-docker tag etl "$FULL_IMAGE_URI"
+# If the ETL has a capabilities.json manifest (validated against @tak-ps/etl's
+# StaticCapabilitiesSchema), build with buildx and embed it as the
+# com.cloudtak.capabilities OCI annotation so CloudTAK can read it directly
+# from ECR. Falls back to a plain docker build for ETLs that haven't migrated
+# to the manifest-based capabilities model yet.
+if [[ -f "capabilities.json" ]]; then
+    echo "ok - found capabilities.json - annotating manifest"
 
-# Push image
-echo "Pushing image to ECR..."
-docker push "$FULL_IMAGE_URI"
+    # OCI annotations are silently dropped by buildx's default "docker" driver
+    # (no error, no warning - the annotation is just absent from the pushed
+    # manifest). A "docker-container" builder is required to preserve them.
+    BUILDX_BUILDER="cloudtak-etl-oci-builder"
+    if ! docker buildx inspect "$BUILDX_BUILDER" >/dev/null 2>&1; then
+        echo "Creating dedicated buildx builder (docker-container driver) to preserve OCI annotations..."
+        docker buildx create --name "$BUILDX_BUILDER" --driver docker-container >/dev/null
+    fi
+
+    echo "Building and pushing Docker image: $FULL_IMAGE_URI"
+    docker buildx build . \
+        --builder "$BUILDX_BUILDER" \
+        --platform linux/amd64 \
+        --provenance=false \
+        --annotation "com.cloudtak.capabilities=$(jq -c . capabilities.json)" \
+        --output type=image,oci-mediatypes=true,push=true \
+        -t "$FULL_IMAGE_URI"
+else
+    echo "Warning: No capabilities.json found - image will be pushed without a com.cloudtak.capabilities annotation"
+    echo "Building Docker image..."
+    docker build -t etl .
+
+    echo "Tagging image: $FULL_IMAGE_URI"
+    docker tag etl "$FULL_IMAGE_URI"
+
+    echo "Pushing image to ECR..."
+    docker push "$FULL_IMAGE_URI"
+fi
 
 echo ""
 echo "✅ Successfully deployed ETL image: $FULL_IMAGE_URI"
