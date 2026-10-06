@@ -185,6 +185,10 @@ export class CloudTakStack extends cdk.Stack {
           'data/**',
           'docs/**',
           'tasks/**',
+          'config/**',
+          'scripts/**',
+          // Local-only operator certificates (untracked) must never reach a build context.
+          'tak-certs/**',
           // Native-app projects; not part of the web image (root .dockerignore).
           'app/android/**',
           'app/ios/**'
