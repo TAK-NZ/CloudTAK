@@ -500,7 +500,8 @@ export class CloudTakStack extends cdk.Stack {
       statefulTargetGroup: cloudtakStateful.targetGroup,
       apiService: cloudtakApi.service,
       statefulService: cloudtakStateful.service,
-      database: database.cluster
+      database: database.cluster,
+      databaseIsServerless: database.isServerless
     });
 
     // Create retention service for automated cleanup of expired data
@@ -525,6 +526,7 @@ export class CloudTakStack extends cdk.Stack {
       statefulService: cloudtakStateful.service,
       loadBalancer: loadBalancer.alb,
       database: database.cluster,
+      databaseIsServerless: database.isServerless,
       hubLoadBalancer: hubLoadBalancer.alb,
       targetGroup: loadBalancer.targetGroup,
       statefulTargetGroup: cloudtakStateful.targetGroup,

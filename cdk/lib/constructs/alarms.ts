@@ -29,8 +29,15 @@ export interface AlarmsProps {
   /** ALB behind the API - 5XX and latency alarms. */
   loadBalancer: elbv2.IApplicationLoadBalancer;
 
-  /** Aurora PostgreSQL cluster - CPU and local-storage alarms. */
+  /** Aurora PostgreSQL cluster - CPU and (provisioned only) local-storage alarms. */
   database: rds.IDatabaseCluster;
+
+  /**
+   * True for Aurora Serverless v2 (`Database.isServerless`). FreeLocalStorage
+   * is only published for provisioned instances, so its alarm is created only
+   * when this is false.
+   */
+  databaseIsServerless: boolean;
 
   /** Internal hub ALB - same four ALB alarms as the main ALB. */
   hubLoadBalancer?: elbv2.IApplicationLoadBalancer;
@@ -67,7 +74,7 @@ export interface AlarmsProps {
  *
  * Upstream sets both AlarmActions and InsufficientDataActions to the
  * high-urgency topic; we match that, with one deliberate exception noted on the
- * local-storage alarm below.
+ * local-storage alarm below (which also only exists on provisioned clusters).
  */
 export class Alarms extends Construct {
   public readonly highUrgencyTopic: sns.Topic;
@@ -77,7 +84,7 @@ export class Alarms extends Construct {
     super(scope, id);
 
     const {
-      envConfig, eventsService, apiService, statefulService, loadBalancer, database,
+      envConfig, eventsService, apiService, statefulService, loadBalancer, database, databaseIsServerless,
       hubLoadBalancer, targetGroup, statefulTargetGroup, hubTargetGroup,
       tilesLambda, tilesApi, retentionLogGroup, retentionSchedule
     } = props;
@@ -289,22 +296,29 @@ export class Alarms extends Construct {
     // is for a fixed-size volume.
     //
     // `FreeLocalStorage` is the Aurora equivalent that can actually be exhausted
-    // (temp tables, sorts). Note it is NOT wired to insufficient-data: Aurora
-    // Serverless v2 stops publishing it while scaled to zero ACU.
+    // (temp tables, sorts). It is NOT wired to insufficient-data.
     //
-    // The 1 GiB threshold is a conservative starting point, not a measured one -
-    // validate it against observed FreeLocalStorage on the demo stack and tune.
-    new cloudwatch.Alarm(this, 'DbFreeLocalStorageAlarm', {
-      alarmName: `TAK-${stackName}-CloudTAK-DBFreeLocalStorage-${region}`,
-      metric: database.metricFreeLocalStorage({
-        period: cdk.Duration.seconds(60),
-        statistic: 'Average'
-      }),
-      threshold: 1 * 1024 * 1024 * 1024,
-      evaluationPeriods: 10,
-      comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
-      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING
-    }).addAlarmAction(highUrgency);
+    // It is only published for provisioned Aurora instances. Aurora Serverless
+    // v2 never publishes it (not a scale-to-zero effect: min capacity is 2 ACU),
+    // and CloudWatch has no metric for remaining local/temp storage there
+    // (TempStorageIOPS/Throughput measure activity, not capacity). So on
+    // serverless no alarm is created, rather than keeping one that can never fire.
+    //
+    // The 1 GiB threshold is a conservative starting point, not a measured one:
+    // tune against real FreeLocalStorage values on first Prod deploy.
+    if (!databaseIsServerless) {
+      new cloudwatch.Alarm(this, 'DbFreeLocalStorageAlarm', {
+        alarmName: `TAK-${stackName}-CloudTAK-DBFreeLocalStorage-${region}`,
+        metric: database.metricFreeLocalStorage({
+          period: cdk.Duration.seconds(60),
+          statistic: 'Average'
+        }),
+        threshold: 1 * 1024 * 1024 * 1024,
+        evaluationPeriods: 10,
+        comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING
+      }).addAlarmAction(highUrgency);
+    }
 
     // ---------------------------------------------------------------------
     // PMTiles - upstream PMTilesLambda* / PMTilesApi* alarms.

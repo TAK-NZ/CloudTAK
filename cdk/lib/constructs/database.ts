@@ -62,6 +62,14 @@ export class Database extends Construct {
   public readonly cluster: rds.DatabaseCluster;
 
   /**
+   * True when the cluster runs Aurora Serverless v2 (`db.serverless`), false
+   * when it uses provisioned instances. Derived from the instance class, not
+   * the environment name. Monitoring uses it because some CloudWatch metrics
+   * (e.g. FreeLocalStorage) are only published for provisioned instances.
+   */
+  public readonly isServerless: boolean;
+
+  /**
    * The database hostname
    */
   public readonly hostname: string;
@@ -162,6 +170,7 @@ export class Database extends Construct {
 
     // Create the database cluster with conditional configuration for serverless vs provisioned
     const isServerless = dbConfig.instanceClass === 'db.serverless';
+    this.isServerless = isServerless;
     
     if (isServerless) {
       // Aurora Serverless v2 configuration

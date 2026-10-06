@@ -128,14 +128,14 @@ Each is intentional; the reasoning is repeated at the point of use in the code.
 
 | Where | Upstream | Here | Why |
 |---|---|---|---|
-| Alarms, item 4 | `FreeStorageSpace < 10 GiB` | `FreeLocalStorage < 1 GiB`, `notBreaching`, no insufficient-data action | `FreeStorageSpace` is not published for Aurora, which both projects run. As written the alarm would sit in `INSUFFICIENT_DATA` forever and — because upstream routes insufficient-data to high urgency — page continuously. **The 1 GiB threshold is a guess; validate it against observed values on demo.** |
+| Alarms, item 4 | `FreeStorageSpace < 10 GiB` | `FreeLocalStorage < 1 GiB`, `notBreaching`, no insufficient-data action; created for provisioned clusters only (Aurora Serverless v2 does not publish the metric, so there is no alarm there) | `FreeStorageSpace` is not published for Aurora, which both projects run. As written the alarm would sit in `INSUFFICIENT_DATA` forever and — because upstream routes insufficient-data to high urgency — page continuously. **The 1 GiB threshold is a guess; validate it against observed values on demo.** |
 | Alarms, item 4 | stateless service only | adds `StatefulCpu` / `StatefulMemory` | The stateful tier is a single task with no autoscaling and owns every TAK Server connection. Losing it is a full outage, so it needs its own signal. |
 | Stateful service, item 1 | public subnets, `assignPublicIp: true` | `PRIVATE_WITH_EGRESS`, no public IP | The existing API service already reaches TAK Server from private subnets via NAT. No reason to regress that. |
 | Stateful service, item 1 | `PORT: 5000` | no `PORT` override | Would break the container. `api/nginx.conf.js` has nginx listening on 5000 and proxying to node on 5001 (`api/index.ts` default). Forcing node onto 5000 collides with nginx. |
 | Stateful service, item 1 | `command: ['npm','run','prod']` | image default `CMD ["./start"]` | `npm run prod` skips nginx entirely, so the WebSocket upgrade path on 5000 would never be served. |
 | Stateful service, item 1 | inherits `CLOUDTAK_Hub_URL` | variable removed | This service *is* the hub; pointing it at itself is wrong. |
 | Hub ALB, item 1 | — | listener `open: false` | CDK's default would add an `0.0.0.0/0` ingress rule. `SecurityGroups` already grants the stateless tier explicitly. |
-| Dashboard, item 5 | `FreeStorageSpace` widget | `ServerlessDatabaseCapacity` + `FreeLocalStorage` | Same Aurora reasoning as the alarm. |
+| Dashboard, item 5 | `FreeStorageSpace` widget | `ServerlessDatabaseCapacity` on Serverless v2, `FreeLocalStorage` on provisioned | Same Aurora reasoning as the alarm. |
 | Alarms, item 4 | DB alarms dimensioned on `DBInstanceIdentifier` | cluster-level `DBClusterIdentifier` | CDK's `DatabaseCluster.metricCPUUtilization()` emits the cluster dimension. On a single-writer Serverless v2 cluster these track together, and cluster-level survives a writer replacement. Difference rather than defect — recorded because it was previously undocumented. |
 
 

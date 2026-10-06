@@ -16,6 +16,11 @@ export interface DashboardProps {
   statefulService: ecs.FargateService;
   /** Concrete cluster, not IDatabaseCluster: the Serverless v2 ACU metric is only on the class. */
   database: rds.DatabaseCluster;
+  /**
+   * True for Aurora Serverless v2 (`Database.isServerless`). FreeLocalStorage is
+   * only published for provisioned instances, so it is plotted only when false.
+   */
+  databaseIsServerless: boolean;
 }
 
 /** Threshold line shared with the CPU/memory alarms in alarms.ts - keep in sync. */
@@ -32,8 +37,11 @@ const SATURATION_THRESHOLD = 80;
  *
  * Deliberate deviation: upstream includes an RDS `FreeStorageSpace` widget. That
  * metric is not published for Aurora (see the matching note in alarms.ts), so
- * this uses `FreeLocalStorage` plus ACU utilization, which is what actually
- * moves on Aurora Serverless v2.
+ * the last database widget plots what each Aurora flavour actually publishes:
+ * ACU utilization on Serverless v2, and FreeLocalStorage on provisioned
+ * instances. FreeLocalStorage is not published for Serverless v2 and
+ * ServerlessDatabaseCapacity only exists there, so each series is gated on
+ * `databaseIsServerless` rather than left plotting an empty line.
  */
 export class Dashboard extends Construct {
   public readonly dashboard: cloudwatch.Dashboard;
@@ -49,7 +57,8 @@ export class Dashboard extends Construct {
       statefulTargetGroup,
       apiService,
       statefulService,
-      database
+      database,
+      databaseIsServerless
     } = props;
 
     const region = cdk.Stack.of(this).region;
@@ -137,12 +146,16 @@ export class Dashboard extends Construct {
         leftAnnotations: saturationAnnotation
       }),
       new cloudwatch.GraphWidget({
-        title: 'Database - Aurora capacity and local storage',
+        title: databaseIsServerless
+          ? 'Database - Aurora capacity'
+          : 'Database - local storage',
         width: 12,
         // Aurora equivalents of upstream's FreeStorageSpace widget, which does
-        // not apply to an Aurora cluster.
-        left: [database.metricServerlessDatabaseCapacity({ label: 'ACU' })],
-        right: [database.metricFreeLocalStorage({ label: 'free local storage' })]
+        // not apply to an Aurora cluster. Exactly one series per flavour, so
+        // the widget never has an empty axis.
+        left: databaseIsServerless
+          ? [database.metricServerlessDatabaseCapacity({ label: 'ACU' })]
+          : [database.metricFreeLocalStorage({ label: 'free local storage' })]
       })
     );
   }

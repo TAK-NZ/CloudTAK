@@ -172,6 +172,17 @@ describe('alarm wiring', () => {
     }
     t.hasResourceProperties('AWS::Logs::MetricFilter', { FilterPattern: '"error -"' });
   });
+
+  // FreeLocalStorage is only published for provisioned Aurora, so the alarm must
+  // follow the database's instance class (serverless in dev-test, provisioned in prod).
+  it('creates the FreeLocalStorage alarm only for the provisioned (prod) cluster', () => {
+    const count = (envType: 'dev-test' | 'prod') => Object.values(
+      template(envType, true).findResources('AWS::CloudWatch::Alarm')
+    ).filter((r: any) => r.Properties.MetricName === 'FreeLocalStorage').length;
+
+    expect(count('dev-test')).toBe(0);
+    expect(count('prod')).toBe(1);
+  });
 });
 
 describe('inbound email wiring', () => {
