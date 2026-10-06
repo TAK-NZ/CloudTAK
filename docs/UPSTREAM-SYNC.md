@@ -1,6 +1,6 @@
 # Upstream Sync Runbook
 
-How TAK-NZ pulls `api/` and `tasks/` from upstream
+How TAK-NZ pulls `api/`, `app/` and `tasks/` from upstream
 [dfpc-coe/CloudTAK](https://github.com/dfpc-coe/CloudTAK) while keeping its own
 customizations.
 
@@ -55,7 +55,7 @@ our tree derived from — the last genuine shared commit was from June 2025. A
 plain `git merge v13.62.0` therefore produced **1,241 conflicted files.**
 
 `vendor/upstream` fixes that. It is a branch holding **pristine upstream `api/` +
-`tasks/` and nothing else** — no TAK-NZ changes, ever. Each sync appends a commit
+`app/` + `tasks/` and nothing else** — no TAK-NZ changes, ever. Each sync appends a commit
 advancing it to a new upstream release, then merges it into a sync branch.
 Because the *previous* vendor commit is an ancestor of `main`, git has exactly
 the right merge base.
@@ -165,7 +165,7 @@ change is a permanent deletion from what we carry.
 
 | Path | Role |
 |---|---|
-| `vendor/upstream` (branch) | Pristine upstream `api/` + `tasks/`. Never contains TAK-NZ code. |
+| `vendor/upstream` (branch) | Pristine upstream `api/` + `app/` + `tasks/`. Never contains TAK-NZ code. |
 | `.upstream-version` | The upstream ref currently merged into `main`. |
 | `scripts/sync-upstream.sh` | Does the sync, run manually. Exit codes: 0 merged, 5 up to date, 10 conflicts, 1 error. |
 | `docs/fork/` | Why each customization exists. `FORK-DELTA.md` is the index; the `README-*.md` files are per-topic deep dives. |
