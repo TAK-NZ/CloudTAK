@@ -21,6 +21,30 @@ function repositoryName(): string {
  * @class
  */
 export default class Lambda {
+    /**
+     * TAK-NZ: name of a CloudFormation export published by a sibling stack
+     * (webhooks / mail) that layer stacks import.
+     *
+     * Upstream only has `tak-cloudtak-<env>` stack names and derives the sibling
+     * stack name by rewriting that prefix. TAK-NZ's stack is `TAK-<env>-CloudTAK`,
+     * which never matches that lowercase prefix, so the rewrite was a no-op and
+     * the import resolved to a name nothing exports (layer stacks with webhooks
+     * or email failed to create). The TAK-NZ CDK (cdk/lib/constructs/webhooks.ts
+     * and mail.ts) exports `<StackName>-<sibling>-<suffix>` instead.
+     * Upstream-style names keep the upstream derivation. See docs/fork/FORK-DELTA.md.
+     */
+    static siblingExport(
+        stackName: string,
+        sibling: 'webhooks' | 'mail',
+        suffix: string,
+    ): string {
+        if (/^tak-cloudtak-/.test(stackName)) {
+            return stackName.replace(/^tak-cloudtak-/, `tak-cloudtak-${sibling}-`) + `-${suffix}`;
+        }
+
+        return `${stackName}-${sibling}-${suffix}`;
+    }
+
     static async capabilities(
         config: Config,
         layerid: number,
@@ -292,7 +316,7 @@ export default class Lambda {
                     Type: 'AWS::ApiGatewayV2::Route',
                     Properties: {
                         RouteKey: cf.join(['ANY /', cf.ref('UniqueID')]),
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         Target: cf.join(['integrations/', cf.ref('WebHookResourceIntegration')]),
                     },
                 };
@@ -301,7 +325,7 @@ export default class Lambda {
                     Type: 'AWS::ApiGatewayV2::Route',
                     Properties: {
                         RouteKey: cf.join(['ANY /', cf.ref('UniqueID'), '/{proxy+}']),
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         Target: cf.join(['integrations/', cf.ref('WebHookResourceIntegration')]),
                     },
                 };
@@ -309,10 +333,10 @@ export default class Lambda {
                 stack.Resources.WebHookResourceIntegration = {
                     Type: 'AWS::ApiGatewayV2::Integration',
                     Properties: {
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         IntegrationType: 'AWS_PROXY',
                         IntegrationUri: cf.getAtt('ETLFunction', 'Arn'),
-                        CredentialsArn: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-role'),
+                        CredentialsArn: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'role')),
                         PayloadFormatVersion: '2.0',
                     },
                 };
@@ -325,7 +349,7 @@ export default class Lambda {
                     Properties: {
                         Type: 'String',
                         Name: cf.join([
-                            cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-mail-') + '-layer-prefix'),
+                            cf.importValue(Lambda.siblingExport(config.StackName, 'mail', 'layer-prefix')),
                             cf.ref('UniqueID'),
                         ]),
                         Description: `${StackName}: Incoming Email`,

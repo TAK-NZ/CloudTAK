@@ -175,6 +175,7 @@ npm run deploy:local:dev
 - **[⚙️ Configuration Guide](docs/PARAMETERS.md)** - Complete configuration management reference
 - **[🐳 Docker Image Strategy](docs/DOCKER_IMAGE_STRATEGY.md)** - Hybrid image strategy for fast CI/CD and flexible development
 - **[🪝 Webhooks Guide](docs/WEBHOOKS.md)** - Incoming webhook support for ETL layers
+- **[📧 Inbound Email Guide](docs/EMAIL.md)** - Email delivery to ETL layers (SES Mail Manager, DNS records, security notes)
 - **[🔐 OIDC Authentication](docs/OIDC_AUTHENTICATION.md)** - In-app Single Sign-On setup with Authentik
 - **[📜 Certificate Management](docs/fork/README-CERT-RENEWAL.md)** - Automatic certificate monitoring and renewal
 

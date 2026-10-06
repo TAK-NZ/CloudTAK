@@ -23,6 +23,7 @@ import { ContextEnvironmentConfig } from '../stack-config';
 import { createTakImportValue, TAK_EXPORT_NAMES, createBaseImportValue, BASE_EXPORT_NAMES, createAuthImportValue, AUTH_EXPORT_NAMES } from '../cloudformation-imports';
 
 import { CLOUDTAK_CONSTANTS } from '../utils/constants';
+import { mailDomainFor, mailLayerPrefix } from './mail';
 
 export interface CloudTakApiProps {
   environment: 'prod' | 'dev-test';
@@ -276,6 +277,22 @@ export class CloudTakApi extends Construct {
               actions: ['apigateway:POST', 'apigateway:DELETE', 'apigateway:GET', 'apigateway:PUT'],
               resources: [`arn:${cdk.Stack.of(this).partition}:apigateway:${cdk.Stack.of(this).region}::/apis/*/routes*`, `arn:${cdk.Stack.of(this).partition}:apigateway:${cdk.Stack.of(this).region}::/apis/*/integrations*`]
             }),
+            // Inbound email: the API registers each layer's email address with the
+            // mail router as an SSM parameter (created by the layer's own
+            // CloudFormation stack, which runs with this role's credentials).
+            // Path prefix matches the Mail construct's LAYER_PREFIX export.
+            new cdk.aws_iam.PolicyStatement({
+              effect: cdk.aws_iam.Effect.ALLOW,
+              actions: [
+                'ssm:PutParameter',
+                'ssm:GetParameters',
+                'ssm:DeleteParameter',
+                'ssm:AddTagsToResource',
+                'ssm:RemoveTagsFromResource',
+                'ssm:ListTagsForResource'
+              ],
+              resources: [`arn:${cdk.Stack.of(this).partition}:ssm:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:parameter${mailLayerPrefix(cdk.Stack.of(this).stackName)}*`]
+            }),
             // Lambda event source mapping permissions
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
@@ -462,6 +479,9 @@ export class CloudTakApi extends Construct {
         } : {}),
         'ASSET_BUCKET': assetBucketName,
         'API_URL': serviceUrl.startsWith('http') ? serviceUrl : `https://${serviceUrl}`,
+        // Inbound email domain. Set explicitly (the API would otherwise derive the
+        // same `mail.<API_URL host>`); must equal the Mail construct's mail domain.
+        'MAIL_DOMAIN': mailDomainFor(serviceUrl.replace(/^https?:\/\//, '')),
         'VpcId': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.VPC_ID)),
         'SubnetPublicA': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_A)),
         'SubnetPublicB': cdk.Fn.importValue(createBaseImportValue(envConfig.stackName, BASE_EXPORT_NAMES.SUBNET_PUBLIC_B)),

@@ -169,7 +169,7 @@ test('POST: api/connection/1/layer - with incoming email', async () => {
                 Type: 'String',
                 Name: {
                     'Fn::Join': ['', [
-                        { 'Fn::ImportValue': 'test-layer-prefix' },
+                        { 'Fn::ImportValue': 'test-mail-layer-prefix' },
                         { Ref: 'UniqueID' },
                     ]],
                 },

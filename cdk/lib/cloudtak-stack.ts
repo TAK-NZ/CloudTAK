@@ -36,6 +36,7 @@ import { CloudTakStateful } from './constructs/cloudtak-stateful';
 import { Dashboard } from './constructs/dashboard';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
+import { Mail } from './constructs/mail';
 import { EtlRole } from './constructs/etl-role';
 import { CloudTakOidcSetup } from './constructs/cloudtak-oidc-setup';
 import { PMTilesEfs } from './constructs/pmtiles-efs';
@@ -541,6 +542,23 @@ export class CloudTakStack extends cdk.Stack {
       certificate,
       subdomainPrefix: envConfig.cloudtak.webhooksSubdomain || 'webhooks'
     });
+
+    // Inbound email delivery for ETL layers (SES Mail Manager + router Lambda).
+    // Shares the hosted zone with Webhooks; alarms go to the high-urgency topic.
+    const mail = new Mail(this, 'Mail', {
+      envConfig,
+      hostedZone,
+      alarmTopic: alarms.highUrgencyTopic
+    });
+
+    // Layer functions read delivered raw email from the mail bucket. The ETL role
+    // is created before the bucket, so the grant is attached here (read-only,
+    // objects only - no list).
+    etlRole.role.addToPrincipalPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject'],
+      resources: [mail.bucket.arnForObjects('*')]
+    }));
 
     // Create Authentik user for CloudTAK admin
     const authentikUrl = cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);

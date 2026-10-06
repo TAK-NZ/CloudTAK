@@ -173,3 +173,83 @@ describe('alarm wiring', () => {
     t.hasResourceProperties('AWS::Logs::MetricFilter', { FilterPattern: '"error -"' });
   });
 });
+
+describe('inbound email wiring', () => {
+  // Guards the plumbing in cloudtak-stack.ts / cloudtak-api.ts: the Mail
+  // construct is only useful if the API, the ETL role and the mail domain all
+  // agree with it, and none of that is visible from the construct alone.
+  const t = template('dev-test', true);
+  const json = JSON.stringify(t.toJSON());
+
+  it('deploys the mail stack and exports what the patched API imports', () => {
+    t.resourceCountIs('AWS::SES::MailManagerIngressPoint', 1);
+    t.resourceCountIs('AWS::SES::MailManagerRuleSet', 1);
+    const outputs = (t.toJSON().Outputs ?? {}) as Record<string, any>;
+    const exportNames = Object.values(outputs).map((o) => o.Export?.Name);
+    expect(exportNames).toContain('TAK-Dev-CloudTAK-mail-layer-prefix');
+    expect(exportNames).toContain('TAK-Dev-CloudTAK-mail-bucket');
+    // Webhooks exports the API also imports (siblingExport('webhooks', ...))
+    expect(exportNames).toContain('TAK-Dev-CloudTAK-webhooks-api');
+    expect(exportNames).toContain('TAK-Dev-CloudTAK-webhooks-role');
+  });
+
+  it('keeps the space-containing standard tag off SES Mail Manager resources', () => {
+    // SES rejects tag keys with spaces ('Environment Type'); other tags remain.
+    for (const type of ['TrafficPolicy', 'Archive', 'RuleSet', 'IngressPoint']) {
+      const resources = Object.values(t.findResources(`AWS::SES::MailManager${type}`)) as any[];
+      expect(resources).toHaveLength(1);
+      const keys = (resources[0].Properties.Tags ?? []).map((tag: any) => tag.Key);
+      expect(keys).not.toContain('Environment Type');
+      expect(keys.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('sets MAIL_DOMAIN explicitly on the API and hub containers', () => {
+    const defs = Object.values(t.findResources('AWS::ECS::TaskDefinition'))
+      .flatMap((r: any) => r.Properties.ContainerDefinitions)
+      .filter((c: any) => c.Name === 'api'); // stateless and stateful tiers both run the 'api' container
+    expect(defs).toHaveLength(2);
+    for (const def of defs) {
+      const mailDomain = def.Environment.find((e: any) => e.Name === 'MAIL_DOMAIN');
+      expect(mailDomain).toBeDefined();
+      // mail.<hostname>.<zone>, same derivation as the API's own default
+      expect(JSON.stringify(mailDomain.Value)).toMatch(/^\{"Fn::Join":\["",\["mail\.map\.",/);
+    }
+  });
+
+  it('lets the API task role manage layer email registrations under the layer prefix', () => {
+    const statement = Object.values(t.findResources('AWS::IAM::Role'))
+      .flatMap((r: any) => r.Properties.Policies ?? [])
+      .flatMap((p: any) => p.PolicyDocument.Statement)
+      .find((s: any) => Array.isArray(s.Action) && s.Action.includes('ssm:PutParameter'));
+    expect(statement).toBeDefined();
+    expect([...statement.Action].sort()).toEqual([
+      'ssm:AddTagsToResource',
+      'ssm:DeleteParameter',
+      'ssm:GetParameters',
+      'ssm:ListTagsForResource',
+      'ssm:PutParameter',
+      'ssm:RemoveTagsFromResource'
+    ]);
+    expect(JSON.stringify(statement.Resource)).toContain(':parameter/TAK-Dev-CloudTAK/mail/layer/*');
+  });
+
+  it('lets the ETL role read delivered mail objects', () => {
+    // The ETL role is created before the bucket, so the grant lives in a
+    // separate policy that references the mail bucket.
+    const policies = Object.values(t.findResources('AWS::IAM::Policy')) as any[];
+    const grant = policies
+      .filter((p) => p.Properties.Roles?.some((r: any) => JSON.stringify(r).includes('EtlRole')))
+      .flatMap((p) => p.Properties.PolicyDocument.Statement)
+      .find((s: any) => s.Action === 's3:GetObject' && JSON.stringify(s.Resource).includes('MailMailBucket'));
+    expect(grant).toBeDefined();
+  });
+
+  it('points the MX record at the same mail domain', () => {
+    expect(json).toContain('"Type":"MX"');
+    t.hasResourceProperties('AWS::Route53::RecordSet', {
+      Type: 'MX',
+      Name: { 'Fn::Join': ['', ['mail.map.', Match.anyValue(), '.']] }
+    });
+  });
+});

@@ -267,6 +267,48 @@ in-app — it existed only for large ALB-injected OIDC cookies.
 
 See [`README-ADMIN-ENV-VARS.md`](README-ADMIN-ENV-VARS.md).
 
+### Sibling-stack export names (webhooks and inbound email)
+
+`api/stateless/lib/aws/lambda.ts` (`Lambda.siblingExport`),
+`api/test/lambda-sibling-export.test.ts`, `api/test/connection-layer-email.srv.test.ts`,
+`cdk/lib/constructs/mail.ts`, `cdk/lib/constructs/webhooks.ts`
+
+Each layer's CloudFormation stack imports values exported by the stack that owns
+webhooks and inbound email (`ApiId`, invoke role, SSM layer prefix). Upstream
+derives the export name with
+`config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-')`.
+TAK-NZ's stack is `TAK-<env>-CloudTAK`, which that lowercase prefix never matches,
+so the replace was a no-op and the import named an export nothing publishes
+(`TAK-Dev-CloudTAK-api`): **layer stacks with webhooks or email enabled could not be
+created**. This affected the webhook imports too, not just mail.
+
+`Lambda.siblingExport(StackName, 'webhooks' | 'mail', suffix)` keeps upstream's
+derivation for `tak-cloudtak-*` names and otherwise returns
+`<StackName>-<sibling>-<suffix>`, which is what the CDK exports:
+`TAK-<Env>-CloudTAK-webhooks-api`, `-webhooks-role`, `-mail-layer-prefix`.
+The email srv test now expects `test-mail-layer-prefix`.
+
+**On sync:** re-apply if `git diff vendor/upstream...HEAD -- api/stateless/lib/aws/lambda.ts`
+shows the five `importValue(...)` calls back in the `.replace(...)` form.
+
+### Inbound email infrastructure (CDK only)
+
+`cdk/lib/constructs/mail.ts`, `cdk/lib/lambda/mail-router.cjs`,
+`cdk/lib/constructs/cloudtak-api.ts`, `cdk/lib/cloudtak-stack.ts`
+
+Port of upstream `cloudformation/mail.template.js` (v13.102.4): SES Mail Manager
+ingress point, rule set, archive and traffic policy, a mail bucket, the router
+Lambda and its alarms, plus the `MAIL_DOMAIN` env var, the API task role's SSM
+statement and the ETL role's `s3:GetObject` on the bucket. The router code is a
+verbatim copy of upstream `cloudformation/lib/mail-lambda.cjs`; **diff it against
+upstream on each sync**. Differences from upstream are all naming: the router may
+invoke `TAK-<Env>-CloudTAK-layer-*` (not `tak-cloudtak-<env>-layer-*`), the layer
+prefix is `/TAK-<Env>-CloudTAK/mail/layer/`, and the ETL grant is attached to
+`TAK-<Env>-CloudTAK-etl` from the stack. It creates DNS records
+`MX mail.<hostname>.<zone>` and `TXT _dmarc.mail.<hostname>.<zone>`. See
+[`../EMAIL.md`](../EMAIL.md) for the flow and security notes (the ingress point is
+a public, OPEN SMTP endpoint).
+
 ---
 
 ## Basemaps, tiles and terrain
