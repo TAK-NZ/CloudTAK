@@ -29,6 +29,17 @@ vi.mock('../../../stores/app.ts', () => ({
     useAppStore: () => appStore
 }));
 
+const device = reactive({
+    permissions: { orientation: 'granted' as string },
+    hasPermissionRequest: false,
+    hasOrientationPermissionRequest: () => device.hasPermissionRequest,
+    requestOrientationPermission: vi.fn()
+});
+
+vi.mock('../../../stores/device.ts', () => ({
+    useDeviceStore: () => device
+}));
+
 import GPSPanel from './GPSPanel.vue';
 
 function mountPanel(mode = 'Default') {
@@ -49,6 +60,8 @@ describe('GPSPanel', () => {
         expect(wrapper.find('[data-test="accuracy"]').text()).toBe('+/- 10 ft');
         expect(wrapper.find('[data-test="speed"]').text()).toBe('0 MPH');
         expect(wrapper.find('[data-test="heading"]').text()).toBe('154°');
+        expect(wrapper.find('[data-test="heading-source"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="heading-request"]').exists()).toBe(false);
     });
 
     it('follows the elevation, distance and speed profile settings', async () => {
@@ -64,6 +77,7 @@ describe('GPSPanel', () => {
         expect(wrapper.find('[data-test="accuracy"]').text()).toBe('+/- 3 m');
         expect(wrapper.find('[data-test="speed"]').text()).toBe('36 km/h');
         expect(wrapper.find('[data-test="heading"]').text()).toBe('90°');
+        expect(wrapper.find('[data-test="heading-source"]').text()).toContain('COG');
 
         store.speedUnit = 'm/s';
         await wrapper.vm.$nextTick();
@@ -74,6 +88,57 @@ describe('GPSPanel', () => {
         store.speedUnit = 'mi/h';
         store.gpsSpeed = 0;
         store.deviceHeading = 154;
+    });
+
+    it('labels the GPS course as COG only when the compass heading is missing', async () => {
+        store.deviceHeading = null;
+        const wrapper = mountPanel();
+        const label = wrapper.find('[data-test="heading-source"]');
+        expect(label.text()).toContain('COG');
+        expect(label.attributes('title')).toContain('Course over ground');
+        expect(wrapper.find('[data-test="heading"]').text()).toBe('90°');
+
+        store.deviceHeading = 154;
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-test="heading-source"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="heading"]').text()).toBe('154°');
+    });
+
+    it('shows --° without a heading and is not tappable when no permission request exists', () => {
+        store.deviceHeading = null;
+        store.gpsHeading = null;
+        const wrapper = mountPanel();
+        expect(wrapper.find('[data-test="heading"]').text()).toBe('--°');
+        expect(wrapper.find('[data-test="heading-source"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="heading-request"]').exists()).toBe(false);
+        store.deviceHeading = 154;
+        store.gpsHeading = 90;
+    });
+
+    it('requests orientation permission when tapped with no heading', async () => {
+        store.deviceHeading = null;
+        store.gpsHeading = null;
+        device.hasPermissionRequest = true;
+        device.permissions.orientation = 'prompt';
+        const wrapper = mountPanel();
+        const button = wrapper.find('button[data-test="heading-request"]');
+        expect(button.exists()).toBe(true);
+        expect(button.attributes('aria-label')).toContain('enable motion sensors');
+        expect(button.find('[data-test="heading"]').text()).toBe('--°');
+
+        await button.trigger('click');
+        expect(device.requestOrientationPermission).toHaveBeenCalledTimes(1);
+        // Tapping the heading must not also zoom to the location
+        expect(wrapper.emitted('to-location')).toBeUndefined();
+
+        device.permissions.orientation = 'granted';
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-test="heading-request"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="heading"]').text()).toBe('--°');
+
+        device.hasPermissionRequest = false;
+        store.deviceHeading = 154;
+        store.gpsHeading = 90;
     });
 
     it('shows placeholders without a live fix', () => {

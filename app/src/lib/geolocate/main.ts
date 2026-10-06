@@ -152,7 +152,8 @@ export class GeolocateControl implements IControl {
     }
 
     /**
-     * Update the compass heading (degrees clockwise from true north) used to
+     * Update the compass heading (degrees clockwise from north; true north unless the
+     * user chose magnetic north) used to
      * orient the puck's heading cone. Pass `null` to hide the cone.
      */
     setHeading(heading: number | null): void {

@@ -580,6 +580,54 @@ fire before it was populated.
 
 ---
 
+## Web compass heading
+
+`app/src/stores/device/{orientation,web-compass,heading,declination,heading-reference}.ts`
+(+ `*.spec.ts`), `app/src/stores/map.ts`, `app/src/lib/geolocate/main.ts` (comment only),
+`app/src/components/CloudTAK/GPSPanel/GPSPanel.vue`,
+`app/src/components/CloudTAK/Menu/MenuSettingsDisplay.vue`
+
+Chrome 151+ on Android added `DeviceOrientationEvent.requestPermission`. Upstream's
+web branch treated that as "this is iOS" and listened to the **relative**
+`deviceorientation` event (`absolute === false`, Android game rotation vector). Its yaw
+has an arbitrary reference that resets whenever the sensor restarts (page start and
+every resume), so the heading showed a round value such as 90 or 0, offset from the
+real one. Separately, `360 - alpha` is wrong when the phone is held upright (Euler
+ill-conditioning, up to 90°) and ignores `screen.orientation.angle`.
+
+- `web-compass.ts` holds the new web branch; `OrientationPermission.addListener()`
+  only delegates to it. It never shows a relative event as a compass: it accepts
+  `deviceorientationabsolute`, events with `absolute === true`, or numeric iOS
+  `webkitCompassHeading`, chosen by what the events carry, not by whether
+  `requestPermission` exists. It drops the first samples after resume
+  (`visibilitychange` / bfcache `pageshow`) and emits `null` with one warning if no
+  usable event arrives within 3 s. The native Capacitor branch is unchanged.
+- `heading.ts` computes the heading from the device axes (tilt and screen-angle
+  compensated) instead of `360 - alpha`.
+- **True north by default.** Android Chrome reports magnetic north, iOS
+  `webkitCompassHeading` is already true. `declination.ts` applies the World Magnetic
+  Model (`geomagnetism`, Apache-2.0, already a dependency) using
+  `mapStore.gpsCoordinates`; without a location the heading stays magnetic. The
+  "Heading Reference" setting (Settings > Display) switches to magnetic. It is stored in
+  `localStorage` (`heading-reference.ts`) so it needs no API or database change. The
+  puck cone and map rotation use the same value, so they change by the declination
+  (about 23° in Wellington).
+- `map.ts` passes the callback value through `finiteOrNull` and a location getter.
+- `GPSPanel.vue` labels a GPS course fallback `COG`, and with no heading at all shows
+  `--°` as a button that requests the orientation permission from the tap (needed
+  when Chrome moves the sensor permission to "ask").
+- `OrientationPermission.refreshStatus()` no longer reports `prompt` for Chromium just
+  because `requestPermission` exists.
+- **Not done:** the Android native Capgo plugin reports magnetic north; declination is
+  not applied on that path yet.
+
+Drop the `orientation.ts` / `web-compass.ts` / `heading.ts` part when upstream adopts
+an equivalent fix (reject relative events, choose the source by behaviour,
+tilt-compensated heading). The true-north setting and the `COG` label are TAK-NZ
+additions that would need to be proposed upstream separately.
+
+---
+
 ## Terminology and UI
 
 `app/src/components/CloudTAK/MainMenuContents.vue`,

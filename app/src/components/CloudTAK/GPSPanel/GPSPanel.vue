@@ -57,7 +57,26 @@
                 style='font-variant-numeric: tabular-nums;'
             >
                 <span data-test='speed'>{{ speedText }}</span>
-                <span data-test='heading'>{{ headingText }}</span>
+                <button
+                    v-if='canRequestOrientation'
+                    type='button'
+                    class='gps-panel-heading-request'
+                    title='Compass unavailable. Tap to enable motion sensors'
+                    aria-label='Compass heading unavailable. Activate to enable motion sensors'
+                    data-test='heading-request'
+                    @click.stop='requestOrientation'
+                >
+                    <span data-test='heading'>{{ headingText }}</span>
+                </button>
+                <span v-else>
+                    <span
+                        v-if='heading.source === "course"'
+                        class='text-secondary me-1'
+                        title='Course over ground from GPS, not a compass heading. Only valid while moving'
+                        data-test='heading-source'
+                    >COG<span class='visually-hidden'> (course over ground from GPS, not a compass heading)</span></span>
+                    <span data-test='heading'>{{ headingText }}</span>
+                </span>
             </div>
         </div>
 
@@ -70,6 +89,7 @@ import { computed } from 'vue';
 import { LocationState } from '../../../utils/events.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import { useAppStore } from '../../../stores/app.ts';
+import { useDeviceStore } from '../../../stores/device.ts';
 import { DrawToolMode } from '../../../stores/modules/draw.ts';
 import { TablerIconButton } from '@tak-ps/vue-tabler';
 import {
@@ -87,6 +107,7 @@ defineEmits(['set-location', 'to-location']);
 
 const mapStore = useMapStore();
 const appStore = useAppStore();
+const deviceStore = useDeviceStore();
 
 // On small screens the bottom panes overlap the GPS panel, so hide it while they are shown
 const hidden = computed(() => {
@@ -148,11 +169,25 @@ const speedText = computed(() => {
     return `${Math.round(speed)} ${label}`;
 });
 
-const headingText = computed(() => {
-    const heading = mapStore.deviceHeading ?? (isLive.value ? mapStore.gpsHeading : null);
-    if (heading === null) return '--°';
-    return `${((Math.round(heading) % 360) + 360) % 360}°`;
+// Compass heading when available, otherwise the GPS course over ground (COG)
+const heading = computed<{ value: number | null; source: 'compass' | 'course' | null }>(() => {
+    if (mapStore.deviceHeading !== null) return { value: mapStore.deviceHeading, source: 'compass' };
+    if (isLive.value && mapStore.gpsHeading !== null) return { value: mapStore.gpsHeading, source: 'course' };
+    return { value: null, source: null };
 });
+const headingText = computed(() => {
+    if (heading.value.value === null) return '--°';
+    return `${((Math.round(heading.value.value) % 360) + 360) % 360}°`;
+});
+// With no heading at all, offer a user-gesture permission request when the browser has one
+const canRequestOrientation = computed(() => {
+    return heading.value.value === null
+        && deviceStore.hasOrientationPermissionRequest()
+        && deviceStore.permissions.orientation !== 'granted';
+});
+async function requestOrientation(): Promise<void> {
+    await deviceStore.requestOrientationPermission();
+}
 </script>
 
 <style scoped>
@@ -177,6 +212,15 @@ const headingText = computed(() => {
     line-height: 1.2;
 }
 
+.gps-panel-heading-request {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline dotted;
+    cursor: pointer;
+}
 .gps-panel-row {
     font-size: 0.75rem;
     line-height: 1.25;

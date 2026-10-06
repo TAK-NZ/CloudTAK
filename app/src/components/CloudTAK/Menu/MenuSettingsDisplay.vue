@@ -91,6 +91,7 @@ import {
     IconRotate,
     IconCircleCheck,
     IconBulb,
+    IconCompass,
 } from '@tabler/icons-vue';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import StandardItem from '../util/StandardItem.vue';
@@ -104,12 +105,19 @@ import { useMapStore } from '../../../stores/map.ts';
 import { useDeviceStore } from '../../../stores/device.ts';
 import ProfileConfig from '../../../base/profile.ts';
 import { COORD_MODES, type CoordMode } from '../../../utils/coordinateFormat.ts';
+import {
+    HEADING_REFERENCE_LABELS,
+    getHeadingReference,
+    headingReferenceFromLabel,
+    setHeadingReference,
+} from '../../../stores/device/heading-reference.ts';
 const mapStore = useMapStore();
 const deviceStore = useDeviceStore();
 
 type DisplayStyleMode = 'System Default' | 'Light' | 'Dark';
 type DisplayProfile = Profile & {
     display_style?: DisplayStyleMode
+    heading_reference?: string
 };
 type DisplayProfileUpdate = Profile_Update & {
     display_style?: DisplayStyleMode
@@ -121,6 +129,8 @@ type SettingItem = {
     icon: Component;
     type: 'enum' | 'toggle';
     options?: string[];
+    // Stored on this device only (localStorage), not in the profile
+    local?: boolean;
 };
 
 const loading = ref(false);
@@ -221,6 +231,14 @@ const settings: SettingItem[] = [
         type: 'enum',
         options: ['Default', 'Charging', 'Always On'],
     },
+    {
+        key: 'heading_reference',
+        label: 'Heading Reference',
+        icon: IconCompass,
+        type: 'enum',
+        options: Object.values(HEADING_REFERENCE_LABELS),
+        local: true,
+    },
 ];
 
 const filteredSettings = computed(() => {
@@ -246,6 +264,7 @@ async function getProfile() {
         display_zoom: (await ProfileConfig.get('display_zoom'))?.value,
         display_icon_rotation: (await ProfileConfig.get('display_icon_rotation'))?.value,
         display_wakelock: (await ProfileConfig.get('display_wakelock'))?.value,
+        heading_reference: HEADING_REFERENCE_LABELS[getHeadingReference()],
     } as DisplayProfile;
 }
 
@@ -295,7 +314,20 @@ watch(
             previousValues[item.key] = (newProfile as DisplayProfile)[item.key as keyof DisplayProfile];
         }
 
-        await mapStore.worker.profile.update(toRaw(newProfile) as DisplayProfileUpdate);
+        setHeadingReference(headingReferenceFromLabel(newProfile.heading_reference));
+
+        // Device-local settings are not part of the profile API payload
+        if (settings.find((item) => item.key === changedKey)?.local) {
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                savedKey.value = undefined;
+            }, 2000);
+            return;
+        }
+
+        const profilePayload: DisplayProfile = { ...toRaw(newProfile) };
+        delete profilePayload.heading_reference;
+        await mapStore.worker.profile.update(profilePayload as DisplayProfileUpdate);
 
         mapStore.updateDistanceUnit(newProfile.display_distance);
         mapStore.elevationUnit = newProfile.display_elevation;
