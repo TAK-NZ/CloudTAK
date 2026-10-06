@@ -320,7 +320,7 @@ if [ -n "$CONFLICTS" ]; then
     echo "   1. Resolve each file. docs/fork/FORK-DELTA.md explains why each TAK-NZ"
     echo "      customization exists, grouped by concern - use it as reference."
     echo "   2. git add <file> ... && git commit      ${DIM}(the merge commit is pre-staged)${OFF}"
-    echo "   3. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
+    echo "   3. cd api && npm ci && npx tsc --noEmit && cd ../app && npm ci && npm run lint && npm run check && npm test"
     echo "   4. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"
     echo
     echo "   ${YEL}Push $VENDOR_BRANCH too, and merge the PR with a MERGE COMMIT${OFF}"
@@ -335,7 +335,7 @@ ok "merged cleanly with no conflicts"
 
 echo
 echo "📋 next steps:"
-echo "   1. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
+echo "   1. cd api && npm ci && npx tsc --noEmit && cd ../app && npm ci && npm run lint && npm run check && npm test"
 echo "   2. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"
 echo "   3. Open a PR and merge it with a ${YEL}MERGE COMMIT (never squash)${OFF}"
 exit "$EXIT_MERGED"

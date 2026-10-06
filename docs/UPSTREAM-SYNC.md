@@ -97,11 +97,17 @@ Then:
 ```bash
 git add <files> && git commit                # the merge commit is pre-staged
 cd api  && npm ci && npx tsc --noEmit
-cd web  && npm ci && npm run lint && npm test
+cd app  && npm ci && npm run lint && npm run check && npm test
 git push -u origin sync/upstream-<timestamp> vendor/upstream
 ```
 
 Open a PR against `main`.
+
+> **Not vendored:** only `api/`, `app/` and `tasks/` are synced. The root
+> `Dockerfile` and `.dockerignore` are TAK-NZ-owned copies of upstream's (with
+> `npm ci`), so after every sync diff them against upstream's and port changes by
+> hand: `git diff <old-tag> <new-tag> -- Dockerfile .dockerignore`. The same goes
+> for anything else upstream keeps at its repo root that the build needs.
 
 ## ⚠️ Merge PRs with a merge commit — never squash
 

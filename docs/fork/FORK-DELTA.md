@@ -1,4 +1,4 @@
-# Fork delta: how TAK-NZ differs from upstream in `api/` and `tasks/`
+# Fork delta: how TAK-NZ differs from upstream in `api/`, `app/` and `tasks/`
 
 This document explains **why** each TAK-NZ change to the synced application code
 exists. That rationale is the reason this file is worth keeping: it is the one
@@ -11,13 +11,21 @@ so it can never be stale:
 
 ```bash
 # every file where TAK-NZ differs from the synced upstream tree
-git diff --numstat vendor/upstream...HEAD -- api/ tasks/
+git diff --numstat vendor/upstream...HEAD -- api/ app/ tasks/
 
 # the full diff for one area
 git diff vendor/upstream...HEAD -- api/stateless/routes/login.ts
 ```
 
-At v13.70.0 that is **98 code files** plus **113 logo/icon assets** under
+> **Layout change at v13.102.0.** Upstream moved the web frontend from `api/web/`
+> to a root-level `app/`, and `api/Dockerfile` to a root `Dockerfile` (the image
+> now builds `api/` and `app/` side by side). TAK-NZ follows: `scripts/sync-upstream.sh`
+> vendors `app/` too, and the CDK docker asset, workflows and scripts build from the
+> repository root. Any `api/web/...` path in an older commit or README maps to
+> `app/...`. The root `Dockerfile` and `.dockerignore` are **not** vendored (they sit
+> outside `SYNC_PATHS`), so diff them against upstream's by hand on each sync.
+
+At v13.70.0 that was **98 code files** plus **113 logo/icon assets** under
 `app/public/logos/`. `vendor/upstream` tracks the synced upstream tree; the
 version currently synced is in [`.upstream-version`](../../.upstream-version).
 
@@ -100,6 +108,11 @@ This replaced an earlier ALB-based design where the load balancer performed the
 OIDC handshake and injected JWT headers. Two consequences of that move are easy
 to misread as unnecessary:
 
+- - The OIDC callback issues its session through upstream's `issueSession()`
+  (`api/stateless/lib/user/session.ts`), so an SSO login gets the same token pair as
+  `POST /login` - including the single-use refresh token, which rides in the fragment
+  payload and is persisted by `applySession()`. Upstream's DB-driven `oidc::*`
+  settings (and their defaults) are deliberately not carried; SSO is env-driven.
 - `Login.vue` reads the session from the `/login#sso=<payload>` URL **fragment**,
   not a query string, deliberately — a fragment stays out of server access logs
   and browser history.
@@ -234,7 +247,12 @@ See [`README-AUTO-LOGOUT.md`](README-AUTO-LOGOUT.md).
 
 ### Server configuration and admin provisioning
 
-`api/common/config.ts`, `api/Dockerfile`, `api/nginx.conf.js`
+`api/common/config.ts`, `Dockerfile`, `api/nginx.conf.js`
+
+The root `Dockerfile` is upstream's with one change: `npm ci` instead of
+`npm install` for both `api/` and `app/`, so a commit always builds against its
+committed lockfiles (an `npm install` once floated maplibre-gl to 6.4.1 and broke
+vector hillshading with no commit of ours to blame).
 
 `CLOUDTAK_Server_*` environment seeding, `MediaSecret` / DynamoDB / VPC config
 fields, and admin profile provisioning. Also `tileOriginHostnames`, parsed from
@@ -377,13 +395,23 @@ component instance, because the palette and this pane can both render it at once
 
 ## Overlays and profile
 
-`api/stateless/routes/profile-overlays.ts`, `api/stateless/routes/profile.ts`,
-`api/stateless/lib/control/profile.ts`,
+`api/common/control/profile-overlay.ts`, `api/stateless/routes/profile-overlays.ts`,
+`api/stateless/routes/profile.ts`, `api/stateless/lib/control/profile.ts`,
 `app/src/components/CloudTAK/Menu/MenuOverlays.vue`
 
-A duplicate overlay POST unhides the existing overlay instead of erroring, and
-deleting an overlay deletes its associated iconset. `icon_rotation` boolean
-parsing was inverted (`=== 'false'` where it should have been `=== 'true'`).
+Upstream (v13.102) moved overlay rules into `ProfileOverlayControl`. A duplicate
+overlay POST now patches the existing overlay in place; TAK-NZ additionally
+**unhides** it unless the caller passes `visible` (`upsert()`, non-mission
+overlays), and `delete()` also deletes the overlay's associated iconset.
+`icon_rotation` boolean parsing in `ProfileControl.defaultUnits()` was inverted
+(`=== 'false'` where it should have been `=== 'true'`); upstream's test for the
+unset default still expects `true`, so that test fails - a known, pre-existing gap.
+
+Pinned-overlay stacking (Map Features on top, basemap on bottom) is now upstream's
+own (`OverlayManager.compareStack` / `isPinned` / `loadedAnchorOverlayFrom`); the
+TAK-NZ `byPosInternalLast`, `OverlayCard` component split and touch long-press
+handler were dropped in its favour. What `MenuOverlays.vue` still carries: the
+auto-provisioned hidden `raster-dem` terrain overlay is not listed as a card.
 
 See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 
