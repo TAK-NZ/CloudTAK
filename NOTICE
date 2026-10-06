@@ -21,7 +21,7 @@ License:  GNU General Public License v3.0
 Form:     The original raster assets were traced to SVG. The rasters retained
           for provenance are under branding/atak-icons/primary/ and the traced
           SVGs under branding/atak-icons/svg-traced/. The path data is embedded
-          in api/web/src/base/taknz-nav-icons.ts. No pixels of the originals are
+          in app/src/base/taknz-nav-icons.ts. No pixels of the originals are
           distributed in the built application; the traced outlines are
           derivative works of them and are covered by the same license.
 
@@ -78,7 +78,7 @@ Source:   ATAK-CIV 5.5.1.10, commit 9f6893dd657feacc35ec5de03dad721c2e44170e
 Form:     Seven were converted from Android vector drawables to SVG losslessly,
           two were traced from rasters, and three were composed. The SVGs are
           under branding/atak-icons/drawtools/ and their markup is embedded in
-          api/web/src/base/taknz-drawtool-icons.ts.
+          app/src/base/taknz-drawtool-icons.ts.
 
 | Tool key | Source |
 |---|---|

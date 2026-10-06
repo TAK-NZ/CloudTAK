@@ -36,7 +36,7 @@ This document describes the balanced approach fixes implemented to address page 
 ## Patches Modified/Created
 
 ### Modified: `016-oidc-login-component.patch`
-**File**: `api/web/src/components/Login.vue`
+**File**: `app/src/components/Login.vue`
 
 **Changes**:
 - Added `loading.value = true` when processing OIDC token
@@ -88,7 +88,7 @@ res.setHeader('Expires', '0');
 ---
 
 ### Created: `048-websocket-reconnection-limit.patch`
-**File**: `api/web/src/workers/atlas-connection.ts`
+**File**: `app/src/workers/atlas-connection.ts`
 
 **Changes**:
 - Added `reconnectAttempts` counter (tracks retry attempts)
@@ -195,13 +195,13 @@ If issues occur, revert the patches:
 cd /home/ubuntu/GitHub/TAK-NZ/CloudTAK
 
 # Revert Login.vue changes
-git checkout api/web/src/components/Login.vue
+git checkout app/src/components/Login.vue
 
 # Revert login.ts changes
 git checkout api/stateless/routes/login.ts
 
 # Revert atlas-connection.ts changes
-git checkout api/web/src/workers/atlas-connection.ts
+git checkout app/src/workers/atlas-connection.ts
 
 # Rebuild
 cd cdk && npm run deploy:dev

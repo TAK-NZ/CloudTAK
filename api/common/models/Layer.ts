@@ -6,7 +6,7 @@ import { FilterContainer } from '../filter.js';
 import { Layer_Priority } from '../enums.js';
 import { Static, Type } from '@sinclair/typebox';
 import { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import { Connection, Layer, LayerIncoming, LayerOutgoing } from '../schema.js';
+import { Connection, Integration, Layer, LayerIncoming, LayerOutgoing } from '../schema.js';
 import { sql, eq, asc, desc, is, SQL } from 'drizzle-orm';
 
 export const Layer_Config = Type.Object({
@@ -32,6 +32,8 @@ export const AugmentedLayerIncoming = Type.Object({
     config: Layer_Config,
     cron: Type.Union([Type.Null(), Type.String()]),
     webhooks: Type.Boolean(),
+    email: Type.Boolean(),
+    email_senders: Type.Array(Type.String()),
     enabled_styles: Type.Boolean(),
     styles: StyleContainer,
     environment: Type.Any(),
@@ -52,7 +54,12 @@ export const AugmentedLayer = Type.Object({
     enabled: Type.Boolean(),
     protected: Type.Boolean(),
     logging: Type.Boolean(),
-    task: Type.String(),
+    task: Type.String({ description: 'Container tag as <integration prefix>-v<version>' }),
+    version: Type.String(),
+    integration: Type.Object({
+        name: Type.String(),
+        icon: Type.Union([Type.Null(), Type.String()], { description: 'Base64 Data URL of the Integration Icon' }),
+    }),
     memory: Type.Integer(),
     timeout: Type.Integer(),
     priority: Type.Enum(Layer_Priority),
@@ -84,23 +91,18 @@ export default class LayerModel extends Modeler<typeof Layer> {
         super(pool, Layer);
     }
 
+    /**
+     * Distinct Integration prefixes in use by at least one Layer
+     */
     async tasks(): Promise<string[]> {
         const pgres = await this.pool
-            .select({
-                task: Layer.task,
+            .selectDistinct({
+                prefix: Integration.prefix,
             })
-            .from(Layer);
+            .from(Layer)
+            .innerJoin(Integration, eq(Layer.task, Integration.id));
 
-        if (pgres.length === 0) {
-            return [];
-        } else {
-            const taskSet: Set<string> = new Set();
-            for (const t of pgres) {
-                taskSet.add(t.task.replace(/-v\d+\.\d+\.\d+/, ''));
-            }
-
-            return Array.from(taskSet);
-        }
+        return pgres.map(t => t.prefix);
     }
 
     parse(input: Omit<Static<typeof AugmentedLayer>, 'template'>): Static<typeof AugmentedLayer> {
@@ -168,7 +170,12 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 enabled: Layer.enabled,
                 protected: Layer.protected,
                 logging: Layer.logging,
-                task: Layer.task,
+                task: sql<string>`${Integration.prefix} || '-v' || ${Layer.version}`,
+                version: Layer.version,
+                integration: jsonBuildObject({
+                    name: Integration.name,
+                    icon: Integration.logo,
+                }),
                 connection: Layer.connection,
                 memory: Layer.memory,
                 timeout: Layer.timeout,
@@ -190,6 +197,8 @@ export default class LayerModel extends Modeler<typeof Layer> {
                     updated: LayerIncoming.updated,
                     cron: LayerIncoming.cron,
                     webhooks: LayerIncoming.webhooks,
+                    email: LayerIncoming.email,
+                    email_senders: LayerIncoming.email_senders,
                     environment: LayerIncoming.environment,
                     ephemeral: LayerIncoming.ephemeral,
                     config: LayerIncoming.config,
@@ -209,6 +218,7 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 }),
             })
             .from(Layer)
+            .innerJoin(Integration, eq(Layer.task, Integration.id))
             .leftJoin(Connection, eq(Layer.connection, Connection.id))
             .leftJoin(LayerIncoming, eq(LayerIncoming.layer, Layer.id))
             .leftJoin(LayerOutgoing, eq(LayerOutgoing.layer, Layer.id))
@@ -251,7 +261,12 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 enabled: Layer.enabled,
                 protected: Layer.protected,
                 logging: Layer.logging,
-                task: Layer.task,
+                task: sql<string>`${Integration.prefix} || '-v' || ${Layer.version}`,
+                version: Layer.version,
+                integration: jsonBuildObject({
+                    name: Integration.name,
+                    icon: Integration.logo,
+                }),
                 connection: Layer.connection,
                 memory: Layer.memory,
                 timeout: Layer.timeout,
@@ -273,6 +288,8 @@ export default class LayerModel extends Modeler<typeof Layer> {
                     updated: LayerIncoming.updated,
                     cron: LayerIncoming.cron,
                     webhooks: LayerIncoming.webhooks,
+                    email: LayerIncoming.email,
+                    email_senders: LayerIncoming.email_senders,
                     environment: LayerIncoming.environment,
                     ephemeral: LayerIncoming.ephemeral,
                     config: LayerIncoming.config,
@@ -292,6 +309,7 @@ export default class LayerModel extends Modeler<typeof Layer> {
                 }),
             })
             .from(Layer)
+            .innerJoin(Integration, eq(Layer.task, Integration.id))
             .leftJoin(Connection, eq(Layer.connection, Connection.id))
             .leftJoin(LayerIncoming, eq(LayerIncoming.layer, Layer.id))
             .leftJoin(LayerOutgoing, eq(LayerOutgoing.layer, Layer.id))

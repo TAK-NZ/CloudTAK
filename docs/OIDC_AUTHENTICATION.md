@@ -53,7 +53,7 @@ server access logs or browser history.
 | `api/lib/auth.ts` | `isOidcEnabled()`, `isOidcForced()` |
 | `api/routes/server.ts` | `GET /server/oidc` — public status endpoint |
 | `api/lib/authentik-provider.ts` | Authentik-specific: cert enrollment, role/attribute sync, machine users |
-| `api/web/src/components/Login.vue` | SSO button, fragment consumption, forced-SSO handling |
+| `app/src/components/Login.vue` | SSO button, fragment consumption, forced-SSO handling |
 
 The split is deliberate: `oidc.ts` and the login routes are provider-agnostic (any OIDC-compliant IdP),
 while everything Authentik-specific is isolated in `authentik-provider.ts`.

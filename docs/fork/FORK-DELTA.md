@@ -18,7 +18,7 @@ git diff vendor/upstream...HEAD -- api/stateless/routes/login.ts
 ```
 
 At v13.70.0 that is **98 code files** plus **113 logo/icon assets** under
-`api/web/public/logos/`. `vendor/upstream` tracks the synced upstream tree; the
+`app/public/logos/`. `vendor/upstream` tracks the synced upstream tree; the
 version currently synced is in [`.upstream-version`](../../.upstream-version).
 
 **This document is the rationale layer on top of that diff.** It is grouped by
@@ -77,7 +77,7 @@ OIDC flow against Authentik, and provisions TAK certificates as part of login.
 
 `api/stateless/routes/login.ts`, `api/stateless/lib/oidc.ts`,
 `api/common/auth.ts`, `api/stateless/routes/server.ts`, `api/common/types.ts`,
-`api/web/src/components/Login.vue`, `api/web/src/stores/app.ts`
+`app/src/components/Login.vue`, `app/src/stores/app.ts`
 
 An Authorization Code flow run by the application itself. `oidcParser()`,
 `isOidcEnabled()` and `isOidcForced()` live in `api/common/auth.ts`;
@@ -196,7 +196,7 @@ with the same person's device certificate.
 
 `api/stateless/lib/authentik-provider.ts`, `api/stateless/routes/ldap.ts`,
 `api/stateless/routes/connection.ts`, `api/stateless/routes/agency.ts`,
-`api/web/src/components/ETL/Connection/AgencyBadge.vue`
+`app/src/components/ETL/Connection/AgencyBadge.vue`
 
 - `deleteMachineUser()` deletes safely behind a `machineUser: true` guard.
 - All three LDAP routes fall through to Authentik when CoTAK is not configured.
@@ -219,8 +219,8 @@ See [`README-CERT-RENEWAL.md`](README-CERT-RENEWAL.md).
 
 ### Auth-failure logout
 
-`api/web/src/utils/events.ts`, `api/web/src/stores/map.ts`,
-`api/web/src/workers/atlas.ts`, `api/web/src/stores/app.ts`
+`app/src/utils/events.ts`, `app/src/stores/map.ts`,
+`app/src/workers/atlas.ts`, `app/src/stores/app.ts`
 
 A `Session_Logout` event redirects to `/api/logout` from the main thread on
 auth or connection error. `appStore.logout()` also redirects there to expire
@@ -256,8 +256,8 @@ See [`README-ADMIN-ENV-VARS.md`](README-ADMIN-ENV-VARS.md).
 ### TileJSON, sprites and CSP
 
 `api/common/types.ts`, `api/stateless/routes/basemap.ts`,
-`api/stateless/lib/interface-basemap.ts`, `api/web/src/base/overlay-class.ts`,
-`api/web/src/stores/map.ts`
+`api/stateless/lib/interface-basemap.ts`, `app/src/base/overlay-class.ts`,
+`app/src/stores/map.ts`
 
 Adds `sprite` / `glyphs` to the `TileJSON` schema and merges the `tilejson` blob
 into PMTiles and non-URL TileJSON responses. Upstream's `sprite` / `glyphs` are
@@ -281,7 +281,7 @@ See [`README-SPRITE-DUPLICATE.md`](README-SPRITE-DUPLICATE.md).
 
 ### Hillshade and terrain sources
 
-`api/stateless/lib/interface-basemap.ts`, `api/web/src/base/overlay-class.ts`
+`api/stateless/lib/interface-basemap.ts`, `app/src/base/overlay-class.ts`
 
 `ensureTerrainSource()` and the `__terrain__` sentinel let a hillshade layer
 reference a raster-dem source that may not exist yet; `OverlayManager` re-attempts
@@ -307,7 +307,7 @@ ids like `23-23-23-Background` on every re-selection.
 
 `api/stateless/lib/terrain.ts`, `api/stateless/lib/interface-basemap.ts`,
 `api/stateless/routes/search.ts`,
-`api/web/src/components/CloudTAK/Query/Elevation.vue`
+`app/src/components/CloudTAK/Query/Elevation.vue`
 
 `Elevation.vue` used MapLibre's `queryTerrainElevation()`, which only returns a
 value once 3D terrain rendering is active — a GPU-heavy mode not otherwise needed
@@ -339,8 +339,8 @@ non-default named sprites.
 ## Icons, sprites and styling
 
 `api/stateless/routes/icons.ts`, `api/stateless/lib/logos.ts`,
-`api/common/style.ts`, `api/web/src/stores/modules/icons.ts`,
-`api/web/public/logos/**`
+`api/common/style.ts`, `app/src/stores/modules/icons.ts`,
+`app/public/logos/**`
 
 - An iconset with no spritesheet data returns an empty sprite rather than a 400.
 - The sprite-key regex handles icon filenames containing dots.
@@ -357,13 +357,13 @@ See [`README-EMPTY-ICONSET-FIX.md`](README-EMPTY-ICONSET-FIX.md) and
 
 ### ATAK icon set
 
-`api/web/src/stores/modules/menu.ts`,
-`api/web/src/components/CloudTAK/DrawTools.vue`,
-`api/web/src/components/CloudTAK/util/DrawOverlay.vue`,
-`api/web/src/components/CloudTAK/Inputs/{RangeInput,RangeRingsInput,GeoJSONInput}.vue`
+`app/src/stores/modules/menu.ts`,
+`app/src/components/CloudTAK/DrawTools.vue`,
+`app/src/components/CloudTAK/util/DrawOverlay.vue`,
+`app/src/components/CloudTAK/Inputs/{RangeInput,RangeRingsInput,GeoJSONInput}.vue`
 
 ATAK-CIV icons for the navigation menu (16 of 18) and drawing tools (12 of 13),
-supplied by two TAK-NZ-only modules under `api/web/src/base/` that upstream will
+supplied by two TAK-NZ-only modules under `app/src/base/` that upstream will
 never create, so they cannot conflict. Each consuming file changes in exactly two
 places — one import and one `.map()` — leaving upstream's arrays byte-identical.
 Selection and provenance are in `branding/atak-icons/`; attribution is in
@@ -379,7 +379,7 @@ component instance, because the palette and this pane can both render it at once
 
 `api/stateless/routes/profile-overlays.ts`, `api/stateless/routes/profile.ts`,
 `api/stateless/lib/control/profile.ts`,
-`api/web/src/components/CloudTAK/Menu/MenuOverlays.vue`
+`app/src/components/CloudTAK/Menu/MenuOverlays.vue`
 
 A duplicate overlay POST unhides the existing overlay instead of erroring, and
 deleting an overlay deletes its associated iconset. `icon_rotation` boolean
@@ -392,9 +392,9 @@ See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 ## Chat
 
 `api/stateful/lib/connection-web.ts`, `api/stateful/lib/connection-pool.ts`,
-`api/web/src/base/chatroom.ts`, `api/web/src/base/chatroom-chats.ts`,
-`api/web/src/components/CloudTAK/Menu/MenuChat.vue`,
-`api/web/src/components/CloudTAK/Notifications.vue`
+`app/src/base/chatroom.ts`, `app/src/base/chatroom-chats.ts`,
+`app/src/components/CloudTAK/Menu/MenuChat.vue`,
+`app/src/components/CloudTAK/Notifications.vue`
 
 **Directed-chat routing is a security fix, not a tidy-up.** The plugin
 dest-routing block used to *replace* the UID-based `<marti><dest uid="..."/>` with
@@ -442,10 +442,10 @@ See [`README-CHAT-FUNCTIONALITY.md`](README-CHAT-FUNCTIONALITY.md),
 
 ## WebSocket lifecycle and the login race
 
-`api/web/src/workers/atlas-connection.ts`, `api/web/src/workers/atlas.ts`,
-`api/web/src/workers/atlas-database.ts`, `api/web/src/workers/atlas-profile.ts`,
-`api/web/src/stores/map.ts`, `api/web/src/components/Login.vue`,
-`api/web/src/components/CloudTAK/Map.vue`
+`app/src/workers/atlas-connection.ts`, `app/src/workers/atlas.ts`,
+`app/src/workers/atlas-database.ts`, `app/src/workers/atlas-profile.ts`,
+`app/src/stores/map.ts`, `app/src/components/Login.vue`,
+`app/src/components/CloudTAK/Map.vue`
 
 Exponential-backoff reconnect, capped at 5 attempts over 1s → 10s, with
 auth-failure detection.
@@ -487,7 +487,7 @@ See [`README-WEBSOCKET-RECONNECTION.md`](README-WEBSOCKET-RECONNECTION.md) and
 
 ## Self-location rendering
 
-`api/web/src/base/cot.ts`, `api/web/src/workers/atlas-profile.ts`
+`app/src/base/cot.ts`, `app/src/workers/atlas-profile.ts`
 
 `COT.styleProperties()` applied group-based `marker-color` / `icon-opacity` to
 every Point feature carrying a `group`, including the user's own self-location.
@@ -512,12 +512,12 @@ fire before it was populated.
 
 ## Terminology and UI
 
-`api/web/src/components/CloudTAK/MainMenuContents.vue`,
-`api/web/src/components/CloudTAK/util/{ChannelInfo,EmptyInfo,ShareToMission,Share,SelectFeats,SettingsCallsign,NotificationIcon}.vue`,
-`api/web/src/components/CloudTAK/Menu/{MenuContacts,MenuVideos,MenuSettings,MenuFilesRow}.vue`,
-`api/web/src/components/CloudTAK/Map.vue`,
-`api/web/src/components/PageFooter.vue`,
-`api/web/{index,admin,connection,docs,video}.html`, `api/web/vite.config.ts`
+`app/src/components/CloudTAK/MainMenuContents.vue`,
+`app/src/components/CloudTAK/util/{ChannelInfo,EmptyInfo,ShareToMission,Share,SelectFeats,SettingsCallsign,NotificationIcon}.vue`,
+`app/src/components/CloudTAK/Menu/{MenuContacts,MenuVideos,MenuSettings,MenuFilesRow}.vue`,
+`app/src/components/CloudTAK/Map.vue`,
+`app/src/components/PageFooter.vue`,
+`app/{index,admin,connection,docs,video}.html`, `app/vite.config.ts`
 
 - The Application Switcher dropdown is removed; logout redirects to
   `/api/logout`.

@@ -1,6 +1,6 @@
 name: CloudTAK Test
 
-# This workflow is triggered on pushes to the main branch when API or tasks change.
+# This workflow is triggered on pushes to the main branch when API, app or tasks change.
 # It can also be triggered manually or called by other workflows.
 # It runs comprehensive tests on CloudTAK components including linting, type checking, and coverage.
 
@@ -10,6 +10,9 @@ on:
       - main
     paths:
       - 'api/**'
+      - 'app/**'
+      - 'Dockerfile'
+      - '.dockerignore'
       - 'tasks/**'
   workflow_call:
   workflow_dispatch:
@@ -22,7 +25,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Docker API Build
-        run: docker buildx build ./api -t cloudtak-api
+        run: docker buildx build -f Dockerfile . -t cloudtak-api
 
       - name: Docker API Lint
         run: docker run cloudtak-api:latest sh -c "npm install --include=dev && npm run lint"

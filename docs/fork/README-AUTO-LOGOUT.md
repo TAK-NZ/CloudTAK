@@ -31,13 +31,13 @@ Wraps the `atlas.init()` method in a try-catch block that:
 - Provides better UX than cryptic error messages
 
 ## Changes
-- Adds error handling to `atlas.init()` in `api/web/src/workers/atlas.ts`
+- Adds error handling to `atlas.init()` in `app/src/workers/atlas.ts`
 - Catches errors during profile init, connection, database, and team initialization
 - Redirects to logout on authentication/connection failures
 - Re-throws other errors for proper debugging
 
 ## Files Modified
-- `api/web/src/workers/atlas.ts`
+- `app/src/workers/atlas.ts`
 
 ## Testing
 1. **Expired certificate**: Wait for certificate to expire, reload page

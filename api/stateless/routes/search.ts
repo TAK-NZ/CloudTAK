@@ -5,6 +5,7 @@ import Err from '@openaddresses/batch-error';
 import Auth, { AuthUser } from '../../common/auth.js';
 import { FetchHourly } from '../lib/interface-weather.js';
 import { SearchManager } from '../lib/interface-search.js';
+import { RouteManager } from '../lib/interface-route.js';
 import { SearchManagerConfig, FetchReverse, FetchSuggest, FetchForward } from '../lib/search/types.js';
 import { Feature } from '@tak-ps/node-cot';
 import type ConfigStateless from '../config.js';
@@ -18,6 +19,7 @@ function optionalISOString(date: Date | null): string | null {
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     const searchManager = await SearchManager.init(config);
+    const routeManager = await RouteManager.init(config);
     const SunTime = (description: string) => Type.Union([Type.String(), Type.Null()], { description });
 
     const SunResponse = Type.Object({
@@ -70,9 +72,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             await Auth.as_user(config, req);
 
-            const searchConfig = await searchManager.config();
+            await Promise.all([searchManager.refresh(), routeManager.refresh()]);
 
-            return res.json(searchConfig);
+            return res.json({
+                ...(await searchManager.config()),
+                route: await routeManager.config(),
+            });
         } catch (err) {
             Err.respond(err, res);
         }
@@ -132,6 +137,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 reverse: null,
                 elevation: null,
             };
+
+            await searchManager.refresh();
 
             await Promise.all([
                 (async () => {
@@ -300,6 +307,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         try {
             await Auth.as_user(config, req);
 
+            await searchManager.refresh();
+
             let reverse = null;
             if (searchManager.defaultProvider) {
                 try {
@@ -397,9 +406,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 req.query.end.split(',').map(Number),
             ] as [number, number][];
 
-            if (searchManager.defaultProvider) {
-                const route = await searchManager.route(
-                    req.query.provider || searchManager.defaultProvider,
+            await routeManager.refresh();
+
+            if (routeManager.defaultProvider) {
+                const route = await routeManager.route(
+                    req.query.provider || routeManager.defaultProvider,
                     stops,
                     req.query.travelMode,
                 );
@@ -446,6 +457,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 items: [],
             };
 
+            await searchManager.refresh();
+
             if (searchManager.defaultProvider) {
                 try {
                     response.items = await searchManager.forward(
@@ -469,6 +482,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/search/suggest', {
         name: 'Suggest',
         group: 'Search',
+        security: Auth.security('search:read'),
         description: 'Get information about a given string',
         query: Type.Object({
             provider: Type.Optional(Type.String()),
@@ -482,11 +496,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: SuggestResponse,
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req);
+            await Auth.as_user_or_scope(config, req, 'search:read');
 
             const response: Static<typeof SuggestResponse> = {
                 items: [],
             };
+
+            await searchManager.refresh();
 
             if (searchManager.defaultProvider) {
                 try {

@@ -59,11 +59,11 @@ ecr_login() {
 build_api() {
     echo "Building CloudTAK API..."
     docker build \
-        -f api/Dockerfile \
+        -f Dockerfile \
         --no-cache \
         --rm \
         -t "$ECR_REPO_URI:$CLOUDTAK_TAG" \
-        api/
+        .
     docker push "$ECR_REPO_URI:$CLOUDTAK_TAG"
 }
 

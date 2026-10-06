@@ -9,12 +9,12 @@ import Schema from '@openaddresses/batch-schema';
 import { Type } from '@sinclair/typebox';
 import Provider from '../lib/provider.js';
 import ProfileControl from '../lib/control/profile.js';
-import { UAParser } from 'ua-parser-js';
 import { X509Certificate } from 'crypto';
 import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import { discovery, authorizationUrl, exchangeCode, userinfo } from '../lib/oidc.js';
 import type { OIDCConfig } from '../lib/oidc.js';
 import { sql } from 'drizzle-orm';
+import { LoginResponse, issueSession, refreshSession } from '../lib/user/session.js';
 
 /** Returns true when the cert PEM is missing, unparseable, or expires within 7 days. */
 function certNeedsRenewal(certPem: string | undefined): boolean {
@@ -67,12 +67,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             }),
             password: Type.String(),
         }),
-        res: Type.Object({
-            token: Type.String(),
-            access: Type.Enum(AuthUserAccess),
-            email: Type.String(),
-            session: Type.String(),
-        }),
+        res: LoginResponse,
     }, async (req, res) => {
         try {
             let profile;
@@ -122,32 +117,23 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 throw new Err(400, null, 'Server has not been configured');
             }
 
-            let access = AuthUserAccess.USER;
-            if (profile.system_admin) {
-                access = AuthUserAccess.ADMIN;
-            } else if (profile.agency_admin && profile.agency_admin.length) {
-                access = AuthUserAccess.AGENCY;
-            }
+            res.json(await issueSession(config, req, profile));
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
 
-            const userAgent = req.headers['user-agent'] || '';
-            const ua = UAParser(userAgent);
-
-            const session = await config.models.ProfileSession.generate({
-                username: profile.username,
-                created: new Date().toISOString(),
-                ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown'),
-                device_type: ua.device.type || 'Desktop',
-                browser: [ua.browser.name, ua.browser.version].filter(Boolean).join(' ') || 'Unknown',
-                os: [ua.os.name, ua.os.version].filter(Boolean).join(' ') || 'Unknown',
-                user_agent: userAgent,
-            });
-
-            res.json({
-                access,
-                email: profile.username,
-                session: session.id,
-                token: jwt.sign({ access, email: profile.username, s: session.id }, config.SigningSecret, { expiresIn: '16h' }),
-            });
+    await schema.post('/login/refresh', {
+        name: 'Refresh Login',
+        group: 'Login',
+        description: 'Exchange a refresh token for a new login token - the refresh token is single use, a replacement is returned and the session expiry is extended',
+        body: Type.Object({
+            refresh: Type.String(),
+        }),
+        res: LoginResponse,
+    }, async (req, res) => {
+        try {
+            res.json(await refreshSession(config, req.body.refresh));
         } catch (err) {
             Err.respond(err, res);
         }
@@ -482,36 +468,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
             }
 
-            let access = AuthUserAccess.USER;
-            if (profile.system_admin) {
-                access = AuthUserAccess.ADMIN;
-            } else if (profile.agency_admin && profile.agency_admin.length) {
-                access = AuthUserAccess.AGENCY;
-            }
-
-            const userAgent = req.headers['user-agent'] || '';
-            const ua = UAParser(userAgent);
-            const session = await config.models.ProfileSession.generate({
-                username: profile.username,
-                created: new Date().toISOString(),
-                ip: String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'Unknown'),
-                device_type: ua.device.type || 'Desktop',
-                browser: [ua.browser.name, ua.browser.version].filter(Boolean).join(' ') || 'Unknown',
-                os: [ua.os.name, ua.os.version].filter(Boolean).join(' ') || 'Unknown',
-                user_agent: userAgent,
-            });
-
-            const token = jwt.sign(
-                { access, email: profile.username, s: session.id },
-                config.SigningSecret,
-                { expiresIn: '16h' },
-            );
+            // Same session + token pair issuance as POST /login, so SSO users also
+            // get a refresh token and the configured token/refresh lifetimes
+            const login = await issueSession(config, req, profile);
 
             const payload = Buffer.from(JSON.stringify({
-                access,
-                email: profile.username,
-                session: session.id,
-                token,
+                ...login,
                 ...(state.r ? { redirect: state.r } : {}),
             })).toString('base64url');
 

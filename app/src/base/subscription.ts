@@ -1,0 +1,608 @@
+import { db } from '../database.ts'
+import { server } from '../std.ts';
+import SubscriptionLog from './subscription-log.ts';
+import SubscriptionChanges from './subscription-changes.ts';
+import SubscriptionContents from './subscription-contents.ts';
+import SubscriptionFeature from './subscription-feature.ts';
+import SubscriptionLayer from './subscription-layer.ts';
+import SubscriptionChat from './subscription-chat.ts';
+import MissionTemplate from './mission-template.ts';
+import type {
+    Mission,
+    MissionRole,
+    MissionRoleType,
+    MissionList,
+    MissionSubscriptions,
+    MissionInvite
+} from '../types.ts';
+
+export enum SubscriptionEventType {
+    CREATE = 'subscription::create',
+    UPDATE = 'subscription::update',
+    DELETE = 'subscription::delete'
+}
+
+export type SubscriptionEvent = {
+    guid: string;
+    type: SubscriptionEventType;
+
+    // Instance that made the change
+    origin: string;
+
+    state: {
+        dirty: boolean;
+        subscribed: boolean;
+    }
+}
+
+// Send-only; a channel with a listener is never garbage collected
+let bus: BroadcastChannel | undefined;
+
+function announce(event: SubscriptionEvent): void {
+    if (!bus) bus = new BroadcastChannel('subscription');
+    bus.postMessage(event);
+}
+
+/**
+ * High Level Wrapper around the Data/Mission Sync API
+ */
+export default class Subscription {
+    guid: string;
+    name: string;
+
+    meta: Mission;
+    role: MissionRole;
+
+    log: SubscriptionLog;
+    change: SubscriptionChanges;
+    contents: SubscriptionContents;
+    feature: SubscriptionFeature;
+    layer: SubscriptionLayer;
+    chat: SubscriptionChat;
+
+    missiontoken?: string;
+
+    dirty: boolean;
+    subscribed: boolean;
+
+    templateid: string | null;
+
+    private _sync?: BroadcastChannel;
+    private readonly _id = crypto.randomUUID();
+
+    constructor(
+        mission: Mission,
+        role: MissionRole,
+        opts: {
+            subscribed: boolean,
+            missiontoken?: string,
+            live?: boolean,
+        }
+    ) {
+        this.log = new SubscriptionLog(mission.guid, {
+            missiontoken: opts.missiontoken
+        });
+
+        this.change = new SubscriptionChanges(mission.guid, {
+            missiontoken: opts.missiontoken
+        });
+
+        this.contents = new SubscriptionContents(mission.guid, {
+            missiontoken: opts.missiontoken
+        });
+
+        this.feature = new SubscriptionFeature(this, {
+            missiontoken: opts.missiontoken
+        });
+
+        this.layer = new SubscriptionLayer(this, {
+            missiontoken: opts.missiontoken
+        });
+
+        this.chat = new SubscriptionChat(mission.guid, mission.name);
+
+        this.subscribed = opts.subscribed;
+
+        this.guid = mission.guid;
+        this.name = mission.name;
+        this.meta = mission;
+        this.role = role;
+
+        this.templateid = null;
+
+        for (const keyword of (mission.keywords || [])) {
+            // template:<uuidv4>
+            if (keyword.startsWith('template:') && keyword.length >= 9 + 36) {
+                this.templateid = keyword.slice(9);
+                break;
+            }
+        }
+
+        if (opts?.missiontoken) this.missiontoken = opts.missiontoken;
+
+        this.dirty = false;
+
+        if (opts.live) this.listen();
+    }
+
+    // Pair with close()
+    listen(): void {
+        if (this._sync) return;
+
+        this._sync = new BroadcastChannel('subscription');
+        this._sync.onmessage = async (ev: MessageEvent<SubscriptionEvent>) => {
+            if (ev.data.guid === this.guid && ev.data.origin !== this._id) {
+                await this.reload();
+            }
+        };
+    }
+
+    get live(): boolean {
+        return this._sync !== undefined;
+    }
+
+    close(): void {
+        if (!this._sync) return;
+
+        this._sync.onmessage = null;
+        this._sync.close();
+        this._sync = undefined;
+    }
+
+    /**
+     * Return a Subscription instance of one already exists in the local DB,
+     */
+    static async from(
+        guid: string,
+        opts?: {
+            subscribed?: boolean,
+            live?: boolean,
+        }
+    ): Promise<Subscription | undefined> {
+        const exists = await db.subscription
+            .get(guid)
+
+        if (!exists || (opts?.subscribed !== undefined && exists.subscribed !== opts.subscribed)) {
+            return;
+        }
+
+        return new Subscription(
+            exists.meta,
+            exists.role,
+            {
+                missiontoken: exists.token,
+                subscribed: opts?.subscribed !== undefined ? opts.subscribed : exists.subscribed,
+                live: opts?.live,
+            }
+        );
+    }
+
+    /**
+     * Loads an existing Subscription from the local DB an refreshes it,
+     * or creates a new Subscription from the server if it does not exist locally.
+     */
+    static async load(
+        guid: string,
+        opts: {
+            reload?: boolean,
+            missiontoken?: string,
+            subscribed?: boolean,
+            live?: boolean,
+        } = {}
+    ): Promise<Subscription> {
+        // Listen only on the instance returned so a failed load can't leak a channel
+        const exists = await this.from(guid);
+
+        if (exists) {
+            if (opts.subscribed !== undefined || opts.missiontoken !== undefined) {
+                const update: { subscribed?: boolean, token?: string } = {};
+                if (opts.subscribed !== undefined) update.subscribed = opts.subscribed;
+                if (opts.missiontoken !== undefined) update.token = opts.missiontoken;
+
+                await exists.update(update);
+            }
+
+            if (opts.reload !== false) {
+                await exists.refresh({
+                    refreshMission: true
+                });
+            }
+
+            if (exists.templateid) {
+                try {
+                    await MissionTemplate.load(exists.templateid);
+                } catch (err) {
+                    console.error('Failed to load mission template', err);
+                }
+            }
+
+            if (opts.live) exists.listen();
+
+            return exists;
+        } else {
+            if (!opts.subscribed) opts.subscribed = false;
+
+            const { data: mission, error: missionError } = await server.GET('/api/marti/missions/{:guid}', {
+                params: {
+                    path: { ':guid': guid },
+                    query: { changes: false, logs: false }
+                },
+                headers: Subscription.headers(opts.missiontoken)
+            });
+
+            if (missionError || !mission) throw new Error('Failed to load mission');
+
+            const { data: role, error: roleError } = await server.GET('/api/marti/missions/{:guid}/role', {
+                params: {
+                    path: { ':guid': guid }
+                },
+                headers: Subscription.headers(opts.missiontoken)
+            });
+
+            if (roleError || !role) throw new Error('Failed to load mission role');
+
+            const sub = new Subscription(
+                mission as unknown as Mission,
+                role as unknown as MissionRole,
+                {
+                    subscribed: opts.subscribed,
+                    missiontoken: opts.missiontoken,
+                }
+            );
+
+            await db.subscription.put({
+                guid: sub.meta.guid,
+                name: sub.meta.name,
+                dirty: sub.dirty,
+                subscribed: sub.subscribed,
+                meta: sub.meta,
+                role: sub.role,
+                token: opts.missiontoken || ''
+            });
+
+            await sub.refresh();
+
+            if (sub.templateid) {
+                try {
+                    await MissionTemplate.load(sub.templateid);
+                } catch (err) {
+                    console.error('Failed to load mission template', err);
+                }
+            }
+
+            if (opts.live) sub.listen();
+
+            return sub;
+        }
+    }
+
+    async update(
+        body: {
+            dirty?: boolean,
+            subscribed?: boolean,
+            token?: string,
+            description?: string,
+            keywords?: string[],
+            groups?: string[]
+        }
+    ): Promise<void> {
+        if (body.subscribed !== undefined) {
+            this.subscribed = body.subscribed;
+        }
+
+        if (body.dirty !== undefined) {
+            this.dirty = body.dirty;
+        }
+
+        if (body.token !== undefined) {
+            this.setMissionToken(body.token);
+        }
+
+        await db.subscription.update(this.guid, {
+            dirty: this.dirty,
+            subscribed: this.subscribed,
+            token: this.missiontoken || ''
+        });
+
+        // Local state is already persisted, announce it even if the PATCH fails
+        try {
+            if (body.description !== undefined || body.keywords !== undefined || body.groups !== undefined) {
+                const patch: { description?: string; keywords?: string[]; groups?: string[] } = {};
+                if (body.description !== undefined) patch.description = body.description;
+                if (body.keywords !== undefined) patch.keywords = body.keywords;
+                if (body.groups !== undefined) patch.groups = body.groups;
+
+                const { data, error } = await server.PATCH('/api/marti/missions/{:guid}', {
+                    params: {
+                        path: { ':guid': this.guid }
+                    },
+                    headers: Subscription.headers(this.missiontoken),
+                    body: patch
+                });
+
+                if (error) throw new Error(error.message || 'Failed to update mission');
+
+                if (data) {
+                    Object.assign(this.meta, data as unknown as Mission);
+
+                    await db.subscription.update(this.guid, {
+                        meta: JSON.parse(JSON.stringify(this.meta)),
+                    });
+                }
+            }
+        } finally {
+            announce({
+                guid: this.guid,
+                type: SubscriptionEventType.UPDATE,
+                origin: this._id,
+                state: {
+                    dirty: this.dirty,
+                    subscribed: this.subscribed,
+                }
+            });
+        }
+    }
+
+    async delete(): Promise<void> {
+        const { data, response } = await server.DELETE('/api/marti/missions/{:guid}', {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+
+        if (!data && response.status !== 404) throw new Error('Mission Error');
+
+        await db.subscription.delete(this.meta.guid);
+
+        announce({
+            guid: this.guid,
+            type: SubscriptionEventType.DELETE,
+            origin: this._id,
+            state: {
+                dirty: this.dirty,
+                subscribed: this.subscribed,
+            }
+        });
+    }
+
+    headers(): Record<string, string> {
+        return Subscription.headers(this.missiontoken);
+    }
+
+    /**
+     * Update the Mission Token, propagating it to the sub-stores which
+     * each hold their own copy for generating MissionAuthorization headers
+     */
+    setMissionToken(token?: string): void {
+        this.missiontoken = token || undefined;
+
+        this.log.missiontoken = this.missiontoken;
+        this.change.missiontoken = this.missiontoken;
+        this.contents.missiontoken = this.missiontoken;
+        this.feature.missiontoken = this.missiontoken;
+        this.layer.missiontoken = this.missiontoken;
+    }
+
+    /**
+     * Reload the Mission from the local Database
+     */
+    async reload(): Promise<void> {
+        const exists = await db.subscription
+            .get(this.guid)
+
+        if (exists) {
+            Object.assign(this.meta, exists.meta);
+            this.role = exists.role;
+            this.setMissionToken(exists.token);
+            this.subscribed = exists.subscribed;
+        }
+    };
+
+    /**
+     * Perform a hard refresh of the Mission from the Server
+     */
+    async refresh(opts?: {
+        refreshMission?: boolean
+    }): Promise<void> {
+        if (opts?.refreshMission) {
+            await this.fetch();
+        }
+
+        await Promise.all([
+            this.log.refresh(),
+            this.feature.refresh(),
+            this.layer.refresh(),
+            this.change.refresh(),
+        ]);
+    };
+
+    async fetch(): Promise<Mission> {
+        const { data, error } = await server.GET('/api/marti/missions/{:guid}', {
+            params: {
+                path: { ':guid': this.guid },
+                query: { changes: false, logs: false }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+
+        if (error || !data) throw new Error('Failed to fetch mission');
+
+        const meta = data as unknown as Mission;
+
+        await this.contents.refresh(meta.contents);
+
+        this.meta = meta;
+
+        return meta;
+    }
+
+    /**
+     * List all locally stored missions, with optional filtering
+     *
+     * @param filter.role - Filter by minimum role
+     */
+    static async localList(
+        filter?: {
+            role?: 'MISSION_OWNER' | 'MISSION_SUBSCRIBER' | 'MISSION_READONLY_SUBSCRIBER',
+            subscribed?: boolean,
+            dirty?: boolean
+        }
+    ): Promise<Set<{
+        guid: string;
+        name: string;
+    }>> {
+        let collection = db.subscription.toCollection();
+
+        if (filter?.subscribed !== undefined) {
+            collection = collection.filter((sub) => sub.subscribed === filter.subscribed);
+        }
+
+        if (filter?.dirty !== undefined) {
+            collection = collection.filter((sub) => sub.dirty === filter.dirty);
+        }
+
+        if (filter?.role !== undefined) {
+            collection = collection.filter((sub) => {
+                if (!sub.role) return false;
+
+                if (filter.role === 'MISSION_OWNER') {
+                    return sub.role.type === 'MISSION_OWNER'
+                } else if (filter.role === 'MISSION_SUBSCRIBER') {
+                    return sub.role.type === 'MISSION_OWNER' || sub.role.type === 'MISSION_SUBSCRIBER'
+                } else {
+                    return true;
+                }
+            });
+        }
+
+
+        const list = await collection
+            .sortBy('name');
+
+        const guids = new Set<{
+            guid: string;
+            name: string;
+        }>();
+
+        for (const sub of list) {
+            guids.add({
+                name: sub.name,
+                guid: sub.guid
+            });
+        }
+
+        return guids;
+    }
+
+    static async list(opts: {
+        passwordProtected?: boolean;
+        defaultRole?: boolean;
+    } = {}): Promise<MissionList> {
+        if (opts.passwordProtected === undefined) opts.passwordProtected = true;
+        if (opts.defaultRole === undefined) opts.defaultRole = true;
+
+        const { data } = await server.GET('/api/marti/mission', {
+            params: {
+                query: {
+                    passwordProtected: opts.passwordProtected,
+                    defaultRole: opts.defaultRole,
+                    sort: 'createTime',
+                    order: 'desc'
+                }
+            }
+        });
+
+        if (!data) throw new Error('Failed to list missions');
+        return data;
+    }
+
+    static headers(token?: string): Record<string, string> {
+        const headers: Record<string, string> = {};
+        if (token) headers.MissionAuthorization = token;
+        return headers;
+    }
+
+    async invite(invitee: string, role = 'MISSION_SUBSCRIBER'): Promise<void> {
+        const { error } = await server.POST('/api/marti/missions/{:guid}/invite', {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken),
+            body: {
+                type: 'callsign',
+                invitee: invitee,
+                role: role as 'MISSION_OWNER' | 'MISSION_SUBSCRIBER' | 'MISSION_READONLY_SUBSCRIBER'
+            }
+        });
+
+        if (error) throw new Error('Failed to invite user to mission');
+    }
+
+    async changeRole(sub: { clientUid: string, username: string }, role: MissionRoleType): Promise<void> {
+        const { error } = await server.PUT('/api/marti/missions/{:guid}/role', {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken),
+            body: {
+                clientUid: sub.clientUid,
+                username: sub.username,
+                role
+            }
+        });
+
+        if (error) throw new Error('Failed to change user role');
+    }
+
+    async invites(): Promise<MissionInvite[]> {
+        const { data, error } = await server.GET('/api/marti/missions/{:guid}/invite', {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+
+        if (error || !data) throw new Error('Failed to fetch mission invites');
+
+        return (data as unknown as { data: MissionInvite[] }).data;
+    }
+
+    async deleteInvite(invite: { type: string, invitee: string }): Promise<void> {
+        await server.DELETE('/api/marti/missions/{:guid}/invite', {
+            params: {
+                path: { ':guid': this.guid },
+                query: {
+                    type: invite.type as 'callsign' | 'group' | 'team' | 'clientUid' | 'userName',
+                    invitee: invite.invitee
+                }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+    }
+
+    async removeUser(uid: string): Promise<void> {
+        await server.DELETE('/api/marti/missions/{:guid}/user', {
+            params: {
+                path: { ':guid': this.guid },
+                query: { uid }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+    }
+
+    async subscriptions(): Promise<MissionSubscriptions> {
+        if (!navigator.onLine) return [];
+
+        const { data, error } = await server.GET('/api/marti/missions/{:guid}/subscriptions/roles', {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        });
+
+        if (error || !data) throw new Error('Failed to fetch mission subscriptions');
+
+        return (data as unknown as { data: MissionSubscriptions }).data;
+    }
+}

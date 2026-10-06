@@ -147,35 +147,49 @@ export class CloudTakStack extends cdk.Stack {
     } else {
       // Create Docker image assets for local deployments
       dockerImageAsset = new ecrAssets.DockerImageAsset(this, 'CloudTAKDockerAsset', {
-        directory: '../api',
+        // Repository root: upstream's Dockerfile (v13.102+) builds api/ and app/
+        // (the web frontend, formerly api/web/) side by side, so it needs both
+        // in its context.
+        directory: '..',
         file: 'Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
         },
         exclude: [
           'node_modules/**',
-          // Nested installs. `node_modules/**` above only covers api/node_modules,
-          // the context root - and api/.dockerignore's `node_modules/` is
-          // context-root relative too, so neither of them catches web/. That left
-          // api/web/node_modules (61,226 files, 803 MB) being hashed and copied
+          // Nested installs. `node_modules/**` above only covers the context
+          // root, and the root .dockerignore's `**/node_modules/` is not applied
+          // by CDK's asset hashing, so neither catches api/ or app/. That used to
+          // leave app/node_modules (61,226 files, 803 MB) being hashed and copied
           // into cdk.out on every synth, handed to the Docker daemon as build
-          // context, and baked into a layer by the Dockerfile's `COPY ./` before
-          // `cd web && npm ci` replaced it - so it inflated the image too.
-          // The three root-context assets below already exclude this.
+          // context, and baked into a layer by the Dockerfile's `COPY app/`
+          // before `npm ci` replaced it - so it inflated the image too.
           '**/node_modules/**',
           // Built by `npm run build` inside the image; the host's copy is stale
           // weight at best.
-          'web/dist/**',
+          'api/dist/**',
+          'app/dist/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
           '**/*.log',
           '**/*.tmp',
           '**/.DS_Store',
-          '**/Thumbs.db'
+          '**/Thumbs.db',
+          // The image never reads these, and with the repository root as the
+          // build context any change under them would rewrite the asset hash
+          // and force a pointless rebuild. data/ can also hold multi-gigabyte
+          // .pmtiles archives (see data/README.md).
+          'cdk/**',
+          'branding/**',
+          'data/**',
+          'docs/**',
+          'tasks/**',
+          // Native-app projects; not part of the web image (root .dockerignore).
+          'app/android/**',
+          'app/ios/**'
         ]
       });
-      
       eventsImageAsset = new ecrAssets.DockerImageAsset(this, 'EventsDockerAsset', {
         directory: '..',
         file: 'tasks/events/Dockerfile',
@@ -195,8 +209,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a
@@ -230,8 +246,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a
@@ -265,8 +283,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a

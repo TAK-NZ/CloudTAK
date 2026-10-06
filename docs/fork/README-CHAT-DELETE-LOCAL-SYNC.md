@@ -18,7 +18,7 @@ IndexedDB was cleared entirely.
 
 ## Root Cause
 
-`Chatroom.deleteChats()` (`api/web/src/base/chatroom.ts`) only called the server
+`Chatroom.deleteChats()` (`app/src/base/chatroom.ts`) only called the server
 `DELETE /api/profile/chatroom/:chatroom/chat` endpoint. It never removed the corresponding rows
 from the local `db.chatroom_chats` IndexedDB table, even on success.
 
@@ -57,4 +57,4 @@ own server call.
 
 | File | Change |
 |------|--------|
-| `api/web/src/base/chatroom.ts` | `deleteChats()` now deletes the given message IDs from `db.chatroom_chats` locally after the server delete succeeds |
+| `app/src/base/chatroom.ts` | `deleteChats()` now deletes the given message IDs from `db.chatroom_chats` locally after the server delete succeeds |

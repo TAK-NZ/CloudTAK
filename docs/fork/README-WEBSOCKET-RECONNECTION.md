@@ -26,7 +26,7 @@ Implements a reconnection strategy with:
 - Shows error message when max attempts reached
 
 ## Files Modified
-- `api/web/src/workers/atlas-connection.ts`
+- `app/src/workers/atlas-connection.ts`
 
 ## Testing
 1. **Normal reconnection**: Disconnect network briefly, verify reconnection works

@@ -68,7 +68,7 @@ The feature is controlled by the `oidcForced` configuration option in `cdk.json`
 
 ### Frontend Changes
 
-1. **Login Component** (`api/web/src/components/Login.vue`):
+1. **Login Component** (`app/src/components/Login.vue`):
    - Checks `oidc_forced` status on mount
    - Automatically redirects to OIDC if forced (unless `?local=true` is present)
    - Handles 403 errors by redirecting to OIDC login
@@ -136,7 +136,7 @@ System administrators can still access the system via `/login?local=true` in cas
 ## Related
 
 This feature spans `api/common/auth.ts` (`isOidcForced()`),
-`api/stateless/routes/login.ts` and `api/web/src/components/Login.vue`. See
+`api/stateless/routes/login.ts` and `app/src/components/Login.vue`. See
 [`FORK-DELTA.md`](FORK-DELTA.md) → "In-app OIDC login" for the full picture, and
 [`README-OIDC.md`](README-OIDC.md) for the auth flow.
 

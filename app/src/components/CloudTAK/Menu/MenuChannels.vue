@@ -1,0 +1,223 @@
+<template>
+    <MenuTemplate name='Channels'>
+        <template #buttons>
+            <TablerIconButton
+                v-if='channels.length && mapStore.hasNoChannels'
+                title='All Channels On'
+                @click='setAllStatus(true)'
+            >
+                <IconEyePlus
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
+            <TablerIconButton
+                v-if='channels.length && !mapStore.hasNoChannels'
+                title='All Channels Off'
+                @click='setAllStatus(false)'
+            >
+                <IconEyeX
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
+
+            <TablerRefreshButton
+                :loading='syncing'
+                @click='refresh'
+            />
+        </template>
+        <template #default>
+            <div class='my-2'>
+                <SearchSortFilter
+                    v-model='paging.filter'
+                    v-model:sort='sort'
+                    :sort-options='sortOptions'
+                    :active-filters='activeFilterCount'
+                    placeholder='Filter'
+                >
+                    <template #sort-icon>
+                        <component
+                            :is='sortTypeIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                        <component
+                            :is='sortDirectionIcon'
+                            :size='20'
+                            stroke='1'
+                        />
+                    </template>
+                    <template #filters>
+                        <div class='d-flex flex-column'>
+                            <div class='d-flex align-items-center justify-content-between px-3 py-2'>
+                                <strong class='small text-uppercase text-white-50'>Filters</strong>
+                                <button
+                                    v-if='activeFilterCount > 0'
+                                    type='button'
+                                    class='btn btn-link btn-sm p-0'
+                                    @click='clearFilters'
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                            <div class='px-3 pb-2 d-flex flex-column gap-2'>
+                                <div class='small text-uppercase text-white-50 mb-1'>
+                                    Status
+                                </div>
+                                <label class='form-check mb-1'>
+                                    <input
+                                        class='form-check-input'
+                                        type='checkbox'
+                                        :checked='filterActive === true'
+                                        @change='toggleStatusFilter(true)'
+                                    >
+                                    <span class='form-check-label'>Active</span>
+                                </label>
+                                <label class='form-check mb-1'>
+                                    <input
+                                        class='form-check-input'
+                                        type='checkbox'
+                                        :checked='filterActive === false'
+                                        @change='toggleStatusFilter(false)'
+                                    >
+                                    <span class='form-check-label'>Inactive</span>
+                                </label>
+                            </div>
+                        </div>
+                    </template>
+                </SearchSortFilter>
+            </div>
+
+            <EmptyInfo
+                v-if='mapStore.hasNoChannels'
+                :button='false'
+            />
+
+            <TablerNone
+                v-if='!Object.keys(processChannels).length'
+                :create='false'
+            />
+            <div
+                v-else
+                class='col-12 d-flex flex-column gap-2 py-3'
+            >
+                <StandardItemChannel
+                    v-for='ch in processChannels'
+                    :key='ch.name'
+                    :channel='ch'
+                    @click='setStatus(ch, !ch.active)'
+                />
+            </div>
+        </template>
+    </MenuTemplate>
+</template>
+
+<script setup lang='ts'>
+import { ref, computed, onMounted } from 'vue';
+import type { Ref } from 'vue';
+import { from } from 'rxjs';
+import { useObservable } from '@vueuse/rxjs';
+import type { GroupChannel } from '../../../../src/types.ts';
+import GroupManager from '../../../base/group.ts';
+import {
+    TablerNone,
+    TablerIconButton,
+    TablerRefreshButton,
+} from '@tak-ps/vue-tabler';
+import MenuTemplate from '../util/MenuTemplate.vue';
+import SearchSortFilter from '../util/SearchSortFilter.vue';
+import StandardItemChannel from '../util/StandardItemChannel.vue';
+import EmptyInfo from '../util/EmptyInfo.vue';
+import {
+    IconEyeX,
+    IconEyePlus,
+    IconLetterCase,
+    IconArrowUp,
+    IconArrowDown,
+} from '@tabler/icons-vue';
+import { useMapStore } from '../../../stores/map.ts';
+const mapStore = useMapStore();
+
+const syncing = ref(false);
+const paging = ref({
+    filter: ''
+});
+
+const sort = ref('A → Z');
+const sortOptions = ['A → Z', 'Z → A'];
+const sortTypeIcon = computed(() => IconLetterCase);
+const sortDirectionIcon = computed(() => sort.value === 'A → Z' ? IconArrowUp : IconArrowDown);
+
+const filterActive = ref<boolean | null>(null);
+const activeFilterCount = computed(() => filterActive.value !== null ? 1 : 0);
+
+function toggleStatusFilter(value: boolean): void {
+    filterActive.value = filterActive.value === value ? null : value;
+}
+
+function clearFilters(): void {
+    filterActive.value = null;
+}
+
+const channels = useObservable(
+    from(GroupManager.liveList()),
+    { initialValue: [] }
+) as Ref<GroupChannel[]>;
+
+onMounted(async () => {
+    await refresh();
+});
+
+const processChannels = computed<Record<string, GroupChannel>>(() => {
+    const filteredChannels: Record<string, GroupChannel> = {};
+
+    JSON.parse(JSON.stringify(channels.value))
+        .sort((a: GroupChannel, b: GroupChannel) => {
+            const cmp = a.name.localeCompare(b.name);
+            return sort.value === 'Z → A' ? -cmp : cmp;
+        }).forEach((channel: GroupChannel) => {
+            filteredChannels[channel.name] = channel;
+        })
+
+    for (const key of Object.keys(filteredChannels)) {
+        const ch = filteredChannels[key];
+        if (!key.toLowerCase().includes(paging.value.filter.toLowerCase())) {
+            delete filteredChannels[key];
+        } else if (filterActive.value !== null && ch.active !== filterActive.value) {
+            delete filteredChannels[key];
+        }
+    }
+
+    return filteredChannels;
+});
+
+async function refresh() {
+    syncing.value = true;
+    try {
+        await GroupManager.sync();
+    } finally {
+        syncing.value = false;
+    }
+}
+
+async function setAllStatus(active=true) {
+    // Update UI state optimistically for immediate feedback while the API call is in flight
+    const updates = channels.value.map((ch) => {
+        const char = JSON.parse(JSON.stringify(ch));
+        char.active = active;
+        return char;
+    });
+
+    await GroupManager.put(updates);
+
+    await mapStore.worker.profile.setAllChannels(active);
+}
+
+async function setStatus(channel: GroupChannel, active=false) {
+    const update: GroupChannel = { ...channel, active };
+    await GroupManager.put(update);
+
+    await mapStore.worker.profile.setChannel(channel.name, active);
+}
+</script>
