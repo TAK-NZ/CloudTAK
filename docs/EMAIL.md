@@ -84,5 +84,3 @@ The API finds the layer prefix through a small fork patch,
 - Raw mail stays in S3 for 7 days and in the Mail Manager archive for 6 months.
   Do not send sensitive content to a layer address.
 - SES Mail Manager inbound is available in ap-southeast-2 (Sydney).
-- The standard `Environment Type` tag is not applied to the four Mail Manager
-  resources because SES rejects tag keys containing spaces.

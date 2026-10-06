@@ -281,14 +281,6 @@ export class Mail extends Construct {
       trafficPolicyId: this.trafficPolicy.attrTrafficPolicyId
     });
 
-    // SES Mail Manager tag keys only allow [a-zA-Z0-9/_+=.:@-], but the stack-wide
-    // standard tags include 'Environment Type' (with a space), which would make
-    // CloudFormation reject these four resources. Drop just that tag from them;
-    // every other tag still applies.
-    for (const resource of [this.trafficPolicy, this.archive, this.ruleSet, this.ingressPoint]) {
-      cdk.Tags.of(resource).remove('Environment Type');
-    }
-
     // MX: direct inbound SMTP for the mail domain to the ingress endpoint
     new route53.MxRecord(this, 'MxRecord', {
       zone: hostedZone,

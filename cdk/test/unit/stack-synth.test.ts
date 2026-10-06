@@ -11,7 +11,7 @@
  * across assertions, so the whole file pays for roughly four synths.
  */
 import { Template, Match } from 'aws-cdk-lib/assertions';
-import { synthTemplate, EnvType } from '../__helpers__/synth-stack';
+import { synthTemplate, synthStack, EnvType } from '../__helpers__/synth-stack';
 
 // The prebuilt-image path resolves image tags from a cloudtakImageTag context
 // value that CI supplies (e.g. `cloudtak-<sha>`); without it the events and
@@ -193,17 +193,6 @@ describe('inbound email wiring', () => {
     expect(exportNames).toContain('TAK-Dev-CloudTAK-webhooks-role');
   });
 
-  it('keeps the space-containing standard tag off SES Mail Manager resources', () => {
-    // SES rejects tag keys with spaces ('Environment Type'); other tags remain.
-    for (const type of ['TrafficPolicy', 'Archive', 'RuleSet', 'IngressPoint']) {
-      const resources = Object.values(t.findResources(`AWS::SES::MailManager${type}`)) as any[];
-      expect(resources).toHaveLength(1);
-      const keys = (resources[0].Properties.Tags ?? []).map((tag: any) => tag.Key);
-      expect(keys).not.toContain('Environment Type');
-      expect(keys.length).toBeGreaterThan(0);
-    }
-  });
-
   it('sets MAIL_DOMAIN explicitly on the API and hub containers', () => {
     const defs = Object.values(t.findResources('AWS::ECS::TaskDefinition'))
       .flatMap((r: any) => r.Properties.ContainerDefinitions)
@@ -251,5 +240,48 @@ describe('inbound email wiring', () => {
       Type: 'MX',
       Name: { 'Fn::Join': ['', ['mail.map.', Match.anyValue(), '.']] }
     });
+  });
+});
+
+describe('tag key validity', () => {
+  // Deploy-time failure class that synth cannot see: SES Mail Manager (and
+  // others) reject tag keys outside [a-zA-Z0-9/_+=.:@-]. Stack-level tags
+  // (the `tags` stack prop in bin/cdk.ts) are propagated by CloudFormation to
+  // every resource, so a bad standard tag breaks the first real deploy.
+  const TAG_KEY = /^[a-zA-Z0-9/_+=.:@-]+$/;
+
+  /** Tag keys of a resource, whether Tags is a [{Key,Value}] list or a map. */
+  function keysOf(tags: unknown): string[] {
+    if (Array.isArray(tags)) return tags.map((t: any) => t?.Key).filter((k) => typeof k === 'string');
+    if (tags && typeof tags === 'object') return Object.keys(tags);
+    return [];
+  }
+
+  it.each(['dev-test', 'prod'] as EnvType[])('%s: stack-level and resource tag keys are valid', (envType) => {
+    const { template: t, stackTags } = synthStack(envType, PREBUILT_CONTEXT);
+
+    expect(Object.keys(stackTags).length).toBeGreaterThan(0);
+    for (const key of Object.keys(stackTags)) {
+      expect(key).toMatch(TAG_KEY);
+    }
+
+    const offenders: string[] = [];
+    for (const [logicalId, resource] of Object.entries(t.toJSON().Resources as Record<string, any>)) {
+      for (const key of [...keysOf(resource.Properties?.Tags), ...keysOf(resource.Properties?.tags)]) {
+        if (!TAG_KEY.test(key)) offenders.push(`${logicalId} (${resource.Type}): "${key}"`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps the standard tags on SES Mail Manager resources', () => {
+    const t = template('dev-test', true);
+    for (const type of ['TrafficPolicy', 'Archive', 'RuleSet', 'IngressPoint']) {
+      const resources = Object.values(t.findResources(`AWS::SES::MailManager${type}`)) as any[];
+      expect(resources).toHaveLength(1);
+      expect(keysOf(resources[0].Properties.Tags)).toEqual(
+        expect.arrayContaining(['Project', 'Environment', 'Component', 'ManagedBy', 'EnvironmentType'])
+      );
+    }
   });
 });

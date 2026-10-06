@@ -30,7 +30,7 @@ describe('Tag Helpers', () => {
         'Project': 'TAK',
         'Component': 'CloudTAK',
         'Environment': 'Prod',
-        'Environment Type': 'Prod'
+        'EnvironmentType': 'Prod'
       })
     );
   });
