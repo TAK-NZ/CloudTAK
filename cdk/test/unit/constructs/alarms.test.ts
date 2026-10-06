@@ -50,7 +50,7 @@ function scaffold(stackId: string) {
 
   const pmtiles = {
     tilesLambda: new lambda.Function(stack, 'TilesLambda', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromInline('exports.handler = async () => ({});')
     }),
