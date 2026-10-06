@@ -176,6 +176,7 @@ npm run deploy:local:dev
 - **[🐳 Docker Image Strategy](docs/DOCKER_IMAGE_STRATEGY.md)** - Hybrid image strategy for fast CI/CD and flexible development
 - **[🪝 Webhooks Guide](docs/WEBHOOKS.md)** - Incoming webhook support for ETL layers
 - **[📧 Inbound Email Guide](docs/EMAIL.md)** - Email delivery to ETL layers (SES Mail Manager, DNS records, security notes)
+- **[🗄️ Aurora Major Upgrade Runbook](docs/AURORA-MAJOR-UPGRADE.md)** - Aurora PostgreSQL 17 to 18 upgrade procedure and rollback
 - **[🔐 OIDC Authentication](docs/OIDC_AUTHENTICATION.md)** - In-app Single Sign-On setup with Authentik
 - **[📜 Certificate Management](docs/fork/README-CERT-RENEWAL.md)** - Automatic certificate monitoring and renewal
 

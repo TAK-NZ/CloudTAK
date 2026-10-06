@@ -128,8 +128,19 @@ export class Database extends Construct {
     // AuroraPostgresEngineVersion.of(fullVersion, majorVersion) (rather than a
     // hard-coded VER_x_y constant) means a new minor can be adopted from config
     // alone, without waiting for the aws-cdk-lib enum to add it - the enum lags
-    // behind AWS engine releases (e.g. 17.10 has no VER_17_10 constant yet).
-    const engineVersionString = dbConfig.engineVersion || '17.10';
+    // behind AWS engine releases (e.g. 18.6 has no VER_18_6 constant yet).
+    //
+    // The major version (the first dotted segment) also selects the parameter
+    // group family (aurora-postgresql<major>). Changing the major version
+    // therefore replaces the cluster parameter group and triggers an in-place
+    // major upgrade of the cluster. See docs/AURORA-MAJOR-UPGRADE.md before
+    // changing database.engineVersion across a major version.
+    //
+    // Note: AWS::RDS::DBCluster has no AllowMajorVersionUpgrade property (only
+    // AWS::RDS::DBInstance does), so there is no cluster-level override to set.
+    // The parameter group has no fixed physical name, so the replacement group
+    // gets a generated name and does not collide with the old one.
+    const engineVersionString = dbConfig.engineVersion || '18.6';
     const majorVersion = engineVersionString.split('.')[0];
     const engineVersion = rds.AuroraPostgresEngineVersion.of(engineVersionString, majorVersion);
     const parameterGroup = new rds.ParameterGroup(this, 'DBParameterGroup', {
@@ -141,7 +152,10 @@ export class Database extends Construct {
         'shared_preload_libraries': 'pg_stat_statements',
         'log_statement': 'all',
         'log_min_duration_statement': '1000',
-        'log_connections': '1',
+        // PG18 changed log_connections from a boolean to a list of connection
+        // stages ('1' is no longer an allowed value); 'all' is the PG18 superset
+        // of the previous boolean behaviour.
+        'log_connections': Number(majorVersion) >= 18 ? 'all' : '1',
         'log_disconnections': '1'
       }
     });
