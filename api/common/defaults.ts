@@ -45,11 +45,7 @@ export const FullConfigDefaults: Partial<Static<typeof FullConfig>> = {
     'login::background::enabled': false,
     'login::background::color': '#03384f',
     'login::brand::logo': `data:image/svg+xml;base64,${fs.readFileSync(new URL('../branding/CloudTAKLogoText.svg', import.meta.url)).toString('base64')}`,
-    'oidc::enabled': false,
-    'oidc::enforced': false,
-    'oidc::name': '',
-    'oidc::discovery': '',
-    'oidc::logo': '',
+    // TAK-NZ: no `oidc::*` settings - SSO is env-driven (see common/auth.ts isOidcEnabled)
     'passkey::enabled': true,
     'login::token::expiry': 192,
     'login::refresh::expiry': 720,
