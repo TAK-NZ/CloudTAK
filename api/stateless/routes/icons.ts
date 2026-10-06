@@ -12,7 +12,8 @@ import xmljs from 'xml-js';
 import { Param } from '@openaddresses/batch-generic';
 import { sql, eq } from 'drizzle-orm';
 import { StandardResponse, IconResponse, IconsetResponse } from '../../common/types.js';
-import { Icon, Iconset, ProfileFile, BasemapVector, ProfileOverlay } from '../../common/schema.js';
+import { Icon, Iconset, ProfileFile, BasemapVector } from '../../common/schema.js';
+import ProfileOverlayControl from '../../common/control/profile-overlay.js';
 import * as Default from '../lib/limits.js';
 
 export type SpriteRecord = {
@@ -26,6 +27,7 @@ export enum IconsetFormatEnum {
 }
 
 export default async function router(schema: Schema, config: ConfigStateless) {
+    const overlayControl = new ProfileOverlayControl(config);
     const DefaultSprite = {
         json: JSON.parse(String(await fs.readFile(new URL('../../icons/generator.json', import.meta.url)))),
         image: await fs.readFile(new URL('../../icons/generator.png', import.meta.url)),
@@ -158,16 +160,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 throw new Err(400, null, 'Only System Admin can edit Server Resource');
             }
 
-            if (typeof req.body.public === 'boolean' && user.access === AuthUserAccess.ADMIN) {
-                if (req.body.public === true) {
-                    await config.models.Iconset.commit(req.params.iconset, { username: null });
-                } else {
-                    await config.models.Iconset.commit(req.params.iconset, { username: user.email });
-                }
+            const { public: isPublic, ...body } = req.body;
+
+            if (isPublic !== undefined && user.access !== AuthUserAccess.ADMIN) {
+                throw new Err(400, null, 'Only System Admins can change Iconset visibility');
             }
 
-            delete req.body.public;
-            const iconset = await config.models.Iconset.commit(req.params.iconset, req.body);
+            const iconset = await config.models.Iconset.commit(req.params.iconset, {
+                ...body,
+                ...(isPublic === true ? { username: null } : {}),
+                ...(isPublic === false && !existing.username ? { username: user.email } : {}),
+            });
 
             res.json(iconset);
         } catch (err) {
@@ -331,9 +334,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 .set({ iconset: null })
                 .where(eq(BasemapVector.iconset, req.params.iconset));
 
-            await config.pg.update(ProfileOverlay)
-                .set({ iconset: null })
-                .where(eq(ProfileOverlay.iconset, req.params.iconset));
+            await overlayControl.detachIconsets([req.params.iconset]);
 
             await config.models.Iconset.delete(String(req.params.iconset));
 
@@ -525,7 +526,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         description: 'Update Icon in Iconset',
         body: Type.Object({
-            name: Type.Optional(Type.String()),
+            name: Type.Optional(Default.NameField),
             data: Type.Optional(Type.String()),
             type2525b: Type.Optional(Type.Union([Type.Null(), Type.String()])),
         }),

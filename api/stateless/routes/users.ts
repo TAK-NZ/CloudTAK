@@ -3,12 +3,14 @@ import { sql, eq, asc, desc, getTableColumns } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
-import { ProfileResponse, ProfileListResponse, CertificateResponse } from '../../common/types.js';
+import { revokeSessions } from '../lib/user/session.js';
+import { StandardResponse, ProfileResponse, ProfileListResponse, CertificateResponse } from '../../common/types.js';
 import type ConfigStateless from '../config.js';
 import { TAKRole, TAKGroup } from '@tak-ps/node-tak/lib/api/types';
 import { Profile, ProfileSession } from '../../common/schema.js';
 import * as Default from '../lib/limits.js';
 import ProfileControl from '../lib/control/profile.js';
+import UserControl from '../lib/control/user.js';
 import Provider from '../lib/provider.js';
 
 const UserResponse = Type.Composite([
@@ -26,6 +28,9 @@ const UserPatchBody = Type.Object({
     tak_role: Type.Optional(Type.Enum(TAKRole)),
 
     system_admin: Type.Optional(Type.Boolean()),
+    disabled: Type.Optional(Type.Boolean({
+        description: 'Disable (true) or re-enable (false) the user - disabling also removes all of their login sessions',
+    })),
 });
 
 type UserPatchBodyType = Static<typeof UserPatchBody>;
@@ -33,6 +38,7 @@ type UserPatchValue = UserPatchBodyType[keyof UserPatchBodyType];
 
 export default async function router(schema: Schema, config: ConfigStateless) {
     const profileControl = new ProfileControl(config);
+    const userControl = new UserControl(config);
 
     await schema.get('/user', {
         name: 'List Users',
@@ -112,15 +118,22 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         res: UserResponse,
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { admin: true });
+            const user = await Auth.as_user(config, req, { admin: true });
 
             const profileBody = req.body as UserPatchBodyType;
+
+            if (profileBody.disabled && req.params.username === user.email) {
+                throw new Err(400, null, 'A System Administrator cannot disable their own account');
+            }
+
             const profile_body: { system_admin?: boolean } = {};
             const profile_config: Record<string, UserPatchValue> = {};
 
             for (const key of Object.keys(profileBody) as Array<keyof UserPatchBodyType>) {
                 if (key === 'system_admin') {
                     profile_body.system_admin = profileBody[key];
+                } else if (key === 'disabled') {
+                    continue;
                 } else {
                     profile_config[String(key).replace('_', '::')] = profileBody[key];
                 }
@@ -132,6 +145,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (Object.keys(profile_config).length) {
                 await config.models.ProfileConfig.commit(req.params.username, profile_config);
+            }
+
+            if (profileBody.disabled !== undefined) {
+                await userControl.disable(req.params.username, profileBody.disabled);
             }
 
             const profile = await profileControl.from(req.params.username);
@@ -185,10 +202,52 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }
     });
 
+    await schema.delete('/user/:username', {
+        name: 'Erase User',
+        group: 'User',
+        description: `
+            Irreversibly erase the personal data of a user.
+
+            Everything the user owns is deleted, followed by the user itself.
+            Connections, Layers & Data Syncs created by the user are retained with their author cleared.
+            The username must be repeated as a query parameter to confirm the action.
+        `,
+        params: Type.Object({
+            username: Type.String(),
+        }),
+        query: Type.Object({
+            username: Type.String({
+                description: 'Must match the username being erased',
+            }),
+        }),
+        res: StandardResponse,
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req, { admin: true });
+
+            if (req.query.username !== req.params.username) {
+                throw new Err(400, null, 'Confirmation username does not match the user being erased');
+            } else if (req.params.username === user.email) {
+                throw new Err(400, null, 'A System Administrator cannot erase their own account');
+            }
+
+            await config.models.Profile.from(req.params.username);
+
+            await userControl.erase(req.params.username);
+
+            res.json({
+                status: 200,
+                message: 'User Erased',
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
     await schema.get('/user/:username/session', {
         name: 'List User Sessions',
         group: 'User',
-        description: 'Let Admins list login sessions for a given user',
+        description: 'List login sessions for a given user - users may list their own sessions, Admins may list any user',
         params: Type.Object({
             username: Type.String(),
         }),
@@ -217,7 +276,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
     }, async (req, res) => {
         try {
-            await Auth.as_user(config, req, { admin: true });
+            const user = await Auth.as_user(config, req);
+
+            if (!user.is_admin() && req.params.username !== user.email) {
+                throw new Err(403, null, 'Only a System Administrator can list login sessions for another user');
+            }
 
             const list = await config.models.ProfileSession.list({
                 limit: req.query.limit,
@@ -233,9 +296,47 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             res.json({
                 total: list.total,
                 items: list.items.map(item => ({
-                    ...item,
+                    id: item.id,
+                    username: item.username,
+                    created: item.created,
+                    ip: item.ip,
+                    device_type: item.device_type,
+                    browser: item.browser,
+                    os: item.os,
+                    user_agent: item.user_agent,
                     active: activeSessions.has(item.id),
                 })),
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.delete('/user/:username/session/:session', {
+        name: 'Delete User Session',
+        group: 'User',
+        description: 'Terminate a login session, revoking its login and refresh tokens - users may terminate their own sessions, Admins may terminate any',
+        params: Type.Object({
+            username: Type.String(),
+            session: Type.String(),
+        }),
+        res: StandardResponse,
+    }, async (req, res) => {
+        try {
+            const user = await Auth.as_user(config, req);
+
+            if (!user.is_admin() && req.params.username !== user.email) {
+                throw new Err(403, null, 'Only a System Administrator can terminate login sessions for another user');
+            }
+
+            const session = await config.models.ProfileSession.from(req.params.session);
+            if (session.username !== req.params.username) throw new Err(404, null, 'Session not found');
+
+            await revokeSessions(config, [session.id]);
+
+            res.json({
+                status: 200,
+                message: 'Session Terminated',
             });
         } catch (err) {
             Err.respond(err, res);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import jwt from 'jsonwebtoken';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import Flight from './flight.js';
 
 const flight = new Flight();
@@ -9,6 +10,7 @@ flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
 flight.user({ username: 'user', admin: false });
+flight.integration('test-task');
 
 flight.connection();
 
@@ -69,12 +71,14 @@ test('POST: api/core/event', async () => {
         eventId = res.body.id;
         assert.ok(res.body.created, 'has created');
         assert.ok(res.body.updated, 'has updated');
+        assert.ok(res.body.started, 'has started');
         delete res.body.id;
         delete res.body.created;
         delete res.body.updated;
+        delete res.body.started;
 
         assert.deepEqual(res.body, {
-            mission_guid: null,
+            missions: [],
             username: 'admin@example.com',
             connection: null,
             priority: 'high',
@@ -406,7 +410,7 @@ test('PATCH: api/core/event/:event - update links & style', async () => {
     }
 });
 
-test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
+test('PATCH: api/core/event/:event - set and clear missions', async () => {
     try {
         const res = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -414,11 +418,29 @@ test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
                 bearer: flight.token.admin,
             },
             body: {
-                mission_guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+                missions: [{
+                    name: 'Boulder Wildfire',
+                    guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+                }],
             },
         }, true);
 
-        assert.equal(res.body.mission_guid, 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7');
+        assert.deepEqual(res.body.missions, [{
+            name: 'Boulder Wildfire',
+            guid: 'f3170b6c-fbf1-45b7-9077-2e2e63251eb7',
+        }]);
+
+        const invalid = await flight.fetch(`/api/core/event/${eventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                missions: [{ name: 'No GUID' }],
+            },
+        }, false);
+
+        assert.equal(invalid.status, 400);
 
         const cleared = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -426,11 +448,11 @@ test('PATCH: api/core/event/:event - set and clear mission_guid', async () => {
                 bearer: flight.token.admin,
             },
             body: {
-                mission_guid: null,
+                missions: [],
             },
         }, true);
 
-        assert.equal(cleared.body.mission_guid, null);
+        assert.deepEqual(cleared.body.missions, []);
     } catch (err) {
         assert.ifError(err);
     }
@@ -500,7 +522,51 @@ test('PATCH: api/core/event/:event - active false sets ended', async () => {
     }
 });
 
-test('PATCH: api/core/event/:event - clear channels', async () => {
+test('PATCH: api/core/event/:event - a future ended keeps the Event active until then', async () => {
+    try {
+        const patch = async (body: Record<string, unknown>) => {
+            const res = await flight.fetch(`/api/core/event/${eventId}`, {
+                method: 'PATCH',
+                auth: { bearer: flight.token.admin },
+                body,
+            }, true);
+
+            assert.equal(res.status, 200);
+            return res.body;
+        };
+
+        const scheduled = await patch({ ended: new Date(Date.now() + 60 * 60 * 1000).toISOString() });
+        assert.equal(scheduled.active, true, 'active until ended');
+        assert.ok(scheduled.ended);
+
+        const pushed = await patch({ ended: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString() });
+        assert.equal(pushed.active, true);
+        assert.ok(new Date(pushed.ended).getTime() > new Date(scheduled.ended).getTime(), 'ended pushed out');
+
+        // Ending now moves a future ended back to now
+        const ended = await patch({ active: false });
+        assert.equal(ended.active, false);
+        assert.ok(new Date(ended.ended).getTime() < new Date(pushed.ended).getTime(), 'ended moved to now');
+
+        const again = await patch({ active: false, remarks: 'Still ended' });
+        assert.equal(again.ended, ended.ended, 'a past ended is preserved');
+
+        const past = await patch({ ended: '2026-07-20T12:00:00.000Z' });
+        assert.equal(past.active, false, 'a past ended ends the Event');
+
+        const started = await patch({ started: '2026-07-01T12:00:00.000Z' });
+        assert.notEqual(started.started, past.started, 'started updated');
+        assert.ok(String(started.started).startsWith('2026-0'));
+
+        const reopened = await patch({ active: true });
+        assert.equal(reopened.active, true);
+        assert.equal(reopened.ended, null, 'reactivating leaves the Event open ended');
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - channels cannot be cleared', async () => {
     try {
         const res = await flight.fetch(`/api/core/event/${eventId}`, {
             method: 'PATCH',
@@ -510,9 +576,26 @@ test('PATCH: api/core/event/:event - clear channels', async () => {
             body: {
                 channels: [],
             },
-        }, true);
+        }, false);
 
-        assert.deepEqual(res.body.channels, []);
+        assert.equal(res.status, 400);
+
+        const create = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Unshared Event',
+                type: '10031000001213000000',
+                geometry: {
+                    type: 'Point',
+                    coordinates: [-105.2705, 40.015],
+                },
+            },
+        }, false);
+
+        assert.equal(create.status, 400);
     } catch (err) {
         assert.ifError(err);
     }
@@ -664,18 +747,107 @@ test('PATCH: api/core/event/:event - 403 for connection token on user event', as
     }
 });
 
+// The mock TAK Server reports no channels by default - report channel 7 active
+// for every certificate so Connection 1 shares a channel with the user Event
+const channelSeven = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    if (request.method !== 'GET' || request.url !== '/Marti/api/groups/all?useCache=true') return false;
+
+    response.setHeader('Content-Type', 'application/json');
+    response.write(JSON.stringify({
+        version: '3',
+        type: 'com.bbn.marti.remote.groups.Group',
+        data: [{ name: 'SAR', direction: 'IN', created: '2026-01-01', type: 'SYSTEM', bitpos: 7, active: true, description: '' }],
+    }));
+    response.end();
+    return true;
+};
+
+let sharedEventId: string;
+
+test('GET: api/core/event/:event - connection token with a shared channel active', async () => {
+    try {
+        flight.tak.mockMarti.unshift(channelSeven);
+
+        // Created by a user, not the Connection, and shared with channel 7
+        const created = await flight.fetch('/api/core/event', {
+            method: 'POST',
+            auth: {
+                bearer: flight.token.admin,
+            },
+            body: {
+                name: 'Missing Hunter',
+                type: '13031100001110000000',
+                geometry: { type: 'Point', coordinates: [-108.4357, 38.5663] },
+                channels: [7],
+            },
+        }, true);
+
+        sharedEventId = created.body.id;
+
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'GET',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, true);
+
+        assert.equal(res.body.id, sharedEventId);
+        assert.equal(res.body.connection, null);
+        assert.deepEqual(res.body.channels, [7]);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('PATCH: api/core/event/:event - connection token with a shared channel active', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'PATCH',
+            auth: {
+                bearer: connectionToken,
+            },
+            body: {
+                links: [{ name: 'Slack: #sar-incident', url: 'https://example.slack.com/archives/C0123' }],
+            },
+        }, true);
+
+        assert.deepEqual(res.body.links, [{ name: 'Slack: #sar-incident', url: 'https://example.slack.com/archives/C0123' }]);
+    } catch (err) {
+        assert.ifError(err);
+    } finally {
+        flight.tak.mockMarti.splice(flight.tak.mockMarti.indexOf(channelSeven), 1);
+    }
+});
+
+test('GET: api/core/event/:event - 403 for connection token once the shared channel is inactive', async () => {
+    try {
+        const res = await flight.fetch(`/api/core/event/${sharedEventId}`, {
+            method: 'GET',
+            auth: {
+                bearer: connectionToken,
+            },
+        }, false);
+
+        assert.equal(res.status, 403);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('PATCH: api/core/event/:event - layer token from same connection', async () => {
     try {
         await flight.config!.models.Layer.generate({
             name: 'Core Event Layer',
-            task: 'test-task-v1.0.0',
+            task: 1,
+            version: '1.0.0',
             connection: 1,
             permissions: ['event:update'],
         });
 
         await flight.config!.models.Layer.generate({
             name: 'Unscoped Layer',
-            task: 'test-task-v1.0.0',
+            task: 1,
+            version: '1.0.0',
             connection: 1,
             permissions: ['event:read'],
         });

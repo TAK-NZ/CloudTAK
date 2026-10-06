@@ -114,6 +114,11 @@
         "query": false,
         "res": true
     },
+    "GET /config/email": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /connection/:connectionid/asset": {
         "body": false,
         "query": false,
@@ -234,6 +239,31 @@
         "query": false,
         "res": true
     },
+    "GET /connection/:connectionid/layer/:layerid/incoming/mapping": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /connection/:connectionid/layer/:layerid/incoming/mapping": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /connection/:connectionid/layer/:layerid/incoming/mapping/:mappingid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /connection/:connectionid/layer/:layerid/task": {
         "body": false,
         "query": false,
@@ -334,6 +364,11 @@
         "query": false,
         "res": true
     },
+    "POST /connection/:connectionid/submit": {
+        "body": true,
+        "query": true,
+        "res": true
+    },
     "GET /connection/:connectionid/token": {
         "body": false,
         "query": true,
@@ -414,6 +449,16 @@
         "query": false,
         "res": true
     },
+    "GET /connection/:connectionid/channel": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /connection/:connectionid/channel": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "GET /connection/:connectionid/auth": {
         "body": false,
         "query": true,
@@ -450,6 +495,31 @@
         "res": true
     },
     "DELETE /core/device/:device": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/event/:event/assignment": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/event/:event/assignment/:assignment": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/event/:event/assignment": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/event/:event/assignment/:assignment": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/event/:event/assignment/:assignment": {
         "body": false,
         "query": false,
         "res": true
@@ -515,6 +585,31 @@
         "res": true
     },
     "DELETE /board/:board": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/event/:event/effect": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /core/event/:event/effect/:effect": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /core/event/:event/effect": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "PATCH /core/event/:event/effect/:effect": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /core/event/:event/effect/:effect": {
         "body": false,
         "query": false,
         "res": true
@@ -610,6 +705,16 @@
         "res": true
     },
     "DELETE /core/form/:form": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/schema": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /core/schema/:id": {
         "body": false,
         "query": false,
         "res": true
@@ -744,6 +849,56 @@
         "query": false,
         "res": true
     },
+    "GET /integration": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "POST /integration": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /integration/:integrationid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw/:prefix": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/raw/:prefix/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /integration/raw/:prefix/version/:version": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/:integrationid": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PATCH /integration/:integrationid": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "GET /integration/:integrationid/readme": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
     "GET /layer": {
         "body": false,
         "query": true,
@@ -805,6 +960,11 @@
         "res": true
     },
     "POST /login": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "POST /login/refresh": {
         "body": true,
         "query": false,
         "res": true
@@ -890,6 +1050,31 @@
         "res": true
     },
     "DELETE /marti/missions/:guid/log/:log": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /marti/missions/:guid/property": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
+    "GET /marti/missions/:guid/property/:key": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "PUT /marti/missions/:guid/property": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/property/:key": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "DELETE /marti/missions/:guid/property": {
         "body": false,
         "query": false,
         "res": true
@@ -1539,56 +1724,6 @@
         "query": false,
         "res": true
     },
-    "GET /task": {
-        "body": false,
-        "query": true,
-        "res": true
-    },
-    "POST /task": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "DELETE /task/:taskid": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw/:task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/raw/:task/version/:version": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "DELETE /task/raw/:task/version/:version": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /task/:task": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "PATCH /task/:task": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
-    "GET /task/:task/readme": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
     "GET /user": {
         "body": false,
         "query": true,
@@ -1604,9 +1739,19 @@
         "query": false,
         "res": true
     },
+    "DELETE /user/:username": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /user/:username/session": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "DELETE /user/:username/session/:session": {
+        "body": false,
+        "query": false,
         "res": true
     },
     "POST /video/auth": {

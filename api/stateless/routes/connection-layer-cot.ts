@@ -1,19 +1,19 @@
 import { Static, Type } from '@sinclair/typebox';
 import Schema from '@openaddresses/batch-schema';
-import { GenerateUpsert } from '@openaddresses/batch-generic';
 import crypto from 'node:crypto';
 import Err from '@openaddresses/batch-error';
-import { ConnectionFeature } from '../../common/schema.js';
 import Auth, { AuthResourceAccess } from '../../common/auth.js';
 import Style from '../../common/style.js';
+import { archiveCots } from '../lib/control/feature.js';
 import type ConfigStateless from '../config.js';
 import { HistoryOptions } from '@tak-ps/node-tak/lib/api/query';
 import { CoTParser, Feature } from '@tak-ps/node-cot';
 import { MissionLayerType } from '@tak-ps/node-tak/lib/api/mission-layer';
 import { StandardLayerResponse, LayerError } from '../../common/types.js';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import TAKServerControl from '../../common/control/takserver.js';
 
 export default async function router(schema: Schema, config: ConfigStateless) {
+    const takserver = new TAKServerControl(config);
     await schema.post('/layer/:layerid/cot', {
         name: 'Post COT',
         group: 'Internal',
@@ -119,7 +119,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                         throw new Err(400, null, 'uids Array must be present when submitting to DataSync with MissionDiff');
                     }
 
-                    const api = await TAKAPI.init(new URL(String(config.server.api)), new APIAuthCertificate(dataConnection.auth.cert, dataConnection.auth.key));
+                    const api = await takserver.asConnection(dataConnection);
                     // Once NodeJS supports Set.difference we can simplify this
                     const inputFeats = new Set(req.body.uids);
 
@@ -238,31 +238,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             } else {
                 cots = cots.filter(cot => !cot.is_stale());
 
-                const insertValues = [];
-                for (const cot of cots) {
-                    insertValues.push({
-                        path: '/',
-                        connection: layer.connection,
-                        layer: layer.id,
-                        ...(await CoTParser.to_geojson(cot)),
-                    });
-                }
-
-                try {
-                    if (insertValues.length && req.query.archive) {
-                        const INSERT_BATCH = 10000;
-
-                        for (let i = 0; i < insertValues.length; i += INSERT_BATCH) {
-                            await config.models.ConnectionFeature.generate(insertValues.slice(i, i + INSERT_BATCH), {
-                                upsert: GenerateUpsert.UPDATE,
-                                upsertTarget: [ConnectionFeature.connection, ConnectionFeature.id],
-                            });
-                        }
-                    }
-                } catch (err) {
-                    // We don't throw as priority is TAK Server Delivery
-                    console.error(err);
-                }
+                if (req.query.archive) await archiveCots(config, cots, layer.connection, layer.id);
             }
 
             if (cots.length === 0 && !errors.length) {
@@ -320,13 +296,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (!layer.connection) throw new Err(400, null, 'Layer is not attached to a Connection');
             if (layer.connection !== connection.id) throw new Err(400, null, 'Layer does not belong to this connection');
 
-            const api = await TAKAPI.init(
-                new URL(String(config.server.api)),
-                new APIAuthCertificate(
-                    connection.auth.cert,
-                    connection.auth.key,
-                ),
-            );
+            const api = await takserver.asConnection(connection);
 
             const feat = await api.Query.singleFeat(req.params.uid);
 
@@ -367,13 +337,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (!layer.connection) throw new Err(400, null, 'Layer is not attached to a connection');
             if (layer.connection !== connection.id) throw new Err(400, null, 'Layer does not belong to this connection');
 
-            const api = await TAKAPI.init(
-                new URL(String(config.server.api)),
-                new APIAuthCertificate(
-                    connection.auth.cert,
-                    connection.auth.key,
-                ),
-            );
+            const api = await takserver.asConnection(connection);
 
             const features = await api.Query.historyFeats(req.params.uid, {
                 start: req.query.start,

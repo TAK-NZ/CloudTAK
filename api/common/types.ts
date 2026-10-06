@@ -2,8 +2,10 @@ import { createSelectSchema } from 'drizzle-typebox';
 import { Type, Static } from '@sinclair/typebox';
 import * as schemas from './schema.js';
 import { TAKGroup, TAKRole } from '@tak-ps/node-tak/lib/api/types';
-import { Profile_Coordinate, Profile_Projection, Profile_Menu_Visibility, Profile_Zoom, Profile_Style, Profile_Stale, Profile_Distance, Profile_Elevation, Profile_Speed, Profile_Text, Profile_Radiation_Dose, Profile_Wake_Lock } from './enums.js';
-import { VideoLease_SourceType, CoreEvent_Priority, CoreEventBoardColumn_Type } from './enums.js';
+import { Profile_Coordinate, Profile_Projection, Profile_Menu_Visibility, Profile_Zoom, Profile_Style, Profile_Stale, Profile_Distance, Profile_Elevation, Profile_Area, Profile_Speed, Profile_Text, Profile_Radiation_Dose, Profile_Wake_Lock } from './enums.js';
+import { VideoLease_SourceType, CoreEntityBoardColumn_Type, CoreEntityEffect_Status, LayerMapping_Destination } from './enums.js';
+import { Capabilities, InvocationType } from '@tak-ps/etl';
+import { CoreEntitySchema, CoreDeviceSchema, CoreEntityLinkSchema, CoreEntityStyleSchema, withoutHints } from './core-schema.js';
 import { AugmentedData } from './models/Data.js';
 import { AugmentedLayer, AugmentedLayerIncoming, AugmentedLayerOutgoing } from './models/Layer.js';
 import { Basemap_Format, Basemap_Protocol, Basemap_Scheme, Basemap_Type, BasemapTerrain_Encoding } from './enums.js';
@@ -146,78 +148,55 @@ export const PaletteFeatureResponse = createSelectSchema(schemas.PaletteFeature,
 });
 
 /** A named URL on a Core Event - submitted as a CoT `r-u` (refinement url) link */
-export const CoreEventLink = Type.Object({
-    name: Type.String({
-        description: 'Human readable name of the Link',
-    }),
-    url: Type.String({
-        description: 'URL the Link points at',
-        pattern: '^(https?:\\/\\/.+|)$',
-    }),
-});
+export const CoreEntityLink = withoutHints(CoreEntityLinkSchema);
+export const CoreEntityStyle = withoutHints(CoreEntityStyleSchema);
 
-/** Point styling overrides - property names match node-cot's CoT GeoJSON representation */
-export const CoreEventStyle = Type.Object({
-    'icon': Type.Optional(Type.String({
-        description: 'Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>',
-    })),
-    'marker-color': Type.Optional(Type.String({
-        description: 'Hex colour of the Event marker - ie: #00ff00',
-    })),
-    'marker-opacity': Type.Optional(Type.Number({
-        minimum: 0,
-        maximum: 1,
-        description: 'Opacity of the Event marker',
-    })),
+export const CoreEntityMission = Type.Object({
+    name: Type.String({ description: 'Name of the TAK Server Mission' }),
+    guid: Type.String({ format: 'uuid', description: 'GUID of the TAK Server Mission' }),
+}, {
+    description: 'TAK Server Mission associated with the Event',
 });
 
 /** Enough of a Column to render its name & badge styling inline */
-export const CoreEventBoardColumnSummary = Type.Object({
+export const CoreEntityBoardColumnSummary = Type.Object({
     id: Type.String(),
     name: Type.String(),
     color: Type.String({ description: 'Hex colour the Column is rendered with - ie: #ff0000' }),
-    type: Type.Enum(CoreEventBoardColumn_Type),
+    type: Type.Enum(CoreEntityBoardColumn_Type),
     position: Type.Integer(),
 });
 
 /** A Board of one of the Event's Channels & where the Event sits on it */
-export const CoreEventBoardSummary = Type.Object({
+export const CoreEntityBoardSummary = Type.Object({
     id: Type.String(),
     name: Type.String(),
     channel: Type.Integer({ description: 'TAK Server Channel bitpos the Board belongs to' }),
     column: Type.Union([Type.Null(), Type.String()], {
         description: 'Column of the Board the Event is placed in - null when the Event has not been nominated to this Board',
     }),
-    columns: Type.Array(CoreEventBoardColumnSummary, { description: 'Columns of the Board' }),
+    columns: Type.Array(CoreEntityBoardColumnSummary, { description: 'Columns of the Board' }),
 });
 
-export const CoreEventResponse = Type.Object({
-    id: Type.String(),
-    mission_guid: Type.Union([Type.Null(), Type.String()], { description: 'GUID of the TAK Server Mission associated with the Event' }),
-    created: Type.String(),
-    updated: Type.String(),
-    active: Type.Boolean({ description: 'Is the Event currently active' }),
-    ended: Type.Union([Type.Null(), Type.String()], { description: 'Time at which the Event ended' }),
-    username: Type.Union([Type.Null(), Type.String()]),
-    connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Event if created by a Connection or Layer token' }),
-    priority: Type.Enum(CoreEvent_Priority),
-    type: Type.String({ description: 'MIL-STD-2525E Symbol ID' }),
-    name: Type.String(),
-    external_id: Type.String({ description: 'ID of the Event in an external system' }),
-    editable: Type.Boolean({ description: 'Can users other than the creator edit the Event' }),
-    location: Type.String({ description: 'Human readable location - ie: an address' }),
-    remarks: Type.String(),
-    metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Event metadata' }),
-    links: Type.Array(CoreEventLink, { description: 'Named URLs associated with the Event' }),
-    style: CoreEventStyle,
-    geometry: GeoJSONFeatureGeometryPoint,
-    channels: Type.Array(Type.Integer(), { description: 'TAK Server Channels the Event is shared with' }),
-    boards: Type.Array(CoreEventBoardSummary, {
-        description: 'Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each',
+export const CoreEntityResponse = Type.Composite([
+    Type.Required(Type.Omit(withoutHints(CoreEntitySchema), ['ended'])),
+    Type.Object({
+        id: Type.String(),
+        missions: Type.Array(CoreEntityMission, { description: 'TAK Server Missions associated with the Event' }),
+        created: Type.String(),
+        updated: Type.String(),
+        ended: Type.Union([Type.Null(), Type.String()], { description: 'Time at which the Event ends - a future time keeps the Event active until then' }),
+        username: Type.Union([Type.Null(), Type.String()]),
+        connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Event if created by a Connection or Layer token' }),
+        metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Event metadata' }),
+        geometry: GeoJSONFeatureGeometryPoint,
+        boards: Type.Array(CoreEntityBoardSummary, {
+            description: 'Boards of every Channel the Event is shared with, along with the Column the Event is placed in on each',
+        }),
     }),
-});
+]);
 
-export const CoreEventBoardResponse = Type.Object({
+export const CoreEntityBoardResponse = Type.Object({
     id: Type.String(),
     created: Type.String(),
     updated: Type.String(),
@@ -226,7 +205,7 @@ export const CoreEventBoardResponse = Type.Object({
     description: Type.String(),
 });
 
-export const CoreEventBoardColumnResponse = Type.Object({
+export const CoreEntityBoardColumnResponse = Type.Object({
     id: Type.String(),
     created: Type.String(),
     updated: Type.String(),
@@ -234,18 +213,18 @@ export const CoreEventBoardColumnResponse = Type.Object({
     name: Type.String(),
     description: Type.String(),
     color: Type.String({ description: 'Hex colour the Column is rendered with - ie: #ff0000' }),
-    type: Type.Enum(CoreEventBoardColumn_Type, { description: 'Columns of type nominated are created automatically and cannot be removed' }),
+    type: Type.Enum(CoreEntityBoardColumn_Type, { description: 'Columns of type nominated are created automatically and cannot be removed' }),
     position: Type.Integer({ description: 'Horizontal position of the Column relative to the other Columns of the Board' }),
 });
 
-export const CoreEventBoardEventResponse = Type.Object({
+export const CoreEntityBoardEventResponse = Type.Object({
     id: Type.String(),
     created: Type.String(),
     updated: Type.String(),
     board: Type.String({ description: 'Board the Event is placed on' }),
     column: Type.String({ description: 'Column of the Board the Event is placed in' }),
     position: Type.Integer({ description: 'Vertical position of the Event within the Column' }),
-    event: CoreEventResponse,
+    event: CoreEntityResponse,
 });
 
 export const CoreFormResponse = Type.Object({
@@ -270,7 +249,7 @@ export const CoreFormResponseResponse = Type.Object({
 });
 
 /** A Response linked to a Core Event, with the Form it was submitted against embedded */
-export const CoreEventFormResponse = Type.Object({
+export const CoreEntityFormResponse = Type.Object({
     id: Type.String(),
     created: Type.String(),
     updated: Type.String(),
@@ -288,26 +267,88 @@ export const CoreFormColumnResponse = Type.Object({
     form: CoreFormResponse,
 });
 
-export const CoreDeviceResponse = Type.Object({
+export const CoreDeviceResponse = Type.Composite([
+    Type.Required(Type.Omit(withoutHints(CoreDeviceSchema), ['battery', 'event_external_id'])),
+    Type.Object({
+        id: Type.String(),
+        created: Type.String(),
+        updated: Type.String(),
+        username: Type.Union([Type.Null(), Type.String()]),
+        connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Device if created by a Connection or Layer token' }),
+        event: Type.Union([Type.Null(), Type.String()], { description: 'Core Event the Device is currently assigned to' }),
+        battery: Type.Union([Type.Null(), withoutHints(CoreDeviceSchema).properties.battery]),
+        metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Device metadata' }),
+    }),
+]);
+
+export const CoreEntityAssignmentResponse = Type.Object({
     id: Type.String(),
     created: Type.String(),
     updated: Type.String(),
-    username: Type.Union([Type.Null(), Type.String()]),
-    connection: Type.Union([Type.Null(), Type.Integer()], { description: 'Connection that created the Device if created by a Connection or Layer token' }),
-    event: Type.Union([Type.Null(), Type.String()], { description: 'Core Event the Device is currently assigned to' }),
-    type: Type.String({ description: 'MIL-STD-2525E Symbol ID' }),
-    name: Type.String({ description: 'Human readable name/callsign of the Device' }),
-    manufacturer: Type.String({ description: 'Manufacturer of the Device - ie: Ortec, Nucsafe, DJI' }),
-    model: Type.String({ description: 'Model of the Device - ie: Micro Detective, IdentiFINDER 2' }),
-    serial: Type.String({ description: 'Manufacturer assigned Serial Number' }),
-    firmware: Type.String({ description: 'Firmware/Software revision reported by the Device' }),
-    status: Type.String({ description: 'General Device health status - ie: Full, Reduced, Unknown' }),
-    battery: Type.Union([Type.Null(), Type.Number()], { description: 'Battery level as a percentage (0-100) at last report' }),
-    simulated: Type.Boolean({ description: 'Is the Device a simulated data source' }),
-    external_id: Type.String({ description: 'ID of the Device in an external system' }),
+    event: Type.String({ description: 'Core Event the person is assigned to' }),
+    uid: Type.Union([Type.Null(), Type.String()], { description: 'Username of the assigned Profile if they have one' }),
+    name: Type.String({ description: 'Name of the assigned person' }),
+    role: Type.String({ description: 'Capacity the person manages the Event in - ie: IC, JAG' }),
     remarks: Type.String(),
-    metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'User defined key/value Device metadata' }),
-    channels: Type.Array(Type.Integer(), { description: 'TAK Server Channels the Device is shared with' }),
+});
+
+export const CoreEntityEffectResponse = Type.Object({
+    id: Type.String(),
+    created: Type.String(),
+    updated: Type.String(),
+    started: Type.String({ description: 'Time at which the Device began acting on the Event' }),
+    ended: Type.Union([Type.Null(), Type.String()], { description: 'Time at which the Device stopped acting on the Event' }),
+    event: Type.String({ description: 'Core Event the Device is acting on' }),
+    device: Type.String({ description: 'Core Device acting on the Event' }),
+    action: Type.String({ description: 'What the Device is doing - ie: navigate to, loiter' }),
+    status: Type.Enum(CoreEntityEffect_Status),
+    metadata: Type.Record(Type.String(), Type.Unknown(), { description: 'Action specific parameters - ie: loiter radius' }),
+});
+
+export const CoreSchemaSummary = Type.Object({
+    id: Type.Enum(LayerMapping_Destination),
+    title: Type.String(),
+    description: Type.String(),
+});
+
+export const CoreSchemaResponse = Type.Object({
+    $id: Type.Enum(LayerMapping_Destination),
+    title: Type.String(),
+    description: Type.String(),
+    type: Type.Literal('object'),
+    required: Type.Array(Type.String()),
+    properties: Type.Record(Type.String(), Type.Record(Type.String(), Type.Unknown())),
+}, {
+    description: 'JSON Schema of a Server supported record type',
+});
+
+/** A single named Output schema of a Task - tasks exposing a single unnamed schema are mapped to the `default` id */
+export const NamedSchema = Type.Object({
+    id: Type.String(),
+    schema: Type.Record(Type.String(), Type.Unknown()),
+});
+
+export const DEFAULT_SCHEMA_ID = 'default';
+
+const TaskCapabilitiesSchema = Type.Object({
+    input: Type.Unknown(),
+    inputError: Type.Optional(Capabilities.properties.incoming.properties.schema.properties.inputError),
+    output: Type.Array(NamedSchema, { description: 'Named Output schemas the Task submits records against' }),
+    outputError: Type.Optional(Capabilities.properties.incoming.properties.schema.properties.outputError),
+});
+
+/** Live Task Capabilities with Output schemas normalized to named schemas */
+export const TaskCapabilitiesResponse = Type.Object({
+    name: Type.String(),
+    version: Type.String(),
+    incoming: Type.Optional(Type.Object({
+        invocation: Type.Array(Type.Enum(InvocationType)),
+        invocationDefaults: Capabilities.properties.incoming.properties.invocationDefaults,
+        schema: TaskCapabilitiesSchema,
+    })),
+    outgoing: Type.Optional(Type.Object({
+        schema: TaskCapabilitiesSchema,
+    })),
 });
 
 export const MissionTemplateResponse = Type.Object({
@@ -454,6 +495,7 @@ export const Profile = Type.Object({
     display_text: Type.Enum(Profile_Text),
     display_distance: Type.Enum(Profile_Distance),
     display_elevation: Type.Enum(Profile_Elevation),
+    display_area: Type.Enum(Profile_Area),
     display_speed: Type.Enum(Profile_Speed),
     display_radiation_dose: Type.Enum(Profile_Radiation_Dose),
     display_wakelock: Type.Enum(Profile_Wake_Lock),
@@ -484,6 +526,14 @@ export const ProfileResponse = Type.Composite([
     }),
     Profile,
 ]);
+
+export const LayerMappingResponse = createSelectSchema(schemas.LayerMapping, {
+    id: Type.Integer(),
+    layer: Type.Integer(),
+    destination: Type.Enum(LayerMapping_Destination),
+    query: Type.Union([Type.Null(), Type.String()]),
+    mapping: Type.Record(Type.String(), Type.Unknown()),
+});
 
 export const VideoLeaseResponse = createSelectSchema(schemas.VideoLease, {
     id: Type.Integer(),
@@ -558,7 +608,7 @@ export const ErrorResponse = createSelectSchema(schemas.Errors, {
     updated: Type.String(),
 });
 
-export const TaskResponse = createSelectSchema(schemas.Task, {
+export const IntegrationResponse = createSelectSchema(schemas.Integration, {
     id: Type.Integer(),
     created: Type.String(),
     updated: Type.String(),
@@ -732,11 +782,18 @@ export const FullConfig = Type.Object({
     'notification::push::firebase::project_id': Type.String({ description: 'Firebase service account project ID' }),
     'notification::push::firebase::client_email': Type.String({ description: 'Firebase service account client email' }),
     'notification::push::firebase::private_key': Type.String({ description: 'Firebase service account private key' }),
-    'agol::enabled': Type.Boolean({ description: 'Enable ArcGIS Online Integration' }),
-    'agol::auth_method': Type.String({ description: 'AGOL Auth Type', enum: ['oauth2', 'legacy'] }),
-    'agol::token': Type.String({ description: 'AGOL Legacy Token' }),
-    'agol::client_id': Type.String({ description: 'AGOL OAuth2 Client ID' }),
-    'agol::client_secret': Type.String({ description: 'AGOL OAuth2 Client Secret' }),
+    'search::agol::enabled': Type.Boolean({ description: 'Enable ArcGIS Online Search Provider' }),
+    'search::agol::auth_method': Type.String({ description: 'AGOL Search Auth Type', enum: ['oauth2', 'legacy'] }),
+    'search::agol::token': Type.String({ description: 'AGOL Search Legacy Token' }),
+    'search::agol::client_id': Type.String({ description: 'AGOL Search OAuth2 Client ID' }),
+    'search::agol::client_secret': Type.String({ description: 'AGOL Search OAuth2 Client Secret' }),
+    'routing::agol::enabled': Type.Boolean({ description: 'Enable ArcGIS Online Routing Provider' }),
+    'routing::agol::auth_method': Type.String({ description: 'AGOL Routing Auth Type', enum: ['oauth2', 'legacy'] }),
+    'routing::agol::token': Type.String({ description: 'AGOL Routing Legacy Token' }),
+    'routing::agol::client_id': Type.String({ description: 'AGOL Routing OAuth2 Client ID' }),
+    'routing::agol::client_secret': Type.String({ description: 'AGOL Routing OAuth2 Client Secret' }),
+    'osm::enabled': Type.Boolean({ description: 'Enable OpenStreetMap (Photon) Search Provider' }),
+    'osm::url': Type.String({ description: 'Photon Base URL' }),
     'media::url': Type.String({ description: 'Base URL for Media Service' }),
     'media::proxy::allow': Type.Array(Type.String({ description: 'Trusted video proxy source hostname or origin (scheme + host + optional port) that is added to the SSRF allow-list' })),
     'coturn::url': Type.String({ description: 'COTURN Server URL' }),
@@ -758,6 +815,7 @@ export const FullConfig = Type.Object({
     'display::stale': Type.Enum(Profile_Stale),
     'display::distance': Type.Enum(Profile_Distance),
     'display::elevation': Type.Enum(Profile_Elevation),
+    'display::area': Type.Enum(Profile_Area),
     'display::speed': Type.Enum(Profile_Speed),
     'display::projection': Type.Enum(Profile_Projection),
     'display::zoom': Type.Enum(Profile_Zoom),
@@ -790,6 +848,8 @@ export const FullConfig = Type.Object({
     'oidc::scopes': Type.String({ description: 'OIDC Scopes' }),
     'oidc::logo': Type.String({ description: 'Base64 encoded PNG for OIDC Logo' }),
     'passkey::enabled': Type.Boolean({ description: 'Enable Passkey Authentication' }),
+    'login::token::expiry': Type.Integer({ minimum: 1, description: 'Lifetime of a login token in hours' }),
+    'login::refresh::expiry': Type.Integer({ minimum: 1, description: 'Hours of inactivity after which a session expires - each refresh extends the session by this much' }),
     'scim::enabled': Type.Boolean({ description: 'Enable incoming SCIM 2.0 user provisioning at /api/scim/v2' }),
     'scim::token': Type.String({ description: 'Bearer token an Identity Provider must present to the SCIM API' }),
     'provider::url': Type.String(),

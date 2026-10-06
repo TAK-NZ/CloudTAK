@@ -70,9 +70,13 @@ export interface HubClient {
 
     wsPresence(keys: string[]): Promise<PresenceMap>;
 
+    wsRevoke(sessions: string[]): Promise<void>;
+
     eventSet(layerid: number, cron: string | null): Promise<void>;
 
-    coreEventSubmit(event: string): Promise<void>;
+    featureRefresh(connection: number): Promise<void>;
+
+    coreEntitySubmit(event: string): Promise<void>;
 
     geofenceRefresh(): Promise<void>;
 

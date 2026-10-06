@@ -1,13 +1,24 @@
 import { Static, Type } from '@sinclair/typebox';
 import type { Feature } from 'geojson';
 import type { Connection } from './schema.js';
-import { CoreEvent } from './schema.js';
+import { CoreEntity } from './schema.js';
 import { InferSelectModel, and, eq, sql } from 'drizzle-orm';
 import ConnectionControl from './control/connection.js';
+import ProfileOverlayControl from './control/profile-overlay.js';
 import type ConfigStateful from '../stateful/config.js';
 import type TAK from '@tak-ps/node-tak';
 import type { TAKAPI } from '@tak-ps/node-tak';
 import CoT, { CoTParser } from '@tak-ps/node-cot';
+import { ACTIVE } from './models/CoreEntity.js';
+import { profileUid } from './control/takserver.js';
+
+const EVENT_STALE = 30 * 60 * 1000;
+
+/** CoT stale in ms - capped at the Event's ended time so clients drop the marker when the Event ends */
+function eventStale(ended: string | null): number {
+    if (!ended) return EVENT_STALE;
+    return Math.max(30 * 1000, Math.min(EVENT_STALE, new Date(ended).getTime() - Date.now()));
+}
 
 export const ConnectionAuth = Type.Object({
     ca: Type.Optional(Type.Array(Type.String())),
@@ -49,7 +60,7 @@ export default interface ConnectionConfig {
  * Implemented by Connection types that periodically submit active Core
  * Events to the TAK Server as CoTs scoped via Marti dest group entries
  */
-export interface CoreEventSubmitter {
+export interface CoreEntitySubmitter {
     /** Guards against overlapping submission runs */
     submittingEvents: boolean;
 
@@ -60,8 +71,8 @@ export interface CoreEventSubmitter {
     submitEvents(tak: TAK, api: TAKAPI, opts?: { event?: string }): Promise<void>;
 }
 
-export function isCoreEventSubmitter(config: ConnectionConfig): config is ConnectionConfig & CoreEventSubmitter {
-    const submitter = config as Partial<CoreEventSubmitter>;
+export function isCoreEntitySubmitter(config: ConnectionConfig): config is ConnectionConfig & CoreEntitySubmitter {
+    const submitter = config as Partial<CoreEntitySubmitter>;
     return typeof submitter.submitEvents === 'function'
         && typeof submitter.startEvents === 'function'
         && typeof submitter.stopEvents === 'function';
@@ -169,40 +180,18 @@ export class ProfileConnConfig implements ConnectionConfig {
     }
 
     uid(): string {
-        return `ANDROID-CloudTAK-${this.id}`;
+        return profileUid(this.id);
     }
 
     async subscription(guid: string): Promise<null | MissionSub> {
-        const missions = await this.config.models.ProfileOverlay.list({
-            where: sql`
-                mode_id = ${guid}
-                AND mode = 'mission'
-                AND username = ${this.id}
-            `,
-        });
-
-        if (missions.items.length === 0) {
-            return null;
-        }
-
-        return {
-            name: missions.items[0].name,
-            guid: missions.items[0].mode_id,
-            token: missions.items[0].token,
-        };
+        const overlay = await new ProfileOverlayControl(this.config).mission(this.id, guid);
+        if (!overlay) return null;
+        return { name: overlay.name, guid: overlay.mode_id, token: overlay.token };
     }
 
     async subscriptions(): Promise<Array<MissionSub>> {
-        const missions = await this.config.models.ProfileOverlay.list({
-            where: sql`
-                mode = 'mission'
-                AND username = ${this.id}
-            `,
-        });
-
-        return missions.items.map((m) => {
-            return { name: m.name, guid: m.mode_id, token: m.token };
-        });
+        const overlays = await new ProfileOverlayControl(this.config).missions(this.id);
+        return overlays.map(m => ({ name: m.name, guid: m.mode_id, token: m.token }));
     }
 
     async geofences(): Promise<Array<Feature>> {
@@ -235,7 +224,7 @@ export class ProfileConnConfig implements ConnectionConfig {
     }
 }
 
-export class AdminConnConfig implements ConnectionConfig, CoreEventSubmitter {
+export class AdminConnConfig implements ConnectionConfig, CoreEntitySubmitter {
     id: number;
     name: string;
     enabled: boolean;
@@ -294,12 +283,12 @@ export class AdminConnConfig implements ConnectionConfig, CoreEventSubmitter {
 
             const cots: CoT[] = [];
 
-            for await (const event of this.config.models.CoreEvent.augmented_iter({
+            for await (const event of this.config.models.CoreEntity.augmented_iter({
                 // Broadcast CoTs carry Channels, never Board placements
                 boards: false,
                 where: opts && opts.event
-                    ? and(eq(CoreEvent.active, true), eq(CoreEvent.id, opts.event))
-                    : eq(CoreEvent.active, true),
+                    ? and(ACTIVE, eq(CoreEntity.id, opts.event))
+                    : ACTIVE,
             })) {
                 const dest = event.channels
                     .map(channel => groups.get(channel))
@@ -354,7 +343,8 @@ export class AdminConnConfig implements ConnectionConfig, CoreEventSubmitter {
                             how: 'm-g',
                             callsign: event.name,
                             remarks: remarks.join('\n\n'),
-                            stale: 30 * 60 * 1000,
+                            start: event.started,
+                            stale: eventStale(event.ended),
                             dest,
                             links,
                         },
