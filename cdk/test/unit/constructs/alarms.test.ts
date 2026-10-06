@@ -12,7 +12,7 @@ import { Alarms } from '../../../lib/constructs/alarms';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
 /** Build the minimum set of real resources the Alarms construct needs. */
-function scaffold(stackId: string) {
+function scaffold(stackId: string, serverless = false) {
   const app = new App();
   const stack = new Stack(app, stackId, {
     env: { account: '123456789012', region: 'us-east-1' }
@@ -35,7 +35,9 @@ function scaffold(stackId: string) {
   const database = new rds.DatabaseCluster(stack, 'TestDb', {
     engine: rds.DatabaseClusterEngine.auroraPostgres({ version: rds.AuroraPostgresEngineVersion.VER_16_4 }),
     vpc,
-    writer: rds.ClusterInstance.serverlessV2('writer')
+    writer: serverless
+      ? rds.ClusterInstance.serverlessV2('writer')
+      : rds.ClusterInstance.provisioned('writer', { instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MEDIUM) })
   });
 
   const hubLoadBalancer = new elbv2.ApplicationLoadBalancer(stack, 'TestHubAlb', { vpc, internetFacing: false });
@@ -62,19 +64,20 @@ function scaffold(stackId: string) {
     retentionSchedule: new events.Rule(stack, 'RetentionSchedule', { schedule: events.Schedule.rate(Duration.days(1)) })
   };
 
-  return { stack, service, loadBalancer, database, hubLoadBalancer, targetGroup, pmtiles, retention };
+  return { stack, service, loadBalancer, database, databaseIsServerless: serverless, hubLoadBalancer, targetGroup, pmtiles, retention };
 }
 
 describe('Alarms Construct', () => {
   it('creates the events service liveness alarm', () => {
-    const { stack, service, loadBalancer, database } = scaffold('TestStack1');
+    const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('TestStack1');
 
     new Alarms(stack, 'TestAlarms', {
       envConfig: MOCK_CONFIGS.DEV_TEST,
       eventsService: service('EventsService'),
       apiService: service('ApiService'),
       loadBalancer,
-      database
+      database,
+      databaseIsServerless
     });
 
     Template.fromStack(stack).hasResourceProperties('AWS::CloudWatch::Alarm', {
@@ -89,14 +92,15 @@ describe('Alarms Construct', () => {
   });
 
   it('creates the upstream ELB, ECS and RDS alarms', () => {
-    const { stack, service, loadBalancer, database } = scaffold('TestStack2');
+    const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('TestStack2');
 
     new Alarms(stack, 'TestAlarms', {
       envConfig: MOCK_CONFIGS.DEV_TEST,
       eventsService: service('EventsService'),
       apiService: service('ApiService'),
       loadBalancer,
-      database
+      database,
+      databaseIsServerless
     });
 
     const template = Template.fromStack(stack);
@@ -173,14 +177,15 @@ describe('Alarms Construct', () => {
   });
 
   it('routes alarms to the high urgency topic, including insufficient data', () => {
-    const { stack, service, loadBalancer, database } = scaffold('TestStack3');
+    const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('TestStack3');
 
     new Alarms(stack, 'TestAlarms', {
       envConfig: MOCK_CONFIGS.DEV_TEST,
       eventsService: service('EventsService'),
       apiService: service('ApiService'),
       loadBalancer,
-      database
+      database,
+      databaseIsServerless
     });
 
     const template = Template.fromStack(stack);
@@ -192,14 +197,15 @@ describe('Alarms Construct', () => {
   });
 
   it('omits stateful service alarms until the hub split is wired', () => {
-    const { stack, service, loadBalancer, database } = scaffold('TestStack4');
+    const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('TestStack4');
 
     new Alarms(stack, 'TestAlarms', {
       envConfig: MOCK_CONFIGS.DEV_TEST,
       eventsService: service('EventsService'),
       apiService: service('ApiService'),
       loadBalancer,
-      database
+      database,
+      databaseIsServerless
     });
 
     const alarms = JSON.stringify(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'));
@@ -207,7 +213,7 @@ describe('Alarms Construct', () => {
   });
 
   it('adds stateful service alarms when the hub service is supplied', () => {
-    const { stack, service, loadBalancer, database } = scaffold('TestStack5');
+    const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('TestStack5');
 
     new Alarms(stack, 'TestAlarms', {
       envConfig: MOCK_CONFIGS.DEV_TEST,
@@ -215,12 +221,46 @@ describe('Alarms Construct', () => {
       apiService: service('ApiService'),
       statefulService: service('StatefulService'),
       loadBalancer,
-      database
+      database,
+      databaseIsServerless
     });
 
     const alarms = JSON.stringify(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'));
     expect(alarms).toContain('Stateful-CPUUtilization');
     expect(alarms).toContain('Stateful-MemoryUtilization');
+  });
+
+  describe('DbFreeLocalStorageAlarm', () => {
+    const build = (stackId: string, serverless: boolean) => {
+      const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold(stackId, serverless);
+      new Alarms(stack, 'TestAlarms', {
+        envConfig: MOCK_CONFIGS.DEV_TEST,
+        eventsService: service('EventsService'),
+        apiService: service('ApiService'),
+        loadBalancer,
+        database,
+        databaseIsServerless
+      });
+      return Template.fromStack(stack);
+    };
+
+    it('is created for a provisioned cluster', () => {
+      const template = build('FreeStorageProvisioned', false);
+      template.resourcePropertiesCountIs('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/RDS',
+        MetricName: 'FreeLocalStorage'
+      }, 1);
+    });
+
+    it('is absent for Aurora Serverless v2, which does not publish the metric', () => {
+      const template = build('FreeStorageServerless', true);
+      expect(JSON.stringify(template.findResources('AWS::CloudWatch::Alarm'))).not.toContain('FreeLocalStorage');
+      // The other database alarm is unaffected.
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/RDS',
+        MetricName: 'CPUUtilization'
+      });
+    });
   });
 
   describe('upstream alarm parity', () => {
@@ -233,6 +273,7 @@ describe('Alarms Construct', () => {
         statefulService: sc.service('StatefulService'),
         loadBalancer: sc.loadBalancer,
         database: sc.database,
+        databaseIsServerless: sc.databaseIsServerless,
         hubLoadBalancer: sc.hubLoadBalancer,
         targetGroup: sc.targetGroup('ApiTg', sc.loadBalancer, 5000),
         statefulTargetGroup: sc.targetGroup('StatefulTg', sc.loadBalancer, 5001),
@@ -371,13 +412,14 @@ describe('Alarms Construct', () => {
     });
 
     it('still omits the new alarms when the optional props are not supplied', () => {
-      const { stack, service, loadBalancer, database } = scaffold('ParityStack5');
+      const { stack, service, loadBalancer, database, databaseIsServerless } = scaffold('ParityStack5');
       new Alarms(stack, 'TestAlarms', {
         envConfig: MOCK_CONFIGS.DEV_TEST,
         eventsService: service('EventsService'),
         apiService: service('ApiService'),
         loadBalancer,
-        database
+        database,
+        databaseIsServerless
       });
       const alarms = JSON.stringify(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'));
       expect(alarms).not.toContain('HealthyHostCount');

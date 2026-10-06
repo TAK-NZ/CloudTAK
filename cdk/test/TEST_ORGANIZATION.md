@@ -65,7 +65,7 @@ These assert construct behavior the full-stack synth does not vary or does not
 assert. Each names the bug it guards against:
 
 - **alarms.test.ts** — alarm thresholds/statistics, the ELB 5XX fast + sustained
-  windows, p99 latency, RDS `FreeLocalStorage` (a deliberate deviation from
+  windows, p99 latency, RDS `FreeLocalStorage` (provisioned only; a deliberate deviation from
   upstream's `FreeStorageSpace`), and stateful-alarm gating on the hub service.
 - **cloudtak-stateful.test.ts** — hub-mode selection, single-task/no-autoscale
   invariant, port mappings (5000/5002), WebSocket-only routing on `/api`,

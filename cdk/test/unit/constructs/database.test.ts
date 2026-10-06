@@ -24,6 +24,7 @@ describe('Database Construct', () => {
     expect(database.cluster).toBeDefined();
     expect(database.masterSecret).toBeDefined();
     expect(database.hostname).toBeDefined();
+    expect(database.isServerless).toBe(true);
 
     const template = Template.fromStack(stack);
     template.hasResourceProperties('AWS::RDS::DBCluster', {
@@ -40,13 +41,15 @@ describe('Database Construct', () => {
     const infrastructure = CDKTestHelper.createMockInfrastructure(stack);
     const { vpc, kmsKey, ecsSecurityGroup } = infrastructure;
 
-    new Database(stack, 'TestDatabase', {
+    const database = new Database(stack, 'TestDatabase', {
       environment: 'prod',
       envConfig: MOCK_CONFIGS.PROD,
       vpc,
       kmsKey,
       securityGroups: [ecsSecurityGroup]
     });
+
+    expect(database.isServerless).toBe(false);
 
     const template = Template.fromStack(stack);
     template.hasResourceProperties('AWS::RDS::DBCluster', {

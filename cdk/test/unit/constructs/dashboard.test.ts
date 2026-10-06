@@ -7,7 +7,7 @@ import * as rds from 'aws-cdk-lib/aws-rds';
 import { Dashboard } from '../../../lib/constructs/dashboard';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
-function scaffold(stackId: string) {
+function scaffold(stackId: string, serverless = true) {
   const app = new App();
   const stack = new Stack(app, stackId, {
     env: { account: '123456789012', region: 'us-east-1' }
@@ -38,7 +38,9 @@ function scaffold(stackId: string) {
   const database = new rds.DatabaseCluster(stack, 'Db', {
     engine: rds.DatabaseClusterEngine.auroraPostgres({ version: rds.AuroraPostgresEngineVersion.VER_16_4 }),
     vpc,
-    writer: rds.ClusterInstance.serverlessV2('writer')
+    writer: serverless
+      ? rds.ClusterInstance.serverlessV2('writer')
+      : rds.ClusterInstance.provisioned('writer', { instanceType: ec2.InstanceType.of(ec2.InstanceClass.T4G, ec2.InstanceSize.MEDIUM) })
   });
 
   new Dashboard(stack, 'Dashboard', {
@@ -49,7 +51,8 @@ function scaffold(stackId: string) {
     statefulTargetGroup,
     apiService: service('ApiService'),
     statefulService: service('StatefulService'),
-    database
+    database,
+    databaseIsServerless: serverless
   });
 
   return Template.fromStack(stack);
@@ -76,7 +79,7 @@ describe('Dashboard Construct', () => {
       'CPU utilization',
       'Memory utilization',
       'Database - CPU and connections',
-      'Database - Aurora capacity and local storage'
+      'Database - Aurora capacity'
     ]) {
       expect(body).toContain(title);
     }
@@ -86,12 +89,23 @@ describe('Dashboard Construct', () => {
     expect(body).toContain('stateful');
   });
 
-  it('uses Aurora storage metrics, not upstream FreeStorageSpace', () => {
-    const dashboards = scaffold('D3').findResources('AWS::CloudWatch::Dashboard');
+  it('plots ACU but not FreeLocalStorage on Aurora Serverless v2', () => {
+    const dashboards = scaffold('D3', true).findResources('AWS::CloudWatch::Dashboard');
     const body = JSON.stringify(Object.values(dashboards)[0].Properties.DashboardBody);
 
+    expect(body).toContain('Database - Aurora capacity');
     expect(body).toContain('ServerlessDatabaseCapacity');
+    expect(body).not.toContain('FreeLocalStorage');
+    expect(body).not.toContain('FreeStorageSpace');
+  });
+
+  it('plots FreeLocalStorage but not ACU on a provisioned cluster', () => {
+    const dashboards = scaffold('D4', false).findResources('AWS::CloudWatch::Dashboard');
+    const body = JSON.stringify(Object.values(dashboards)[0].Properties.DashboardBody);
+
+    expect(body).toContain('Database - local storage');
     expect(body).toContain('FreeLocalStorage');
+    expect(body).not.toContain('ServerlessDatabaseCapacity');
     expect(body).not.toContain('FreeStorageSpace');
   });
 });
