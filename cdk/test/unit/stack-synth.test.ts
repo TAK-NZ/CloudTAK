@@ -147,3 +147,29 @@ describe('cross-stack export contract', () => {
     }
   });
 });
+
+describe('alarm wiring', () => {
+  // Guards the plumbing in cloudtak-stack.ts: the Alarms construct's new props
+  // are optional, so dropping one from the stack would silently remove alarms.
+  it('wires hub ALB, target group health, PMTiles and retention alarms', () => {
+    const t = template('dev-test', true);
+    const names = Object.values(t.findResources('AWS::CloudWatch::Alarm'))
+      .map((r: any) => JSON.stringify(r.Properties.AlarmName));
+    const has = (fragment: string) => names.some(n => n.includes(fragment));
+
+    for (const fragment of [
+      'CloudTAK-Hub-AlarmHTTPCodeELB5XX',
+      'CloudTAK-Hub-AlarmP99Latency',
+      'CloudTAK-HealthyHostCount',
+      'CloudTAK-Stateful-HealthyHostCount',
+      'CloudTAK-Hub-HealthyHostCount',
+      'CloudTAK-PMTilesLambdaErrors',
+      'CloudTAK-PMTilesApiP99Latency',
+      'CloudTAK-RetentionFailedInvocations',
+      'CloudTAK-RetentionErrors',
+    ]) {
+      expect(has(fragment)).toBe(true);
+    }
+    t.hasResourceProperties('AWS::Logs::MetricFilter', { FilterPattern: '"error -"' });
+  });
+});

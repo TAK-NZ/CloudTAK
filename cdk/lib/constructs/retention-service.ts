@@ -41,6 +41,11 @@ export interface RetentionServiceProps {
 }
 
 export class RetentionService extends Construct {
+  /** Task log group - the Alarms construct filters it for `error -` lines. */
+  public readonly logGroup: logs.LogGroup;
+  /** Daily EventBridge rule - the Alarms construct watches its FailedInvocations. */
+  public readonly schedule: events.Rule;
+
   constructor(scope: Construct, id: string, props: RetentionServiceProps) {
     super(scope, id);
 
@@ -58,7 +63,7 @@ export class RetentionService extends Construct {
     } = props;
 
     // CloudWatch log group
-    const logGroup = new logs.LogGroup(this, 'RetentionLogs', {
+    const logGroup = this.logGroup = new logs.LogGroup(this, 'RetentionLogs', {
       logGroupName: `TAK-${envConfig.stackName}-CloudTAK-retention`,
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: envConfig.general.removalPolicy === 'DESTROY'
@@ -181,7 +186,7 @@ export class RetentionService extends Construct {
     );
 
     // EventBridge rule — run once per day
-    const schedule = new events.Rule(this, 'RetentionSchedule', {
+    const schedule = this.schedule = new events.Rule(this, 'RetentionSchedule', {
       description: 'Schedule for CloudTAK retention runs',
       schedule: events.Schedule.rate(cdk.Duration.days(1)),
       enabled: true,

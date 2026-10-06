@@ -490,16 +490,6 @@ export class CloudTakStack extends cdk.Stack {
 
     const etlRoleArn = etlRole.role.roleArn;
 
-    // Create monitoring and alarms
-    const alarms = new Alarms(this, 'Alarms', {
-      envConfig,
-      eventsService: eventsService.service,
-      apiService: cloudtakApi.service,
-      statefulService: cloudtakStateful.service,
-      loadBalancer: loadBalancer.alb,
-      database: database.cluster
-    });
-
     // Operational dashboard - stateless and stateful tiers side by side
     new Dashboard(this, 'Dashboard', {
       envConfig,
@@ -513,7 +503,7 @@ export class CloudTakStack extends cdk.Stack {
     });
 
     // Create retention service for automated cleanup of expired data
-    new RetentionService(this, 'RetentionService', {
+    const retentionService = new RetentionService(this, 'RetentionService', {
       envConfig,
       vpc,
       ecsCluster,
@@ -524,6 +514,24 @@ export class CloudTakStack extends cdk.Stack {
       connectionStringSecret: database.connectionStringSecret,
       signingSecret: secrets.signingSecret,
       kmsKey,
+    });
+
+    // Create monitoring and alarms
+    const alarms = new Alarms(this, 'Alarms', {
+      envConfig,
+      eventsService: eventsService.service,
+      apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
+      loadBalancer: loadBalancer.alb,
+      database: database.cluster,
+      hubLoadBalancer: hubLoadBalancer.alb,
+      targetGroup: loadBalancer.targetGroup,
+      statefulTargetGroup: cloudtakStateful.targetGroup,
+      hubTargetGroup: hubLoadBalancer.rpcTargetGroup,
+      tilesLambda: lambdaFunctions.tilesLambda,
+      tilesApi: lambdaFunctions.tilesApi,
+      retentionLogGroup: retentionService.logGroup,
+      retentionSchedule: retentionService.schedule
     });
 
     // Create webhooks infrastructure for layer webhook support
