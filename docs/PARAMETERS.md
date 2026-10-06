@@ -28,7 +28,7 @@ All configurations are stored in [`cdk/cdk.json`](../cdk/cdk.json) under the `co
       "database": {
         "instanceClass": "db.serverless",
         "instanceCount": 1,
-        "engineVersion": "17.4",
+        "engineVersion": "18.6",
         "allocatedStorage": 20,
         "maxAllocatedStorage": 100,
         "enablePerformanceInsights": false,
@@ -65,7 +65,7 @@ All configurations are stored in [`cdk/cdk.json`](../cdk/cdk.json) under the `co
       "database": {
         "instanceClass": "db.t4g.large",
         "instanceCount": 2,
-        "engineVersion": "17.4",
+        "engineVersion": "18.6",
         "allocatedStorage": 100,
         "maxAllocatedStorage": 1000,
         "enablePerformanceInsights": true,
@@ -142,7 +142,7 @@ Use CDK's built-in `--context` flag with **flat parameter names** to override an
 |-----------|-------------|----------|------|
 | `instanceClass` | Aurora instance class | `db.serverless` | `db.t4g.large` |
 | `instanceCount` | Number of database instances | `1` | `2` |
-| `engineVersion` | PostgreSQL engine version | `17.4` | `17.4` |
+| `engineVersion` | Aurora PostgreSQL engine version. Changing the major version is an in-place major upgrade, see [AURORA-MAJOR-UPGRADE.md](AURORA-MAJOR-UPGRADE.md) | `18.6` | `18.6` |
 | `enablePerformanceInsights` | Enable performance insights | `false` | `true` |
 | `backupRetentionDays` | Backup retention period (days) | `7` | `30` |
 | `deleteProtection` | Enable deletion protection | `false` | `true` |

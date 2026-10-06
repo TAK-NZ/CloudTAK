@@ -15,6 +15,7 @@ import { App } from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { CloudTakStack } from '../../lib/cloudtak-stack';
 import { applyContextOverrides } from '../../lib/utils/context-overrides';
+import { generateStandardTags } from '../../lib/utils/tag-helpers';
 import type { ContextEnvironmentConfig } from '../../lib/stack-config';
 
 export type EnvType = 'dev-test' | 'prod';
@@ -39,17 +40,29 @@ export function synthTemplate(
   envType: EnvType,
   extraContext: Record<string, unknown> = {}
 ): Template {
+  return synthStack(envType, extraContext).template;
+}
+
+/**
+ * Like synthTemplate, but also returns the stack-level tags. bin/cdk.ts passes
+ * generateStandardTags() as the stack `tags` prop; CloudFormation propagates
+ * those to every resource at deploy time without them appearing in the
+ * template, so they must be exercised here too.
+ */
+export function synthStack(
+  envType: EnvType,
+  extraContext: Record<string, unknown> = {}
+): { template: Template; stackTags: Record<string, string> } {
   const context = { ...loadCdkContext(), ...extraContext };
   const app = new App({ context });
-
   const baseConfig = app.node.tryGetContext(envType) as ContextEnvironmentConfig;
   const envConfig = applyContextOverrides(app, baseConfig);
-
   const stack = new CloudTakStack(app, `TAK-${envConfig.stackName}-CloudTAK`, {
     environment: envType,
     envConfig,
     env: TEST_ENV,
+    // Same as bin/cdk.ts
+    tags: generateStandardTags(envConfig, envType, context['tak-defaults'] as never),
   });
-
-  return Template.fromStack(stack);
+  return { template: Template.fromStack(stack), stackTags: stack.tags.tagValues() };
 }

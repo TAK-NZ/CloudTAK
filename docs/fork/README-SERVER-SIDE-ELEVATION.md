@@ -21,7 +21,7 @@ decoding the raster-dem tile directly, independent of any client-side rendering 
 `Elevation.vue` called MapLibre GL JS's `map.queryTerrainElevation()`, which only returns a value
 once 3D terrain rendering has been enabled via `map.setTerrain()` — internally,
 `queryTerrainElevation()` is a thin wrapper around `map.terrain`, which stays `null` until
-`setTerrain()` is called. `addTerrain()` (`api/web/src/stores/map.ts`) is the only code path that
+`setTerrain()` is called. `addTerrain()` (`app/src/stores/map.ts`) is the only code path that
 calls `setTerrain()`, and it's wired directly to the "3D Terrain" toggle button.
 
 This coupled a data-availability question ("is elevation data loaded?") to an unrelated rendering
@@ -72,7 +72,7 @@ is built around.
 | `api/stateless/lib/interface-basemap.ts` | Adds `BasemapProtocol.tileBuffer()` |
 | `api/stateless/lib/terrain.ts` *(new)* | `getElevation()` helper: tile/pixel math + raster-dem decode |
 | `api/stateless/routes/search.ts` | Wires `getElevation()` into the elevation route, with legacy fallback |
-| `api/web/src/components/CloudTAK/Query/Elevation.vue` | Drops the `queryTerrainElevation()`/`mapStore` dependency entirely |
+| `app/src/components/CloudTAK/Query/Elevation.vue` | Drops the `queryTerrainElevation()`/`mapStore` dependency entirely |
 
 ## Note
 

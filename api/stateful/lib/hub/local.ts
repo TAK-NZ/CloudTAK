@@ -1,6 +1,6 @@
 import Err from '@openaddresses/batch-error';
 import WebSocket from 'ws';
-import { MachineConnConfig, ProfileConnConfig, AdminConnConfig, isCoreEventSubmitter } from '../../../common/connection-config.js';
+import { MachineConnConfig, ProfileConnConfig, AdminConnConfig, isCoreEntitySubmitter } from '../../../common/connection-config.js';
 import { WebSocket_Event } from '../../../common/enums.js';
 import type { Connection } from '../../../common/schema.js';
 import type { InferSelectModel } from 'drizzle-orm';
@@ -160,6 +160,25 @@ export default class LocalHub implements HubClient {
         return presence;
     }
 
+    async wsRevoke(sessions: string[]): Promise<void> {
+        const revoked = new Set(sessions);
+        const raw = JSON.stringify({ type: 'logout', properties: { message: 'Session revoked' } });
+
+        for (const clients of this.config.wsClients.values()) {
+            for (const client of clients) {
+                if (!client.session || !revoked.has(client.session)) continue;
+                if (client.ws.readyState !== WebSocket.OPEN) continue;
+
+                try {
+                    client.ws.send(raw);
+                    client.ws.close();
+                } catch (err) {
+                    console.error(`Error: Failed to revoke session ${client.session}:`, err);
+                }
+            }
+        }
+    }
+
     async eventSet(layerid: number, cron: string | null): Promise<void> {
         if (cron) {
             await this.config.events.add(layerid, cron);
@@ -168,11 +187,15 @@ export default class LocalHub implements HubClient {
         }
     }
 
-    async coreEventSubmit(event: string): Promise<void> {
+    async featureRefresh(connection: number): Promise<void> {
+        this.config.etlEvents.featureRefresh(connection);
+    }
+
+    async coreEntitySubmit(event: string): Promise<void> {
         if (this.config.noconnections) return;
 
         const client = this.config.conns.get(0);
-        if (!client || !isCoreEventSubmitter(client.config)) return;
+        if (!client || !isCoreEntitySubmitter(client.config)) return;
 
         await client.config.submitEvents(client.tak, client.api, { event });
     }

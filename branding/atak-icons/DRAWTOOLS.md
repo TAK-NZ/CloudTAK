@@ -19,7 +19,7 @@ v13.70.0 actually ships.
 
 ## Target
 
-`api/web/src/components/CloudTAK/DrawTools.vue` -- the "Geometry Editing"
+`app/src/components/CloudTAK/DrawTools.vue` -- the "Geometry Editing"
 dropdown, mounted once at `Map.vue:311`. Icons render with `:size='25'
 stroke='1'` and inherit colour; the trigger button uses `:size='40'`.
 
@@ -334,7 +334,7 @@ the regeneration chain converts it from ATAK's XML on the fly (see below).
 
 ```bash
 ATAK=../TPC_atak-civ/atak/ATAK/app/src/main/res/drawable
-TAB=api/web/node_modules/@tabler/icons/icons/outline
+TAB=app/node_modules/@tabler/icons/icons/outline
 B=branding/atak-icons
 
 # 1. ATAK vector drawables -> SVG (lossless, stdlib only, no venv)

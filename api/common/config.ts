@@ -37,6 +37,7 @@ export interface ConfigInit {
     API_URL: string;
     PMTILES_URL: string;
     WEBHOOKS_URL: string;
+    MAIL_DOMAIN: string;
     SigningSecret: string;
     pg: Pool<typeof pgtypes>;
     server: InferSelectModel<typeof Server>;
@@ -75,6 +76,7 @@ export default class Config {
     WEBHOOKS_URL: string;
     /** Hostnames of external tile CDNs that are allowed to bypass the tile proxy (from CLOUDTAK_TILE_ORIGINS). */
     tileOriginHostnames: Set<string>;
+    MAIL_DOMAIN: string;
     Bucket?: string;
     pg: Pool<typeof pgtypes>;
     server: InferSelectModel<typeof Server>;
@@ -112,6 +114,7 @@ export default class Config {
                     }
                 }),
         );
+        this.MAIL_DOMAIN = init.MAIL_DOMAIN;
         this.pg = init.pg;
         this.Bucket = init.Bucket;
         this.server = init.server;
@@ -159,7 +162,7 @@ export default class Config {
             throw new Error('CLOUDTAK_Hub_URL must be set when CLOUDTAK_Server_Mode is api');
         }
 
-        let SigningSecret, API_URL, PMTILES_URL, WEBHOOKS_URL, Bucket;
+        let SigningSecret, API_URL, PMTILES_URL, WEBHOOKS_URL, MAIL_DOMAIN, Bucket;
         if (!process.env.StackName || process.env.StackName === 'test') {
             process.env.StackName = 'test';
 
@@ -168,6 +171,7 @@ export default class Config {
             API_URL = process.env.API_URL || 'http://localhost:5001';
             PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
             WEBHOOKS_URL = process.env.WEBHOOKS_URL || 'http://localhost:5001';
+            MAIL_DOMAIN = process.env.MAIL_DOMAIN || 'mail.localhost';
         } else {
             if (!process.env.StackName) throw new Error('StackName env must be set');
             if (!process.env.API_URL) throw new Error('API_URL env must be set');
@@ -179,6 +183,7 @@ export default class Config {
                 API_URL = process.env.API_URL;
                 PMTILES_URL = process.env.PMTILES_URL || 'http://localhost:5001';
                 WEBHOOKS_URL = process.env.WEBHOOKS_URL || 'http://localhost:5001';
+                MAIL_DOMAIN = process.env.MAIL_DOMAIN || 'mail.localhost';
             } else {
                 API_URL = process.env.API_URL;
                 PMTILES_URL = process.env.PMTILES_URL || `https://tiles.${apiUrl.host}`;
@@ -186,6 +191,9 @@ export default class Config {
                 // The Webhooks API Gateway is a sibling of the map subdomain
                 // (webhooks.example.com) - see cloudformation/webhooks.template.js
                 WEBHOOKS_URL = process.env.WEBHOOKS_URL || `https://webhooks.${apiUrl.host.replace(/^map\./, '')}`;
+
+                // See cloudformation/mail.template.js
+                MAIL_DOMAIN = process.env.MAIL_DOMAIN || `mail.${apiUrl.host}`;
             }
 
             Bucket = process.env.ASSET_BUCKET;
@@ -355,7 +363,7 @@ export default class Config {
             noconnections: (args.noconnections || false),
             nocache: (args.nocache || false),
             StackName: process.env.StackName,
-            server, SigningSecret, API_URL, Bucket, pg, models, PMTILES_URL, WEBHOOKS_URL,
+            server, SigningSecret, API_URL, Bucket, pg, models, PMTILES_URL, WEBHOOKS_URL, MAIL_DOMAIN,
             mode, hubUrl,
         };
     }

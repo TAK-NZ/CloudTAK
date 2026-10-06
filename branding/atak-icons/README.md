@@ -32,7 +32,7 @@ and [`MAPPING.md`](MAPPING.md) for provenance and per-icon notes.
 
 ## What gets swapped
 
-All 18 entries of `baseMenuItems` in `api/web/src/stores/modules/menu.ts` are
+All 18 entries of `baseMenuItems` in `app/src/stores/modules/menu.ts` are
 listed below, including the two that stay on Tabler, so this table describes the
 whole nav bar rather than only the changes.
 
@@ -103,7 +103,7 @@ the nav bar's icon weight is ever retuned globally, these will not follow.
 ## Drawing tools palette
 
 The "Geometry Editing" dropdown in
-`api/web/src/components/CloudTAK/DrawTools.vue`, mounted once from `Map.vue`.
+`app/src/components/CloudTAK/DrawTools.vue`, mounted once from `Map.vue`.
 Icons render at `:size='25'` and inherit colour; the trigger button uses
 `:size='40'`.
 
@@ -360,11 +360,11 @@ in `DRAWTOOLS.md`.
 
 When the sync is done, the approach that keeps conflict surface minimal:
 
-1. Add a TAK-NZ-only module, e.g. `api/web/src/base/taknz-nav-icons.ts`, holding
+1. Add a TAK-NZ-only module, e.g. `app/src/base/taknz-nav-icons.ts`, holding
    the icon components and a menu-key -> component map. New files cannot
    conflict. The `taknz-` prefix guarantees upstream never creates the same path.
-   `api/web/src/base/` already hosts TAK-NZ-only frontend code.
-2. Change `api/web/src/stores/modules/menu.ts` in exactly **two** places: one
+   `app/src/base/` already hosts TAK-NZ-only frontend code.
+2. Change `app/src/stores/modules/menu.ts` in exactly **two** places: one
    import, and one `.map()` wrapping the `baseMenuItems` return. The upstream
    array itself stays byte-identical, so upstream adding or reordering menu
    entries merges cleanly.
@@ -404,7 +404,7 @@ synced, adding conflict surface and a dependency for little gain.
   `else` branch keeps both and renders a duplicate row. Plugins also load from
   server config, which is wrong for shipping our own branding.
 - **Subclassing `MenuManager`** at its instantiation point in
-  `api/web/src/stores/map.ts`. Would leave `menu.ts` untouched, but `map.ts` is
+  `app/src/stores/map.ts`. Would leave `menu.ts` untouched, but `map.ts` is
   TAK-NZ's most-modified frontend file (~937 changed lines). Trading two stable
   lines for two in the churn hotspot is a net loss.
 

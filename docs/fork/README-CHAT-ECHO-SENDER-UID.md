@@ -18,7 +18,7 @@ point it displayed correctly.
 
 ## Root Cause
 
-`ChatroomChats.send()` (`api/web/src/base/chatroom-chats.ts`) writes an optimistic local copy of
+`ChatroomChats.send()` (`app/src/base/chatroom-chats.ts`) writes an optimistic local copy of
 the outgoing message to IndexedDB immediately, with the correct `sender_uid` (the sending user's
 own UID). This is what renders the message correctly on the right side the instant it's sent.
 
@@ -27,10 +27,10 @@ Instead, `ConnectionPool.cots()` (`api/stateful/lib/connection-pool.ts`) is invo
 socket handler for every CoT the server delivers back over the connection, including the sender's
 own echoed chat message, and pushes a `type: 'chat'` WebSocket message to the browser so the UI
 can react to delivery. That WebSocket payload's `from` object only included `callsign` — not
-`uid` — even though the client's `Chat` type (`api/web/src/types.ts`) declares `from.uid` as
+`uid` — even though the client's `Chat` type (`app/src/types.ts`) declares `from.uid` as
 required.
 
-`AtlasConnection` (`api/web/src/workers/atlas-connection.ts`) stores the incoming WebSocket chat
+`AtlasConnection` (`app/src/workers/atlas-connection.ts`) stores the incoming WebSocket chat
 message via `db.chatroom_chats.put()`, keyed by the same `message_id` as the optimistic local
 copy. Since `chat.from.uid` was `undefined`, this put **overwrote** the correct `sender_uid` with
 `undefined`. `GenericChat.vue` decides which side to render a bubble on via

@@ -102,6 +102,11 @@ The construct exports these values for layer integration:
 | `TAK-{Env}-CloudTAK-webhooks-role` | IAM Role ARN | Layer Lambda integration permissions |
 | `TAK-{Env}-CloudTAK-webhooks-api` | API Gateway ID | Layer route registration |
 
+> **Layer stacks import these exports** through `Lambda.siblingExport()` in
+> `api/stateless/lib/aws/lambda.ts` (a TAK-NZ fork patch, see
+> [`fork/FORK-DELTA.md`](fork/FORK-DELTA.md)). Renaming an export above requires
+> changing that function too.
+
 ## Configuration
 
 ### Default Configuration

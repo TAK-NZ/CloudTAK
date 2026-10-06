@@ -36,6 +36,7 @@ import { CloudTakStateful } from './constructs/cloudtak-stateful';
 import { Dashboard } from './constructs/dashboard';
 import { AuthentikUserCreator } from './constructs/authentik-user-creator';
 import { Webhooks } from './constructs/webhooks';
+import { Mail } from './constructs/mail';
 import { EtlRole } from './constructs/etl-role';
 import { CloudTakOidcSetup } from './constructs/cloudtak-oidc-setup';
 import { PMTilesEfs } from './constructs/pmtiles-efs';
@@ -147,35 +148,53 @@ export class CloudTakStack extends cdk.Stack {
     } else {
       // Create Docker image assets for local deployments
       dockerImageAsset = new ecrAssets.DockerImageAsset(this, 'CloudTAKDockerAsset', {
-        directory: '../api',
+        // Repository root: upstream's Dockerfile (v13.102+) builds api/ and app/
+        // (the web frontend, formerly api/web/) side by side, so it needs both
+        // in its context.
+        directory: '..',
         file: 'Dockerfile',
         buildArgs: {
           NODE_ENV: environment === 'prod' ? 'production' : 'development'
         },
         exclude: [
           'node_modules/**',
-          // Nested installs. `node_modules/**` above only covers api/node_modules,
-          // the context root - and api/.dockerignore's `node_modules/` is
-          // context-root relative too, so neither of them catches web/. That left
-          // api/web/node_modules (61,226 files, 803 MB) being hashed and copied
+          // Nested installs. `node_modules/**` above only covers the context
+          // root, and the root .dockerignore's `**/node_modules/` is not applied
+          // by CDK's asset hashing, so neither catches api/ or app/. That used to
+          // leave app/node_modules (61,226 files, 803 MB) being hashed and copied
           // into cdk.out on every synth, handed to the Docker daemon as build
-          // context, and baked into a layer by the Dockerfile's `COPY ./` before
-          // `cd web && npm ci` replaced it - so it inflated the image too.
-          // The three root-context assets below already exclude this.
+          // context, and baked into a layer by the Dockerfile's `COPY app/`
+          // before `npm ci` replaced it - so it inflated the image too.
           '**/node_modules/**',
           // Built by `npm run build` inside the image; the host's copy is stale
           // weight at best.
-          'web/dist/**',
+          'api/dist/**',
+          'app/dist/**',
           '**/.git/**',
           '**/.vscode/**',
           '**/.idea/**',
           '**/*.log',
           '**/*.tmp',
           '**/.DS_Store',
-          '**/Thumbs.db'
+          '**/Thumbs.db',
+          // The image never reads these, and with the repository root as the
+          // build context any change under them would rewrite the asset hash
+          // and force a pointless rebuild. data/ can also hold multi-gigabyte
+          // .pmtiles archives (see data/README.md).
+          'cdk/**',
+          'branding/**',
+          'data/**',
+          'docs/**',
+          'tasks/**',
+          'config/**',
+          'scripts/**',
+          // Local-only operator certificates (untracked) must never reach a build context.
+          'tak-certs/**',
+          // Native-app projects; not part of the web image (root .dockerignore).
+          'app/android/**',
+          'app/ios/**'
         ]
       });
-      
       eventsImageAsset = new ecrAssets.DockerImageAsset(this, 'EventsDockerAsset', {
         directory: '..',
         file: 'tasks/events/Dockerfile',
@@ -195,8 +214,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a
@@ -230,8 +251,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a
@@ -265,8 +288,10 @@ export class CloudTakStack extends cdk.Stack {
           'cdk/**',
           'api/dist/**',
           'api/fonts/**',
-          'api/web/node_modules/**',
-          'api/web/dist/**',
+          'app/node_modules/**',
+          'app/dist/**',
+          'app/android/**',
+          'app/ios/**',
           // Design-source rasters and tracing tooling. These three assets use
           // the repository root as their build context, so without this any
           // change under branding/ rewrites their asset hash and forces a
@@ -466,16 +491,6 @@ export class CloudTakStack extends cdk.Stack {
 
     const etlRoleArn = etlRole.role.roleArn;
 
-    // Create monitoring and alarms
-    const alarms = new Alarms(this, 'Alarms', {
-      envConfig,
-      eventsService: eventsService.service,
-      apiService: cloudtakApi.service,
-      statefulService: cloudtakStateful.service,
-      loadBalancer: loadBalancer.alb,
-      database: database.cluster
-    });
-
     // Operational dashboard - stateless and stateful tiers side by side
     new Dashboard(this, 'Dashboard', {
       envConfig,
@@ -489,7 +504,7 @@ export class CloudTakStack extends cdk.Stack {
     });
 
     // Create retention service for automated cleanup of expired data
-    new RetentionService(this, 'RetentionService', {
+    const retentionService = new RetentionService(this, 'RetentionService', {
       envConfig,
       vpc,
       ecsCluster,
@@ -502,6 +517,24 @@ export class CloudTakStack extends cdk.Stack {
       kmsKey,
     });
 
+    // Create monitoring and alarms
+    const alarms = new Alarms(this, 'Alarms', {
+      envConfig,
+      eventsService: eventsService.service,
+      apiService: cloudtakApi.service,
+      statefulService: cloudtakStateful.service,
+      loadBalancer: loadBalancer.alb,
+      database: database.cluster,
+      hubLoadBalancer: hubLoadBalancer.alb,
+      targetGroup: loadBalancer.targetGroup,
+      statefulTargetGroup: cloudtakStateful.targetGroup,
+      hubTargetGroup: hubLoadBalancer.rpcTargetGroup,
+      tilesLambda: lambdaFunctions.tilesLambda,
+      tilesApi: lambdaFunctions.tilesApi,
+      retentionLogGroup: retentionService.logGroup,
+      retentionSchedule: retentionService.schedule
+    });
+
     // Create webhooks infrastructure for layer webhook support
     const webhooks = new Webhooks(this, 'Webhooks', {
       envConfig,
@@ -509,6 +542,23 @@ export class CloudTakStack extends cdk.Stack {
       certificate,
       subdomainPrefix: envConfig.cloudtak.webhooksSubdomain || 'webhooks'
     });
+
+    // Inbound email delivery for ETL layers (SES Mail Manager + router Lambda).
+    // Shares the hosted zone with Webhooks; alarms go to the high-urgency topic.
+    const mail = new Mail(this, 'Mail', {
+      envConfig,
+      hostedZone,
+      alarmTopic: alarms.highUrgencyTopic
+    });
+
+    // Layer functions read delivered raw email from the mail bucket. The ETL role
+    // is created before the bucket, so the grant is attached here (read-only,
+    // objects only - no list).
+    etlRole.role.addToPrincipalPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject'],
+      resources: [mail.bucket.arnForObjects('*')]
+    }));
 
     // Create Authentik user for CloudTAK admin
     const authentikUrl = cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);

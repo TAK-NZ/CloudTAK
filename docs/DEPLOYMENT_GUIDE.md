@@ -122,7 +122,7 @@ Error: Cannot import value TAK-Demo-BaseInfra-VPC-ID
 ```
 Error: Docker build failed
 ```
-**Solution:** Ensure Docker is running and Dockerfiles exist in api/ and tasks/ directories.
+**Solution:** Ensure Docker is running and the Dockerfiles exist (`Dockerfile` at the repository root, and `tasks/*/Dockerfile`).
 
 ### **Debug Commands**
 ```bash

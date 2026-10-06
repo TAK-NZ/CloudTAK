@@ -12,7 +12,7 @@
 2. **Endpoint Typo**: IconManager uses `/sprites` (plural) instead of `/sprite` (singular), preventing initial sprite loading
 
 ## Solution
-**File**: `api/web/src/stores/modules/icons.ts`
+**File**: `app/src/stores/modules/icons.ts`
 
 ### Fix 1: Check Before Adding Sprite
 Add check using `getSprite()` to see if sprite already exists before calling `addSprite()`:

@@ -177,7 +177,7 @@ export class BasemapProtocol implements BasemapProtocolInterface {
         // Upstream v13.70.0 defaults this to [{ id: 'out', fields: {} }], which
         // is CloudTAK's own ETL convention - its generated vector tiles really do
         // put everything in a layer called `out` (see `sourceLayer: 'out'` in
-        // api/web/src/base/overlay-class.ts). It is wrong for any basemap that
+        // app/src/base/overlay-class.ts). It is wrong for any basemap that
         // proxies third-party vector tiles: LINZ topographic-v2 serves `land`,
         // `water_polygons`, `streets`, `pois` and fourteen others.
         //

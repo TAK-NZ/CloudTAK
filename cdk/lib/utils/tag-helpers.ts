@@ -30,7 +30,9 @@ export function generateStandardTags(
     Component: defaults?.component || 'CloudTAK',
     ManagedBy: 'CDK',
     
-    // Environment type classification
-    'Environment Type': environmentLabel,
+    // Environment type classification. Keys must match [a-zA-Z0-9/_+=.:@-]+
+    // (no spaces): stack-level tags propagate to every resource at deploy time
+    // and services such as SES Mail Manager reject other characters.
+    EnvironmentType: environmentLabel,
   };
 }

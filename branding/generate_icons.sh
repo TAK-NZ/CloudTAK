@@ -3,9 +3,9 @@
 # Script to generate icons from SVG based on icons.ts configuration
 # Usage: ./generate_icons.sh
 
-ICONS_FILE="api/web/public/logos/icons.ts"
+ICONS_FILE="app/public/logos/icons.ts"
 SVG_SOURCE="branding/logo/tak-nz-logo.svg"
-BASE_OUTPUT_DIR="api/web/public"
+BASE_OUTPUT_DIR="app/public"
 
 # Check if required files exist
 if [ ! -f "$ICONS_FILE" ]; then

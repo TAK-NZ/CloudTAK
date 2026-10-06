@@ -5,26 +5,26 @@ set -e
 echo "🎨 Applying TAK.NZ branding..."
 
 # Replace logos if they exist
-if [ -f "branding/logo/tak-nz-logo.svg" ] && [ -d "api/web/public" ]; then
+if [ -f "branding/logo/tak-nz-logo.svg" ] && [ -d "app/public" ]; then
     if command -v rsvg-convert &> /dev/null; then
-        rsvg-convert -w 1000 branding/logo/tak-nz-logo.svg > api/web/public/logo.png 
+        rsvg-convert -w 1000 branding/logo/tak-nz-logo.svg > app/public/logo.png 
         echo "✅ Updated logo.png"
     else
         echo "⚠️  rsvg-convert not available, skipping logo conversion"
     fi
     
     # Update CloudTAKLogo.svg with TAK.NZ logo
-    cp branding/logo/tak-nz-logo.svg api/web/public/CloudTAKLogo.svg
+    cp branding/logo/tak-nz-logo.svg app/public/CloudTAKLogo.svg
     echo "✅ Updated CloudTAKLogo.svg"
 fi
 
-if [ -f "branding/logo/favicon.ico" ] && [ -d "api/web/public" ]; then
-    cp branding/logo/favicon.ico api/web/public/favicon.ico
+if [ -f "branding/logo/favicon.ico" ] && [ -d "app/public" ]; then
+    cp branding/logo/favicon.ico app/public/favicon.ico
     echo "✅ Updated favicon.ico"
 fi
 
-if [ -f "branding/logo/icons.ts" ] && [ -d "api/web/public/logos" ]; then
-    cp branding/logo/icons.ts api/web/public/logos/icons.ts
+if [ -f "branding/logo/icons.ts" ] && [ -d "app/public/logos" ]; then
+    cp branding/logo/icons.ts app/public/logos/icons.ts
     echo "✅ Updated icons.ts"
 fi
 
@@ -34,16 +34,16 @@ if [ -f "branding/generate_icons.sh" ]; then
 fi
 
 # Replace branding text
-if [ -f "api/web/src/App.vue" ]; then
-    sed -i.bak "s/Colorado - DFPC - CoE/TAK.NZ \\&bull; Team Awareness \\&bull; Te mōhio o te rōpū/g" api/web/src/App.vue
+if [ -f "app/src/App.vue" ]; then
+    sed -i.bak "s/Colorado - DFPC - CoE/TAK.NZ \\&bull; Team Awareness \\&bull; Te mōhio o te rōpū/g" app/src/App.vue
     echo "✅ Updated App.vue branding"
 fi
 
 # Replace AWS branding with CloudTAK logo in Login.vue
-if [ -f "api/web/src/components/Login.vue" ]; then
-    sed -i.bak "s|height: 72px;|height: 48px;|g" api/web/src/components/Login.vue
-    sed -i.bak "s|src='/powered-by-aws-white.png'|src='/CloudTAKLogoText.svg'|g" api/web/src/components/Login.vue
-    sed -i.bak "s|alt='Powered by AWS'|alt='CloudTAK Logo'|g" api/web/src/components/Login.vue
+if [ -f "app/src/components/Login.vue" ]; then
+    sed -i.bak "s|height: 72px;|height: 48px;|g" app/src/components/Login.vue
+    sed -i.bak "s|src='/powered-by-aws-white.png'|src='/CloudTAKLogoText.svg'|g" app/src/components/Login.vue
+    sed -i.bak "s|alt='Powered by AWS'|alt='CloudTAK Logo'|g" app/src/components/Login.vue
     echo "✅ Updated Login.vue AWS branding"
 fi
 

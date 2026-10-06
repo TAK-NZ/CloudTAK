@@ -6,7 +6,7 @@ Source: ATAK-CIV 5.5.1.10 (`/home/ubuntu/GitHub/TAK-NZ/TPC_atak-civ`, commit 9f6
 unless noted.
 
 Target: `baseMenuItems` in
-`api/web/src/stores/modules/menu.ts` -- the single source of truth for the
+`app/src/stores/modules/menu.ts` -- the single source of truth for the
 right-hand nav bar. Nothing has been changed in CloudTAK yet.
 
 **Scope is decided: 16 of the 18 entries take the ATAK icon.** Tabler is kept for

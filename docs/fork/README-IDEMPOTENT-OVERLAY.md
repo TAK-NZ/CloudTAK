@@ -30,7 +30,7 @@ Make overlay creation idempotent by:
 - Remove redundant URL normalization
 - Delete associated iconset when deleting overlay
 
-### Frontend (`api/web/src/base/overlay.ts`)
+### Frontend (`app/src/base/overlay.ts`)
 - Add `getSource()` check before `addSource()` for raster overlays
 - Add `getSource()` check before `addSource()` for vector overlays
 - Prevents "Source already exists" error

@@ -206,6 +206,8 @@ test('POST: api/login - allowed for system admin when OIDC_FORCED', async () => 
         delete res.body.token;
         assert.ok(res.body.session);
         delete res.body.session;
+        assert.ok(res.body.refresh);
+        delete res.body.refresh;
 
         assert.deepEqual(res.body, {
             access: 'admin',

@@ -1,9 +1,13 @@
-import { App, Stack } from 'aws-cdk-lib';
+import { App, Duration, Stack } from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as rds from 'aws-cdk-lib/aws-rds';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as apigwv2 from 'aws-cdk-lib/aws-apigatewayv2';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as events from 'aws-cdk-lib/aws-events';
 import { Alarms } from '../../../lib/constructs/alarms';
 import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 
@@ -34,7 +38,31 @@ function scaffold(stackId: string) {
     writer: rds.ClusterInstance.serverlessV2('writer')
   });
 
-  return { stack, service, loadBalancer, database };
+  const hubLoadBalancer = new elbv2.ApplicationLoadBalancer(stack, 'TestHubAlb', { vpc, internetFacing: false });
+
+  // Target groups must be attached to a listener for the metrics to carry a
+  // LoadBalancer dimension, same as in the real stack.
+  const targetGroup = (id: string, lb: elbv2.ApplicationLoadBalancer, port: number) => {
+    const tg = new elbv2.ApplicationTargetGroup(stack, id, { vpc, port, protocol: elbv2.ApplicationProtocol.HTTP });
+    lb.addListener(`${id}Listener`, { port, protocol: elbv2.ApplicationProtocol.HTTP, open: false, defaultTargetGroups: [tg] });
+    return tg;
+  };
+
+  const pmtiles = {
+    tilesLambda: new lambda.Function(stack, 'TilesLambda', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromInline('exports.handler = async () => ({});')
+    }),
+    tilesApi: new apigwv2.CfnApi(stack, 'TilesApi', { name: 'tiles', protocolType: 'HTTP' })
+  };
+
+  const retention = {
+    retentionLogGroup: new logs.LogGroup(stack, 'RetentionLogs'),
+    retentionSchedule: new events.Rule(stack, 'RetentionSchedule', { schedule: events.Schedule.rate(Duration.days(1)) })
+  };
+
+  return { stack, service, loadBalancer, database, hubLoadBalancer, targetGroup, pmtiles, retention };
 }
 
 describe('Alarms Construct', () => {
@@ -193,5 +221,168 @@ describe('Alarms Construct', () => {
     const alarms = JSON.stringify(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'));
     expect(alarms).toContain('Stateful-CPUUtilization');
     expect(alarms).toContain('Stateful-MemoryUtilization');
+  });
+
+  describe('upstream alarm parity', () => {
+    function full(stackId: string) {
+      const sc = scaffold(stackId);
+      new Alarms(sc.stack, 'TestAlarms', {
+        envConfig: MOCK_CONFIGS.DEV_TEST,
+        eventsService: sc.service('EventsService'),
+        apiService: sc.service('ApiService'),
+        statefulService: sc.service('StatefulService'),
+        loadBalancer: sc.loadBalancer,
+        database: sc.database,
+        hubLoadBalancer: sc.hubLoadBalancer,
+        targetGroup: sc.targetGroup('ApiTg', sc.loadBalancer, 5000),
+        statefulTargetGroup: sc.targetGroup('StatefulTg', sc.loadBalancer, 5001),
+        hubTargetGroup: sc.targetGroup('HubTg', sc.hubLoadBalancer, 5002),
+        ...sc.pmtiles,
+        ...sc.retention
+      });
+      return Template.fromStack(sc.stack);
+    }
+
+    it('applies the four ALB alarms to the hub ALB with unique names', () => {
+      const template = full('ParityStack1');
+      const names = Object.values(template.findResources('AWS::CloudWatch::Alarm'))
+        .map((r: any) => r.Properties.AlarmName as string);
+
+      for (const n of ['AlarmHTTPCodeELB5XX', 'AlarmHTTPCodeBackend5XX', 'AlarmHTTPCodeBackend5XXDuration', 'AlarmP99Latency']) {
+        expect(names).toContain(`TAK-${MOCK_CONFIGS.DEV_TEST.stackName}-CloudTAK-${n}-us-east-1`);
+        expect(names).toContain(`TAK-${MOCK_CONFIGS.DEV_TEST.stackName}-CloudTAK-Hub-${n}-us-east-1`);
+      }
+      expect(new Set(names).size).toBe(names.length);
+
+      // 4 ALB alarms x 2 ALBs: 3 of the 4 count-based metrics per ALB
+      template.resourcePropertiesCountIs('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/ApplicationELB',
+        MetricName: 'HTTPCode_ELB_5XX_Count'
+      }, 2);
+      template.resourcePropertiesCountIs('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/ApplicationELB',
+        MetricName: 'TargetResponseTime',
+        ExtendedStatistic: 'p99'
+      }, 2);
+    });
+
+    it('alarms on HealthyHostCount for the API, stateful and hub target groups', () => {
+      const template = full('ParityStack2');
+      template.resourcePropertiesCountIs('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/ApplicationELB',
+        MetricName: 'HealthyHostCount',
+        Statistic: 'Minimum',
+        Period: 60,
+        EvaluationPeriods: 2,
+        Threshold: 1,
+        ComparisonOperator: 'LessThanThreshold',
+        TreatMissingData: 'breaching',
+        AlarmActions: Match.anyValue(),
+        InsufficientDataActions: Match.anyValue()
+      }, 3);
+    });
+
+    it('creates PMTiles alarms that notify on alarm only', () => {
+      const template = full('ParityStack3');
+
+      for (const metricName of ['Errors', 'Throttles']) {
+        template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+          Namespace: 'AWS/Lambda',
+          MetricName: metricName,
+          Statistic: 'Sum',
+          Threshold: 0,
+          EvaluationPeriods: 2,
+          Period: 60,
+          TreatMissingData: 'notBreaching',
+          AlarmActions: Match.anyValue(),
+          InsufficientDataActions: Match.absent()
+        });
+      }
+
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/Lambda',
+        MetricName: 'Duration',
+        ExtendedStatistic: 'p99',
+        Threshold: 50000,
+        EvaluationPeriods: 5,
+        InsufficientDataActions: Match.absent()
+      });
+
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/ApiGateway',
+        MetricName: '5xx',
+        Statistic: 'Sum',
+        Threshold: 1,
+        EvaluationPeriods: 2,
+        TreatMissingData: 'notBreaching',
+        Dimensions: Match.arrayWith([
+          { Name: 'ApiId', Value: Match.anyValue() },
+          { Name: 'Stage', Value: '$default' }
+        ]),
+        InsufficientDataActions: Match.absent()
+      });
+
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/ApiGateway',
+        MetricName: 'IntegrationLatency',
+        ExtendedStatistic: 'p99',
+        Threshold: 10000,
+        EvaluationPeriods: 5,
+        TreatMissingData: 'notBreaching',
+        Dimensions: Match.arrayWith([{ Name: 'Stage', Value: '$default' }])
+      });
+    });
+
+    it('creates retention FailedInvocations and log error alarms', () => {
+      const template = full('ParityStack4');
+
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: 'AWS/Events',
+        MetricName: 'FailedInvocations',
+        Statistic: 'Sum',
+        Period: 300,
+        EvaluationPeriods: 1,
+        Threshold: 0,
+        TreatMissingData: 'notBreaching',
+        Dimensions: [{ Name: 'RuleName', Value: Match.anyValue() }],
+        InsufficientDataActions: Match.absent()
+      });
+
+      template.hasResourceProperties('AWS::Logs::MetricFilter', {
+        FilterPattern: '"error -"',
+        MetricTransformations: [Match.objectLike({
+          MetricNamespace: `TAK-${MOCK_CONFIGS.DEV_TEST.stackName}-CloudTAK`,
+          MetricName: 'retention-errors',
+          MetricValue: '1',
+          DefaultValue: 0
+        })]
+      });
+
+      template.hasResourceProperties('AWS::CloudWatch::Alarm', {
+        Namespace: `TAK-${MOCK_CONFIGS.DEV_TEST.stackName}-CloudTAK`,
+        MetricName: 'retention-errors',
+        Statistic: 'Sum',
+        Period: 300,
+        EvaluationPeriods: 1,
+        Threshold: 0,
+        TreatMissingData: 'notBreaching',
+        InsufficientDataActions: Match.absent()
+      });
+    });
+
+    it('still omits the new alarms when the optional props are not supplied', () => {
+      const { stack, service, loadBalancer, database } = scaffold('ParityStack5');
+      new Alarms(stack, 'TestAlarms', {
+        envConfig: MOCK_CONFIGS.DEV_TEST,
+        eventsService: service('EventsService'),
+        apiService: service('ApiService'),
+        loadBalancer,
+        database
+      });
+      const alarms = JSON.stringify(Template.fromStack(stack).findResources('AWS::CloudWatch::Alarm'));
+      expect(alarms).not.toContain('HealthyHostCount');
+      expect(alarms).not.toContain('PMTiles');
+      expect(alarms).not.toContain('Retention');
+    });
   });
 });

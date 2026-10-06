@@ -24,10 +24,10 @@ patch 055, not here — see `FORK-DELTA.md`.
 | File | Change |
 |------|--------|
 | `api/stateful/lib/connection-web.ts` | Add `dest callsign` alongside the existing UID-based `<marti><dest uid="..."/>` so plugins reading `xmlDetail` for a callsign can still route, without breaking TAK Server's collision-free UID-based delivery |
-| `api/web/src/base/chatroom-chats.ts` | `refresh()` merges server messages into local DB instead of delete-then-repopulate, so a locally-sent message isn't dropped if the server hasn't echoed it back yet; `send()` creates the chatroom DB row if it doesn't exist yet instead of assuming it does |
-| `api/web/src/components/CloudTAK/Menu/MenuChat.vue` | Skips the network refresh immediately after navigating from `/new` to the named chatroom post-send, so a stale server-side `updated` timestamp can't roll back the optimistic local state that `send()` just wrote |
-| `api/web/src/components/CloudTAK/Notifications.vue` | Adds `max-width: 90vw` and a `min-width: 0` flex child so the notification panel and its truncated text actually respect their container width on narrow viewports |
-| `api/web/src/workers/atlas-connection.ts` | Replaces `Chatroom.load()` (which calls `fetch()` and fails with 401 inside the worker, silently dropping every incoming chat) with direct IndexedDB writes; adds exponential-backoff reconnect and an auth-failure probe via `/api/login` |
+| `app/src/base/chatroom-chats.ts` | `refresh()` merges server messages into local DB instead of delete-then-repopulate, so a locally-sent message isn't dropped if the server hasn't echoed it back yet; `send()` creates the chatroom DB row if it doesn't exist yet instead of assuming it does |
+| `app/src/components/CloudTAK/Menu/MenuChat.vue` | Skips the network refresh immediately after navigating from `/new` to the named chatroom post-send, so a stale server-side `updated` timestamp can't roll back the optimistic local state that `send()` just wrote |
+| `app/src/components/CloudTAK/Notifications.vue` | Adds `max-width: 90vw` and a `min-width: 0` flex child so the notification panel and its truncated text actually respect their container width on narrow viewports |
+| `app/src/workers/atlas-connection.ts` | Replaces `Chatroom.load()` (which calls `fetch()` and fails with 401 inside the worker, silently dropping every incoming chat) with direct IndexedDB writes; adds exponential-backoff reconnect and an auth-failure probe via `/api/login` |
 
 ## Issues Fixed
 

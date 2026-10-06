@@ -1,4 +1,4 @@
-# Fork delta: how TAK-NZ differs from upstream in `api/` and `tasks/`
+# Fork delta: how TAK-NZ differs from upstream in `api/`, `app/` and `tasks/`
 
 This document explains **why** each TAK-NZ change to the synced application code
 exists. That rationale is the reason this file is worth keeping: it is the one
@@ -11,14 +11,22 @@ so it can never be stale:
 
 ```bash
 # every file where TAK-NZ differs from the synced upstream tree
-git diff --numstat vendor/upstream...HEAD -- api/ tasks/
+git diff --numstat vendor/upstream...HEAD -- api/ app/ tasks/
 
 # the full diff for one area
 git diff vendor/upstream...HEAD -- api/stateless/routes/login.ts
 ```
 
-At v13.70.0 that is **98 code files** plus **113 logo/icon assets** under
-`api/web/public/logos/`. `vendor/upstream` tracks the synced upstream tree; the
+> **Layout change at v13.102.0.** Upstream moved the web frontend from `api/web/`
+> to a root-level `app/`, and `api/Dockerfile` to a root `Dockerfile` (the image
+> now builds `api/` and `app/` side by side). TAK-NZ follows: `scripts/sync-upstream.sh`
+> vendors `app/` too, and the CDK docker asset, workflows and scripts build from the
+> repository root. Any `api/web/...` path in an older commit or README maps to
+> `app/...`. The root `Dockerfile` and `.dockerignore` are **not** vendored (they sit
+> outside `SYNC_PATHS`), so diff them against upstream's by hand on each sync.
+
+At v13.70.0 that was **98 code files** plus **113 logo/icon assets** under
+`app/public/logos/`. `vendor/upstream` tracks the synced upstream tree; the
 version currently synced is in [`.upstream-version`](../../.upstream-version).
 
 **This document is the rationale layer on top of that diff.** It is grouped by
@@ -77,7 +85,7 @@ OIDC flow against Authentik, and provisions TAK certificates as part of login.
 
 `api/stateless/routes/login.ts`, `api/stateless/lib/oidc.ts`,
 `api/common/auth.ts`, `api/stateless/routes/server.ts`, `api/common/types.ts`,
-`api/web/src/components/Login.vue`, `api/web/src/stores/app.ts`
+`app/src/components/Login.vue`, `app/src/stores/app.ts`
 
 An Authorization Code flow run by the application itself. `oidcParser()`,
 `isOidcEnabled()` and `isOidcForced()` live in `api/common/auth.ts`;
@@ -100,6 +108,11 @@ This replaced an earlier ALB-based design where the load balancer performed the
 OIDC handshake and injected JWT headers. Two consequences of that move are easy
 to misread as unnecessary:
 
+- - The OIDC callback issues its session through upstream's `issueSession()`
+  (`api/stateless/lib/user/session.ts`), so an SSO login gets the same token pair as
+  `POST /login` - including the single-use refresh token, which rides in the fragment
+  payload and is persisted by `applySession()`. Upstream's DB-driven `oidc::*`
+  settings (and their defaults) are deliberately not carried; SSO is env-driven.
 - `Login.vue` reads the session from the `/login#sso=<payload>` URL **fragment**,
   not a query string, deliberately — a fragment stays out of server access logs
   and browser history.
@@ -196,7 +209,7 @@ with the same person's device certificate.
 
 `api/stateless/lib/authentik-provider.ts`, `api/stateless/routes/ldap.ts`,
 `api/stateless/routes/connection.ts`, `api/stateless/routes/agency.ts`,
-`api/web/src/components/ETL/Connection/AgencyBadge.vue`
+`app/src/components/ETL/Connection/AgencyBadge.vue`
 
 - `deleteMachineUser()` deletes safely behind a `machineUser: true` guard.
 - All three LDAP routes fall through to Authentik when CoTAK is not configured.
@@ -219,8 +232,8 @@ See [`README-CERT-RENEWAL.md`](README-CERT-RENEWAL.md).
 
 ### Auth-failure logout
 
-`api/web/src/utils/events.ts`, `api/web/src/stores/map.ts`,
-`api/web/src/workers/atlas.ts`, `api/web/src/stores/app.ts`
+`app/src/utils/events.ts`, `app/src/stores/map.ts`,
+`app/src/workers/atlas.ts`, `app/src/stores/app.ts`
 
 A `Session_Logout` event redirects to `/api/logout` from the main thread on
 auth or connection error. `appStore.logout()` also redirects there to expire
@@ -234,7 +247,12 @@ See [`README-AUTO-LOGOUT.md`](README-AUTO-LOGOUT.md).
 
 ### Server configuration and admin provisioning
 
-`api/common/config.ts`, `api/Dockerfile`, `api/nginx.conf.js`
+`api/common/config.ts`, `Dockerfile`, `api/nginx.conf.js`
+
+The root `Dockerfile` is upstream's with one change: `npm ci` instead of
+`npm install` for both `api/` and `app/`, so a commit always builds against its
+committed lockfiles (an `npm install` once floated maplibre-gl to 6.4.1 and broke
+vector hillshading with no commit of ours to blame).
 
 `CLOUDTAK_Server_*` environment seeding, `MediaSecret` / DynamoDB / VPC config
 fields, and admin profile provisioning. Also `tileOriginHostnames`, parsed from
@@ -249,6 +267,48 @@ in-app — it existed only for large ALB-injected OIDC cookies.
 
 See [`README-ADMIN-ENV-VARS.md`](README-ADMIN-ENV-VARS.md).
 
+### Sibling-stack export names (webhooks and inbound email)
+
+`api/stateless/lib/aws/lambda.ts` (`Lambda.siblingExport`),
+`api/test/lambda-sibling-export.test.ts`, `api/test/connection-layer-email.srv.test.ts`,
+`cdk/lib/constructs/mail.ts`, `cdk/lib/constructs/webhooks.ts`
+
+Each layer's CloudFormation stack imports values exported by the stack that owns
+webhooks and inbound email (`ApiId`, invoke role, SSM layer prefix). Upstream
+derives the export name with
+`config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-')`.
+TAK-NZ's stack is `TAK-<env>-CloudTAK`, which that lowercase prefix never matches,
+so the replace was a no-op and the import named an export nothing publishes
+(`TAK-Dev-CloudTAK-api`): **layer stacks with webhooks or email enabled could not be
+created**. This affected the webhook imports too, not just mail.
+
+`Lambda.siblingExport(StackName, 'webhooks' | 'mail', suffix)` keeps upstream's
+derivation for `tak-cloudtak-*` names and otherwise returns
+`<StackName>-<sibling>-<suffix>`, which is what the CDK exports:
+`TAK-<Env>-CloudTAK-webhooks-api`, `-webhooks-role`, `-mail-layer-prefix`.
+The email srv test now expects `test-mail-layer-prefix`.
+
+**On sync:** re-apply if `git diff vendor/upstream...HEAD -- api/stateless/lib/aws/lambda.ts`
+shows the five `importValue(...)` calls back in the `.replace(...)` form.
+
+### Inbound email infrastructure (CDK only)
+
+`cdk/lib/constructs/mail.ts`, `cdk/lib/lambda/mail-router.cjs`,
+`cdk/lib/constructs/cloudtak-api.ts`, `cdk/lib/cloudtak-stack.ts`
+
+Port of upstream `cloudformation/mail.template.js` (v13.102.4): SES Mail Manager
+ingress point, rule set, archive and traffic policy, a mail bucket, the router
+Lambda and its alarms, plus the `MAIL_DOMAIN` env var, the API task role's SSM
+statement and the ETL role's `s3:GetObject` on the bucket. The router code is a
+verbatim copy of upstream `cloudformation/lib/mail-lambda.cjs`; **diff it against
+upstream on each sync**. Differences from upstream are all naming: the router may
+invoke `TAK-<Env>-CloudTAK-layer-*` (not `tak-cloudtak-<env>-layer-*`), the layer
+prefix is `/TAK-<Env>-CloudTAK/mail/layer/`, and the ETL grant is attached to
+`TAK-<Env>-CloudTAK-etl` from the stack. It creates DNS records
+`MX mail.<hostname>.<zone>` and `TXT _dmarc.mail.<hostname>.<zone>`. See
+[`../EMAIL.md`](../EMAIL.md) for the flow and security notes (the ingress point is
+a public, OPEN SMTP endpoint).
+
 ---
 
 ## Basemaps, tiles and terrain
@@ -256,8 +316,8 @@ See [`README-ADMIN-ENV-VARS.md`](README-ADMIN-ENV-VARS.md).
 ### TileJSON, sprites and CSP
 
 `api/common/types.ts`, `api/stateless/routes/basemap.ts`,
-`api/stateless/lib/interface-basemap.ts`, `api/web/src/base/overlay-class.ts`,
-`api/web/src/stores/map.ts`
+`api/stateless/lib/interface-basemap.ts`, `app/src/base/overlay-class.ts`,
+`app/src/stores/map.ts`
 
 Adds `sprite` / `glyphs` to the `TileJSON` schema and merges the `tilejson` blob
 into PMTiles and non-URL TileJSON responses. Upstream's `sprite` / `glyphs` are
@@ -281,7 +341,7 @@ See [`README-SPRITE-DUPLICATE.md`](README-SPRITE-DUPLICATE.md).
 
 ### Hillshade and terrain sources
 
-`api/stateless/lib/interface-basemap.ts`, `api/web/src/base/overlay-class.ts`
+`api/stateless/lib/interface-basemap.ts`, `app/src/base/overlay-class.ts`
 
 `ensureTerrainSource()` and the `__terrain__` sentinel let a hillshade layer
 reference a raster-dem source that may not exist yet; `OverlayManager` re-attempts
@@ -307,7 +367,7 @@ ids like `23-23-23-Background` on every re-selection.
 
 `api/stateless/lib/terrain.ts`, `api/stateless/lib/interface-basemap.ts`,
 `api/stateless/routes/search.ts`,
-`api/web/src/components/CloudTAK/Query/Elevation.vue`
+`app/src/components/CloudTAK/Query/Elevation.vue`
 
 `Elevation.vue` used MapLibre's `queryTerrainElevation()`, which only returns a
 value once 3D terrain rendering is active — a GPU-heavy mode not otherwise needed
@@ -339,8 +399,8 @@ non-default named sprites.
 ## Icons, sprites and styling
 
 `api/stateless/routes/icons.ts`, `api/stateless/lib/logos.ts`,
-`api/common/style.ts`, `api/web/src/stores/modules/icons.ts`,
-`api/web/public/logos/**`
+`api/common/style.ts`, `app/src/stores/modules/icons.ts`,
+`app/public/logos/**`
 
 - An iconset with no spritesheet data returns an empty sprite rather than a 400.
 - The sprite-key regex handles icon filenames containing dots.
@@ -357,13 +417,13 @@ See [`README-EMPTY-ICONSET-FIX.md`](README-EMPTY-ICONSET-FIX.md) and
 
 ### ATAK icon set
 
-`api/web/src/stores/modules/menu.ts`,
-`api/web/src/components/CloudTAK/DrawTools.vue`,
-`api/web/src/components/CloudTAK/util/DrawOverlay.vue`,
-`api/web/src/components/CloudTAK/Inputs/{RangeInput,RangeRingsInput,GeoJSONInput}.vue`
+`app/src/stores/modules/menu.ts`,
+`app/src/components/CloudTAK/DrawTools.vue`,
+`app/src/components/CloudTAK/util/DrawOverlay.vue`,
+`app/src/components/CloudTAK/Inputs/{RangeInput,RangeRingsInput,GeoJSONInput}.vue`
 
 ATAK-CIV icons for the navigation menu (16 of 18) and drawing tools (12 of 13),
-supplied by two TAK-NZ-only modules under `api/web/src/base/` that upstream will
+supplied by two TAK-NZ-only modules under `app/src/base/` that upstream will
 never create, so they cannot conflict. Each consuming file changes in exactly two
 places — one import and one `.map()` — leaving upstream's arrays byte-identical.
 Selection and provenance are in `branding/atak-icons/`; attribution is in
@@ -377,13 +437,23 @@ component instance, because the palette and this pane can both render it at once
 
 ## Overlays and profile
 
-`api/stateless/routes/profile-overlays.ts`, `api/stateless/routes/profile.ts`,
-`api/stateless/lib/control/profile.ts`,
-`api/web/src/components/CloudTAK/Menu/MenuOverlays.vue`
+`api/common/control/profile-overlay.ts`, `api/stateless/routes/profile-overlays.ts`,
+`api/stateless/routes/profile.ts`, `api/stateless/lib/control/profile.ts`,
+`app/src/components/CloudTAK/Menu/MenuOverlays.vue`
 
-A duplicate overlay POST unhides the existing overlay instead of erroring, and
-deleting an overlay deletes its associated iconset. `icon_rotation` boolean
-parsing was inverted (`=== 'false'` where it should have been `=== 'true'`).
+Upstream (v13.102) moved overlay rules into `ProfileOverlayControl`. A duplicate
+overlay POST now patches the existing overlay in place; TAK-NZ additionally
+**unhides** it unless the caller passes `visible` (`upsert()`, non-mission
+overlays), and `delete()` also deletes the overlay's associated iconset.
+`icon_rotation` boolean parsing in `ProfileControl.defaultUnits()` was inverted
+(`=== 'false'` where it should have been `=== 'true'`); upstream's test for the
+unset default still expects `true`, so that test fails - a known, pre-existing gap.
+
+Pinned-overlay stacking (Map Features on top, basemap on bottom) is now upstream's
+own (`OverlayManager.compareStack` / `isPinned` / `loadedAnchorOverlayFrom`); the
+TAK-NZ `byPosInternalLast`, `OverlayCard` component split and touch long-press
+handler were dropped in its favour. What `MenuOverlays.vue` still carries: the
+auto-provisioned hidden `raster-dem` terrain overlay is not listed as a card.
 
 See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 
@@ -392,9 +462,9 @@ See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 ## Chat
 
 `api/stateful/lib/connection-web.ts`, `api/stateful/lib/connection-pool.ts`,
-`api/web/src/base/chatroom.ts`, `api/web/src/base/chatroom-chats.ts`,
-`api/web/src/components/CloudTAK/Menu/MenuChat.vue`,
-`api/web/src/components/CloudTAK/Notifications.vue`
+`app/src/base/chatroom.ts`, `app/src/base/chatroom-chats.ts`,
+`app/src/components/CloudTAK/Menu/MenuChat.vue`,
+`app/src/components/CloudTAK/Notifications.vue`
 
 **Directed-chat routing is a security fix, not a tidy-up.** The plugin
 dest-routing block used to *replace* the UID-based `<marti><dest uid="..."/>` with
@@ -442,10 +512,10 @@ See [`README-CHAT-FUNCTIONALITY.md`](README-CHAT-FUNCTIONALITY.md),
 
 ## WebSocket lifecycle and the login race
 
-`api/web/src/workers/atlas-connection.ts`, `api/web/src/workers/atlas.ts`,
-`api/web/src/workers/atlas-database.ts`, `api/web/src/workers/atlas-profile.ts`,
-`api/web/src/stores/map.ts`, `api/web/src/components/Login.vue`,
-`api/web/src/components/CloudTAK/Map.vue`
+`app/src/workers/atlas-connection.ts`, `app/src/workers/atlas.ts`,
+`app/src/workers/atlas-database.ts`, `app/src/workers/atlas-profile.ts`,
+`app/src/stores/map.ts`, `app/src/components/Login.vue`,
+`app/src/components/CloudTAK/Map.vue`
 
 Exponential-backoff reconnect, capped at 5 attempts over 1s → 10s, with
 auth-failure detection.
@@ -487,7 +557,7 @@ See [`README-WEBSOCKET-RECONNECTION.md`](README-WEBSOCKET-RECONNECTION.md) and
 
 ## Self-location rendering
 
-`api/web/src/base/cot.ts`, `api/web/src/workers/atlas-profile.ts`
+`app/src/base/cot.ts`, `app/src/workers/atlas-profile.ts`
 
 `COT.styleProperties()` applied group-based `marker-color` / `icon-opacity` to
 every Point feature carrying a `group`, including the user's own self-location.
@@ -512,12 +582,12 @@ fire before it was populated.
 
 ## Terminology and UI
 
-`api/web/src/components/CloudTAK/MainMenuContents.vue`,
-`api/web/src/components/CloudTAK/util/{ChannelInfo,EmptyInfo,ShareToMission,Share,SelectFeats,SettingsCallsign,NotificationIcon}.vue`,
-`api/web/src/components/CloudTAK/Menu/{MenuContacts,MenuVideos,MenuSettings,MenuFilesRow}.vue`,
-`api/web/src/components/CloudTAK/Map.vue`,
-`api/web/src/components/PageFooter.vue`,
-`api/web/{index,admin,connection,docs,video}.html`, `api/web/vite.config.ts`
+`app/src/components/CloudTAK/MainMenuContents.vue`,
+`app/src/components/CloudTAK/util/{ChannelInfo,EmptyInfo,ShareToMission,Share,SelectFeats,SettingsCallsign,NotificationIcon}.vue`,
+`app/src/components/CloudTAK/Menu/{MenuContacts,MenuVideos,MenuSettings,MenuFilesRow}.vue`,
+`app/src/components/CloudTAK/Map.vue`,
+`app/src/components/PageFooter.vue`,
+`app/{index,admin,connection,docs,video}.html`, `app/vite.config.ts`
 
 - The Application Switcher dropdown is removed; logout redirects to
   `/api/logout`.

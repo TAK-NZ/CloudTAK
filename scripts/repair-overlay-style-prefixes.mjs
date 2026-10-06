@@ -8,7 +8,7 @@
  * PATCHed back to the server - producing `23-23-23-Background` after three
  * clicks, uniformly across every layer.
  *
- * Fixed in api/web/src/base/overlay-class.ts (namespaceStyles: copies rather than
+ * Fixed in app/src/base/overlay-class.ts (namespaceStyles: copies rather than
  * mutates, and is idempotent). This repairs rows already written.
  *
  * Reports by default. Set APPLY=1 to write, transactionally.

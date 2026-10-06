@@ -9,6 +9,8 @@ import process from 'node:process';
 import { Static } from '@sinclair/typebox';
 import { StackFrame } from './cloudformation.js';
 import { Capabilities } from '@tak-ps/etl';
+import { DEFAULT_SCHEMA_ID } from '../../../common/types.js';
+import type { NamedSchema, TaskCapabilitiesResponse } from '../../../common/types.js';
 import ECR from './ecr.js';
 
 function repositoryName(): string {
@@ -19,17 +21,74 @@ function repositoryName(): string {
  * @class
  */
 export default class Lambda {
+    /**
+     * TAK-NZ: name of a CloudFormation export published by a sibling stack
+     * (webhooks / mail) that layer stacks import.
+     *
+     * Upstream only has `tak-cloudtak-<env>` stack names and derives the sibling
+     * stack name by rewriting that prefix. TAK-NZ's stack is `TAK-<env>-CloudTAK`,
+     * which never matches that lowercase prefix, so the rewrite was a no-op and
+     * the import resolved to a name nothing exports (layer stacks with webhooks
+     * or email failed to create). The TAK-NZ CDK (cdk/lib/constructs/webhooks.ts
+     * and mail.ts) exports `<StackName>-<sibling>-<suffix>` instead.
+     * Upstream-style names keep the upstream derivation. See docs/fork/FORK-DELTA.md.
+     */
+    static siblingExport(
+        stackName: string,
+        sibling: 'webhooks' | 'mail',
+        suffix: string,
+    ): string {
+        if (/^tak-cloudtak-/.test(stackName)) {
+            return stackName.replace(/^tak-cloudtak-/, `tak-cloudtak-${sibling}-`) + `-${suffix}`;
+        }
+
+        return `${stackName}-${sibling}-${suffix}`;
+    }
+
     static async capabilities(
         config: Config,
         layerid: number,
-    ): Promise<Static<typeof Capabilities>> {
+    ): Promise<Static<typeof TaskCapabilitiesResponse>> {
         const res = await Lambda.invoke(config, layerid, 'capabilities');
 
         if (!res) {
             throw new Err(400, null, 'Capabilities API returned empty response');
         }
 
-        return JSON.parse(res.toString()) as Static<typeof Capabilities>;
+        return Lambda.normalizeCapabilities(JSON.parse(res.toString()) as Static<typeof Capabilities>);
+    }
+
+    /**
+     * Tasks return either a single Output schema or an array of named schemas -
+     * a single schema is mapped to the `default` name so consumers only handle named schemas
+     */
+    static normalizeCapabilities(capabilities: Static<typeof Capabilities>): Static<typeof TaskCapabilitiesResponse> {
+        const normalized = structuredClone(capabilities) as Static<typeof TaskCapabilitiesResponse>;
+
+        for (const flow of ['incoming', 'outgoing'] as const) {
+            const schema = capabilities[flow]?.schema;
+            if (!schema) continue;
+
+            normalized[flow]!.schema.output = Lambda.namedSchemas(schema.output);
+        }
+
+        return normalized;
+    }
+
+    static namedSchemas(output: unknown): Array<Static<typeof NamedSchema>> {
+        if (output === null || output === undefined) return [];
+
+        if (Array.isArray(output)) {
+            return output.filter((entry): entry is Static<typeof NamedSchema> => {
+                return typeof entry === 'object' && entry !== null
+                    && typeof entry.id === 'string'
+                    && typeof entry.schema === 'object' && entry.schema !== null;
+            });
+        }
+
+        if (typeof output !== 'object') return [];
+
+        return [{ id: DEFAULT_SCHEMA_ID, schema: output as Record<string, unknown> }];
     }
 
     static async invoke(config: Config, layerid: number, type?: string): Promise<Buffer | undefined> {
@@ -257,7 +316,7 @@ export default class Lambda {
                     Type: 'AWS::ApiGatewayV2::Route',
                     Properties: {
                         RouteKey: cf.join(['ANY /', cf.ref('UniqueID')]),
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         Target: cf.join(['integrations/', cf.ref('WebHookResourceIntegration')]),
                     },
                 };
@@ -266,7 +325,7 @@ export default class Lambda {
                     Type: 'AWS::ApiGatewayV2::Route',
                     Properties: {
                         RouteKey: cf.join(['ANY /', cf.ref('UniqueID'), '/{proxy+}']),
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         Target: cf.join(['integrations/', cf.ref('WebHookResourceIntegration')]),
                     },
                 };
@@ -274,11 +333,31 @@ export default class Lambda {
                 stack.Resources.WebHookResourceIntegration = {
                     Type: 'AWS::ApiGatewayV2::Integration',
                     Properties: {
-                        ApiId: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-api'),
+                        ApiId: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'api')),
                         IntegrationType: 'AWS_PROXY',
                         IntegrationUri: cf.getAtt('ETLFunction', 'Arn'),
-                        CredentialsArn: cf.importValue(config.StackName.replace(/^tak-cloudtak-/, 'tak-cloudtak-webhooks-') + '-role'),
+                        CredentialsArn: cf.importValue(Lambda.siblingExport(config.StackName, 'webhooks', 'role')),
                         PayloadFormatVersion: '2.0',
+                    },
+                };
+            }
+
+            if (layer.incoming.email && layer.enabled) {
+                // Registers the Layer with the router in cloudformation/lib/mail-lambda.cjs
+                stack.Resources.EmailParameter = {
+                    Type: 'AWS::SSM::Parameter',
+                    Properties: {
+                        Type: 'String',
+                        Name: cf.join([
+                            cf.importValue(Lambda.siblingExport(config.StackName, 'mail', 'layer-prefix')),
+                            cf.ref('UniqueID'),
+                        ]),
+                        Description: `${StackName}: Incoming Email`,
+                        Value: cf.join([
+                            '{"arn":"', cf.getAtt('ETLFunction', 'Arn'),
+                            '","senders":', JSON.stringify(layer.incoming.email_senders),
+                            '}',
+                        ]),
                     },
                 };
             }

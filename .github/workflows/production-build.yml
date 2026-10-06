@@ -70,10 +70,10 @@ jobs:
           ECR_REPO_URI="${{ secrets.PROD_AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.PROD_AWS_REGION }}.amazonaws.com/${ECR_REPO_NAME}"
           
           # Create deterministic hash based on actual file contents
-          CONTENT_SHA=$(find api/ tasks/ -type f -exec sha256sum {} \; | sort | sha256sum | cut -c1-8)
+          CONTENT_SHA=$(find api/ app/ tasks/ Dockerfile .dockerignore -type f -exec sha256sum {} \; | sort | sha256sum | cut -c1-8)
           
           if [[ -z "$CONTENT_SHA" ]]; then
-            echo "ERROR: Failed to generate content hash for api/ or tasks/ directories"
+            echo "ERROR: Failed to generate content hash for api/, app/ or tasks/ directories"
             exit 1
           fi
           
@@ -87,7 +87,7 @@ jobs:
           echo "ecr-repo-uri=$ECR_REPO_URI" >> $GITHUB_OUTPUT
           echo "cloudtak-tag=$CLOUDTAK_TAG" >> $GITHUB_OUTPUT
           echo "Using ECR repository: $ECR_REPO_URI"
-          echo "Content hash (api/tasks): $CONTENT_SHA"
+          echo "Content hash (api/app/tasks): $CONTENT_SHA"
           echo "Building CloudTAK image with tag: $CLOUDTAK_TAG"
       
       - name: Login to Amazon ECR
@@ -127,13 +127,13 @@ jobs:
           else
             echo "🔨 Building CloudTAK API image with tag ${{ steps.tags.outputs.cloudtak-tag }}"
             docker buildx build \
-              -f api/Dockerfile \
+              -f Dockerfile \
               --no-cache \
               --platform linux/amd64 \
               --output type=docker \
               --provenance=false \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
-              api/
+              .
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
           fi
           

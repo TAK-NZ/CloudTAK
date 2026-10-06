@@ -1,6 +1,6 @@
 # Upstream Sync Runbook
 
-How TAK-NZ pulls `api/` and `tasks/` from upstream
+How TAK-NZ pulls `api/`, `app/` and `tasks/` from upstream
 [dfpc-coe/CloudTAK](https://github.com/dfpc-coe/CloudTAK) while keeping its own
 customizations.
 
@@ -55,7 +55,7 @@ our tree derived from — the last genuine shared commit was from June 2025. A
 plain `git merge v13.62.0` therefore produced **1,241 conflicted files.**
 
 `vendor/upstream` fixes that. It is a branch holding **pristine upstream `api/` +
-`tasks/` and nothing else** — no TAK-NZ changes, ever. Each sync appends a commit
+`app/` + `tasks/` and nothing else** — no TAK-NZ changes, ever. Each sync appends a commit
 advancing it to a new upstream release, then merges it into a sync branch.
 Because the *previous* vendor commit is an ancestor of `main`, git has exactly
 the right merge base.
@@ -97,11 +97,17 @@ Then:
 ```bash
 git add <files> && git commit                # the merge commit is pre-staged
 cd api  && npm ci && npx tsc --noEmit
-cd web  && npm ci && npm run lint && npm test
+cd app  && npm ci && npm run lint && npm run check && npm test
 git push -u origin sync/upstream-<timestamp> vendor/upstream
 ```
 
 Open a PR against `main`.
+
+> **Not vendored:** only `api/`, `app/` and `tasks/` are synced. The root
+> `Dockerfile` and `.dockerignore` are TAK-NZ-owned copies of upstream's (with
+> `npm ci`), so after every sync diff them against upstream's and port changes by
+> hand: `git diff <old-tag> <new-tag> -- Dockerfile .dockerignore`. The same goes
+> for anything else upstream keeps at its repo root that the build needs.
 
 ## ⚠️ Merge PRs with a merge commit — never squash
 
@@ -165,7 +171,7 @@ change is a permanent deletion from what we carry.
 
 | Path | Role |
 |---|---|
-| `vendor/upstream` (branch) | Pristine upstream `api/` + `tasks/`. Never contains TAK-NZ code. |
+| `vendor/upstream` (branch) | Pristine upstream `api/` + `app/` + `tasks/`. Never contains TAK-NZ code. |
 | `.upstream-version` | The upstream ref currently merged into `main`. |
 | `scripts/sync-upstream.sh` | Does the sync, run manually. Exit codes: 0 merged, 5 up to date, 10 conflicts, 1 error. |
 | `docs/fork/` | Why each customization exists. `FORK-DELTA.md` is the index; the `README-*.md` files are per-topic deep dives. |

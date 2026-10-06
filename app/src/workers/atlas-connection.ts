@@ -1,0 +1,576 @@
+/*
+* ConnectionStore - Maintain the WebSocket connection with CloudTAK Server
+*/
+
+import { stdurl } from '../std.ts';
+import type Atlas from './atlas.ts';
+import { version } from '../../package.json'
+import Chatroom from '../base/chatroom.ts';
+import { db, ChatStatusRank, ChatStatus } from '../database.ts';
+import TAKNotification, { NotificationType } from '../base/notification.ts';
+import { OriginMode } from '../base/cot.ts';
+import { WorkerMessageType } from '../utils/events.ts';
+import type { SyncTriggerReason, SyncTriggerBody } from '../utils/events.ts';
+import type { SyncEvent } from './atlas-sync.ts';
+import type { Feature, Import, Chat } from '../types.ts';
+
+const RECONNECT_BACKOFF_STEP_MS = 5000;
+const RECONNECT_BACKOFF_MAX_MS = 30000;
+// Mobile devices flap between interfaces on resume - coalesce the burst
+const SYNC_TRIGGER_DEBOUNCE_MS = 1000;
+
+export default class AtlasConnection {
+    atlas: Atlas;
+
+    isDestroyed: boolean;
+    isOpen: boolean;
+    hasConnected: boolean;
+
+    // Device network status: forwarded from the main thread on native, the
+    // worker's own online/offline events on the web
+    isOnline: boolean;
+
+    // Halts reconnection until the user logs in again
+    authFailure: boolean;
+
+    ws: WebSocket | undefined;
+    reconnectAttempts: number;
+
+    version: string;
+
+    private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+
+    private connection: string | undefined;
+    private syncTimer: ReturnType<typeof setTimeout> | undefined;
+    private syncReason: SyncTriggerReason | undefined;
+    private syncListeners: Set<(reason: SyncTriggerReason) => void>;
+
+    constructor(atlas: Atlas) {
+        this.atlas = atlas;
+
+        this.isDestroyed = false;
+        this.isOpen = false;
+        this.hasConnected = false;
+        this.authFailure = false;
+        this.ws = undefined;
+        this.reconnectAttempts = 0;
+
+        this.version = version;
+
+        this.reconnectTimer = undefined;
+
+        this.isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+        this.connection = undefined;
+        this.syncTimer = undefined;
+        this.syncReason = undefined;
+        this.syncListeners = new Set();
+
+        self.addEventListener('online', () => this.setOnline(true));
+        self.addEventListener('offline', () => this.setOnline(false));
+    }
+
+    /**
+     * Apply a device network status change. Coming back online skips the
+     * remaining reconnect backoff and fires a sync trigger.
+     */
+    setOnline(online: boolean): void {
+        if (this.isOnline === online) return;
+        this.isOnline = online;
+
+        if (!online) return;
+
+        if (this.reconnectTimer !== undefined && this.connection && !this.isDestroyed && !this.authFailure) {
+            this.clearReconnectTimer();
+            this.connect(this.connection);
+        }
+
+        this.triggerSync('network');
+    }
+
+    /**
+     * Subscribe within the worker to sync triggers. The BroadcastChannel does
+     * not deliver a message to the context that posted it, so worker-side
+     * consumers register here instead.
+     */
+    onSync(listener: (reason: SyncTriggerReason) => void): () => void {
+        this.syncListeners.add(listener);
+        return () => {
+            this.syncListeners.delete(listener);
+        };
+    }
+
+    private triggerSync(reason: SyncTriggerReason): void {
+        // A socket open is the stronger signal and wins inside the window
+        if (this.syncReason !== 'connection') this.syncReason = reason;
+
+        if (this.syncTimer !== undefined) return;
+
+        this.syncTimer = setTimeout(() => {
+            this.syncTimer = undefined;
+
+            const fired = this.syncReason ?? reason;
+            this.syncReason = undefined;
+
+            if (this.isDestroyed) return;
+
+            this.atlas.postMessage({
+                type: WorkerMessageType.Sync_Trigger,
+                body: { reason: fired } satisfies SyncTriggerBody
+            });
+
+            for (const listener of this.syncListeners) {
+                try {
+                    listener(fired);
+                } catch (err) {
+                    console.error('Sync trigger listener failed', err);
+                }
+            }
+        }, SYNC_TRIGGER_DEBOUNCE_MS);
+    }
+
+    private clearSyncTimer(): void {
+        if (this.syncTimer !== undefined) {
+            clearTimeout(this.syncTimer);
+            this.syncTimer = undefined;
+        }
+        this.syncReason = undefined;
+    }
+
+    // COTs are submitted to pending and picked up by the partial update code every .5s
+    connect(connection: string) {
+        this.isDestroyed = false;
+        this.authFailure = false;
+        this.connection = connection;
+        this.clearReconnectTimer();
+
+        const url = stdurl('/api');
+        url.searchParams.set('format', 'geojson');
+        url.searchParams.set('connection', connection);
+        url.searchParams.set('token', this.atlas.token);
+
+        if (self.location.protocol === 'http:') {
+            url.protocol = 'ws:';
+        } else {
+            url.protocol = 'wss:';
+        }
+
+        // Any socket still open is superseded - its close handler sees it is
+        // no longer this.ws and stays quiet
+        const previous = this.ws;
+        const ws = new WebSocket(url);
+        this.ws = ws;
+        if (previous) previous.close();
+
+        // A socket that closes without ever opening was rejected during the
+        // HTTP upgrade (401) or never reached the server
+        let opened = false;
+
+        ws.addEventListener('open', () => {
+            if (ws !== this.ws) return;
+
+            opened = true;
+            this.reconnectAttempts = 0;
+
+            this.atlas.postMessage({ type: WorkerMessageType.Connection_Open });
+            this.isOpen = true;
+            this.triggerSync('connection');
+
+            // Sync events broadcast while this client was disconnected are
+            // lost (there is no replay), so any reconnect must trigger a full
+            // resync or the client silently drifts until the next page load
+            if (this.hasConnected && this.atlas.sync.started) {
+                this.atlas.sync.fullSync().catch((err: unknown) => {
+                    console.error('Failed to resync after reconnect', err);
+                });
+            }
+
+            this.hasConnected = true;
+        });
+
+        ws.addEventListener('error', (err) => {
+            console.error(err);
+        });
+
+        ws.addEventListener('close', () => {
+            // A socket superseded by a newer connect() must not touch state or
+            // spawn another connection - that's how reconnect loops multiply
+            if (ws !== this.ws) return;
+
+            this.atlas.postMessage({ type: WorkerMessageType.Connection_Close });
+            this.isOpen = false;
+
+            if (this.isDestroyed || this.authFailure) return;
+
+            void this.scheduleReconnect(connection, opened);
+        });
+
+        ws.addEventListener('message', async (msg) => {
+            try {
+            const body = JSON.parse(msg.data) as {
+                type: string;
+                connection: number | string;
+                data: unknown
+            };
+
+            if (body.type === 'Error') {
+                const err = body as unknown as {
+                    properties: { message: string }
+                };
+
+                if (/unauthorized|jwt expired|invalid token|no auth/i.test(err.properties.message)) {
+                    this.handleAuthFailure(err.properties.message);
+                    return;
+                }
+
+                console.warn('Warning: Validation Error: received Error from WebSocket:', JSON.stringify(body));
+                throw new Error(err.properties.message);
+            } else if (body.type === 'logout') {
+                this.handleRevoked((body as unknown as { properties?: { message?: string } }).properties?.message || 'Session revoked');
+                return;
+            } else if (body.type === 'import') {
+                const imp = (body as unknown as {
+                    properties: Import
+                }).properties;
+
+                await TAKNotification.create(
+                    NotificationType.Import,
+                    `Import ${imp.status}`,
+                    `${imp.name} has been updated to status: ${imp.status}`,
+                    `/menu/imports/${imp.id}`,
+                    true
+                );
+            } else if (body.type === 'cot') {
+                const feat = body.data as Feature;
+
+                // File Transfer request/ack - never a map feature
+                if (feat.properties.type.startsWith('b-f-t')) return;
+
+                await this.atlas.db.add(feat);
+
+                if ([
+                    'b-a',
+                    'b-a-o-tbl',
+                    'b-a-o-pan',
+                    'b-a-o-opn'
+                ].includes(feat.properties.type)) {
+                    const alertUrl = `/cot/${feat.id}`;
+                    if (!await TAKNotification.existsByUrl(alertUrl)) {
+                        await TAKNotification.create(
+                            NotificationType.Alert,
+                            `${feat.properties.callsign} Created`,
+                            '',
+                            alertUrl,
+                            true
+                        );
+                    }
+                } else if ([
+                    'b-r-f-h-c'
+                ].includes(feat.properties.type)) {
+                    await TAKNotification.create(
+                        NotificationType.Medical,
+                        `New CASEVAC`,
+                        `A CASEVAC has been requested for ${feat.properties.callsign}.`,
+                        `/cot/${feat.id}`,
+                        true
+                    );
+                }
+            } else if (body.type === 'task') {
+                const task = body.data as Feature;
+
+                if (task.properties.type.startsWith('t-x-m-c')) {
+                    if (task.properties.type === 't-x-m-c-l' && task.properties.mission) {
+                        await TAKNotification.create(
+                            NotificationType.Mission,
+                            `${task.properties.mission.name} Log Entry`,
+                            'Log Entry Added or Modified',
+                            `/menu/missions/${task.properties.mission.guid}/logs`,
+                            true
+                        );
+                    } else if (
+                        task.properties.type === 't-x-m-c'
+                        && task.properties.mission?.missionChanges?.length === 1
+                        && task.properties.mission?.missionChanges?.[0].contentResource?.name
+                    ) {
+                        if (task.properties.mission.missionChanges[0].type === 'ADD_CONTENT') {
+                            await TAKNotification.create(
+                                NotificationType.Mission,
+                                `${task.properties.mission.name} File Added`,
+                                `File ${task.properties.mission.missionChanges[0].contentResource.name}`,
+                                `/menu/missions/${task.properties.mission.guid}/content`,
+                                true
+                            );
+                        } else if (task.properties.mission.missionChanges[0].type === 'REMOVE_CONTENT') {
+                            await TAKNotification.create(
+                                NotificationType.Mission,
+                                `${task.properties.mission.name} File Removed`,
+                                `File ${task.properties.mission.missionChanges[0].contentResource.name}`,
+                                `/menu/missions/${task.properties.mission.guid}/content`,
+                                true
+                            );
+                        }
+                    }
+
+                    // Mission Change Tasking
+                    await this.atlas.db.subChange(task);
+                } else if (task.properties.type === 't-x-d-d') {
+                    const forcedelete = task.properties.forcedelete === true;
+
+                    for (const link of task.properties.links || []) {
+                        if (!link.uid) continue;
+
+                        const cot = await this.atlas.db.get(link.uid);
+
+                        if (!cot) continue;
+
+                        // Don't allow remote access to a Data Sync Mission (Priv. Escalation)
+                        if (cot.origin.mode === OriginMode.MISSION) {
+                            console.warn(`Ignoring t-x-d-d for ${link.uid} as it originates from a Mission`);
+                            continue;
+                        }
+
+                        if (forcedelete) {
+                            await this.atlas.db.remove(link.uid);
+                        } else {
+                            await cot.update({
+                                properties: {
+                                    ...cot.properties,
+                                    stale: new Date().toISOString()
+                                }
+                            });
+                        }
+                    }
+                } else if (task.properties.type === 't-x-m-n' && task.properties.mission) {
+                    await TAKNotification.create(
+                        NotificationType.Mission,
+                        `${task.properties.mission.name} Created`,
+                        '',
+                        `/menu/missions/${task.properties.mission.guid}`,
+                        true
+                    );
+                } else if (task.properties.type === 't-x-m-i' && task.properties.mission && task.properties.mission.type === 'INVITE') {
+                    this.atlas.postMessage({
+                        type: WorkerMessageType.Mission_Invite,
+                        body: task.properties.mission
+                    });
+                } else if (task.properties.type === 't-x-g-c') {
+                    this.atlas.postMessage({
+                        type: WorkerMessageType.Channel_Change
+                    });
+                } else {
+                    console.warn('Unknown Task', JSON.stringify(task));
+                }
+            } else if (body.type === 'chat') {
+                const chat = body.data as Chat;
+
+                let chatroom = chat.chatroom;
+
+                try {
+                    const callsign = this.atlas.profile.profile_callsign?.value;
+                    const username = this.atlas.profile.username;
+
+                    if (callsign && username && (chatroom === callsign || chatroom === `ANDROID-CloudTAK-${username}`)) {
+                        chatroom = chat.from.callsign;
+                    }
+                } catch (err) {
+                    console.error('Error getting profile for chat routing', err);
+                }
+
+                await Chatroom.load(chatroom, { reload: false });
+
+                await db.chatroom.where('id').equals(chatroom).modify(room => {
+                    room.updated = chat.time;
+                    room.unread = (room.unread || 0) + 1;
+                });
+
+                await db.chatroom_chats.put({
+                    id: chat.messageId,
+                    chatroom: chatroom,
+                    sender: chat.from.callsign,
+                    sender_uid: chat.from.uid,
+                    message: chat.message,
+                    created: chat.time
+                });
+
+                await TAKNotification.create(
+                    NotificationType.Chat,
+                    'New Chat Message',
+                    `${chat.from.callsign} to ${chat.chatroom} says: ${chat.message}`,
+                    `/menu/chats`,
+                    true
+                );
+            } else if (body.type === 'chat:receipt') {
+                const receipt = body.data as {
+                    messageId: string;
+                    status: ChatStatus;
+                    chatroom?: string;
+                    created?: string;
+                };
+
+                if (receipt.messageId && ChatStatusRank[receipt.status] !== undefined) {
+                    const progress = (chat: { status?: ChatStatus, created?: string }) => {
+                        // Messages sort by created - adopt the server-assigned timestamp so
+                        // ordering doesn't depend on the local clock that stamped the optimistic copy
+                        if (receipt.created) {
+                            chat.created = receipt.created;
+                        }
+
+                        if (ChatStatusRank[receipt.status] > ChatStatusRank[chat.status ?? ChatStatus.Sending]) {
+                            chat.status = receipt.status;
+                        }
+                    };
+
+                    await db.chatroom_chats
+                        .where('id')
+                        .equals(receipt.messageId)
+                        .modify(progress);
+
+                    await db.subscription_chat
+                        .where('id')
+                        .equals(receipt.messageId)
+                        .modify(progress);
+                }
+            } else if (body.type === 'status') {
+                const status = body.data as { version: string };
+
+                if (this.version !== status.version) {
+                    console.log(`Version change detected: ${this.version} -> ${status.version}`);
+                    if ('serviceWorker' in self.navigator) {
+                        const registration = await self.navigator.serviceWorker.ready;
+                        registration.update().catch((err) => {
+                            console.debug('Failed to update ServiceWorker (likely unregistered):', err);
+                        });
+
+                        this.version = status.version;
+                    } else {
+                        console.log('No Service Worker available');
+                    }
+                } else {
+                    if ('serviceWorker' in self.navigator) {
+                        const regs = await self.navigator.serviceWorker.getRegistrations()
+
+                        if (!regs.some(reg => {
+                            try {
+                                const scriptURL = reg.active?.scriptURL;
+                                if (!scriptURL) {
+                                    return false;
+                                }
+                                const url = new URL(scriptURL);
+                                return url.searchParams.get('v') === status.version;
+                            } catch (err) {
+                                console.error('Error parsing service worker script URL', err);
+                                return false;
+                            }
+                        })) {
+                            console.log(`Service Worker out of date, updating to version ${status.version}`);
+                            const registration = await self.navigator.serviceWorker.ready;
+                            registration.update().catch((err) => {
+                                console.debug('Failed to update ServiceWorker (likely unregistered):', err);
+                            });
+                        }
+                    } else {
+                        console.log('No Service Worker available');
+                    }
+                }
+            } else if (body.type === 'sync') {
+                // Another of the user's connected clients mutated a data type
+                // via the API - trigger a targeted sync in AtlasSync
+                await this.atlas.sync.event(body.data as SyncEvent);
+            } else if (body.type === 'connected') {
+                // Server has finished registering the WebSocket client - no client action needed
+            } else {
+                console.log('UNKNOWN', body.data);
+            }
+            } catch (err) {
+                console.warn('Error handling WebSocket message:', err);
+            }
+        });
+    }
+
+    private async scheduleReconnect(connection: string, opened: boolean): Promise<void> {
+        if (!opened && await this.isAuthRejected()) {
+            this.handleAuthFailure('WebSocket upgrade rejected: session is no longer valid');
+            return;
+        }
+
+        this.reconnectAttempts++;
+        const delay = Math.min(this.reconnectAttempts * RECONNECT_BACKOFF_STEP_MS, RECONNECT_BACKOFF_MAX_MS);
+
+        this.clearReconnectTimer();
+        this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = undefined;
+            if (this.isDestroyed || this.authFailure) return;
+            this.connect(connection);
+        }, delay);
+    }
+
+    private async isAuthRejected(): Promise<boolean> {
+        try {
+            const res = await fetch(stdurl('/api/login'), {
+                headers: { Authorization: `Bearer ${this.atlas.token}` }
+            });
+
+            return res.status === 401;
+        } catch {
+            // Network failure - the server is unreachable, not rejecting us
+            return false;
+        }
+    }
+
+    private handleAuthFailure(message: string): void {
+        if (this.authFailure) return;
+        this.authFailure = true;
+
+        console.error(`WebSocket auth failure: ${message}`);
+
+        this.clearReconnectTimer();
+
+        // The worker cannot clear stored credentials or navigate - the main
+        // thread must route the user to login
+        this.atlas.postMessage({
+            type: WorkerMessageType.Connection_AuthFailure,
+            body: { message }
+        });
+    }
+
+    /**
+     * The server terminated this login session - the main thread must log out
+     */
+    private handleRevoked(message: string): void {
+        if (this.authFailure) return;
+        this.authFailure = true;
+
+        console.warn(`WebSocket session revoked: ${message}`);
+
+        this.clearReconnectTimer();
+
+        this.atlas.postMessage({
+            type: WorkerMessageType.Connection_Revoked,
+            body: { message }
+        });
+    }
+
+    private clearReconnectTimer(): void {
+        if (this.reconnectTimer !== undefined) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = undefined;
+        }
+    }
+
+    destroy() {
+        this.isDestroyed = true;
+
+        this.clearReconnectTimer();
+        this.clearSyncTimer();
+
+        if (this.ws) {
+            this.ws.close();
+        }
+    }
+
+
+    sendCOT(data: object, type = 'cot') {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        this.ws.send(JSON.stringify({ type, data }));
+    }
+
+}

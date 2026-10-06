@@ -50,12 +50,12 @@ why — see each patch file's actual diff for the current behavior, and
 
 ### Frontend
 
-5. `api/web/src/components/Login.vue`
+5. `app/src/components/Login.vue`
    - "Login with SSO" button, redirects to `/api/login/oidc`
    - `consumeSSOLogin()` parses the session out of the `/login#sso=<payload>` URL fragment set by the callback route above (previously a `?token=` query param)
    - `OIDC_FORCED` handling: auto-redirects to SSO unless `?local=true` is present; dynamic loading message during the redirect/completion window to avoid a login-form flash
 
-6. `api/web/src/App.vue`, `api/web/src/stores/app.ts`
+6. `app/src/App.vue`, `app/src/stores/app.ts`
    - Updates logout function to redirect to `/api/logout`
    - Clears localStorage token before redirect
 
@@ -72,7 +72,7 @@ why — see each patch file's actual diff for the current behavior, and
 > ```bash
 > git diff vendor/upstream...HEAD -- \
 >     api/stateless/routes/login.ts api/stateless/lib/oidc.ts \
->     api/common/auth.ts api/web/src/components/Login.vue
+>     api/common/auth.ts app/src/components/Login.vue
 > ```
 
 ## Verifying Patches
@@ -88,7 +88,7 @@ git diff
 
 # Test compilation
 cd api && npm run build
-cd ../api/web && npm run build
+cd ../app && npm run build
 ```
 
 ## Dependencies
@@ -100,7 +100,7 @@ The OIDC implementation requires these npm packages (should already be in packag
 - `@aws-sdk/client-secrets-manager` - AWS Secrets Manager
 - No HTTP client dependency needed — the Authorization Code exchange, userinfo fetch, and all Authentik API calls use the native `fetch` global (Node 24+). The `axios` dependency previously required here has been removed.
 
-### Frontend (`api/web/package.json`)
+### Frontend (`app/package.json`)
 - `@tabler/icons-vue` - Icon library (IconKey)
 
 ## Environment Variables

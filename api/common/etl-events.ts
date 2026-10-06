@@ -4,18 +4,19 @@ import type { Static } from '@sinclair/typebox';
 import type SQS from '@aws-sdk/client-sqs';
 import type CoT from '@tak-ps/node-cot';
 import { CoTParser } from '@tak-ps/node-cot';
-import { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
 import { OutgoingMessageType, OutgoingAction, StaticCapabilities } from '@tak-ps/etl';
 import type Config from './config.js';
 import type ConnectionConfig from './connection-config.js';
 import type {
-    CoreEventResponse,
-    CoreEventBoardResponse,
-    CoreEventBoardColumnResponse,
-    CoreEventBoardEventResponse,
+    CoreEntityResponse,
+    CoreEntityBoardResponse,
+    CoreEntityBoardColumnResponse,
+    CoreEntityBoardEventResponse,
 } from './types.js';
 import Filter from './filter.js';
+import type { FilterContainer } from './filter.js';
 import Queue from './aws/queue.js';
+import TAKServerControl from './control/takserver.js';
 
 export { OutgoingAction as ETLEventAction };
 
@@ -24,12 +25,20 @@ type Message = {
     body: Record<string, unknown>;
 };
 
+type FeatureListener = {
+    layer: number;
+    filters: Static<typeof FilterContainer>;
+};
+
 /**
  * Delivery of Outgoing ETL Events - the SQS messages a Layer's Outgoing Task
  * is invoked with, in the `OutgoingMessage` envelope of @tak-ps/etl
  *
  * Feature events are the streaming CoTs of a Connection, delivered to every
- * enabled Outgoing Layer of that Connection. Every other type is a lifecycle
+ * enabled Outgoing Layer of that Connection subscribed to `feature:*`. The
+ * listeners of a Connection are cached per process and dropped via
+ * `featureRefresh` whenever the API changes a Layer's outgoing config, so the
+ * per-CoT path never touches the database. Every other type is a lifecycle
  * change of a Channel scoped resource, delivered to Outgoing Layers subscribed
  * to `<type>:<action>` whose Connection has one of the resource's Channels
  * active
@@ -37,10 +46,12 @@ type Message = {
 export default class ETLEvents {
     config: Config;
     queue: Queue;
+    listeners: Map<number, Promise<FeatureListener[]>>;
 
     constructor(config: Config) {
         this.config = config;
         this.queue = new Queue();
+        this.listeners = new Map();
     }
 
     async queueUrl(layer: number): Promise<string> {
@@ -48,24 +59,57 @@ export default class ETLEvents {
         return `https://sqs.${arnPrefix[3]}.amazonaws.com/${arnPrefix[4]}/${this.config.StackName}-layer-${layer}-outgoing.fifo`;
     }
 
-    async features(conn: ConnectionConfig, cots: CoT[]): Promise<boolean> {
-        if (this.config.noetlevents || cots.length === 0) return true;
+    /** Drop the cached feature listeners of a Connection so the next batch reloads them */
+    featureRefresh(connection: number): void {
+        this.listeners.delete(connection);
+    }
+
+    async featureListeners(connection: number): Promise<FeatureListener[]> {
+        let listeners = this.listeners.get(connection);
+
+        if (!listeners) {
+            listeners = this.loadFeatureListeners(connection);
+            this.listeners.set(connection, listeners);
+            listeners.catch(() => this.listeners.delete(connection));
+        }
+
+        return await listeners;
+    }
+
+    async loadFeatureListeners(connection: number): Promise<FeatureListener[]> {
+        const resource = `${OutgoingMessageType.Feature}:*`;
+        const listeners: FeatureListener[] = [];
 
         for await (const layer of this.config.models.Layer.augmented_iter({
             where: sql`
-                layers.connection = ${conn.id}
+                layers.connection = ${connection}
                 AND layers.enabled IS True
                 AND layers_outgoing.layer IS NOT NULL
+                AND layers_outgoing.subscriptions && ARRAY[${resource}]::TEXT[]
             `,
         })) {
             if (!layer.outgoing) continue;
+            if (!StaticCapabilities.isSubscribedOutgoingType(layer.outgoing.subscriptions, resource)) continue;
 
+            listeners.push({ layer: layer.id, filters: layer.outgoing.filters });
+        }
+
+        return listeners;
+    }
+
+    async features(conn: ConnectionConfig, cots: CoT[]): Promise<boolean> {
+        if (this.config.noetlevents || cots.length === 0) return true;
+
+        // Only Machine Connections (numeric ids) can own Outgoing Layers
+        if (typeof conn.id !== 'number') return true;
+
+        for (const listener of await this.featureListeners(conn.id)) {
             const messages: Message[] = [];
             for (const cot of cots) {
-                if (await Filter.test(layer.outgoing.filters, cot)) continue;
+                if (await Filter.test(listener.filters, cot)) continue;
 
                 messages.push({
-                    group: `${layer.id}-${cot.uid()}`,
+                    group: `${listener.layer}-${cot.uid()}`,
                     body: {
                         type: OutgoingMessageType.Feature,
                         xml: await CoTParser.to_xml(cot),
@@ -74,29 +118,29 @@ export default class ETLEvents {
                 });
             }
 
-            await this.submit(layer.id, messages);
+            await this.submit(listener.layer, messages);
         }
 
         return true;
     }
 
-    /** `event:<action>` - a CoreEvent, scoped to the Channels it is shared with */
-    async event(action: OutgoingAction, event: Static<typeof CoreEventResponse>): Promise<void> {
+    /** `event:<action>` - a CoreEntity, scoped to the Channels it is shared with */
+    async event(action: OutgoingAction, event: Static<typeof CoreEntityResponse>): Promise<void> {
         await this.deliver(OutgoingMessageType.Event, action, event.id, event.channels.map(Number), event);
     }
 
-    /** `board:<action>` - a CoreEvent Board, scoped to its Channel */
-    async board(action: OutgoingAction, board: Static<typeof CoreEventBoardResponse>): Promise<void> {
+    /** `board:<action>` - a CoreEntity Board, scoped to its Channel */
+    async board(action: OutgoingAction, board: Static<typeof CoreEntityBoardResponse>): Promise<void> {
         await this.deliver(OutgoingMessageType.Board, action, board.id, [board.channel], board);
     }
 
     /** `board:column:<action>` - a Column, scoped to the Channel of the Board it belongs to */
-    async boardColumn(action: OutgoingAction, channel: number, column: Static<typeof CoreEventBoardColumnResponse>): Promise<void> {
+    async boardColumn(action: OutgoingAction, channel: number, column: Static<typeof CoreEntityBoardColumnResponse>): Promise<void> {
         await this.deliver(OutgoingMessageType.BoardColumn, action, column.id, [channel], column);
     }
 
-    /** `board:event:<action>` - a CoreEvent placed on a Board, scoped to the Channel of that Board */
-    async boardEvent(action: OutgoingAction, channel: number, placement: Static<typeof CoreEventBoardEventResponse>): Promise<void> {
+    /** `board:event:<action>` - a CoreEntity placed on a Board, scoped to the Channel of that Board */
+    async boardEvent(action: OutgoingAction, channel: number, placement: Static<typeof CoreEntityBoardEventResponse>): Promise<void> {
         await this.deliver(OutgoingMessageType.BoardEvent, action, placement.id, [channel], placement);
     }
 
@@ -165,10 +209,7 @@ export default class ETLEvents {
     async connectionChannels(connection: number): Promise<Set<number>> {
         const conn = await this.config.models.Connection.from(connection);
 
-        const api = await TAKAPI.init(
-            new URL(String(this.config.server.api)),
-            new APIAuthCertificate(conn.auth.cert, conn.auth.key),
-        );
+        const api = await new TAKServerControl(this.config).asConnection(conn);
 
         return new Set(
             (await api.Group.list({ useCache: true })).data

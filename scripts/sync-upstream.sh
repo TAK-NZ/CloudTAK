@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Sync api/ and tasks/ from upstream dfpc-coe/CloudTAK using a real 3-way merge.
+# Sync api/, app/ and tasks/ from upstream dfpc-coe/CloudTAK using a real 3-way merge.
 #
 # WHY THIS LOOKS THE WAY IT DOES
 # ------------------------------
@@ -9,7 +9,7 @@
 #     git checkout "$UPSTREAM_REF" -- api/ tasks/
 #
 # That is not a merge. It has no "ours" side: it deletes every TAK-NZ
-# customization in api/ and tasks/ and replaces it with pristine upstream. The
+# customization in api/ (and tasks/) and replaces it with pristine upstream. The
 # customizations then had to be re-applied by hand from a patch archive, which
 # is how we lost TAK certificate provisioning, first-login attribute sync, and
 # wrote TAK attributes to a table that has no such columns during the v13 port.
@@ -37,7 +37,10 @@ UPSTREAM_URL="https://github.com/dfpc-coe/CloudTAK.git"
 UPSTREAM_REMOTE="upstream"
 VENDOR_BRANCH="vendor/upstream"
 VERSION_FILE=".upstream-version"
-SYNC_PATHS=(api tasks)
+# `app` is the web frontend. Upstream kept it at api/web/ until v13.102.x and then
+# moved it to a root-level app/; it must be vendored too or the merge sees the
+# whole frontend as deleted.
+SYNC_PATHS=(api app tasks)
 
 # Machine-readable outcomes, so a caller can distinguish "nothing to do" from
 # "needs a human" without parsing output.
@@ -317,7 +320,7 @@ if [ -n "$CONFLICTS" ]; then
     echo "   1. Resolve each file. docs/fork/FORK-DELTA.md explains why each TAK-NZ"
     echo "      customization exists, grouped by concern - use it as reference."
     echo "   2. git add <file> ... && git commit      ${DIM}(the merge commit is pre-staged)${OFF}"
-    echo "   3. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
+    echo "   3. cd api && npm ci && npx tsc --noEmit && cd ../app && npm ci && npm run lint && npm run check && npm test"
     echo "   4. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"
     echo
     echo "   ${YEL}Push $VENDOR_BRANCH too, and merge the PR with a MERGE COMMIT${OFF}"
@@ -332,7 +335,7 @@ ok "merged cleanly with no conflicts"
 
 echo
 echo "📋 next steps:"
-echo "   1. cd api && npm ci && npx tsc --noEmit && cd web && npm ci && npm run lint && npm test"
+echo "   1. cd api && npm ci && npx tsc --noEmit && cd ../app && npm ci && npm run lint && npm run check && npm test"
 echo "   2. git push -u origin $SYNC_BRANCH $VENDOR_BRANCH"
 echo "   3. Open a PR and merge it with a ${YEL}MERGE COMMIT (never squash)${OFF}"
 exit "$EXIT_MERGED"

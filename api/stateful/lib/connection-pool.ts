@@ -7,11 +7,12 @@ import { randomUUID } from 'node:crypto';
 import Modeler from '@openaddresses/batch-generic';
 import { Connection } from '../../common/schema.js';
 import { setTimeout as delay } from 'node:timers/promises';
-import TAK, { TAKAPI, APIAuthCertificate } from '@tak-ps/node-tak';
+import TAK, { TAKAPI } from '@tak-ps/node-tak';
 import CoT, { CoTParser } from '@tak-ps/node-cot';
 import type ConnectionConfig from '../../common/connection-config.js';
-import { MachineConnConfig, ProfileConnConfig, AdminConnConfig, isCoreEventSubmitter } from '../../common/connection-config.js';
+import { MachineConnConfig, ProfileConnConfig, AdminConnConfig, isCoreEntitySubmitter } from '../../common/connection-config.js';
 import { ProfileChatStatus, WebSocket_Event } from '../../common/enums.js';
+import TAKServerControl, { profileUid } from '../../common/control/takserver.js';
 
 const pkg = JSON.parse(fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')) as {
     version: string;
@@ -110,7 +111,7 @@ export class ConnectionClient {
     }
 
     destroy(): void {
-        if (isCoreEventSubmitter(this.config)) {
+        if (isCoreEntitySubmitter(this.config)) {
             this.config.stopEvents();
         }
 
@@ -313,7 +314,7 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                 );
                             }
                         } else if (conn instanceof ProfileConnConfig && feat.properties && feat.properties.chat) {
-                            const myUid = `ANDROID-CloudTAK-${conn.id}`;
+                            const myUid = profileUid(conn.id);
                             const senderUid = feat.properties.chat.chatgrp?._attributes?.uid0;
                             const isOutgoing = senderUid === myUid;
                             const chatroom = isOutgoing
@@ -394,6 +395,9 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
                                 }));
                             } else if (feat.properties.type.startsWith('t-x')) {
                                 client.ws.send(JSON.stringify({ type: 'task', connection: conn.id, data: feat }));
+                            } else if (feat.properties.type.startsWith('b-f-t')) {
+                                // File Transfer request/ack - handled via Imports, never a map feature
+                                continue;
                             } else {
                                 client.ws.send(JSON.stringify({ type: 'cot', connection: conn.id, data: feat }));
                             }
@@ -465,11 +469,11 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
             });
         }
 
-        const api = await TAKAPI.init(new URL(String(this.config.server.api)), new APIAuthCertificate(connConfig.auth.cert, connConfig.auth.key));
+        const api = await new TAKServerControl(this.config).asConnection(connConfig);
         const connClient = new ConnectionClient(connConfig, tak, api);
         this.set(connConfig.id, connClient);
 
-        if (!this.config.noconnections && isCoreEventSubmitter(connConfig)) {
+        if (!this.config.noconnections && isCoreEntitySubmitter(connConfig)) {
             connConfig.startEvents(tak, api);
         }
 
@@ -641,6 +645,8 @@ export default class ConnectionPool extends Map<number | string, ConnectionClien
         if (conn) {
             conn.destroy();
             super.delete(id);
+
+            if (typeof id === 'number') this.config.etlEvents.featureRefresh(id);
 
             return true;
         } else {

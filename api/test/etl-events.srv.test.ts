@@ -3,14 +3,17 @@ import assert from 'node:assert';
 import Sinon from 'sinon';
 import { SQSClient, SendMessageBatchCommand } from '@aws-sdk/client-sqs';
 import { setTimeout as delay } from 'node:timers/promises';
+import { CoTParser } from '@tak-ps/node-cot';
 import Flight from './flight.js';
 import ETLEvents from '../common/etl-events.js';
+import type ConnectionConfig from '../common/connection-config.js';
 
 const flight = new Flight();
 
 flight.init({ takserver: true });
 flight.takeoff();
 flight.user();
+flight.integration('test-task');
 flight.connection();
 
 type Delivered = {
@@ -46,6 +49,8 @@ test('ETLEvents: setup subscribed Outgoing Layers', async () => {
     try {
         flight.config!.noetlevents = false;
         flight.config!.arnPrefix = 'arn:aws:sqs:us-east-1:123456789012';
+        flight.stateful!.noetlevents = false;
+        flight.stateful!.arnPrefix = 'arn:aws:sqs:us-east-1:123456789012';
 
         Sinon.stub(SQSClient.prototype, 'send').callsFake((command) => {
             if (!(command instanceof SendMessageBatchCommand)) throw new Error('Unexpected SQS command');
@@ -66,7 +71,7 @@ test('ETLEvents: setup subscribed Outgoing Layers', async () => {
             return new Set([7, 99]);
         });
 
-        flight.config!.hub.coreEventSubmit = async () => {};
+        flight.config!.hub.coreEntitySubmit = async () => {};
 
         for (const [name, subscriptions] of [
             ['All Events Layer', ['feature:*', 'event:*']],
@@ -78,7 +83,8 @@ test('ETLEvents: setup subscribed Outgoing Layers', async () => {
         ] as Array<[string, string[]]>) {
             const layer = await flight.config!.models.Layer.generate({
                 name,
-                task: 'test-task-v1.0.0',
+                task: 1,
+                version: '1.0.0',
                 connection: 1,
             });
 
@@ -451,6 +457,57 @@ test('ETLEvents: board:event:delete carries the removed placement', async () => 
     }
 });
 
+test('ETLEvents: deleting a placed Event also delivers board:event:delete', async () => {
+    try {
+        delivered.length = 0;
+
+        const placed = await flight.fetch('/api/board/event', {
+            method: 'PUT',
+            auth: { bearer: flight.token.admin },
+            body: { column: columnId, event: placedEventId, position: 0 },
+        }, true);
+
+        await waitFor(1);
+        delivered.length = 0;
+
+        const before = await flight.fetch(`/api/core/event/${placedEventId}`, {
+            method: 'GET',
+            auth: { bearer: flight.token.admin },
+        }, true);
+
+        await flight.fetch(`/api/core/event/${placedEventId}`, {
+            method: 'DELETE',
+            auth: { bearer: flight.token.admin },
+        }, true);
+
+        await waitFor(2);
+        await delay(200);
+
+        assert.equal(delivered.length, 2);
+
+        const messages = delivered.sort((a, b) => a.body.type.localeCompare(b.body.type));
+
+        assert.equal(messages[0].queue, queueOf(5));
+        assert.equal(messages[0].group, `5-${placed.body.id}`);
+        assert.deepEqual(messages[0].body, {
+            type: 'board:event',
+            action: 'delete',
+            channels: [7],
+            data: { ...placed.body, event: before.body },
+        });
+
+        assert.equal(messages[1].queue, queueOf(1));
+        assert.deepEqual(messages[1].body, {
+            type: 'event',
+            action: 'delete',
+            channels: [7],
+            data: before.body,
+        });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 test('ETLEvents: board:column:delete carries the deleted Column', async () => {
     try {
         delivered.length = 0;
@@ -560,6 +617,88 @@ test('ETLEvents: a Board on a Channel the Connection does not have is not delive
         await delay(200);
 
         assert.equal(delivered.length, 0);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+async function streamCot(): Promise<void> {
+    delivered.length = 0;
+
+    const cot = await CoTParser.from_geojson({
+        id: 'streamed-cot',
+        type: 'Feature',
+        properties: {
+            callsign: 'STREAM',
+            type: 'a-f-G',
+            how: 'm-g',
+        },
+        geometry: {
+            type: 'Point',
+            coordinates: [-105.1, 39.9],
+        },
+    });
+
+    // The stateful process streams CoT, so its ETLEvents owns the listener cache
+    await flight.stateful!.etlEvents.features({ id: 1 } as ConnectionConfig, [cot]);
+}
+
+test('ETLEvents: features only reach Layers subscribed to feature:*', async () => {
+    try {
+        await streamCot();
+
+        assert.deepEqual(delivered.map(d => d.queue).sort(), [queueOf(1), queueOf(3)]);
+
+        for (const message of delivered) {
+            const body = message.body as Record<string, unknown>;
+            assert.equal(message.group, `${message.queue.includes('layer-1') ? 1 : 3}-streamed-cot`);
+            assert.equal(body.type, 'feature');
+            assert.ok(body.xml);
+            assert.ok(body.geojson);
+        }
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('ETLEvents: feature listeners are cached per Connection', async () => {
+    try {
+        const iter = Sinon.spy(flight.stateful!.models.Layer, 'augmented_iter');
+
+        await streamCot();
+        await streamCot();
+
+        assert.equal(iter.callCount, 0);
+        assert.deepEqual(delivered.map(d => d.queue).sort(), [queueOf(1), queueOf(3)]);
+
+        flight.stateful!.etlEvents.featureRefresh(1);
+
+        await streamCot();
+
+        assert.equal(iter.callCount, 1);
+        assert.deepEqual(delivered.map(d => d.queue).sort(), [queueOf(1), queueOf(3)]);
+
+        iter.restore();
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('ETLEvents: changing an outgoing config refreshes the feature listeners', async () => {
+    try {
+        await flight.fetch('/api/connection/1/layer/3/outgoing', {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: {
+                filters: {
+                    queries: [{ query: 'properties.callsign = "STREAM"' }],
+                },
+            },
+        }, true);
+
+        await streamCot();
+
+        assert.deepEqual(delivered.map(d => d.queue), [queueOf(1)]);
     } catch (err) {
         assert.ifError(err);
     }

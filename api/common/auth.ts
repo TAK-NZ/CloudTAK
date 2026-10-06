@@ -17,6 +17,12 @@ export enum AuthUserAccess {
     USER = 'user',
 }
 
+export function accessFor(profile: { system_admin: boolean; agency_admin: Array<number> | null }): AuthUserAccess {
+    if (profile.system_admin) return AuthUserAccess.ADMIN;
+    if (profile.agency_admin && profile.agency_admin.length) return AuthUserAccess.AGENCY;
+    return AuthUserAccess.USER;
+}
+
 function castUserAccessEnum(str: string): AuthUserAccess | undefined {
     const value = AuthUserAccess[str.toUpperCase() as keyof typeof AuthUserAccess];
     return value;
@@ -103,13 +109,13 @@ export default class Auth {
      * @param opts.token        - Should URL query tokens be allowed (usually only for downloads)
      * @param opts.anyResources - Any Resource token can use this endpoint
      * @param resources         - Array of resource types that can use this endpoint
-     * @param opts.scope        - `<permission>:<level>` a Layer or Connection token must hold in its `permissions`
+     * @param opts.scope        - `<permission>:<level>` scope(s) a Layer or Connection token must hold in its `permissions` - every scope given is required
      */
     static async is_auth(config: Config, req: Request<any, any, any, any>, opts: {
         token?: boolean;
         anyResources?: boolean;
         resources?: Array<AuthResourceAccepted>;
-        scope?: string;
+        scope?: string | Array<string>;
     } = {}): Promise<AuthResource | AuthUser> {
         if (!opts.token) opts.token = false;
         if (!opts.resources) opts.resources = [];
@@ -153,17 +159,23 @@ export default class Auth {
                 throw new Err(403, null, 'Resource token cannot access this resource');
             }
 
-            if (opts.scope && auth_resource.access === AuthResourceAccess.LAYER) {
+            const scopes = opts.scope === undefined ? [] : Array.isArray(opts.scope) ? opts.scope : [opts.scope];
+
+            if (scopes.length && auth_resource.access === AuthResourceAccess.LAYER) {
                 if (auth_resource.id === undefined) throw new Err(401, null, 'Layer Resource Token must contain a Layer ID');
 
                 const layer = await config.models.Layer.from(auth_resource.id);
 
-                if (!hasScope(layer.permissions, opts.scope)) {
-                    throw new Err(403, null, `Layer token does not have the ${opts.scope} permission`);
+                for (const scope of scopes) {
+                    if (!hasScope(layer.permissions, scope)) {
+                        throw new Err(403, null, `Layer token does not have the ${scope} permission`);
+                    }
                 }
-            } else if (opts.scope && auth_resource.access === AuthResourceAccess.CONNECTION && connectionToken) {
-                if (!hasScope(connectionToken.permissions, opts.scope)) {
-                    throw new Err(403, null, `Connection token does not have the ${opts.scope} permission`);
+            } else if (scopes.length && auth_resource.access === AuthResourceAccess.CONNECTION && connectionToken) {
+                for (const scope of scopes) {
+                    if (!hasScope(connectionToken.permissions, scope)) {
+                        throw new Err(403, null, `Connection token does not have the ${scope} permission`);
+                    }
                 }
             }
         }
@@ -267,12 +279,12 @@ export default class Auth {
     /**
      * OpenAPI Security Requirements for a route guarded by `as_user_or_scope`
      */
-    static security(scope: string, opts: {
+    static security(scope: string | Array<string>, opts: {
         connection?: boolean;
     } = {}): Array<Record<string, Array<string>>> {
         const security: Array<Record<string, Array<string>>> = [
             { bearerAuth: [] },
-            { layerAuth: [scope] },
+            { layerAuth: Array.isArray(scope) ? scope : [scope] },
         ];
 
         if (opts.connection) security.push({ connectionAuth: [] });
@@ -300,11 +312,7 @@ export default class Auth {
 
         const imp = await config.models.Profile.from(impersonate);
 
-        let access = AuthUserAccess.USER;
-        if (imp.agency_admin) access = AuthUserAccess.AGENCY;
-        if (imp.system_admin) access = AuthUserAccess.ADMIN;
-
-        const resolved = new AuthUser(access, impersonate, adminUser.token);
+        const resolved = new AuthUser(accessFor(imp), impersonate, adminUser.token);
         resolved.impersonate = adminUser.email;
         return resolved;
     }
@@ -344,7 +352,7 @@ export default class Auth {
     }
 }
 
-function hasScope(permissions: Array<string>, scope: string): boolean {
+export function hasScope(permissions: Array<string>, scope: string): boolean {
     const wildcard = scope.slice(0, scope.indexOf(':') + 1) + '*';
     return permissions.includes(scope) || permissions.includes(wildcard);
 }
@@ -418,13 +426,7 @@ export async function tokenParser(
 
             if (profile.disabled) throw new Err(401, null, 'User is disabled');
 
-            if (profile.system_admin) {
-                return new AuthUser(AuthUserAccess.ADMIN, profile.username, `etl.${token}`);
-            } else if (profile.agency_admin.length) {
-                return new AuthUser(AuthUserAccess.AGENCY, profile.username, `etl.${token}`);
-            } else {
-                return new AuthUser(AuthUserAccess.USER, profile.username, `etl.${token}`);
-            }
+            return new AuthUser(accessFor(profile), profile.username, `etl.${token}`);
         } else {
             return new AuthResource(`etl.${token}`, access, decoded.id, decoded.internal);
         }
@@ -434,18 +436,26 @@ export async function tokenParser(
         if (!decoded.email || typeof decoded.email !== 'string') throw new Err(401, null, 'Invalid Token');
         if (!decoded.access || typeof decoded.access !== 'string') throw new Err(401, null, 'Invalid Token');
 
-        const access = castUserAccessEnum(decoded.access);
+        let access = castUserAccessEnum(decoded.access);
         if (!access) throw new Err(400, null, 'Invalid User Access Value');
 
         const session = typeof decoded.s === 'string' ? decoded.s : undefined;
 
         // Tokens without an `s` claim are server minted and have no session to check
         if (session) {
+            let profileSession;
             try {
-                await config.models.ProfileSession.from(session);
+                profileSession = await config.models.ProfileSession.from(session);
             } catch (err) {
                 throw new Err(401, err instanceof Error && err.name === 'PublicError' ? err : new Error(String(err)), 'Session does not exist');
             }
+
+            if (profileSession.username !== decoded.email) throw new Err(401, null, 'Session does not exist');
+
+            // Session tokens live long enough that the profile, not the claim, decides access
+            const profile = await config.models.Profile.from(decoded.email);
+            if (profile.disabled) throw new Err(401, null, 'User is disabled');
+            access = accessFor(profile);
         }
 
         return new AuthUser(access, decoded.email, token, session);
