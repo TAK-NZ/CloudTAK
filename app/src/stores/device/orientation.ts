@@ -2,16 +2,17 @@ import { CapgoCompass } from '@capgo/capacitor-compass';
 import { isNativePlatform } from '../../utils/capacitor.ts';
 import { PermissionQuery, normalizePermissionState } from './shared.ts';
 import type { DevicePermissionContext } from './types.ts';
+import { startWebCompass } from './web-compass.ts';
+import type { LatLng } from './declination.ts';
 
 type DeviceOrientationEventWithPermission = typeof DeviceOrientationEvent & {
     requestPermission?: () => Promise<PermissionState>;
 };
 
-type DeviceOrientationEventWithCompass = DeviceOrientationEvent & {
-    webkitCompassHeading?: number | null;
-};
-
-type DeviceOrientationEventName = 'deviceorientationabsolute' | 'deviceorientation';
+export interface OrientationListenerOptions {
+    /** Current device location; lets the web compass convert magnetic to true north. */
+    getLocation?: () => LatLng | null;
+}
 
 export class OrientationPermission {
     constructor(private readonly context: DevicePermissionContext) {}
@@ -35,13 +36,21 @@ export class OrientationPermission {
 
     /**
      * Register a listener that fires with the compass heading (degrees clockwise
-     * from true/magnetic north, 0–360) whenever the device orientation changes.
-     * On native (iOS/Android) the @capgo/capacitor-compass plugin is used; on
-     * web the DeviceOrientationEvent fallback is used.
+     * from north, 0–360) whenever the device orientation changes.
+     *
+     * North reference: on native the @capgo/capacitor-compass plugin value is
+     * passed through as reported (true north on iOS; the Android plugin reports
+     * magnetic north and is not yet corrected). On web the heading is true north
+     * by default (magnetic declination applied when a location is available) or
+     * magnetic north if the user chose so; iOS `webkitCompassHeading` is already
+     * true north and is passed through.
      *
      * Returns an async cleanup function — call it to stop listening.
      */
-    async addListener(callback: (heading: number | null) => void): Promise<() => Promise<void>> {
+    async addListener(
+        callback: (heading: number | null) => void,
+        options: OrientationListenerOptions = {}
+    ): Promise<() => Promise<void>> {
         if (isNativePlatform()) {
             const handle = await CapgoCompass.addListener('headingChange', (event) => {
                 callback(event.value);
@@ -53,14 +62,10 @@ export class OrientationPermission {
             };
         }
 
-        // Web fallback — DeviceOrientationEvent
-        const eventName = this.webGetEventName();
-        const listener = (event: DeviceOrientationEvent): void => {
-            callback(this.webGetHeading(event));
-        };
-        window.addEventListener(eventName, listener as EventListener);
+        // Web fallback — DeviceOrientationEvent (see web-compass.ts)
+        const stop = startWebCompass(callback, { getLocation: options.getLocation });
         return async () => {
-            window.removeEventListener(eventName, listener as EventListener);
+            stop();
         };
     }
 
@@ -110,7 +115,10 @@ export class OrientationPermission {
             }
         }
 
-        if (this.hasPermissionRequest()) {
+        // iOS needs a user gesture. Chromium 151+ also exposes requestPermission, but
+        // it is a no-op while the sensor permission defaults to allowed; if that
+        // default changes, the permissions.query branch above reports 'prompt'.
+        if (this.hasPermissionRequest() && !this.isChromium()) {
             this.context.setPermissionStatus('orientation', 'prompt');
         } else {
             this.context.setPermissionStatus('orientation', 'granted');
@@ -153,26 +161,7 @@ export class OrientationPermission {
 
     // ─── web-only helpers ────────────────────────────────────────────────────
 
-    private webGetEventName(): DeviceOrientationEventName {
-        // On iOS (hasPermissionRequest = true), always use deviceorientation
-        // which provides webkitCompassHeading for accurate absolute heading.
-        // On iOS 17.4+ window.ondeviceorientationabsolute is now defined, but
-        // deviceorientationabsolute fires unreliably there.
-        if (this.hasPermissionRequest()) {
-            return 'deviceorientation';
-        }
-        return 'ondeviceorientationabsolute' in (window as unknown as Record<string, unknown>)
-            ? 'deviceorientationabsolute'
-            : 'deviceorientation';
-    }
-
-    private webGetHeading(event: DeviceOrientationEvent): number | null {
-        const compassEvent = event as DeviceOrientationEventWithCompass;
-        // webkitCompassHeading is iOS-only (degrees CW from true north).
-        // It can be null when the device is flat; fall through to alpha then.
-        if (typeof compassEvent.webkitCompassHeading === 'number') {
-            return compassEvent.webkitCompassHeading;
-        }
-        return event.alpha === null ? null : 360 - event.alpha;
+    private isChromium(): boolean {
+        return 'userAgentData' in navigator || /\bChrome\/\d+/.test(navigator.userAgent);
     }
 }

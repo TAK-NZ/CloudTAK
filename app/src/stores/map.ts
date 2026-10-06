@@ -1085,7 +1085,8 @@ export const useMapStore = defineStore('cloudtak', {
             this.loadingStage = 'Starting worker…';
             this.startWorker();
 
-            this._removeOrientationListener = await deviceStore.orientation.addListener((heading) => {
+            this._removeOrientationListener = await deviceStore.orientation.addListener((value) => {
+                const heading = finiteOrNull(value);
                 this.deviceHeading = heading;
 
                 // Drive the self-location puck's heading cone regardless of
@@ -1098,7 +1099,7 @@ export const useMapStore = defineStore('cloudtak', {
                 if (this.userOrientationMode && heading !== null && this._map) {
                     this.map.setBearing(heading);
                 }
-            });
+            }, { getLocation: () => this.gpsCoordinates });
 
             const { value: token } = await Preferences.get({ key: 'token' });
 
