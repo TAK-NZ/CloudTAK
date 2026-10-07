@@ -223,6 +223,7 @@ export class CloudTakApi extends Construct {
                 'logs:CreateLogGroup',
                 'logs:PutRetentionPolicy',
                 'logs:TagResource',
+                'logs:UntagResource',
                 'logs:ListTagsForResource'
               ],
               resources: [
@@ -302,7 +303,7 @@ export class CloudTakApi extends Construct {
             // SQS queue management permissions
             new cdk.aws_iam.PolicyStatement({
               effect: cdk.aws_iam.Effect.ALLOW,
-              actions: ['sqs:CreateQueue', 'sqs:DeleteQueue', 'sqs:SetQueueAttributes', 'sqs:ListQueueTags', 'sqs:TagQueue'],
+              actions: ['sqs:CreateQueue', 'sqs:DeleteQueue', 'sqs:SetQueueAttributes', 'sqs:ListQueueTags', 'sqs:TagQueue', 'sqs:UntagQueue'],
               resources: [`arn:${cdk.Stack.of(this).partition}:sqs:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:TAK-${envConfig.stackName}-CloudTAK-layer-*`]
             }),
             // ECR permissions — GetAuthorizationToken is global (not repo-scoped)
