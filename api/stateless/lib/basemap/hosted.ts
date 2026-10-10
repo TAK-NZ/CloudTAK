@@ -1,4 +1,5 @@
 import undici from 'undici';
+import { Readable } from 'node:stream';
 import { isSafeUrl } from '@tak-ps/node-safeurl';
 import type { Response } from 'express';
 import Err from '@openaddresses/batch-error';
@@ -34,6 +35,8 @@ export default class HostedBasemap extends BasemapProtocol {
             .replace(/\{\$?y\}/, String(y)),
         );
 
+        let handledByErrorMapping = false;
+
         try {
             const { safe, reason } = await isSafeUrl(url.href);
             if (!safe) throw new Err(400, null, `Blocked tile URL: ${reason}`);
@@ -42,6 +45,21 @@ export default class HostedBasemap extends BasemapProtocol {
                 method: 'GET',
                 headers: opts.headers as Record<string, string>,
             }, ({ statusCode, headers, body }) => {
+                if (statusCode >= 400 && statusCode !== 404) {
+                    // Drain the upstream body without forwarding it so the socket is released
+                    body.resume();
+                    body.on('error', () => {});
+
+                    console.error(`Error: BasemapTileUpstream: ${url.hostname} returned ${statusCode}`);
+
+                    const message = `Upstream tile server (${url.hostname}) returned ${statusCode}`;
+                    handledByErrorMapping = true;
+                    res.writeHead(502, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ status: 502, message, messages: [] }));
+
+                    return Readable.from([]);
+                }
+
                 if (headers) {
                     for (const key in headers) {
                         if (
@@ -65,22 +83,24 @@ export default class HostedBasemap extends BasemapProtocol {
             await new Promise((resolve, reject) => {
                 stream
                     .on('data', (buf) => {
-                        res.write(buf);
+                        if (!handledByErrorMapping) res.write(buf);
                     })
                     .on('error', (err) => {
+                        if (handledByErrorMapping) return resolve(undefined);
                         return reject(err);
                     })
                     .on('end', () => {
-                        res.end();
+                        if (!handledByErrorMapping) res.end();
                         return resolve(undefined);
                     })
                     .on('close', () => {
-                        res.end();
+                        if (!handledByErrorMapping) res.end();
                         return resolve(undefined);
                     })
                     .end();
             });
         } catch (err) {
+            if (handledByErrorMapping) return;
             throw new Err(400, err instanceof Error ? err : new Error(String(err)), 'Failed to fetch tile');
         }
     }
