@@ -23,8 +23,10 @@ for `server` (Admin) and `debugger` (COT Debugger) only.
 
 `primary/` and `svg-traced/` contain exactly one file per *adopted* entry -- 16
 each -- so what is in those two directories *is* the decision. Rejected
-candidates are not kept as files; the reasoning for each is recorded in
-`MAPPING.md` and they are regenerable from ATAK with the scripts here.
+candidates are not kept there; the reasoning for each is recorded in
+`MAPPING.md` and they are regenerable from ATAK with the scripts here. The
+separate [plugin icon library](#icon-library-for-plugins) keeps unadopted `nav_*`
+icons for plugins and does not change this decision.
 
 **Status: not wired in.** Nothing in `api/` references these yet, pending the
 v13.70.0 upstream sync. See [Implementation plan](#implementation-plan) for why,
@@ -196,6 +198,187 @@ the palette changed -- `Inputs/RangeInput.vue`, `Inputs/RangeRingsInput.vue` and
 
 ---
 
+## Icon library for plugins
+
+`library/` holds every ATAK `nav_*` icon that CloudTAK's nav menu does not use,
+so the next plugin can pick an icon without redoing the extraction. It is a
+parts bin, not a decision.
+
+- `library/png/<name>.png` -- the ATAK source raster, white-on-transparent
+- `library/svg/<name>.svg` -- the traced icon, `viewBox="0 0 24 24"` with
+  `fill="currentColor"`, same format as `svg-traced/`
+- Names are the ATAK drawable name, without density suffix and without a
+  CloudTAK menu key prefix (`nav_rubber_sheet.svg`, not
+  `plugins_nav_rubber_sheet.svg`)
+
+**Not wired in.** Library icons are not referenced by the CloudTAK nav menu. They
+do not change any decision recorded for `primary/` and `svg-traced/`, which still
+hold exactly the 16 adopted entries. The library also contains icons that
+`MAPPING.md` considered and rejected for a menu entry (`nav_server`,
+`nav_toolbars`, ...); rejecting one for the nav menu does not make it unusable
+for a plugin.
+
+### Using an icon in a plugin
+
+Copy `library/svg/<name>.svg` into the plugin. The paths are filled outlines, so
+`stroke-width` has no effect (see the CAVEAT in `MAPPING.md`). Menu icons are
+rendered by `MenuItemCard.vue` as `<component :is='icon' :size :color stroke='1'>`,
+and an `<img>` does not inherit `currentColor`, so embed the `d` data in an inline
+`<svg>` component that maps `size` to width/height and `color` to the CSS
+`color`. `cloudtak-plugin-rubbersheet/lib/icon.ts` is a working example.
+
+### What is in it
+
+55 icons. 54 come from `drawable-xxxhdpi/` and one (`nav_range`) from
+`drawable-tvdpi/` (64x64), because ATAK ships it at no higher density. The 120px
+sources (`nav_add_hostile`, `nav_draw_circle`, `nav_draw_rectangle`,
+`nav_draw_telestration`, `nav_rb_bullseye`, `nav_rb_circle`, `nav_rb_dynamic`,
+`nav_rb_line`, `nav_spi`) are what ATAK ships at xxxhdpi. Each name takes the
+highest density available.
+
+The candidates are every `nav_*.png` in ATAK's `drawable-*dpi/` directories (102
+distinct names), minus the 15 `nav_` icons adopted in `primary/` and the five
+non-glyph files documented in `MAPPING.md`. Each remaining PNG is checked
+programmatically before tracing: square, between 0.5% and 50% of pixels opaque
+(alpha >= 128), and every opaque pixel at least 230 on R, G and B. 32 of the
+candidates (including the five non-glyph files) are skipped and never traced:
+
+| ATAK file | Source density | Why skipped |
+|---|---|---|
+| `nav_bar` | hdpi | not square (147x432) |
+| `nav_billboard` | mdpi | mostly opaque (67.5%), baked-in background |
+| `nav_billboard_disabled` | mdpi | mostly opaque (67.5%), baked-in background |
+| `nav_blank` | xxxhdpi | documented non-glyph file (MAPPING.md) |
+| `nav_cp_mode_toggle` | mdpi | mostly opaque (53.4%), baked-in background |
+| `nav_display_backdrop` | mdpi | not square (460x103) |
+| `nav_draw_shape` | xxxhdpi | not square (124x120) |
+| `nav_empty` | xxxhdpi | documented non-glyph file (MAPPING.md) |
+| `nav_exit_button_img` | mdpi | mostly opaque (66.0%), baked-in background |
+| `nav_go_to` | xhdpi | not white ink (darkest opaque channel 0) |
+| `nav_hostile_manager` | xxxhdpi | not square (124x120) |
+| `nav_left` | mdpi | not square (72x76) |
+| `nav_left_manual` | mdpi | mostly opaque (73.2%), baked-in background |
+| `nav_menu_closed` | xxxhdpi | documented non-glyph file (MAPPING.md) |
+| `nav_menu_opened` | xxxhdpi | documented non-glyph file (MAPPING.md) |
+| `nav_mute` | mdpi | mostly opaque (64.4%), baked-in background |
+| `nav_range_and_bearing` | ldpi | not square (37x33) |
+| `nav_right` | mdpi | not square (72x76) |
+| `nav_right_manual` | mdpi | mostly opaque (73.1%), baked-in background |
+| `nav_sharp_left` | mdpi | not white ink (darkest opaque channel 216) |
+| `nav_sharp_right` | mdpi | not white ink (darkest opaque channel 216) |
+| `nav_slight_left` | mdpi | not square (72x70) |
+| `nav_slight_right` | mdpi | not square (72x70) |
+| `nav_sp_icon` | mdpi | not square (72x74) |
+| `nav_speak` | mdpi | mostly opaque (65.1%), baked-in background |
+| `nav_speed_backdrop` | mdpi | mostly opaque (76.8%), baked-in background |
+| `nav_straight` | mdpi | not square (72x73) |
+| `nav_thumb` | mdpi | not square (35x103) |
+| `nav_tool_delete` | xxxhdpi | documented non-glyph file (MAPPING.md) |
+| `nav_vdo_icon` | mdpi | mostly opaque (78.3%), baked-in background |
+| `nav_vdo_mode_toggle` | mdpi | mostly opaque (53.4%), baked-in background |
+| `nav_zoom` | xxxhdpi | not square (192x384) |
+
+The skipped files are mostly turn-by-turn navigation sprites, toggle
+backgrounds and stretched panels, all from the lower-density folders. Square
+padding could rescue `nav_draw_shape` and `nav_hostile_manager`; that was not
+done.
+
+The traced icons are shown on
+[`contact-sheets/06_nav_icon_library.png`](contact-sheets/06_nav_icon_library.png).
+Only `nav_rubber_sheet` was compared against its source at 32px and 96px on dark
+and light backgrounds. ATAK pads its sources, so the glyphs fill only the middle
+of the 24x24 box and render smaller than a Tabler icon of the same `size`.
+
+### Index
+
+| Icon | Source density | Used by |
+|---|---|---|
+| `nav_add_hostile` | xxxhdpi (120px) | - |
+| `nav_alert` | xxxhdpi (192px) | - |
+| `nav_android` | xxxhdpi (192px) | - |
+| `nav_bloodhound` | xxxhdpi (192px) | - |
+| `nav_brightness` | xxxhdpi (192px) | - |
+| `nav_camera` | xxxhdpi (192px) | - |
+| `nav_casevac` | xxxhdpi (192px) | - |
+| `nav_center` | xxxhdpi (192px) | - |
+| `nav_delete` | xxxhdpi (192px) | - |
+| `nav_draw` | xxxhdpi (192px) | - |
+| `nav_draw_circle` | xxxhdpi (120px) | - |
+| `nav_draw_rectangle` | xxxhdpi (120px) | - |
+| `nav_draw_telestration` | xxxhdpi (120px) | - |
+| `nav_elevation` | xxxhdpi (192px) | - |
+| `nav_export` | xxxhdpi (192px) | - |
+| `nav_fire` | xxxhdpi (192px) | - |
+| `nav_fire_tools` | xxxhdpi (192px) | - |
+| `nav_firstperson` | xxxhdpi (192px) | - |
+| `nav_geofence` | xxxhdpi (192px) | - |
+| `nav_goto` | xxxhdpi (192px) | - |
+| `nav_grid` | xxxhdpi (192px) | - |
+| `nav_info` | xxxhdpi (192px) | - |
+| `nav_lasso` | xxxhdpi (192px) | - |
+| `nav_lock_on` | xxxhdpi (192px) | - |
+| `nav_lock_on_selected` | xxxhdpi (192px) | - |
+| `nav_more` | xxxhdpi (192px) | - |
+| `nav_nightvision` | xxxhdpi (192px) | - |
+| `nav_orientation` | xxxhdpi (192px) | - |
+| `nav_package` | xxxhdpi (192px) | - |
+| `nav_plugins` | xxxhdpi (192px) | - |
+| `nav_point` | xxxhdpi (192px) | - |
+| `nav_point_at_intersect` | xxxhdpi (192px) | - |
+| `nav_point_at_self` | xxxhdpi (192px) | - |
+| `nav_point_dropper` | xxxhdpi (192px) | - |
+| `nav_power` | xxxhdpi (192px) | - |
+| `nav_quick_nav` | xxxhdpi (192px) | - |
+| `nav_quick_pic` | xxxhdpi (192px) | - |
+| `nav_rab` | xxxhdpi (192px) | - |
+| `nav_range` | tvdpi (64px) | - |
+| `nav_rb` | xxxhdpi (192px) | - |
+| `nav_rb_bullseye` | xxxhdpi (120px) | - |
+| `nav_rb_circle` | xxxhdpi (120px) | - |
+| `nav_rb_dynamic` | xxxhdpi (120px) | - |
+| `nav_rb_line` | xxxhdpi (120px) | - |
+| `nav_redx` | xxxhdpi (192px) | - |
+| `nav_redx_locked` | xxxhdpi (192px) | - |
+| `nav_resection` | xxxhdpi (192px) | - |
+| `nav_restart` | xxxhdpi (192px) | - |
+| `nav_rubber_sheet` | xxxhdpi (192px) | `TAK-NZ/cloudtak-plugin-rubbersheet` |
+| `nav_server` | xxxhdpi (192px) | - |
+| `nav_spi` | xxxhdpi (120px) | - |
+| `nav_symbols_copy_26` | xxxhdpi (192px) | - |
+| `nav_toolbars` | xxxhdpi (192px) | - |
+| `nav_update_location` | xxxhdpi (192px) | - |
+| `nav_viewshed` | xxxhdpi (192px) | - |
+
+### Regenerating the library
+
+`build_nav_library.py` does the collection, the filter and the staging. It uses
+the standard library and Pillow itself, and calls `trace_icons.py`, so run it
+inside the tracing venv. Output is deterministic (running it twice gives
+identical files). From the repository root:
+
+```bash
+python3 -m venv .venv-trace
+.venv-trace/bin/pip install -r branding/atak-icons/requirements.txt
+
+.venv-trace/bin/python branding/atak-icons/build_nav_library.py \
+    ../TPC_atak-civ/atak/ATAK/app/src/main/res
+```
+
+It rebuilds `library/` from scratch and prints the traced and skipped lists. The
+filter stage matters: `trace_icons.py` has no input guard, so the script stages
+only conforming PNGs in a temporary directory and traces that, never the raw ATAK
+folders.
+
+### Attribution
+
+The library icons are ATAK-CIV 5.5.1.10 assets (GPL-3.0). Shipping any of them
+requires an attribution notice, as described under [Source](#source) and in
+`MAPPING.md`. A plugin that embeds one should carry its own notice naming the
+ATAK file, the commit and the licence; `cloudtak-plugin-rubbersheet/NOTICE` is an
+example. None of the library icons carry TAK/ATAK branding.
+
+---
+
 ## Why this lives in `branding/`
 
 `docs/UPSTREAM-SYNC.md` syncs `api/` and `tasks/` from upstream
@@ -220,17 +403,26 @@ Nav menu assets (16 adopted):
 | `primary/` | The 16 source rasters, 192x192 white-on-transparent -- kept because they are the documented input to `trace_icons.py` |
 | `svg-traced/` | The 16 traced SVGs -- **the nav deliverable** |
 
+Plugin icon library (55 icons, not wired into the nav menu):
+
+| Path | What |
+|---|---|
+| `library/png/` | The 55 ATAK source rasters, named by ATAK drawable name |
+| `library/svg/` | The 55 traced SVGs. Copy one into a plugin to use it |
+
 Drawing tools assets (12 adopted):
 
 | Path | What |
 |---|---|
 | `drawtools/` | The 12 adopted SVGs -- **the drawtools deliverable**. 7 converted from ATAK vector drawables, 2 traced from ATAK rasters, 3 derived |
 
-Nothing rejected is kept as a file. Every candidate considered is named in
-`MAPPING.md` or `DRAWTOOLS.md` with the reason it lost, and all are regenerable
-from the pinned ATAK commit with the scripts here.
+Apart from the plugin icon library above, nothing rejected is kept as a file.
+Every candidate considered is named in `MAPPING.md` or `DRAWTOOLS.md` with the
+reason it lost, and all are regenerable from the pinned ATAK commit with the
+scripts here. The library keeps unadopted `nav_*` icons on purpose, as parts for
+plugins, so a few icons rejected for a menu entry are in it.
 
-Scripts. Only `trace_*.py` need the venv; the other two are standard library only:
+Scripts. `trace_*.py` and `build_nav_library.py` need the venv; the other two are standard library only:
 
 | Path | What | Venv |
 |---|---|---|
@@ -238,6 +430,7 @@ Scripts. Only `trace_*.py` need the venv; the other two are standard library onl
 | `trace_datasync.py` | Traces the blue-on-transparent solid sync glyph | yes |
 | `convert_vector_drawable.py` | **Losslessly** converts ATAK `<vector>` drawables to SVG. Prefer this over tracing whenever ATAK ships a vector | no |
 | `make_plus_badge.py` | Composes ATAK's `+` create badge onto a base icon | no |
+| `build_nav_library.py` | Builds `library/` from the ATAK res folder: collects, filters, stages, then runs `trace_icons.py` | yes (Pillow, plus `trace_icons.py`) |
 | `requirements.txt` | Pinned tracing toolchain |  |
 
 Contact sheets:
@@ -248,8 +441,9 @@ Contact sheets:
 | `03_datasync_traced_from_atak.png` | The Data Sync glyph, source vs trace |
 | `04_tabler_vs_atak_pairs.png` | **Nav menu** before/after pairs |
 | `05_drawtools_tabler_vs_atak.png` | **Drawing tools** before/after pairs |
+| `06_nav_icon_library.png` | **Plugin icon library**: all 55 traced icons, white on dark at 48px |
 
-Every SVG in `svg-traced/` and `drawtools/` uses `viewBox="0 0 24 24"` with
+Every SVG in `svg-traced/`, `drawtools/` and `library/svg/` uses `viewBox="0 0 24 24"` with
 `fill="currentColor"`, matching the Tabler grid the rest of the UI uses.
 
 ## Source

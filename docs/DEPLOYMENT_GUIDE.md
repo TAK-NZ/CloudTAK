@@ -56,6 +56,47 @@ npm run cdk:diff:prod # Production diff
 
 ---
 
+## **🔌 Installing CloudTAK plugins (WEB_PLUGINS)**
+
+CloudTAK plugins are cloned into `app/plugins/` while the Docker image is built, using
+the `WEB_PLUGINS` build arg. This repo sets it from CDK config.
+
+- **Config:** `cloudtak.webPlugins` in `cdk/cdk.json`, per environment. Comma and/or
+  whitespace separated `https://github.com/<owner>/<repo>.git` URLs. `dev-test` installs
+  the rubbersheet plugin; `prod` is empty. Other URL forms (ssh, credentials, `#ref`,
+  `file:`) are rejected at synth time.
+- **Overrides:** `--context WebPlugins="<urls>"` (use `""` for none), then the
+  `WEB_PLUGINS` environment variable, then `cdk.json`.
+- **Manual deploy (Test stack):**
+  ```bash
+  npm run build && npm run cdk deploy -- \
+    --context envType=dev-test \
+    --context stackName=Demo \
+    --context tak-project="TAK on AWS" \
+    --context tak-component="CloudTAK" \
+    --context tak-region=us-west-2 \
+    --context useS3CloudTAKConfigFile=true \
+    --require-approval never
+  ```
+  Add `--context WebPlugins="https://github.com/dfpc-coe/cloudtak-plugin-sample.git"` to
+  install a different plugin set for that deploy.
+- **CI:** the Demo build (`demo-build.yml`) uses the `dev-test` value and the production
+  build uses the `prod` value from `cdk/cdk.json`. Pre-built images ignore
+  `--context WebPlugins` at deploy time; the plugin set is fixed when the image is built.
+
+**Gotchas**
+- The clone happens after `COPY api/` and `COPY app/`, and it takes the plugin's
+  **default branch** (`--depth 1`). A plugin-only change therefore does not change the
+  image hash. In CI, re-run the build with `force_rebuild`. For a manual CDK deploy,
+  change any file in `api/` or `app/` (or the plugin list) so the asset is rebuilt.
+- The image build runs `npm run lint && npm run check` over `app/plugins/`, so a plugin
+  must pass the app's lint and type checks or the build fails.
+- Plugin dependencies must already be in `app/package.json` and its lockfile, because
+  `npm ci` runs before plugins are cloned.
+- After a deploy, users need Settings -> Refresh App to pick up the new plugin bundle.
+
+---
+
 ## **🚀 First-Time Setup**
 
 ### **Prerequisites**
