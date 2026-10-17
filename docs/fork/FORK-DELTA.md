@@ -346,7 +346,7 @@ for how to use it.
 
 ### Weather plugin relay (`/api/weather`)
 `api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
-`api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`,
+`api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`, `api/test/weather-images.ts`,
 `api/test/fixtures/get_schema.json`, `cdk/cdk.json`, `cloudtak-config.env.example`,
 `scripts/set-weather-proxy-config.sh`
 
@@ -355,6 +355,10 @@ and the docs). The relay serves `GET /api/weather/status`
 and `GET /api/weather/tile/:z/:x/:y.png` for the `cloudtak-plugin-weather` plugin and
 fetches tiles from the weather-proxy with a server-side key.
 
+- **Tile image type.** The relay serves PNG or WebP tiles. Rainbow `clouds` tiles are WebP, but
+  the weather-proxy labels every tile `image/png`, so the relay checks the image bytes (PNG or
+  WebP), sends the detected `Content-Type` (the route path keeps `.png`) and answers 502 for
+  anything else.
 - **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two weather keys,
   because `schema.srv.test.ts` deep-equals it against `GET /api/schema`. **On sync:**
   re-run that test with `UPDATE=1` and keep upstream's keys.

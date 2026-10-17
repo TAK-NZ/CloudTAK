@@ -115,6 +115,8 @@ forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
 - **Upstream limits:** each API task makes at most 500 weather-proxy fetches a minute (the
   proxy allows 600 per client IP). After a 429 from the proxy the task pauses upstream fetches
   for 5 to 120 s; cached tiles are still served and uncached tiles get `429` with `Retry-After`.
+- **Tile formats:** tiles are PNG, except `clouds` tiles, which are WebP. The relay detects the
+  format from the image bytes and sets the `Content-Type`, so no weather-proxy change is needed.
 - **Restart:** values are read at request time but injected when the task starts. After
   changing the file, deploy or run `aws ecs update-service --force-new-deployment` so a new
   task picks them up.
