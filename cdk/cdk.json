@@ -52,7 +52,7 @@
         "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
         "authentikChannelGroupPrefix": "tak_",
         "localOnlyAccounts": ["ckadmin"],
-        "webPlugins": "https://github.com/TAK-NZ/cloudtak-plugin-rubbersheet.git"
+        "webPlugins": "https://github.com/TAK-NZ/cloudtak-plugin-rubbersheet.git,https://github.com/TAK-NZ/cloudtak-plugin-weather.git"
       },
       "ecr": {
         "imageRetentionCount": 5,
