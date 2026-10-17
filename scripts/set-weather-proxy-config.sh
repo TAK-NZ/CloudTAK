@@ -167,8 +167,11 @@ ACCOUNT="$(aws_ sts get-caller-identity --query Account --output text)"
 
 if [ -z "$BUCKET" ]; then
     EXPORT_NAME="TAK-${STACK_NAME}-BaseInfra-EnvConfigBucket"
-    BUCKET="$(aws_ cloudformation list-exports --query "Exports[?Name==\`${EXPORT_NAME}\`].Value | [0]" --output text)"
-    if [ -z "$BUCKET" ] || [ "$BUCKET" = "None" ]; then
+    # list-exports is paginated and the CLI applies --query to every page, so a
+    # "| [0]" projection prints "None" for each page without a match. Collect all
+    # matches instead and keep the first real value.
+    BUCKET="$(aws_ cloudformation list-exports --query "Exports[?Name==\`${EXPORT_NAME}\`].Value" --output text | tr '\t' '\n' | grep -v -e '^None$' -e '^$' | head -n 1 || true)"
+    if [ -z "$BUCKET" ]; then
         die "CloudFormation export $EXPORT_NAME not found in account $ACCOUNT, region $REGION"
     fi
     [[ "$BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || die "The export $EXPORT_NAME is not a bucket name"
