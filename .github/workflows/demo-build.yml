@@ -14,6 +14,7 @@ on:
       - '.dockerignore'
       - 'tasks/**'
       - 'cdk.json'
+      - 'cdk/cdk.json'
   workflow_call:
     inputs:
       force_rebuild:
@@ -77,8 +78,27 @@ jobs:
           ECR_REPO_NAME=$(echo $ECR_REPO_ARN | cut -d'/' -f2)
           ECR_REPO_URI="${{ secrets.DEMO_AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.DEMO_AWS_REGION }}.amazonaws.com/${ECR_REPO_NAME}"
           
+          # Web plugins baked into the main image (WEB_PLUGINS build arg), from cdk/cdk.json
+          WEB_PLUGINS_RAW=$(jq -r '.context["dev-test"].cloudtak.webPlugins // ""' cdk/cdk.json)
+          WEB_PLUGINS=$(echo "$WEB_PLUGINS_RAW" | tr -s ',[:space:]' ',' | sed 's/^,//;s/,$//')
+          WEB_PLUGIN_REGEX='^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(\.git)?$'
+          if [[ -n "$WEB_PLUGINS" ]]; then
+            IFS=',' read -ra WEB_PLUGIN_LIST <<< "$WEB_PLUGINS"
+            for plugin_url in "${WEB_PLUGIN_LIST[@]}"; do
+              if [[ ! "$plugin_url" =~ $WEB_PLUGIN_REGEX ]]; then
+                echo "ERROR: Invalid web plugin URL in cdk/cdk.json: $plugin_url"
+                exit 1
+              fi
+            done
+          fi
           # Create deterministic hash based on actual file contents
-          CONTENT_SHA=$(find api/ app/ tasks/ Dockerfile .dockerignore -type f -exec sha256sum {} \; | sort | sha256sum | cut -c1-8)
+          CONTENT_HASH=$(find api/ app/ tasks/ Dockerfile .dockerignore -type f -exec sha256sum {} \; | sort | sha256sum)
+          # Only when plugins are configured, fold them into the hash so a plugin
+          # change produces a new tag. Without plugins the hash is unchanged.
+          if [[ -n "$WEB_PLUGINS" ]]; then
+            CONTENT_HASH=$(printf '%s\nWEB_PLUGINS=%s\n' "$CONTENT_HASH" "$WEB_PLUGINS" | sha256sum)
+          fi
+          CONTENT_SHA=$(echo "$CONTENT_HASH" | cut -c1-8)
           
           if [[ -z "$CONTENT_SHA" ]]; then
             echo "ERROR: Failed to generate content hash for api/, app/ or tasks/ directories"
@@ -94,8 +114,10 @@ jobs:
           
           echo "ecr-repo-uri=$ECR_REPO_URI" >> $GITHUB_OUTPUT
           echo "cloudtak-tag=$CLOUDTAK_TAG" >> $GITHUB_OUTPUT
+          echo "web-plugins=$WEB_PLUGINS" >> $GITHUB_OUTPUT
           echo "Using ECR repository: $ECR_REPO_URI"
           echo "Content hash (api/app/tasks): $CONTENT_SHA"
+          echo "Web plugins: ${WEB_PLUGINS:-none}"
           echo "Building CloudTAK image with tag: $CLOUDTAK_TAG"
       
       - name: Login to Amazon ECR
@@ -125,6 +147,8 @@ jobs:
         uses: docker/setup-buildx-action@v4
       
       - name: Build and Push CloudTAK Images
+        env:
+          WEB_PLUGINS: ${{ steps.tags.outputs.web-plugins }}
         run: |
           REPO_NAME=$(echo ${{ steps.tags.outputs.ecr-repo-uri }} | cut -d'/' -f2)
           CONTENT_SHA=$(echo ${{ steps.tags.outputs.cloudtak-tag }} | sed 's/cloudtak-//')
@@ -134,12 +158,17 @@ jobs:
             echo "✅ CloudTAK image ${{ steps.tags.outputs.cloudtak-tag }} already exists, skipping API build"
           else
             echo "🔨 Building CloudTAK API image with tag ${{ steps.tags.outputs.cloudtak-tag }}"
+            WEB_PLUGIN_ARGS=()
+            if [[ -n "$WEB_PLUGINS" ]]; then
+              WEB_PLUGIN_ARGS=(--build-arg "WEB_PLUGINS=$WEB_PLUGINS")
+            fi
             docker buildx build \
               -f Dockerfile \
               --no-cache \
               --platform linux/amd64 \
               --output type=docker \
               --provenance=false \
+              "${WEB_PLUGIN_ARGS[@]}" \
               -t ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }} \
               .
             docker push ${{ steps.tags.outputs.ecr-repo-uri }}:${{ steps.tags.outputs.cloudtak-tag }}
