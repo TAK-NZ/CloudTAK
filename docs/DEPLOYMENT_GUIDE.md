@@ -96,8 +96,8 @@ the `WEB_PLUGINS` build arg. This repo sets it from CDK config.
 - After a deploy, users need Settings -> Refresh App to pick up the new plugin bundle.
 
 ### **Weather plugin (cloudtak-plugin-weather)**
-Adds a weather bottom bar to the map with rain, global rain, cloud and radar layers and a
-forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
+Adds a weather button under the 3D terrain button in the map's left controls; it opens a bottom
+bar with rain, global rain, cloud and radar layers and a forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
 (`/api/weather`), so browsers never see the proxy URL or key.
 
 | Variable | Required | Rule |
