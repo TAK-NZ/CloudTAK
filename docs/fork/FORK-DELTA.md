@@ -309,6 +309,41 @@ prefix is `/TAK-<Env>-CloudTAK/mail/layer/`, and the ETL grant is attached to
 [`../EMAIL.md`](../EMAIL.md) for the flow and security notes (the ingress point is
 a public, OPEN SMTP endpoint).
 
+### CloudTAK web plugins (WEB_PLUGINS)
+
+`app/package.json`, `app/package-lock.json`, `cdk/cdk.json`, `cdk/lib/utils/web-plugins.ts`,
+`cdk/lib/cloudtak-stack.ts`, `.github/workflows/demo-build.yml`,
+`.github/workflows/production-build.yml`
+
+The root `Dockerfile` already accepts a `WEB_PLUGINS` build arg and `api/bin/plugin.ts`
+(unchanged from upstream) clones each listed repository into `app/plugins/<name>` after
+`COPY app/` and before `npm run lint && npm run check && npm run build`. TAK-NZ only
+adds the plumbing to set that arg and the dependency the first plugin needs.
+
+- **`pdfjs-dist` 4.10.38 (exact pin) in `app/package.json` and the lockfile.** Required
+  by the `cloudtak-plugin-rubbersheet` plugin (TAK-NZ fork of
+  `AdventureSeeker423/cloudtak-plugin-rubbersheet`). `npm ci` runs before plugins are
+  cloned, so a plugin cannot add its own dependencies; they must already be in the app
+  lockfile. The lockfile diff is `pdfjs-dist` plus its optional `@napi-rs/canvas*`
+  packages only. **On sync:** if `app/package.json` or the lockfile conflicts, keep
+  upstream's, re-add `pdfjs-dist@4.10.38` with `npm install --save-exact`, and check
+  `git diff` shows no unrelated lockfile changes.
+- **`cloudtak.webPlugins` in `cdk/cdk.json`** (TAK-NZ only, per environment). `dev-test`
+  lists the rubbersheet fork; `prod` is `""`. The stack resolves the effective value
+  as `--context WebPlugins` (or `webPlugins`), then the `WEB_PLUGINS` env var, then
+  `cdk.json`, validates it (https GitHub URLs only) and adds it to the main
+  `CloudTAKDockerAsset` build args only when non-empty, so images without plugins keep
+  the same asset hash.
+- **Build workflows.** `demo-build.yml` reads the `dev-test` value and
+  `production-build.yml` the `prod` value, validates it with the same regex, folds it
+  into the image tag hash only when non-empty and passes `--build-arg WEB_PLUGINS`
+  to the main image build. `demo-build.yml` also triggers on `cdk/cdk.json` changes.
+- **No change to `api/bin/plugin.ts` or the `Dockerfile`.** It clones the plugin's
+  default branch tip with `--depth 1`; there is no ref pinning.
+
+See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#installing-cloudtak-plugins-web_plugins)
+for how to use it.
+
 ---
 
 ## Basemaps, tiles and terrain
