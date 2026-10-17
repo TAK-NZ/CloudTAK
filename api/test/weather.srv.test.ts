@@ -4,6 +4,7 @@ import http from 'node:http';
 import jwt from 'jsonwebtoken';
 import Flight from './flight.js';
 import { __resetForTests, upstreamAllowForTests } from '../stateless/lib/weather/relay-upstream.js';
+import { riff, webp } from './weather-images.js';
 
 const flight = new Flight();
 
@@ -21,12 +22,15 @@ const NOW_S = 1800000000;
 const LATEST = NOW_S - 600;
 let nowMs = NOW_S * 1000;
 
-type Mode = 'ok' | 'nocache' | '500' | '401' | '403' | '404' | '400' | '429' | '302' | 'notpng' | 'wrongtype' | 'huge' | 'fallback' | 'error' | 'slow';
+type Mode = 'ok' | 'nocache' | '500' | '401' | '403' | '404' | '400' | '429' | '302' | 'notimage' | 'custom' | 'wrongtype' | 'huge' | 'fallback' | 'error' | 'slow';
 
 let upstream: http.Server;
 let upstreamOrigin = '';
 let mode: Mode = 'ok';
 let delayMs = 0;
+// Answer of the 'custom' mode: the declared content-type (null = no header) and the body
+let customType: string | null = 'image/png';
+let customBody: Buffer = PNG;
 let retryAfterHeader: string | null = '7';
 const hits: string[] = [];
 
@@ -58,6 +62,8 @@ function fresh(opts: { env?: Parameters<typeof configure>[0]; upstreamTimeoutMs?
     nowMs = NOW_S * 1000;
     mode = 'ok';
     delayMs = 0;
+    customType = 'image/png';
+    customBody = PNG;
     retryAfterHeader = '7';
     hits.length = 0;
     configure(opts.env);
@@ -114,6 +120,12 @@ function assertPng(res: TileResult, expected = PNG) {
     assert.ok(res.body.equals(expected), 'body is the upstream png');
 }
 
+function assertWebp(res: TileResult, expected: Buffer) {
+    assert.equal(res.status, 200, res.status === 200 ? '' : res.body.toString());
+    assert.equal(res.headers.get('content-type'), 'image/webp');
+    assert.ok(res.body.equals(expected), 'body is the upstream webp');
+}
+
 function assertError(res: TileResult, code: number, message?: string) {
     assert.equal(res.status, code, res.body.toString());
     assert.equal(res.headers.get('cache-control'), 'no-store');
@@ -144,9 +156,13 @@ test('start upstream weather proxy', async () => {
                     res.writeHead(200, { ...headers, 'content-type': 'image/png', 'x-weather-error': '1' });
                     res.end(PNG);
                     return;
-                case 'notpng':
+                case 'notimage':
                     res.writeHead(200, { ...headers, 'content-type': 'image/png' });
-                    res.end('this is not a png file at all');
+                    res.end('this is not an image file at all');
+                    return;
+                case 'custom':
+                    res.writeHead(200, customType === null ? headers : { ...headers, 'content-type': customType });
+                    res.end(customBody);
                     return;
                 case 'wrongtype':
                     res.writeHead(200, { ...headers, 'content-type': 'text/html' });
@@ -242,6 +258,75 @@ test('2. success with bearer and with ?token=', async () => {
         assert.ok(!JSON.stringify([...res.headers.entries()]).includes(KEY));
         assert.ok(!res.body.toString('latin1').includes(KEY));
     }
+});
+
+test('2b. a WebP body declared as image/png is served as image/webp', async () => {
+    fresh();
+
+    // The deployed weather-proxy labels its WebP clouds tiles image/png
+    const body = webp();
+    mode = 'custom';
+    customType = 'image/png';
+    customBody = body;
+
+    const first = await tile('layer=clouds');
+    assertWebp(first, body);
+    assert.equal(first.headers.get('content-length'), String(body.byteLength));
+    assert.equal(first.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(first.headers.get('x-weather-cache'), 'miss');
+    assert.equal(first.headers.get('cache-control'), 'private, max-age=600');
+
+    // Cache hits keep the type, for another user and with ?token=
+    const admin = await tile('layer=clouds', { auth: 'admin' });
+    assertWebp(admin, body);
+    assert.equal(admin.headers.get('x-weather-cache'), 'hit');
+
+    const query = await tile('layer=clouds', { auth: 'query' });
+    assertWebp(query, body);
+    assert.equal(query.headers.get('x-weather-cache'), 'hit');
+    assert.equal(hits.length, 1);
+
+    for (const res of [first, admin, query]) {
+        assert.equal(res.headers.get('x-upstream-leak'), null);
+        assert.equal(res.headers.get('set-cookie'), null);
+        assert.ok(!JSON.stringify([...res.headers.entries()]).includes(KEY));
+        assert.ok(!res.body.toString('latin1').includes(KEY));
+    }
+
+    // A PNG for another layer is still image/png and does not change the cached WebP
+    mode = 'ok';
+    assertPng(await tile('layer=precip'));
+    assertWebp(await tile('layer=clouds'), body);
+    assert.equal(hits.length, 2);
+
+    // Other WebP chunk types, and an upstream that declares image/webp
+    const variants: Array<[Buffer, string]> = [
+        [webp('VP8X', 10), 'image/png'],
+        [webp('VP8 ', 9), 'image/png'],
+        [webp('VP8L', 6), 'image/webp'],
+        [webp('VP8L', 6), 'IMAGE/WEBP; charset=binary'],
+    ];
+    for (const [i, [variant, declared]] of variants.entries()) {
+        mode = 'custom';
+        customType = declared;
+        customBody = variant;
+        assertWebp(await tile('layer=clouds', { x: 10 + i }), variant);
+    }
+});
+
+test('2c. a WebP flight shared by concurrent callers keeps its type', async () => {
+    fresh();
+    mode = 'custom';
+    customBody = webp();
+    delayMs = 150;
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => tile('layer=clouds')));
+    assert.equal(hits.length, 1);
+    for (const res of results) assertWebp(res, customBody);
+
+    const states = results.map(r => r.headers.get('x-weather-cache'));
+    assert.equal(states.filter(s => s === 'miss').length, 1);
+    assert.equal(states.filter(s => s === 'shared').length, 4);
 });
 
 test('3. disabled when the environment is not configured', async () => {
@@ -485,7 +570,7 @@ test('12. upstream errors', async () => {
     const failing: Array<[Mode, number, string]> = [
         ['500', 502, 'Weather upstream unavailable'],
         ['huge', 502, 'Weather upstream unavailable'],
-        ['notpng', 502, 'Weather upstream unavailable'],
+        ['notimage', 502, 'Weather upstream unavailable'],
         ['wrongtype', 502, 'Weather upstream unavailable'],
         ['302', 502, 'Weather upstream unavailable'],
         ['404', 502, 'Weather upstream not found'],
@@ -521,6 +606,58 @@ test('12. upstream errors', async () => {
     nowMs += 7 * 1000;
     mode = 'ok';
     assertPng(await tile('layer=precip'));
+});
+
+test('12c. bodies that are not PNG or WebP are rejected', async () => {
+    fresh();
+
+    const notImages: Array<[string, Buffer]> = [
+        ['json', Buffer.from('{"a":1}')],
+        ['html', Buffer.from('<html><body>UPSTREAM-BODY-SECRET</body></html>')],
+        ['riff without webp', riff('WAVE')],
+        ['truncated riff', Buffer.from('RIFF')],
+        ['4 bytes', Buffer.from([1, 2, 3, 4])],
+        ['empty', Buffer.alloc(0)],
+        ['webp without a chunk', webp().subarray(0, 12)],
+        ['jpeg', Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0])],
+    ];
+
+    for (const [name, body] of notImages) {
+        mode = 'custom';
+        customType = 'image/png';
+        customBody = body;
+        const before = hits.length;
+
+        const res = await tile('layer=clouds');
+        assertError(res, 502, 'Weather upstream unavailable');
+        assert.ok(!res.body.toString().includes('UPSTREAM-BODY-SECRET'), name);
+
+        // Errors are not cached
+        assertError(await tile('layer=clouds'), 502, 'Weather upstream unavailable');
+        assert.equal(hits.length, before + 2, name);
+    }
+
+    // The declared type must still be an image type, whatever the bytes are
+    const wrongDeclared: Array<[string, string | null, Buffer]> = [
+        ['html + png', 'text/html', PNG],
+        ['json + png', 'application/json', PNG],
+        ['html + webp', 'text/html', webp()],
+        ['missing + png', null, PNG],
+    ];
+    for (const [name, declared, body] of wrongDeclared) {
+        mode = 'custom';
+        customType = declared;
+        customBody = body;
+        assertError(await tile('layer=precip'), 502, 'Weather upstream unavailable');
+        assert.ok(hits.length > 0, name);
+    }
+
+    const text = logs.join('\n');
+    assert.ok(text.includes('upstream failed (not an image)'));
+    assert.ok(text.includes('upstream failed (content-type)'));
+    assert.ok(!text.includes('not a png'));
+    assert.ok(!text.includes(KEY));
+    assert.ok(!text.includes(flight.token.user));
 });
 
 test('12b. a blocked upstream address is a 502', async () => {
@@ -705,6 +842,11 @@ test('17. API key and session tokens never reach the console output', async () =
     configure();
     mode = 'ok';
     assertPng(await tile('layer=precip&forecast=20', { auth: 'query' }));
+    const lastPng = logs.length;
+
+    mode = 'custom';
+    customBody = webp();
+    assertWebp(await tile('layer=clouds', { auth: 'query' }), customBody);
 
     assert.ok(logs.length > 0);
 
@@ -723,12 +865,26 @@ test('17. API key and session tokens never reach the console output', async () =
         assert.ok(!('token' in parsed) && !('query' in parsed));
     }
 
+    // Only successful answers have a content type
+    for (const line of audit) {
+        const parsed = JSON.parse(line);
+        assert.ok('contentType' in parsed);
+        assert.equal(parsed.contentType === null, parsed.status !== 200, line);
+    }
+
+    const isAudit = (l: string) => l.startsWith('{') && l.includes('"type":"weather"');
+    const png = JSON.parse(logs.slice(0, lastPng).filter(isAudit).pop() as string);
+    assert.equal(png.username, 'user@example.com');
+    assert.equal(png.layer, 'precip');
+    assert.equal(png.forecast, 20);
+    assert.equal(png.status, 200);
+    assert.equal(png.cache, 'miss');
+    assert.equal(png.contentType, 'image/png');
+
     const last = JSON.parse(audit[audit.length - 1]);
-    assert.equal(last.username, 'user@example.com');
-    assert.equal(last.layer, 'precip');
-    assert.equal(last.forecast, 20);
+    assert.equal(last.layer, 'clouds');
     assert.equal(last.status, 200);
-    assert.equal(last.cache, 'miss');
+    assert.equal(last.contentType, 'image/webp');
 });
 
 test('18. an upstream 429 pauses every cache miss; cache hits are still served', async () => {

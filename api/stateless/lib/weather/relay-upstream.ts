@@ -3,9 +3,11 @@ import Err from '@openaddresses/batch-error';
 import { fetch } from '@tak-ps/node-safeurl';
 import { FixedWindowLimiter } from './relay-limiter.js';
 import { TileCache, SingleFlight } from './relay-cache.js';
+import type { TileType } from './relay-cache.js';
 import { upstreamAllowForTests, __resetWarned } from './relay-config.js';
 
 export { upstreamAllowForTests };
+export type { TileType };
 
 const pkg = JSON.parse(String(fs.readFileSync(new URL('../../../package.json', import.meta.url))));
 
@@ -14,6 +16,9 @@ export const MAX_TILE_BYTES = 1024 * 1024;
 export const UNAVAILABLE = 'Weather upstream unavailable';
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+/** RIFF header (12 bytes) plus one chunk header (8 bytes) */
+const WEBP_MIN_BYTES = 20;
+const WEBP_CHUNKS = ['VP8 ', 'VP8L', 'VP8X'];
 const LOG_INTERVAL_MS = 60000;
 /** Seconds to stop calling the weather proxy when it gives no (or an unusable) Retry-After */
 export const PAUSE_DEFAULT_S = 30;
@@ -22,7 +27,8 @@ export const PAUSE_MAX_S = 120;
 
 export interface UpstreamResponse {
     status: number;
-    contentType: string | null;
+    /** Image type detected from the body bytes; set only for an accepted 200 answer */
+    contentType: TileType | null;
     body: Buffer | null;
     fallback: boolean;
     error: boolean;
@@ -32,6 +38,7 @@ export interface UpstreamResponse {
 
 export interface FlightResult {
     body: Buffer;
+    contentType: TileType;
     /** True when the tile is a transient fallback that must only be cached briefly by the client */
     short: boolean;
 }
@@ -145,6 +152,26 @@ export function userAgent(apiUrl: string): string {
     return `CloudTAK/${pkg.version} (+${apiUrl})`;
 }
 
+/**
+ * Detect PNG or WebP from the leading bytes. Returns null for anything else.
+ */
+export function sniffImageType(body: Buffer): TileType | null {
+    if (body.byteLength >= PNG_MAGIC.byteLength && body.subarray(0, PNG_MAGIC.byteLength).equals(PNG_MAGIC)) {
+        return 'image/png';
+    }
+
+    if (
+        body.byteLength >= WEBP_MIN_BYTES
+        && body.subarray(0, 4).toString('latin1') === 'RIFF'
+        && body.subarray(8, 12).toString('latin1') === 'WEBP'
+        && WEBP_CHUNKS.includes(body.subarray(12, 16).toString('latin1'))
+    ) {
+        return 'image/webp';
+    }
+
+    return null;
+}
+
 function unavailable(url: URL, reason: string): Err {
     logThrottled('warn', `upstream:${reason}`, `Weather relay: upstream failed (${reason}) for ${redactUrl(url)}`);
     return new Err(502, null, UNAVAILABLE, false);
@@ -182,9 +209,11 @@ async function readBody(res: { body: ReadableStream<Uint8Array> | null }): Promi
  * Fetch one tile from the weather proxy.
  *
  * Returns the upstream status for any non-200 answer that the caller maps
- * itself. Throws a 502 for everything that is not a usable PNG tile: network
- * errors, timeouts, SSRF blocks, redirects, wrong content type, bad magic bytes
- * and oversize bodies.
+ * itself. Throws a 502 for everything that is not a usable PNG or WebP tile:
+ * network errors, timeouts, SSRF blocks, redirects, wrong content type,
+ * unrecognised image bytes and oversize bodies. The weather-proxy labels every
+ * tile image/png, including WebP clouds tiles, so the type returned in
+ * `contentType` comes from the body bytes, not from the header.
  */
 export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`): Promise<UpstreamResponse> {
     let res;
@@ -192,7 +221,7 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
         res = await fetch(url, {
             headers: {
                 'user-agent': agent,
-                'accept': 'image/png',
+                'accept': 'image/png, image/webp',
             },
             redirect: 'manual',
             timeout: relay.upstreamTimeoutMs,
@@ -205,9 +234,10 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
     }
 
     const headers = res.headers;
+    const declared = headers.get('content-type');
     const result: UpstreamResponse = {
         status: res.status,
-        contentType: headers.get('content-type'),
+        contentType: null,
         body: null,
         fallback: headers.has('x-weather-fallback'),
         error: headers.has('x-weather-error'),
@@ -225,7 +255,7 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
         return result;
     }
 
-    if (!result.contentType || !result.contentType.toLowerCase().startsWith('image/png')) {
+    if (!declared || !declared.toLowerCase().startsWith('image/')) {
         await res.body?.cancel().catch(() => undefined);
         throw unavailable(url, 'content-type');
     }
@@ -238,10 +268,11 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
     }
 
     if (body === null) throw unavailable(url, 'too large');
-    if (body.byteLength < PNG_MAGIC.byteLength || !body.subarray(0, PNG_MAGIC.byteLength).equals(PNG_MAGIC)) {
-        throw unavailable(url, 'not a png');
-    }
 
+    const type = sniffImageType(body);
+    if (!type) throw unavailable(url, 'not an image');
+
+    result.contentType = type;
     result.body = body;
     return result;
 }

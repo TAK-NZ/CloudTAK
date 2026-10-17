@@ -21,7 +21,7 @@ import {
     upstreamPausedFor,
     userAgent,
 } from '../lib/weather/relay-upstream.js';
-import type { FlightResult, UpstreamResponse } from '../lib/weather/relay-upstream.js';
+import type { FlightResult, TileType, UpstreamResponse } from '../lib/weather/relay-upstream.js';
 
 const TILE_MAX_AGE = 600;
 const FALLBACK_MAX_AGE = 30;
@@ -74,18 +74,18 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
 
     if (up.status === 400) throw upstreamErr(502, 'Weather upstream rejected the request');
     if (up.status === 404) throw upstreamErr(502, 'Weather upstream not found');
-    if (up.status !== 200 || !up.body) throw upstreamErr(502, UNAVAILABLE);
+    if (up.status !== 200 || !up.body || !up.contentType) throw upstreamErr(502, UNAVAILABLE);
 
     if (up.error) throw upstreamErr(502, UNAVAILABLE);
 
     if (up.fallback) {
         // A fallback tile is current radar. Under a forecast label that would be wrong.
         if (tile.forecast > 0) throw upstreamErr(502, UNAVAILABLE);
-        return { body: up.body, short: true };
+        return { body: up.body, contentType: up.contentType, short: true };
     }
 
-    if (cacheable(up.cacheControl)) relay.cache.set(cacheKey, up.body);
-    return { body: up.body, short: false };
+    if (cacheable(up.cacheControl)) relay.cache.set(cacheKey, up.body, up.contentType);
+    return { body: up.body, contentType: up.contentType, short: false };
 }
 
 export default async function router(schema: Schema, config: ConfigStateless) {
@@ -159,6 +159,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         let username = '';
         let status = 500;
         let cache = 'none';
+        let sent: TileType | null = null;
         let audit: Partial<TileRequest> = {};
 
         try {
@@ -177,10 +178,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             audit = tile;
 
             const cacheKey = tileCacheKey(tile);
-            let body = relay.cache.get(cacheKey);
+            const cached = relay.cache.get(cacheKey);
+            let body: Buffer;
+            let contentType: TileType;
             let short = false;
 
-            if (body) {
+            if (cached) {
+                body = cached.body;
+                contentType = cached.contentType;
                 cache = 'hit';
             } else {
                 // Nothing between this check and run() awaits, so a caller that
@@ -205,13 +210,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 });
 
                 body = value.body;
+                contentType = value.contentType;
                 short = value.short;
                 cache = shared ? 'shared' : 'miss';
             }
 
             status = 200;
+            sent = contentType;
             res.status(200);
-            res.setHeader('Content-Type', 'image/png');
+            res.setHeader('Content-Type', contentType);
             res.setHeader('Content-Length', body.byteLength);
             res.setHeader('Cache-Control', `private, max-age=${short ? FALLBACK_MAX_AGE : TILE_MAX_AGE}`);
             res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -233,6 +240,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 forecast: audit.forecast ?? null,
                 status,
                 cache,
+                contentType: sent,
                 ms: Date.now() - started,
             }));
         }

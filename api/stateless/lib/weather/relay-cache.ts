@@ -1,10 +1,14 @@
 /**
  * In-memory tile cache (LRU, byte bounded, with TTL) and single-flight
- * de-duplication of concurrent identical upstream requests.
+ * de-duplication of concurrent identical upstream requests. A cache entry keeps
+ * the image type (PNG or WebP) that was detected from the tile bytes.
  */
+
+export type TileType = 'image/png' | 'image/webp';
 
 interface CacheEntry {
     body: Buffer;
+    contentType: TileType;
     expires: number;
 }
 
@@ -27,7 +31,7 @@ export class TileCache {
         return this.#entries.size;
     }
 
-    get(key: string): Buffer | undefined {
+    get(key: string): { body: Buffer; contentType: TileType } | undefined {
         const entry = this.#entries.get(key);
         if (!entry) return undefined;
 
@@ -39,16 +43,16 @@ export class TileCache {
         // Re-insert so the Map iteration order is least recently used first
         this.#entries.delete(key);
         this.#entries.set(key, entry);
-        return entry.body;
+        return { body: entry.body, contentType: entry.contentType };
     }
 
-    set(key: string, body: Buffer): boolean {
+    set(key: string, body: Buffer, contentType: TileType): boolean {
         if (body.byteLength > this.maxEntryBytes || body.byteLength > this.maxBytes) return false;
 
         const existing = this.#entries.get(key);
         if (existing) this.#delete(key, existing);
 
-        this.#entries.set(key, { body, expires: this.now() + this.ttlMs });
+        this.#entries.set(key, { body, contentType, expires: this.now() + this.ttlMs });
         this.bytes += body.byteLength;
 
         while (this.bytes > this.maxBytes) {

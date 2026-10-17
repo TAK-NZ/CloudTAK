@@ -9,6 +9,7 @@ import {
 } from '../stateless/lib/weather/relay-request.js';
 import { FixedWindowLimiter } from '../stateless/lib/weather/relay-limiter.js';
 import { TileCache, SingleFlight } from '../stateless/lib/weather/relay-cache.js';
+import { riff, webp } from './weather-images.js';
 import {
     PAUSE_DEFAULT_S,
     PAUSE_MAX_S,
@@ -17,6 +18,7 @@ import {
     pauseUpstream,
     redactUrl,
     relay,
+    sniffImageType,
     upstreamPausedFor,
 } from '../stateless/lib/weather/relay-upstream.js';
 
@@ -200,6 +202,9 @@ test('tileCacheKey: stable, distinct and free of secrets', () => {
     ].map(q => tileCacheKey(parse({}, q))));
     assert.equal(keys.size, 10);
     assert.notEqual(tileCacheKey(parse({ x: 4 }, 'layer=precip')), b);
+
+    // The key does not contain the image type; pinned so a change is noticed
+    assert.equal(tileCacheKey(parse({}, 'layer=clouds')), `clouds|4/3/5|f0|s${LATEST}|z256|c-|v0|p0`);
 });
 
 test('FixedWindowLimiter: counts, resets and never extends the window', () => {
@@ -278,11 +283,11 @@ test('TileCache: TTL', () => {
     const cache = new TileCache({ ttlMs: 1000, now: () => now });
     assert.equal(cache.get('a'), undefined);
 
-    assert.equal(cache.set('a', Buffer.from('one')), true);
-    assert.equal(cache.get('a')?.toString(), 'one');
+    assert.equal(cache.set('a', Buffer.from('one'), 'image/png'), true);
+    assert.equal(cache.get('a')?.body.toString(), 'one');
 
     now = 999;
-    assert.equal(cache.get('a')?.toString(), 'one');
+    assert.equal(cache.get('a')?.body.toString(), 'one');
 
     now = 1000;
     assert.equal(cache.get('a'), undefined);
@@ -292,12 +297,12 @@ test('TileCache: TTL', () => {
 
 test('TileCache: LRU order and byte bound', () => {
     const cache = new TileCache({ maxBytes: 10, maxEntryBytes: 10 });
-    cache.set('a', Buffer.alloc(4));
-    cache.set('b', Buffer.alloc(4));
+    cache.set('a', Buffer.alloc(4), 'image/png');
+    cache.set('b', Buffer.alloc(4), 'image/png');
 
     // Touch a, so b is the least recently used
     assert.ok(cache.get('a'));
-    cache.set('c', Buffer.alloc(4));
+    cache.set('c', Buffer.alloc(4), 'image/png');
 
     assert.ok(cache.get('a'));
     assert.equal(cache.get('b'), undefined);
@@ -305,20 +310,70 @@ test('TileCache: LRU order and byte bound', () => {
     assert.equal(cache.bytes, 8);
 
     // Replacing an entry does not double count it
-    cache.set('a', Buffer.alloc(2));
+    cache.set('a', Buffer.alloc(2), 'image/png');
     assert.equal(cache.bytes, 6);
 });
 
 test('TileCache: per entry cap', () => {
     const cache = new TileCache({ maxBytes: 100, maxEntryBytes: 5 });
-    assert.equal(cache.set('big', Buffer.alloc(6)), false);
+    assert.equal(cache.set('big', Buffer.alloc(6), 'image/png'), false);
     assert.equal(cache.get('big'), undefined);
-    assert.equal(cache.set('ok', Buffer.alloc(5)), true);
+    assert.equal(cache.set('ok', Buffer.alloc(5), 'image/png'), true);
 
     const defaults = new TileCache();
     assert.equal(defaults.maxBytes, 64 * 1024 * 1024);
     assert.equal(defaults.ttlMs, 600000);
     assert.equal(defaults.maxEntryBytes, 1024 * 1024);
+});
+
+test('TileCache: remembers the content type', () => {
+    let now = 0;
+    const cache = new TileCache({ ttlMs: 1000, now: () => now });
+    cache.set('png', Buffer.from('p'), 'image/png');
+    cache.set('webp', Buffer.from('w'), 'image/webp');
+    assert.equal(cache.get('png')?.contentType, 'image/png');
+    assert.equal(cache.get('webp')?.contentType, 'image/webp');
+
+    // Replacing an entry replaces its type
+    cache.set('png', Buffer.from('q'), 'image/webp');
+    assert.equal(cache.get('png')?.contentType, 'image/webp');
+    assert.equal(cache.get('png')?.body.toString(), 'q');
+
+    now = 1000;
+    assert.equal(cache.get('png'), undefined);
+    assert.equal(cache.get('webp'), undefined);
+});
+
+test('sniffImageType: PNG and WebP by magic bytes', () => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    assert.equal(sniffImageType(png), 'image/png');
+
+    for (const chunk of ['VP8L', 'VP8 ', 'VP8X'] as const) {
+        assert.equal(sniffImageType(webp(chunk)), 'image/webp', chunk);
+    }
+
+    // A slice of a bigger Buffer has a non-zero byteOffset
+    const big = Buffer.concat([Buffer.from('xxxxxxxx'), webp(), Buffer.from('yyyy')]);
+    assert.equal(sniffImageType(big.subarray(8, 8 + webp().byteLength)), 'image/webp');
+    const bigPng = Buffer.concat([Buffer.from('xxxxxxxx'), png]);
+    assert.equal(sniffImageType(bigPng.subarray(8)), 'image/png');
+});
+
+test('sniffImageType: everything else is not an image', () => {
+    const none: Array<[string, Buffer]> = [
+        ['empty', Buffer.alloc(0)],
+        ['4 bytes', Buffer.from([1, 2, 3, 4])],
+        ['7 byte png prefix', Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A])],
+        ['riff wave', riff('WAVE')],
+        ['webp without a chunk', webp().subarray(0, 12)],
+        ['webp with an unknown chunk', riff('WEBP', Buffer.from('JUNK\x04\x00\x00\x00abcd', 'latin1'))],
+        ['truncated riff', Buffer.from('RIFF')],
+        ['json', Buffer.from('{"layer":"clouds","status":"ok"}')],
+        ['html', Buffer.from('<html><body>Bad gateway</body></html>')],
+        ['jpeg', Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0])],
+    ];
+
+    for (const [name, body] of none) assert.equal(sniffImageType(body), null, name);
 });
 
 test('SingleFlight: one call for concurrent callers', async () => {
