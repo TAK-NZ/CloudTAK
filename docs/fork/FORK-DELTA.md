@@ -347,9 +347,11 @@ for how to use it.
 ### Weather plugin relay (`/api/weather`)
 `api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
 `api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`,
-`api/test/fixtures/get_schema.json`, `cdk/cdk.json`, `scripts/set-weather-proxy-config.sh`
+`api/test/fixtures/get_schema.json`, `cdk/cdk.json`, `cloudtak-config.env.example`,
+`scripts/set-weather-proxy-config.sh`
 
-New files only, except the schema fixture and the `cdk.json` edits (plus the docs). The relay serves `GET /api/weather/status`
+New files only, except the schema fixture and the `cdk.json` edits (plus `cloudtak-config.env.example`
+and the docs). The relay serves `GET /api/weather/status`
 and `GET /api/weather/tile/:z/:x/:y.png` for the `cloudtak-plugin-weather` plugin and
 fetches tiles from the weather-proxy with a server-side key.
 
