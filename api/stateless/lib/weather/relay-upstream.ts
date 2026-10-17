@@ -15,6 +15,10 @@ export const UNAVAILABLE = 'Weather upstream unavailable';
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 const LOG_INTERVAL_MS = 60000;
+/** Seconds to stop calling the weather proxy when it gives no (or an unusable) Retry-After */
+export const PAUSE_DEFAULT_S = 30;
+export const PAUSE_MIN_S = 5;
+export const PAUSE_MAX_S = 120;
 
 export interface UpstreamResponse {
     status: number;
@@ -46,6 +50,8 @@ export interface RelayRuntime {
     cache: TileCache;
     flights: SingleFlight<FlightResult>;
     logged: Map<string, number>;
+    /** Epoch ms until which no cache miss may call the weather proxy (0 = not paused). Per process. */
+    pausedUntil: number;
 }
 
 function create(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMaxBytes?: number }): RelayRuntime {
@@ -59,6 +65,7 @@ function create(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMax
         cache: undefined as unknown as TileCache,
         flights: new SingleFlight<FlightResult>(),
         logged: new Map(),
+        pausedUntil: 0,
     };
 
     const now = () => runtime.now();
@@ -82,6 +89,29 @@ export function __resetForTests(opts: { now?: () => number; upstreamTimeoutMs?: 
 
     Object.assign(relay, create(opts));
     __resetWarned();
+}
+
+/**
+ * Stop all upstream fetches of this process for a while.
+ *
+ * `retryAfterS` is the upstream Retry-After (or null). The pause is clamped to
+ * 5..120 s and defaults to 30 s. A shorter pause never replaces a longer one.
+ * Returns the pause in seconds.
+ */
+export function pauseUpstream(retryAfterS: number | null): number {
+    const seconds = retryAfterS === null || !Number.isFinite(retryAfterS)
+        ? PAUSE_DEFAULT_S
+        : Math.min(PAUSE_MAX_S, Math.max(PAUSE_MIN_S, Math.ceil(retryAfterS)));
+    relay.pausedUntil = Math.max(relay.pausedUntil, relay.now() + (seconds * 1000));
+    return seconds;
+}
+
+/**
+ * Seconds left of the upstream pause, rounded up; 0 when upstream calls are allowed
+ */
+export function upstreamPausedFor(): number {
+    const left = relay.pausedUntil - relay.now();
+    return left > 0 ? Math.ceil(left / 1000) : 0;
 }
 
 /**

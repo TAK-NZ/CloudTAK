@@ -9,7 +9,16 @@ import {
 } from '../stateless/lib/weather/relay-request.js';
 import { FixedWindowLimiter } from '../stateless/lib/weather/relay-limiter.js';
 import { TileCache, SingleFlight } from '../stateless/lib/weather/relay-cache.js';
-import { redactUrl } from '../stateless/lib/weather/relay-upstream.js';
+import {
+    PAUSE_DEFAULT_S,
+    PAUSE_MAX_S,
+    PAUSE_MIN_S,
+    __resetForTests,
+    pauseUpstream,
+    redactUrl,
+    relay,
+    upstreamPausedFor,
+} from '../stateless/lib/weather/relay-upstream.js';
 
 const KEY = 'abcdefghijklmnop1234';
 const NOW_S = 1800000000;
@@ -360,6 +369,38 @@ test('redactUrl', () => {
     assert.ok(out.includes('key=***'));
     assert.ok(out.includes('token=***'));
     assert.equal(redactUrl('https://u.example.com/x'), 'https://u.example.com/x');
+});
+
+test('upstream pause: clamps Retry-After to 5..120 s, defaults to 30 s and ends on time', () => {
+    let now = 1000000;
+    __resetForTests({ now: () => now });
+    assert.equal(PAUSE_DEFAULT_S, 30);
+    assert.equal(PAUSE_MIN_S, 5);
+    assert.equal(PAUSE_MAX_S, 120);
+    assert.equal(upstreamPausedFor(), 0);
+
+    const cases: Array<[number | null, number]> = [[null, 30], [0, 5], [1, 5], [4, 5], [5, 5], [7, 7], [120, 120], [121, 120], [999999, 120]];
+    for (const [retry, expected] of cases) {
+        __resetForTests({ now: () => now });
+        assert.equal(pauseUpstream(retry), expected, `retry-after ${retry}`);
+        assert.equal(upstreamPausedFor(), expected);
+        now += (expected * 1000) - 1;
+        assert.equal(upstreamPausedFor(), 1, 'one millisecond left rounds up to 1 s');
+        now += 1;
+        assert.equal(upstreamPausedFor(), 0, 'pause is over');
+    }
+});
+
+test('upstream pause: a shorter pause never shortens a longer one; reset clears it', () => {
+    const now = 5000;
+    __resetForTests({ now: () => now });
+    pauseUpstream(60);
+    pauseUpstream(5);
+    assert.equal(upstreamPausedFor(), 60);
+    assert.ok(relay.pausedUntil > now);
+    __resetForTests({ now: () => now });
+    assert.equal(relay.pausedUntil, 0);
+    assert.equal(upstreamPausedFor(), 0);
 });
 
 test('getRelayConfig', () => {

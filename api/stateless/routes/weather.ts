@@ -16,7 +16,9 @@ import {
     UNAVAILABLE,
     fetchUpstream,
     logThrottled,
+    pauseUpstream,
     relay,
+    upstreamPausedFor,
     userAgent,
 } from '../lib/weather/relay-upstream.js';
 import type { FlightResult, UpstreamResponse } from '../lib/weather/relay-upstream.js';
@@ -24,7 +26,12 @@ import type { FlightResult, UpstreamResponse } from '../lib/weather/relay-upstre
 const TILE_MAX_AGE = 600;
 const FALLBACK_MAX_AGE = 30;
 const STATUS_LIMIT = 60;
-const TASK_FETCH_LIMIT = 1500;
+/**
+ * Upstream fetches per task and minute. The weather-proxy allows 600 requests per
+ * minute per client IP and re-arms its counter TTL on every allowed hit, so a
+ * limit at or above 600 would never protect it. Stay well below 600.
+ */
+const TASK_FETCH_LIMIT = 500;
 const ATTRIBUTION = 'Weather data provided by Rainbow.ai';
 
 type RelayErr = Err & { retryAfterS?: number };
@@ -39,6 +46,12 @@ function upstreamErr(status: number, message: string): Err {
     return new Err(status, null, message, false);
 }
 
+/**
+ * Replace the value of every `token` query parameter
+ */
+function redactToken(url: string): string {
+    return url.replace(/([?&]token=)[^&#]*/g, '$1***');
+}
 function cacheable(cacheControl: string | null): boolean {
     if (!cacheControl) return true;
     return !/\b(no-store|no-cache)\b|max-age=0(?![0-9])/i.test(cacheControl);
@@ -55,8 +68,8 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
     }
 
     if (up.status === 429) {
-        const retry = up.retryAfterS === null ? 30 : Math.min(120, Math.max(1, up.retryAfterS));
-        throw tooMany(retry, 'Weather upstream is rate limiting requests');
+        // Stop every cache miss of this task from reaching the proxy for a while
+        throw tooMany(pauseUpstream(up.retryAfterS), 'Weather upstream is rate limiting requests');
     }
 
     if (up.status === 400) throw upstreamErr(502, 'Weather upstream rejected the request');
@@ -78,8 +91,13 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
 export default async function router(schema: Schema, config: ConfigStateless) {
     // Schema validation answers before the handlers run. Make those errors uncacheable
     // too; the success path overwrites the header.
-    schema.router.use('/weather', (_req, res, next) => {
+    schema.router.use('/weather', (req, res, next) => {
         res.setHeader('Cache-Control', 'no-store');
+        // The platform access log (morgan) prints req.originalUrl once the response is
+        // sent. Keep the real URL for the handler and show the log a copy without the
+        // session token.
+        res.locals.weatherUrl = req.originalUrl;
+        req.originalUrl = redactToken(req.originalUrl);
         next();
     });
 
@@ -154,7 +172,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const rate = relay.tile.hit(id, cfg.rate);
             if (!rate.ok) throw tooMany(rate.retryAfterS);
 
-            const search = new URL(req.originalUrl, 'http://localhost').searchParams;
+            const search = new URL(String(res.locals.weatherUrl ?? req.originalUrl), 'http://localhost').searchParams;
             const tile = parseTileRequest(req.params, search, Math.floor(relay.now() / 1000));
             audit = tile;
 
@@ -168,11 +186,16 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 // Nothing between this check and run() awaits, so a caller that
                 // finds no flight is guaranteed to lead the new one.
                 if (!relay.flights.has(cacheKey)) {
+                    // After an upstream 429 (or this task's own fetch cap) only cache hits
+                    // are served; a miss is answered without calling the proxy
+                    const paused = upstreamPausedFor();
+                    if (paused > 0) throw tooMany(paused, 'Weather upstream is rate limiting requests');
+
                     const miss = relay.miss.hit(id, Math.max(60, Math.floor(cfg.rate / 3)));
                     if (!miss.ok) throw tooMany(miss.retryAfterS);
 
                     const task = relay.task.hit('task', TASK_FETCH_LIMIT);
-                    if (!task.ok) throw tooMany(task.retryAfterS);
+                    if (!task.ok) throw tooMany(pauseUpstream(task.retryAfterS));
                 }
 
                 const url = buildUpstreamUrl(cfg.baseUrl, tile, cfg.key);

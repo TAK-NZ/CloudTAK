@@ -27,6 +27,7 @@ let upstream: http.Server;
 let upstreamOrigin = '';
 let mode: Mode = 'ok';
 let delayMs = 0;
+let retryAfterHeader: string | null = '7';
 const hits: string[] = [];
 
 // Everything the API writes to the console for the whole file
@@ -57,6 +58,7 @@ function fresh(opts: { env?: Parameters<typeof configure>[0]; upstreamTimeoutMs?
     nowMs = NOW_S * 1000;
     mode = 'ok';
     delayMs = 0;
+    retryAfterHeader = '7';
     hits.length = 0;
     configure(opts.env);
     __resetForTests({ now: () => nowMs, upstreamTimeoutMs: opts.upstreamTimeoutMs, cacheMaxBytes: opts.cacheMaxBytes });
@@ -159,7 +161,11 @@ test('start upstream weather proxy', async () => {
                     res.end();
                     return;
                 case '429':
-                    res.writeHead(429, { ...headers, 'retry-after': '7', 'content-type': 'application/json' });
+                    res.writeHead(429, {
+                        ...headers,
+                        ...(retryAfterHeader === null ? {} : { 'retry-after': retryAfterHeader }),
+                        'content-type': 'application/json',
+                    });
                     res.end(JSON.stringify({ error: 'UPSTREAM-BODY-SECRET' }));
                     return;
                 default:
@@ -511,7 +517,8 @@ test('12. upstream errors', async () => {
     assertError(limited, 429);
     assert.equal(limited.headers.get('retry-after'), '7');
 
-    // A healthy upstream answers the very same request next
+    // A healthy upstream answers the very same request once the pause is over
+    nowMs += 7 * 1000;
     mode = 'ok';
     assertPng(await tile('layer=precip'));
 });
@@ -686,7 +693,7 @@ test('16. status', async () => {
     assert.equal((await status()).status, 200);
 });
 
-test('17. secrets never reach the logs', async () => {
+test('17. API key and session tokens never reach the console output', async () => {
     // Provoke the error paths that log: upstream failures and bad configuration
     fresh();
     mode = '401';
@@ -722,6 +729,169 @@ test('17. secrets never reach the logs', async () => {
     assert.equal(last.forecast, 20);
     assert.equal(last.status, 200);
     assert.equal(last.cache, 'miss');
+});
+
+test('18. an upstream 429 pauses every cache miss; cache hits are still served', async () => {
+    fresh();
+
+    const cached = 'layer=precip&forecast=10';
+    assertPng(await tile(cached));
+    assert.equal(hits.length, 1);
+
+    mode = '429';
+    retryAfterHeader = '20';
+    const limited = await tile('layer=precip&forecast=20');
+    assertError(limited, 429, 'Weather upstream is rate limiting requests');
+    assert.equal(limited.headers.get('retry-after'), '20');
+    assert.equal(hits.length, 2, 'the 429 itself reached the proxy');
+
+    // The proxy is healthy again, but the relay does not ask while paused
+    mode = 'ok';
+    for (const query of ['layer=precip&forecast=20', 'layer=clouds', 'layer=radars']) {
+        for (const auth of ['user', 'admin'] as const) {
+            const res = await tile(query, { auth });
+            assertError(res, 429, 'Weather upstream is rate limiting requests');
+            assert.equal(res.headers.get('retry-after'), '20');
+            assert.ok(!res.body.toString().includes('UPSTREAM-BODY-SECRET'));
+        }
+    }
+    assert.equal(hits.length, 2, 'no upstream call during the pause');
+
+    // The retry hint shrinks with the clock
+    nowMs += 15 * 1000;
+    const later = await tile('layer=clouds');
+    assertError(later, 429);
+    assert.equal(later.headers.get('retry-after'), '5');
+    assert.equal(hits.length, 2);
+
+    // A cached tile is served during the pause, for every user
+    for (const auth of ['user', 'admin'] as const) {
+        const hit = await tile(cached, { auth });
+        assertPng(hit);
+        assert.equal(hit.headers.get('x-weather-cache'), 'hit');
+    }
+    assert.equal(hits.length, 2);
+
+    // One second before the end it is still paused, then the proxy is asked again
+    nowMs += 4 * 1000;
+    assertError(await tile('layer=clouds'), 429);
+    assert.equal(hits.length, 2);
+    nowMs += 1000;
+    const after = await tile('layer=clouds');
+    assertPng(after);
+    assert.equal(after.headers.get('x-weather-cache'), 'miss');
+    assert.equal(hits.length, 3);
+    assertPng(await tile('layer=precip&forecast=20'));
+    assert.equal(hits.length, 4);
+});
+
+test('18b. followers of a flight that ends in 429 share it and the pause covers other tiles', async () => {
+    fresh();
+    delayMs = 100;
+    mode = '429';
+
+    const results = await Promise.all(Array.from({ length: 4 }, () => tile('layer=precip')));
+    assert.equal(hits.length, 1);
+    for (const res of results) {
+        assertError(res, 429);
+        assert.equal(res.headers.get('retry-after'), '7');
+    }
+
+    delayMs = 0;
+    mode = 'ok';
+    assertError(await tile('layer=precip', { x: 9 }), 429);
+    assert.equal(hits.length, 1);
+});
+
+test('18c. the pause length is the upstream Retry-After clamped to 5..120 s, default 30 s', async () => {
+    const cases: Array<[string | null, number]> = [
+        ['0', 5], ['1', 5], ['4', 5], ['5', 5], ['60', 60], ['120', 120], ['121', 120], ['999', 120],
+        ['999999', 120], [null, 30], ['soon', 30], ['1000000', 30], ['-5', 30],
+    ];
+
+    for (const [header, expected] of cases) {
+        fresh();
+        mode = '429';
+        retryAfterHeader = header;
+        const first = await tile('layer=precip');
+        assertError(first, 429);
+        assert.equal(first.headers.get('retry-after'), String(expected), `upstream retry-after ${header}`);
+
+        mode = 'ok';
+        nowMs += (expected - 1) * 1000;
+        const paused = await tile('layer=precip');
+        assertError(paused, 429);
+        assert.equal(paused.headers.get('retry-after'), '1', `still paused for ${header}`);
+        assert.equal(hits.length, 1);
+
+        nowMs += 1000;
+        assertPng(await tile('layer=precip'));
+        assert.equal(hits.length, 2);
+    }
+});
+
+test('18d. the task fetch cap is 500 a minute and starts a pause', async () => {
+    // High per user limits so only the task cap can stop the loop
+    fresh({ env: { rate: '3000' } });
+
+    for (let i = 0; i < 500; i++) {
+        const res = await tile('layer=precip', { z: 5, x: i % 32, y: Math.floor(i / 32) });
+        assert.equal(res.status, 200, `fetch ${i + 1}`);
+    }
+    assert.equal(hits.length, 500);
+
+    const denied = await tile('layer=precip', { z: 5, x: 0, y: 16 });
+    assertError(denied, 429);
+    assert.equal(denied.headers.get('retry-after'), '60');
+    assert.equal((await tile('layer=precip', { z: 5, x: 1, y: 16, auth: 'admin' })).status, 429);
+    assert.equal(hits.length, 500);
+
+    // Cache hits are not fetches
+    const hit = await tile('layer=precip', { z: 5, x: 0, y: 0 });
+    assert.equal(hit.headers.get('x-weather-cache'), 'hit');
+
+    // The window rolls over after 60 s and the pause ends with it
+    nowMs += 60 * 1000;
+    assertPng(await tile('layer=precip', { z: 5, x: 0, y: 16 }));
+    assert.equal(hits.length, 501);
+});
+
+test('19. the access log never contains the session token', async () => {
+    fresh();
+
+    const lines: string[] = [];
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = ((chunk: string | Uint8Array, ...rest: unknown[]) => {
+        const text = typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString();
+        if (text.includes('/api/weather')) {
+            lines.push(text);
+            return true;
+        }
+        return (write as (...args: unknown[]) => boolean)(chunk, ...rest);
+    }) as typeof process.stdout.write;
+
+    try {
+        mode = '500';
+        assert.equal((await tile('layer=precip', { auth: 'query' })).status, 502);
+        mode = 'ok';
+        assertPng(await tile('layer=precip&forecast=10', { auth: 'query' }));
+        assert.equal((await tile('layer=wind', { auth: 'query' })).status, 400);
+        const bad = await flight.fetch('/api/weather/tile/4/3/5.png?layer=precip&token=garbage-session-value', {}, { json: false, binary: true });
+        assert.equal(bad.status, 401);
+        // Let morgan write the last line
+        await new Promise(resolve => setTimeout(resolve, 50));
+    } finally {
+        process.stdout.write = write;
+    }
+
+    const tiles = lines.filter(l => l.includes('/api/weather/tile'));
+    assert.ok(tiles.length >= 3, `captured ${tiles.length} access log lines`);
+    for (const line of lines) {
+        assert.ok(!line.includes(flight.token.user), 'session token in access log');
+        assert.ok(!line.includes('garbage-session-value'), 'token value in access log');
+        assert.ok(!line.includes(KEY), 'api key in access log');
+    }
+    assert.ok(tiles.some(l => l.includes('token=***')));
 });
 
 test('stop upstream weather proxy', async () => {
