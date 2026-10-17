@@ -329,7 +329,7 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
   upstream's, re-add `pdfjs-dist@4.10.38` with `npm install --save-exact`, and check
   `git diff` shows no unrelated lockfile changes.
 - **`cloudtak.webPlugins` in `cdk/cdk.json`** (TAK-NZ only, per environment). `dev-test`
-  lists the rubbersheet fork; `prod` is `""`. The stack resolves the effective value
+  lists the rubbersheet fork and `cloudtak-plugin-weather`; `prod` is `""`. The stack resolves the effective value
   as `--context WebPlugins` (or `webPlugins`), then the `WEB_PLUGINS` env var, then
   `cdk.json`, validates it (https GitHub URLs only) and adds it to the main
   `CloudTAKDockerAsset` build args only when non-empty, so images without plugins keep
@@ -343,6 +343,30 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
 
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#installing-cloudtak-plugins-web_plugins)
 for how to use it.
+
+### Weather plugin relay (`/api/weather`)
+`api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
+`api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`,
+`api/test/fixtures/get_schema.json`, `cdk/cdk.json`
+
+New files only, except one existing-file edit. The relay serves `GET /api/weather/status`
+and `GET /api/weather/tile/:z/:x/:y.png` for the `cloudtak-plugin-weather` plugin and
+fetches tiles from the weather-proxy with a server-side key.
+
+- **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two weather keys,
+  because `schema.srv.test.ts` deep-equals it against `GET /api/schema`. **On sync:**
+  re-run that test with `UPDATE=1` and keep upstream's keys.
+- **Env vars.** `WEATHER_PROXY_URL`, `WEATHER_PROXY_KEY`, `WEATHER_RATE_LIMIT`, read from
+  the environment (S3 config file). There are no `FullConfig` keys, so `types.ts`,
+  `defaults.ts`, `config.ts` and `AdminConfig.vue` stay identical to upstream and cannot
+  conflict on sync.
+- **`cdk.json`.** `dev-test` `webPlugins` also lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-weather.git`.
+- **Licence.** The plugin repo is AGPL-3.0-only because its `lib/host.ts` imports
+  `app/src/std.ts`.
+
+See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#weather-plugin-cloudtak-plugin-weather)
+for setup.
 
 ---
 
