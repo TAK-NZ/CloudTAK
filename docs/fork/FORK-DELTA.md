@@ -347,9 +347,9 @@ for how to use it.
 ### Weather plugin relay (`/api/weather`)
 `api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
 `api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`,
-`api/test/fixtures/get_schema.json`, `cdk/cdk.json`
+`api/test/fixtures/get_schema.json`, `cdk/cdk.json`, `scripts/set-weather-proxy-config.sh`
 
-New files only, except one existing-file edit. The relay serves `GET /api/weather/status`
+New files only, except the schema fixture and the `cdk.json` edits (plus the docs). The relay serves `GET /api/weather/status`
 and `GET /api/weather/tile/:z/:x/:y.png` for the `cloudtak-plugin-weather` plugin and
 fetches tiles from the weather-proxy with a server-side key.
 
@@ -364,6 +364,26 @@ fetches tiles from the weather-proxy with a server-side key.
   `https://github.com/TAK-NZ/cloudtak-plugin-weather.git`.
 - **Licence.** The plugin repo is AGPL-3.0-only because its `lib/host.ts` imports
   `app/src/std.ts`.
+- **Upstream pressure.** The weather-proxy allows 600 requests per minute per client IP and
+  re-arms its counter TTL on every allowed hit. The relay caps upstream fetches at 500 per
+  minute per API task. When the proxy answers 429, or that cap is hit, the task stops calling
+  the proxy for 5 to 120 s (the proxy's `Retry-After`, default 30 s). In that time cache hits
+  are still served and cache misses get `429` with `Retry-After` and `Cache-Control: no-store`.
+  The pause is in memory and per process. `WEATHER_RATE_LIMIT` (per user) is unchanged.
+- **Session token in URLs and access logs.** The plugin loads tiles through MapLibre, which
+  cannot send an `Authorization` header, so tile URLs carry `?token=<session token>`. The
+  platform access log (`morgan 'combined'` in `@openaddresses/batch-schema`, which skips only
+  2xx and 3xx responses) writes the full URL of every other response, so a 401, 403, 429 or
+  502 tile response would log a valid session token. Other CloudTAK tile routes already work
+  this way. The upstream-owned logger is not edited. Instead `weather.ts` has a `/weather`
+  middleware that hands the access log a copy of `req.originalUrl` with `token=***` and keeps
+  the real URL in `res.locals.weatherUrl` for the handler (covered by `weather.srv.test.ts`
+  test 19). Tokens are session tokens, so short sessions limit the exposure of anything logged
+  elsewhere, for example by a proxy in front of the API. A tile loader that sends an
+  `Authorization` header would remove the query token.
+- **Operator script.** `scripts/set-weather-proxy-config.sh` (new file, TAK-NZ only; `scripts/**`
+  is not in the CDK image asset) writes the three variables into the live `cloudtak-config.env`
+  in the BaseInfra config bucket, with a local backup, and never prints the key.
 
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#weather-plugin-cloudtak-plugin-weather)
 for setup.

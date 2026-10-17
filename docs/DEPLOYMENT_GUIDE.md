@@ -110,6 +110,11 @@ forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
   `cloudtak-config.env.example`) and only apply with `--context useS3CloudTAKConfigFile=true`.
   The `dev-test` default in `cdk.json` is `false`. The manual deploy command above already
   sets it.
+- **Helper script:** `scripts/set-weather-proxy-config.sh` sets the variables in that file
+  (see below).
+- **Upstream limits:** each API task makes at most 500 weather-proxy fetches a minute (the
+  proxy allows 600 per client IP). After a 429 from the proxy the task pauses upstream fetches
+  for 5 to 120 s; cached tiles are still served and uncached tiles get `429` with `Retry-After`.
 - **Restart:** values are read at request time but injected when the task starts. After
   changing the file, deploy or run `aws ecs update-service --force-new-deployment` so a new
   task picks them up.
@@ -123,6 +128,50 @@ forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
   `TAK-NZ/cloudtak-plugin-weather`, so plugin changes need an image rebuild (CI
   `force_rebuild`, or change a file under `api/` or `app/` before a manual CDK deploy).
 - **Users:** Settings -> Refresh App after the deploy.
+
+#### Setting the weather variables with the helper script
+`scripts/set-weather-proxy-config.sh` replaces `WEATHER_PROXY_URL`, `WEATHER_PROXY_KEY` and
+(optionally) `WEATHER_RATE_LIMIT` in `s3://<config bucket>/cloudtak-config.env`. The bucket is
+resolved from the export `TAK-<stack name>-BaseInfra-EnvConfigBucket` (stack name `Demo` by
+default). Every other line of the file is kept as it is. The three variables are written as one
+block between `# BEGIN weather-proxy (managed by ...)` and `# END weather-proxy`, so running it
+again changes nothing.
+
+1. Put the key alone in a file that only you can read, for example
+   `install -m 600 /dev/null ~/weather.key` and then paste the key into it. The script refuses
+   a key file with a mode other than 600 or 400. Without `--key-file` it asks for the key with a
+   hidden prompt.
+2. Run a dry run first. It downloads the file, writes the backup and shows the change, but
+   uploads nothing.
+
+   ```bash
+   # Test (profile default, region us-west-2)
+   scripts/set-weather-proxy-config.sh --profile default --region us-west-2 \
+       --url https://utils.test.tak.nz/weather-radar --key-file ~/weather.key --dry-run
+
+   # Demo (profile tak-nz-demo, region ap-southeast-2)
+   scripts/set-weather-proxy-config.sh --profile tak-nz-demo --region ap-southeast-2 \
+       --url https://utils.test.tak.nz/weather-radar --key-file ~/weather.key --dry-run
+   ```
+3. Remove `--dry-run` to upload. The script asks for confirmation unless `--yes` is given, then
+   downloads the file again and checks that exactly the `WEATHER_*` names are present and the
+   other lines are unchanged.
+4. Start a new deployment. The script does not do it; it prints the command:
+   `aws --profile <profile> --region <region> ecs update-service --cluster TAK-<stack>-BaseInfra --service TAK-<stack>-CloudTAK --force-new-deployment`.
+
+- **Backup:** the config buckets are not versioned (Test never enabled it, Demo suspended it),
+  so the script first saves the current file as
+  `~/.cloudtak-config-backups/<account>-<region>-<UTC time>.env` (directory mode 700, file mode
+  600). To undo a change, copy that file back with `aws s3 cp`.
+- **Key handling:** the key is never printed or logged and is not part of any command line or
+  environment. It only exists in the key file and in a private temporary file that is deleted at
+  exit. A later backup contains the key of an earlier run, so keep the backup directory private.
+- **Options:** `--rate N` also sets `WEATHER_RATE_LIMIT` (without it an existing
+  `WEATHER_RATE_LIMIT` line is removed and the default of 900 applies), `--stack-name` and
+  `--bucket` select another stack or bucket, `--help` lists everything.
+- **Key format:** the script accepts 16 to 256 characters of `A-Za-z0-9._~+/=-` but warns when
+  the key is outside what the relay accepts (`A-Za-z0-9._~-`, 16 to 128), because the relay
+  would then stay disabled.
 
 ---
 
