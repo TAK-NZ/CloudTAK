@@ -92,6 +92,7 @@
         "maplibre-gl": "npm:@tak-ps/maplibre-gl@^6.11.1",
         "milsymbol": "^3.0.2",
         "openapi-fetch": "^0.17.0",
+        "pdfjs-dist": "4.10.38",
         "phone": "^3.1.59",
         "pinia": "^4.0.0",
         "pmtiles": "^4.5.0",
