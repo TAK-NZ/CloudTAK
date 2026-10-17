@@ -63,7 +63,7 @@ the `WEB_PLUGINS` build arg. This repo sets it from CDK config.
 
 - **Config:** `cloudtak.webPlugins` in `cdk/cdk.json`, per environment. Comma and/or
   whitespace separated `https://github.com/<owner>/<repo>.git` URLs. `dev-test` installs
-  the rubbersheet plugin; `prod` is empty. Other URL forms (ssh, credentials, `#ref`,
+  the rubbersheet and weather plugins; `prod` is empty. Other URL forms (ssh, credentials, `#ref`,
   `file:`) are rejected at synth time.
 - **Overrides:** `--context WebPlugins="<urls>"` (use `""` for none), then the
   `WEB_PLUGINS` environment variable, then `cdk.json`.
@@ -94,6 +94,35 @@ the `WEB_PLUGINS` build arg. This repo sets it from CDK config.
 - Plugin dependencies must already be in `app/package.json` and its lockfile, because
   `npm ci` runs before plugins are cloned.
 - After a deploy, users need Settings -> Refresh App to pick up the new plugin bundle.
+
+### **Weather plugin (cloudtak-plugin-weather)**
+Adds a weather bottom bar to the map with rain, global rain, cloud and radar layers and a
+forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
+(`/api/weather`), so browsers never see the proxy URL or key.
+
+| Variable | Required | Rule |
+|----------|----------|------|
+| `WEATHER_PROXY_URL` | Yes | `https` URL, no query, fragment or credentials; a trailing slash is stripped |
+| `WEATHER_PROXY_KEY` | Yes | Characters `[A-Za-z0-9._~-]`, 16 to 128 long |
+| `WEATHER_RATE_LIMIT` | No | Tile requests per user per minute, 60 to 6000, default 900 |
+
+- **Where:** the variables live in `s3://<config bucket>/cloudtak-config.env` (see
+  `cloudtak-config.env.example`) and only apply with `--context useS3CloudTAKConfigFile=true`.
+  The `dev-test` default in `cdk.json` is `false`. The manual deploy command above already
+  sets it.
+- **Restart:** values are read at request time but injected when the task starts. After
+  changing the file, deploy or run `aws ecs update-service --force-new-deployment` so a new
+  task picks them up.
+- **Test values:** `WEATHER_PROXY_URL=https://utils.test.tak.nz/weather-radar`.
+- **Key:** add a dedicated client entry to the weather-proxy key file with
+  `providers: ["rainbow"]` and a rate limit sized for the relay. Never reuse another
+  consumer's key.
+- **Check:** after deploy, `curl -s -H "Authorization: Bearer $TOKEN" https://map.test.tak.nz/api/weather/status`
+  should return `"enabled":true`.
+- **Rebuild:** the plugin is cloned from the default branch of
+  `TAK-NZ/cloudtak-plugin-weather`, so plugin changes need an image rebuild (CI
+  `force_rebuild`, or change a file under `api/` or `app/` before a manual CDK deploy).
+- **Users:** Settings -> Refresh App after the deploy.
 
 ---
 
