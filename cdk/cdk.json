@@ -51,7 +51,8 @@
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
         "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
         "authentikChannelGroupPrefix": "tak_",
-        "localOnlyAccounts": ["ckadmin"]
+        "localOnlyAccounts": ["ckadmin"],
+        "webPlugins": "https://github.com/TAK-NZ/cloudtak-plugin-rubbersheet.git"
       },
       "ecr": {
         "imageRetentionCount": 5,
@@ -103,7 +104,8 @@
         "oidcSystemAdminGroup": "CloudTAKSystemAdmin",
         "oidcAgencyAdminGroupPrefix": "CloudTAKAgency",
         "authentikChannelGroupPrefix": "tak_",
-        "localOnlyAccounts": ["ckadmin"]
+        "localOnlyAccounts": ["ckadmin"],
+        "webPlugins": ""
       },
       "ecr": {
         "imageRetentionCount": 20,

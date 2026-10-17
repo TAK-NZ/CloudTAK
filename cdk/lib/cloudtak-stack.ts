@@ -47,6 +47,7 @@ import { createBaseImportValue, BASE_EXPORT_NAMES } from './cloudformation-impor
 import { ContextEnvironmentConfig } from './stack-config';
 import { generateStandardTags, TagDefaults } from './utils/tag-helpers';
 import { ConfigValidator } from './utils/config-validator';
+import { resolveWebPlugins } from './utils/web-plugins';
 
 export interface CloudTakStackProps extends cdk.StackProps {
   environment: 'prod' | 'dev-test';
@@ -131,6 +132,9 @@ export class CloudTakStack extends cdk.Stack {
 
     // Determine container image strategy (local build vs pre-built images)
     const usePreBuiltImages = this.node.tryGetContext('usePreBuiltImages') ?? false;
+    // Optional web plugins for the main image only (see utils/web-plugins.ts).
+    // Only passed when non-empty so the asset hash is unchanged without plugins.
+    const webPlugins = resolveWebPlugins(this, envConfig.cloudtak.webPlugins);
     
     let ecrRepository: ecr.IRepository;
     let dockerImageAsset: ecrAssets.DockerImageAsset | undefined;
@@ -154,7 +158,8 @@ export class CloudTakStack extends cdk.Stack {
         directory: '..',
         file: 'Dockerfile',
         buildArgs: {
-          NODE_ENV: environment === 'prod' ? 'production' : 'development'
+          NODE_ENV: environment === 'prod' ? 'production' : 'development',
+          ...(webPlugins && { WEB_PLUGINS: webPlugins })
         },
         exclude: [
           'node_modules/**',

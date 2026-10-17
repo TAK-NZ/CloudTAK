@@ -1,4 +1,5 @@
 import { ContextEnvironmentConfig } from '../stack-config';
+import { parseWebPlugins } from './web-plugins';
 
 export class ConfigValidator {
   static validateEnvironmentConfig(envConfig: ContextEnvironmentConfig, environment: 'prod' | 'dev-test'): void {
@@ -17,5 +18,6 @@ export class ConfigValidator {
     if (!envConfig.ecs) {
       throw new Error('ecs configuration is required');
     }
+    parseWebPlugins(envConfig.cloudtak.webPlugins);
   }
 }

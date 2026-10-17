@@ -47,6 +47,11 @@ export interface ContextEnvironmentConfig {
     oidcAgencyAdminGroupPrefix?: string;
     authentikChannelGroupPrefix?: string;
     localOnlyAccounts?: string[];
+    /**
+     * CloudTAK web plugins to bake into the image (WEB_PLUGINS Docker build arg).
+     * Comma and/or whitespace separated https GitHub URLs. Optional; empty or unset means no plugins.
+     */
+    webPlugins?: string;
   };
   ecr: {
     imageRetentionCount: number;
