@@ -6,12 +6,16 @@ import type ConfigStateless from '../config.js';
 import { getRelayConfig } from '../lib/weather/relay-config.js';
 import {
     LAYERS,
+    SNAPSHOT_STEP_S,
+    SNAPSHOT_WINDOW_S,
     buildUpstreamUrl,
     latestSnapshot,
     parseTileRequest,
     tileCacheKey,
 } from '../lib/weather/relay-request.js';
-import type { TileRequest } from '../lib/weather/relay-request.js';
+import type { TileRequest, WeatherLayer } from '../lib/weather/relay-request.js';
+import { tileLifetime, DEFAULT_MAX_AGE_S, IMMUTABLE_MAX_AGE_S } from '../lib/weather/relay-cache.js';
+import { resolveLatest, statusLatest } from '../lib/weather/relay-snapshot.js';
 import {
     UNAVAILABLE,
     fetchUpstream,
@@ -23,7 +27,6 @@ import {
 } from '../lib/weather/relay-upstream.js';
 import type { FlightResult, TileType, UpstreamResponse } from '../lib/weather/relay-upstream.js';
 
-const TILE_MAX_AGE = 600;
 const FALLBACK_MAX_AGE = 30;
 const STATUS_LIMIT = 60;
 /**
@@ -72,7 +75,8 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
         throw tooMany(pauseUpstream(up.retryAfterS), 'Weather upstream is rate limiting requests');
     }
 
-    if (up.status === 400) throw upstreamErr(502, 'Weather upstream rejected the request');
+    // The relay validated the request, so a 400 is a bad answer for this request, not a proxy outage
+    if (up.status === 400) throw upstreamErr(400, 'Weather upstream rejected the request');
     if (up.status === 404) throw upstreamErr(502, 'Weather upstream not found');
     if (up.status !== 200 || !up.body || !up.contentType) throw upstreamErr(502, UNAVAILABLE);
 
@@ -81,11 +85,20 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
     if (up.fallback) {
         // A fallback tile is current radar. Under a forecast label that would be wrong.
         if (tile.forecast > 0) throw upstreamErr(502, UNAVAILABLE);
-        return { body: up.body, contentType: up.contentType, short: true };
+        return { body: up.body, contentType: up.contentType, short: true, immutable: false };
     }
 
-    if (cacheable(up.cacheControl)) relay.cache.set(cacheKey, up.body, up.contentType);
-    return { body: up.body, contentType: up.contentType, short: false };
+    const isCacheable = cacheable(up.cacheControl);
+    const life = tileLifetime({
+        effective: tile.snapshot,
+        upstream: up.snapshot,
+        fallback: false,
+        error: false,
+        cacheable: isCacheable,
+    });
+
+    if (isCacheable) relay.cache.set(cacheKey, up.body, up.contentType, { ttlMs: life.ttlMs, immutable: life.immutable });
+    return { body: up.body, contentType: up.contentType, short: false, immutable: life.immutable };
 }
 
 export default async function router(schema: Schema, config: ConfigStateless) {
@@ -104,13 +117,19 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/weather/status', {
         name: 'Weather Status',
         group: 'Weather',
-        description: 'Report whether the weather tile relay is enabled and which snapshot is the newest available',
+        description: 'Report whether the weather tile relay is enabled and which snapshot is the newest available, in total and per layer',
         res: Type.Object({
             apiVersion: Type.Literal(1),
             enabled: Type.Boolean(),
             serverTime: Type.Integer(),
             snapshot: Type.Integer(),
             layers: Type.Array(Type.String()),
+            latest: Type.Optional(Type.Record(Type.String(), Type.Object({
+                snapshot: Type.Integer(),
+                source: Type.Union([Type.Literal('rainbow'), Type.Literal('computed')]),
+            }))),
+            stepSeconds: Type.Optional(Type.Integer()),
+            windowSeconds: Type.Optional(Type.Integer()),
         }),
     }, async (req, res) => {
         try {
@@ -120,7 +139,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (!limit.ok) throw tooMany(limit.retryAfterS);
 
             const serverTime = Math.floor(relay.now() / 1000);
-            const enabled = getRelayConfig().enabled;
+            const cfg = getRelayConfig();
+            const enabled = cfg.enabled;
+
+            // The newest snapshot of each layer comes from the proxy (30 s cache, computed on
+            // any failure), so a slow or old proxy never stops the plugin from starting
+            const latest = enabled && cfg.baseUrl && cfg.key
+                ? await statusLatest({ baseUrl: cfg.baseUrl, key: cfg.key }, userAgent(config.API_URL))
+                : undefined;
 
             res.setHeader('Cache-Control', 'no-store');
             res.json({
@@ -129,6 +155,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 serverTime,
                 snapshot: latestSnapshot(serverTime),
                 layers: enabled ? [...LAYERS] : [],
+                ...(latest ? { latest } : {}),
+                stepSeconds: SNAPSHOT_STEP_S,
+                windowSeconds: SNAPSHOT_WINDOW_S,
             });
         } catch (err) {
             fail(err, res);
@@ -160,6 +189,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         let status = 500;
         let cache = 'none';
         let sent: TileType | null = null;
+        let immutable = false;
         let audit: Partial<TileRequest> = {};
 
         try {
@@ -174,7 +204,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (!rate.ok) throw tooMany(rate.retryAfterS);
 
             const search = new URL(String(res.locals.weatherUrl ?? req.originalUrl), 'http://localhost').searchParams;
-            const tile = parseTileRequest(req.params, search, Math.floor(relay.now() / 1000));
+            const nowS = Math.floor(relay.now() / 1000);
+
+            // The window of a snapshot depends on the newest snapshot of its layer. Only a known
+            // layer is looked up; anything else is rejected by the parser.
+            const layerParam = search.get('layer');
+            let layerLatest: number | undefined;
+            if (layerParam !== null && (LAYERS as string[]).includes(layerParam)) {
+                const found = await resolveLatest(layerParam as WeatherLayer, { baseUrl: cfg.baseUrl, key: cfg.key }, userAgent(config.API_URL));
+                layerLatest = found.snapshot;
+            }
+
+            const tile = parseTileRequest(req.params, search, nowS, layerLatest === undefined ? undefined : () => layerLatest as number);
             audit = tile;
 
             const cacheKey = tileCacheKey(tile);
@@ -186,6 +227,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             if (cached) {
                 body = cached.body;
                 contentType = cached.contentType;
+                immutable = cached.immutable;
                 cache = 'hit';
             } else {
                 // Nothing between this check and run() awaits, so a caller that
@@ -212,6 +254,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 body = value.body;
                 contentType = value.contentType;
                 short = value.short;
+                immutable = value.immutable;
                 cache = shared ? 'shared' : 'miss';
             }
 
@@ -220,7 +263,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             res.status(200);
             res.setHeader('Content-Type', contentType);
             res.setHeader('Content-Length', body.byteLength);
-            res.setHeader('Cache-Control', `private, max-age=${short ? FALLBACK_MAX_AGE : TILE_MAX_AGE}`);
+            res.setHeader('Cache-Control', `private, max-age=${short ? FALLBACK_MAX_AGE : immutable ? IMMUTABLE_MAX_AGE_S : DEFAULT_MAX_AGE_S}`);
             res.setHeader('X-Content-Type-Options', 'nosniff');
             res.setHeader('X-Weather-Api', '1');
             res.setHeader('X-Weather-Snapshot', String(tile.snapshot));
@@ -238,6 +281,8 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 x: audit.x ?? null,
                 y: audit.y ?? null,
                 forecast: audit.forecast ?? null,
+                snapshot: audit.snapshot ?? null,
+                immutable,
                 status,
                 cache,
                 contentType: sent,

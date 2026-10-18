@@ -25,7 +25,7 @@ export const ALLOWED_KEYS = [
 const COLORS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'dbz_u8'];
 
 export const SNAPSHOT_STEP_S = 600;
-const SNAPSHOT_WINDOW_S = 7200;
+export const SNAPSHOT_WINDOW_S = 7200;
 const MAX_ZOOM = 9;
 const MAX_FORECAST = 240;
 
@@ -55,6 +55,21 @@ function bad(message: string): Err {
 }
 
 /**
+ * The snapshot a request is served from, given the newest snapshot of its layer.
+ *
+ * No snapshot (or `latest`) means the newest one. A snapshot newer than the
+ * newest is served as the newest, so a client whose clock runs ahead of a
+ * lagging layer still gets that layer's data and shares one cache entry. A
+ * snapshot older than the two hour window is rejected. The value itself is
+ * never echoed.
+ */
+export function effectiveSnapshot(requested: number | null, latest: number): number {
+    if (requested === null) return latest;
+    if (requested < latest - SNAPSHOT_WINDOW_S) throw bad('snapshot out of range');
+    return requested > latest ? latest : requested;
+}
+
+/**
  * Convert one query value to its single string. A key sent more than once
  * is rejected by the caller before this is reached.
  */
@@ -74,6 +89,7 @@ export function parseTileRequest(
     params: { z: number | string; x: number | string; y: number | string },
     search: URLSearchParams,
     nowS: number,
+    latestFor: (layer: WeatherLayer) => number = () => latestSnapshot(nowS),
 ): TileRequest {
     // Unknown and repeated keys. Names are echoed, values never are, and only
     // allow-listed names are echoed so the message cannot reflect input.
@@ -105,15 +121,14 @@ export function parseTileRequest(
         if (!rule.forecast && forecast !== 0) throw bad('forecast is not supported for this layer');
     }
 
-    const latest = latestSnapshot(nowS);
-    let snapshot = latest;
+    let requested: number | null = null;
     const snapshotRaw = single(search, 'snapshot');
     if (snapshotRaw !== undefined && snapshotRaw !== 'latest') {
         if (!/^[0-9]{10}$/.test(snapshotRaw)) throw bad('Invalid snapshot');
-        snapshot = Number(snapshotRaw);
-        if (snapshot % SNAPSHOT_STEP_S !== 0) throw bad('Invalid snapshot');
-        if (snapshot > latest || snapshot < latest - SNAPSHOT_WINDOW_S) throw bad('Snapshot is outside the available window');
+        requested = Number(snapshotRaw);
+        if (requested % SNAPSHOT_STEP_S !== 0) throw bad('Invalid snapshot');
     }
+    const snapshot = effectiveSnapshot(requested, latestFor(layer));
 
     let size: 256 | 512 = 256;
     const sizeRaw = single(search, 'size');
@@ -168,7 +183,8 @@ export function buildUpstreamUrl(baseUrl: string, req: TileRequest, key: string)
 }
 
 /**
- * Cache key. Holds no user, API key or session token.
+ * Cache key. Holds the effective snapshot, never the requested one, and no user,
+ * API key or session token.
  */
 export function tileCacheKey(req: TileRequest): string {
     return `${req.layer}|${req.z}/${req.x}/${req.y}|f${req.forecast}|s${req.snapshot}|z${req.size}|c${req.color ?? '-'}|v${req.coverage ? 1 : 0}|p${req.usePrecipType ? 1 : 0}`;

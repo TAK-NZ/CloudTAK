@@ -22,6 +22,9 @@ const NOW_S = 1800000000;
 const LATEST = NOW_S - 600;
 let nowMs = NOW_S * 1000;
 
+type SnapMode = 'ok' | '404' | '400' | '500' | '429' | 'bad' | 'garbage' | 'slow';
+type Echo = 'off' | 'on' | 'mismatch';
+
 type Mode = 'ok' | 'nocache' | '500' | '401' | '403' | '404' | '400' | '429' | '302' | 'notimage' | 'custom' | 'wrongtype' | 'huge' | 'fallback' | 'error' | 'slow';
 
 let upstream: http.Server;
@@ -32,7 +35,17 @@ let delayMs = 0;
 let customType: string | null = 'image/png';
 let customBody: Buffer = PNG;
 let retryAfterHeader: string | null = '7';
+// Tile requests only. The snapshot endpoint is recorded in snapHits.
 const hits: string[] = [];
+const snapHits: string[] = [];
+// Answer of the stub's /snapshot endpoint
+let snapMode: SnapMode = 'ok';
+// Newest snapshot per layer; a layer that is not set follows the test clock
+let latestByLayer: Record<string, number> = {};
+// off = an older proxy that sends no X-Weather-Snapshot, on = echo the requested snapshot,
+// mismatch = answer with an older snapshot than requested
+let echoSnapshot: Echo = 'off';
+const SNAPSHOT_SLOW_MS = 400;
 
 // Everything the API writes to the console for the whole file
 const logs: string[] = [];
@@ -58,7 +71,7 @@ function configure(opts: { url?: string | null; key?: string | null; rate?: stri
     set('WEATHER_RATE_LIMIT', opts.rate, null);
 }
 
-function fresh(opts: { env?: Parameters<typeof configure>[0]; upstreamTimeoutMs?: number; cacheMaxBytes?: number } = {}) {
+function fresh(opts: { env?: Parameters<typeof configure>[0]; upstreamTimeoutMs?: number; cacheMaxBytes?: number; latestBudgetMs?: number } = {}) {
     nowMs = NOW_S * 1000;
     mode = 'ok';
     delayMs = 0;
@@ -66,8 +79,17 @@ function fresh(opts: { env?: Parameters<typeof configure>[0]; upstreamTimeoutMs?
     customBody = PNG;
     retryAfterHeader = '7';
     hits.length = 0;
+    snapHits.length = 0;
+    snapMode = 'ok';
+    latestByLayer = {};
+    echoSnapshot = 'off';
     configure(opts.env);
-    __resetForTests({ now: () => nowMs, upstreamTimeoutMs: opts.upstreamTimeoutMs, cacheMaxBytes: opts.cacheMaxBytes });
+    __resetForTests({
+        now: () => nowMs,
+        upstreamTimeoutMs: opts.upstreamTimeoutMs,
+        cacheMaxBytes: opts.cacheMaxBytes,
+        latestBudgetMs: opts.latestBudgetMs,
+    });
 }
 
 interface TileResult {
@@ -134,10 +156,54 @@ function assertError(res: TileResult, code: number, message?: string) {
 
 test('start upstream weather proxy', async () => {
     upstream = http.createServer((req, res) => {
+        const incoming = new URL(String(req.url), 'http://localhost');
+
+        if (incoming.pathname.endsWith('/snapshot')) {
+            snapHits.push(String(req.url));
+            const layer = incoming.searchParams.get('layer') ?? '';
+            const snapshot = latestByLayer[layer] ?? (Math.floor(nowMs / 1000 / 600) * 600) - 600;
+
+            const answer = () => {
+                switch (snapMode) {
+                    case 'ok':
+                    case 'slow':
+                        res.writeHead(200, { 'content-type': 'application/json', 'x-upstream-leak': 'yes' });
+                        res.end(JSON.stringify({ snapshot, source: 'rainbow', layer, note: 'UPSTREAM-BODY-SECRET' }));
+                        return;
+                    case 'bad':
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end('this is not json');
+                        return;
+                    case 'garbage':
+                        res.writeHead(200, { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ snapshot: 'soon', source: 'UPSTREAM-BODY-SECRET' }));
+                        return;
+                    case '429':
+                        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '7' });
+                        res.end(JSON.stringify({ error: 'UPSTREAM-BODY-SECRET' }));
+                        return;
+                    default:
+                        res.writeHead(Number(snapMode), { 'content-type': 'application/json' });
+                        res.end(JSON.stringify({ error: 'UPSTREAM-BODY-SECRET' }));
+                }
+            };
+
+            if (snapMode === 'slow') {
+                setTimeout(answer, SNAPSHOT_SLOW_MS);
+            } else {
+                answer();
+            }
+            return;
+        }
+
         hits.push(String(req.url));
 
         const respond = () => {
             const headers: Record<string, string | number> = { 'x-upstream-leak': 'yes', 'set-cookie': 'upstream=1' };
+
+            const requested = incoming.searchParams.get('snapshot');
+            if (requested !== null && echoSnapshot === 'on') headers['x-weather-snapshot'] = requested;
+            if (requested !== null && echoSnapshot === 'mismatch') headers['x-weather-snapshot'] = String(Number(requested) - 600);
 
             switch (mode) {
                 case 'ok':
@@ -463,9 +529,18 @@ test('8. snapshot window', async () => {
         assertPng(await tile(`layer=precip&snapshot=${snapshot}`));
     }
 
-    for (const snapshot of [`${LATEST - 7800}`, `${LATEST + 600}`, `${LATEST - 1}`, '179999940', 'abc', `${LATEST}0`]) {
+    // Older than the two hour window, and malformed values
+    for (const snapshot of [`${LATEST - 7800}`, `${LATEST - 8400}`, `${LATEST - 1}`, '179999940', 'abc', `${LATEST}0`]) {
         assertError(await tile(`layer=precip&snapshot=${snapshot}`), 400);
     }
+    assertError(await tile(`layer=precip&snapshot=${LATEST - 7800}`), 400, 'snapshot out of range');
+    assertError(await tile(`layer=precip&snapshot=${LATEST - 1}`), 400, 'Invalid snapshot');
+
+    // A snapshot newer than the latest is served as the latest, not refused
+    const newer = await tile(`layer=precip&snapshot=${LATEST + 600}`);
+    assertPng(newer);
+    assert.equal(newer.headers.get('x-weather-snapshot'), String(LATEST));
+    assert.equal(newer.headers.get('x-weather-cache'), 'hit');
 
     // Absent means latest
     const absent = await tile('layer=precip&forecast=10');
@@ -574,7 +649,7 @@ test('12. upstream errors', async () => {
         ['wrongtype', 502, 'Weather upstream unavailable'],
         ['302', 502, 'Weather upstream unavailable'],
         ['404', 502, 'Weather upstream not found'],
-        ['400', 502, 'Weather upstream rejected the request'],
+        ['400', 400, 'Weather upstream rejected the request'],
         ['401', 502, 'Weather upstream authentication failed'],
         ['403', 502, 'Weather upstream authentication failed'],
     ];
@@ -792,13 +867,21 @@ test('16. status', async () => {
     const res = await status();
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'no-store');
-    assert.deepEqual(Object.keys(res.body).sort(), ['apiVersion', 'enabled', 'layers', 'serverTime', 'snapshot']);
+    assert.deepEqual(Object.keys(res.body).sort(), ['apiVersion', 'enabled', 'latest', 'layers', 'serverTime', 'snapshot', 'stepSeconds', 'windowSeconds']);
     assert.deepEqual(res.body, {
         apiVersion: 1,
         enabled: true,
         serverTime: NOW_S,
         snapshot: LATEST,
         layers: ['precip', 'precip-global', 'clouds', 'radars'],
+        latest: {
+            'precip': { snapshot: LATEST, source: 'rainbow' },
+            'precip-global': { snapshot: LATEST, source: 'rainbow' },
+            'clouds': { snapshot: LATEST, source: 'rainbow' },
+            'radars': { snapshot: LATEST, source: 'rainbow' },
+        },
+        stepSeconds: 600,
+        windowSeconds: 7200,
     });
     assert.equal(res.body.snapshot % 600, 0);
     assert.ok(!JSON.stringify(res.body).includes(KEY));
@@ -809,8 +892,9 @@ test('16. status', async () => {
     assert.equal(later.body.serverTime, NOW_S + 605);
     assert.equal(later.body.snapshot, Math.floor((NOW_S + 605) / 600) * 600 - 600);
 
-    // The status call never contacts the proxy
+    // The status call asks the proxy for the newest snapshot of each layer, never for tiles
     assert.equal(hits.length, 0);
+    assert.equal(snapHits.length, 8);
 
     // A disabled relay is reported, not an error
     fresh({ env: { url: null } });
@@ -819,6 +903,10 @@ test('16. status', async () => {
     assert.equal(disabled.body.enabled, false);
     assert.deepEqual(disabled.body.layers, []);
     assert.equal(disabled.body.snapshot % 600, 0);
+    assert.equal('latest' in disabled.body, false);
+    assert.equal(disabled.body.stepSeconds, 600);
+    assert.equal(disabled.body.windowSeconds, 7200);
+    assert.equal(snapHits.length, 0, 'a disabled relay does not call the proxy');
 
     // 60 calls a minute
     fresh();
@@ -1048,6 +1136,373 @@ test('19. the access log never contains the session token', async () => {
         assert.ok(!line.includes(KEY), 'api key in access log');
     }
     assert.ok(tiles.some(l => l.includes('token=***')));
+});
+
+const LAYER_NAMES = ['precip', 'precip-global', 'clouds', 'radars'];
+
+test('20. status reports the newest snapshot of every layer', async () => {
+    fresh();
+    // Rainbow publishes clouds later than the other layers
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST - 600, 'radars': LATEST };
+
+    const res = await status();
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.latest, {
+        'precip': { snapshot: LATEST, source: 'rainbow' },
+        'precip-global': { snapshot: LATEST, source: 'rainbow' },
+        'clouds': { snapshot: LATEST - 600, source: 'rainbow' },
+        'radars': { snapshot: LATEST, source: 'rainbow' },
+    });
+    assert.equal(res.body.snapshot, LATEST);
+    assert.equal(res.body.stepSeconds, 600);
+    assert.equal(res.body.windowSeconds, 7200);
+
+    // One call per layer, with the key as the proxy's api parameter, and nothing of it is passed on
+    assert.deepEqual(snapHits.map(h => h.split('&')[0]).sort(), LAYER_NAMES.map(l => `/weather/snapshot?layer=${l}`).sort());
+    for (const hit of snapHits) assert.ok(hit.endsWith(`&api=${KEY}`), hit);
+    const text = JSON.stringify(res.body);
+    assert.ok(!text.includes(KEY));
+    assert.ok(!text.includes('UPSTREAM-BODY-SECRET'));
+    assert.equal(hits.length, 0);
+
+    // A proxy answer newer than the clock allows is not trusted
+    fresh();
+    latestByLayer = { clouds: LATEST + 6000 };
+    const odd = await status();
+    assert.equal(odd.status, 200);
+    assert.deepEqual(odd.body.latest.clouds, { snapshot: LATEST, source: 'computed' });
+    assert.deepEqual(odd.body.latest.precip, { snapshot: LATEST, source: 'rainbow' });
+});
+
+test('20b. status falls back to the computed snapshot when the proxy has no usable answer', async () => {
+    for (const m of ['404', '400', '500', 'bad', 'garbage'] as SnapMode[]) {
+        fresh();
+        snapMode = m;
+        const res = await status();
+        assert.equal(res.status, 200, m);
+        for (const layer of LAYER_NAMES) {
+            assert.deepEqual(res.body.latest[layer], { snapshot: LATEST, source: 'computed' }, `${m} ${layer}`);
+        }
+        assert.ok(!JSON.stringify(res.body).includes('UPSTREAM-BODY-SECRET'), m);
+        assert.equal(snapHits.length, 4, m);
+
+        // An older proxy that answers 404 is not asked again for every tile
+        assertPng(await tile('layer=clouds'));
+        assertPng(await tile('layer=clouds', { x: 4 }));
+        assert.equal(snapHits.length, 4, `${m}: cached`);
+        assert.equal(hits.length, 2);
+    }
+
+    // The proxy cannot be reached at all
+    fresh({ env: { url: 'https://127.0.0.1:1/weather' } });
+    const blocked = await status();
+    assert.equal(blocked.status, 200);
+    assert.equal(blocked.body.latest.clouds.source, 'computed');
+});
+
+test('20c. a slow snapshot endpoint does not hold up the status beyond the budget', async () => {
+    fresh({ latestBudgetMs: 100 });
+    snapMode = 'slow';
+
+    const started = Date.now();
+    const res = await status();
+    assert.equal(res.status, 200);
+    assert.ok(Date.now() - started < SNAPSHOT_SLOW_MS, 'answered before the proxy did');
+    for (const layer of LAYER_NAMES) assert.deepEqual(res.body.latest[layer], { snapshot: LATEST, source: 'computed' });
+
+    // The lookups finish in the background and the next call has the real values
+    latestByLayer = {};
+    await new Promise(resolve => setTimeout(resolve, SNAPSHOT_SLOW_MS + 150));
+    const next = await status();
+    assert.equal(next.status, 200);
+    for (const layer of LAYER_NAMES) assert.deepEqual(next.body.latest[layer], { snapshot: LATEST, source: 'rainbow' });
+    assert.equal(snapHits.length, 4, 'no second round of calls');
+});
+
+test('20d. the newest snapshot of a layer is cached for 30 s', async () => {
+    fresh();
+
+    await status();
+    await status();
+    assert.equal(snapHits.length, 4);
+
+    // The tile route shares the same cache
+    assertPng(await tile('layer=precip'));
+    assertPng(await tile('layer=clouds'));
+    assert.equal(snapHits.length, 4);
+
+    nowMs += 29 * 1000;
+    await status();
+    assert.equal(snapHits.length, 4);
+
+    latestByLayer = { clouds: LATEST - 600 };
+    nowMs += 2 * 1000;
+    const later = await status();
+    assert.equal(snapHits.length, 8);
+    assert.deepEqual(later.body.latest.clouds, { snapshot: LATEST - 600, source: 'rainbow' });
+
+    // Concurrent callers share one lookup per layer
+    fresh();
+    await Promise.all(Array.from({ length: 6 }, () => status()));
+    assert.equal(snapHits.length, 4);
+});
+
+test('21. a snapshot newer than the layer latest is clamped and shares one upstream call and cache entry', async () => {
+    fresh();
+    echoSnapshot = 'on';
+
+    const first = await tile(`layer=precip&forecast=10&snapshot=${LATEST + 600}`);
+    assertPng(first);
+    assert.equal(first.headers.get('x-weather-snapshot'), String(LATEST));
+    assert.equal(first.headers.get('x-weather-cache'), 'miss');
+
+    const second = await tile(`layer=precip&forecast=10&snapshot=${LATEST}`);
+    assert.equal(second.headers.get('x-weather-snapshot'), String(LATEST));
+    assert.equal(second.headers.get('x-weather-cache'), 'hit');
+
+    const third = await tile('layer=precip&forecast=10&snapshot=latest', { auth: 'admin' });
+    assert.equal(third.headers.get('x-weather-cache'), 'hit');
+
+    assert.equal(hits.length, 1);
+    assert.ok(hits[0].includes(`&snapshot=${LATEST}&`), hits[0]);
+    assert.ok(!hits[0].includes(String(LATEST + 600)));
+});
+
+test('21b. a lagging layer is requested with its own latest snapshot', async () => {
+    fresh();
+    echoSnapshot = 'on';
+    latestByLayer = { clouds: LATEST - 600 };
+
+    const clouds = await tile(`layer=clouds&snapshot=${LATEST}`);
+    assertPng(clouds);
+    assert.equal(clouds.headers.get('x-weather-snapshot'), String(LATEST - 600));
+    assert.equal(hits.length, 1);
+    assert.ok(hits[0].includes(`layer=clouds&snapshot=${LATEST - 600}&`), hits[0]);
+
+    // Asking for the lagging snapshot itself, or for no snapshot, is the same tile
+    for (const query of [`layer=clouds&snapshot=${LATEST - 600}`, 'layer=clouds', 'layer=clouds&snapshot=latest']) {
+        const same = await tile(query);
+        assert.equal(same.headers.get('x-weather-cache'), 'hit', query);
+        assert.equal(same.headers.get('x-weather-snapshot'), String(LATEST - 600), query);
+    }
+    assert.equal(hits.length, 1);
+
+    // The window of the layer ends two hours before its own latest
+    assertPng(await tile(`layer=clouds&snapshot=${LATEST - 600 - 7200}`));
+    assertError(await tile(`layer=clouds&snapshot=${LATEST - 600 - 7800}`), 400, 'snapshot out of range');
+    assert.equal(hits.length, 2);
+
+    // Other layers keep theirs
+    const precip = await tile(`layer=precip&snapshot=${LATEST}`);
+    assert.equal(precip.headers.get('x-weather-snapshot'), String(LATEST));
+    assertError(await tile(`layer=precip&snapshot=${LATEST - 7800}`), 400, 'snapshot out of range');
+});
+
+test('21c. an out of range snapshot never reaches the proxy; the message does not echo it', async () => {
+    fresh();
+
+    for (const snapshot of [LATEST - 7800, LATEST - 86400, 1000000200]) {
+        const res = await tile(`layer=clouds&snapshot=${snapshot}`);
+        assertError(res, 400, 'snapshot out of range');
+        assert.ok(!res.body.toString().includes(String(snapshot)));
+    }
+    assert.equal(hits.length, 0);
+});
+
+test('22. a proxy 400 is a 400 for the client and is never cached', async () => {
+    fresh();
+    mode = '400';
+
+    const first = await tile('layer=precip&forecast=10');
+    assertError(first, 400, 'Weather upstream rejected the request');
+    assert.ok(!first.body.toString().includes('UPSTREAM-BODY-SECRET'));
+    assert.equal(first.headers.get('set-cookie'), null);
+
+    mode = '400';
+    assertError(await tile('layer=precip&forecast=10'), 400, 'Weather upstream rejected the request');
+    assert.equal(hits.length, 2);
+
+    // A healthy proxy answers the same request afterwards
+    mode = 'ok';
+    const ok = await tile('layer=precip&forecast=10');
+    assertPng(ok);
+    assert.equal(ok.headers.get('x-weather-cache'), 'miss');
+});
+
+test('23. tiles the proxy confirms for the effective snapshot are cached for two hours', async () => {
+    fresh();
+    echoSnapshot = 'on';
+    // Keep the layers where they are while the test clock moves
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST, 'radars': LATEST };
+
+    const query = `layer=precip&forecast=10&snapshot=${LATEST}`;
+    const first = await tile(query);
+    assertPng(first);
+    assert.equal(first.headers.get('cache-control'), 'private, max-age=3600');
+    assert.equal(first.headers.get('x-weather-cache'), 'miss');
+
+    // Followers of a flight get the same lifetime
+    const hit = await tile(query);
+    assert.equal(hit.headers.get('x-weather-cache'), 'hit');
+    assert.equal(hit.headers.get('cache-control'), 'private, max-age=3600');
+    assert.equal(hits.length, 1);
+
+    nowMs += 3600 * 1000;
+    const hour = await tile(query);
+    assert.equal(hour.headers.get('x-weather-cache'), 'hit', 'still cached after one hour');
+    assert.equal(hour.headers.get('cache-control'), 'private, max-age=3600');
+
+    nowMs += (3599 * 1000);
+    assert.equal((await tile(query)).headers.get('x-weather-cache'), 'hit', 'cached until 7200 s');
+
+    nowMs += 2 * 1000;
+    const expired = await tile(query);
+    assert.equal(expired.headers.get('x-weather-cache'), 'miss', 'gone after 7200 s');
+    assert.equal(expired.headers.get('cache-control'), 'private, max-age=3600');
+    assert.equal(hits.length, 2);
+
+    // Concurrent callers of one flight all see the immutable lifetime
+    fresh();
+    echoSnapshot = 'on';
+    delayMs = 100;
+    const shared = await Promise.all(Array.from({ length: 4 }, () => tile('layer=clouds')));
+    for (const res of shared) {
+        assertPng(res);
+        assert.equal(res.headers.get('cache-control'), 'private, max-age=3600');
+    }
+    assert.equal(hits.length, 1);
+});
+
+test('23b. everything else keeps the ten minute lifetime', async () => {
+    const cases: Array<[string, Echo, string, number]> = [
+        ['older proxy without the header', 'off', 'private, max-age=600', 600],
+        ['header names another snapshot', 'mismatch', 'private, max-age=600', 600],
+    ];
+
+    for (const [name, echo, cacheControl, ttl] of cases) {
+        fresh();
+        latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST, 'radars': LATEST };
+        echoSnapshot = echo;
+        const query = `layer=precip&snapshot=${LATEST - 600}`;
+
+        const first = await tile(query);
+        assertPng(first);
+        assert.equal(first.headers.get('cache-control'), cacheControl, name);
+
+        nowMs += (ttl - 1) * 1000;
+        const hit = await tile(query);
+        assert.equal(hit.headers.get('x-weather-cache'), 'hit', name);
+        assert.equal(hit.headers.get('cache-control'), cacheControl, name);
+
+        nowMs += 2 * 1000;
+        assert.equal((await tile(query)).headers.get('x-weather-cache'), 'miss', `${name}: expires after ${ttl} s`);
+        assert.equal(hits.length, 2, name);
+    }
+
+    // A header that matches does not make a no-store answer immutable or cacheable
+    fresh();
+    echoSnapshot = 'on';
+    mode = 'nocache';
+    const nocache = await tile('layer=precip');
+    assert.equal(nocache.headers.get('cache-control'), 'private, max-age=600');
+    mode = 'nocache';
+    assert.equal((await tile('layer=precip')).headers.get('x-weather-cache'), 'miss');
+    assert.equal(hits.length, 2);
+
+    // Fallback tiles stay uncached with a 30 s browser lifetime, errors are refused
+    fresh();
+    echoSnapshot = 'on';
+    mode = 'fallback';
+    const fallback = await tile('layer=precip');
+    assertPng(fallback);
+    assert.equal(fallback.headers.get('cache-control'), 'private, max-age=30');
+    mode = 'fallback';
+    assert.equal((await tile('layer=precip')).headers.get('x-weather-cache'), 'miss');
+
+    mode = 'error';
+    assertError(await tile('layer=precip', { x: 9 }), 502, 'Weather upstream unavailable');
+});
+
+test('24. the snapshot lookup is skipped while the upstream is paused and a 429 from it starts a pause', async () => {
+    fresh();
+
+    // A tile 429 pauses the upstream; the lookup for a layer that is not cached is not sent
+    assertPng(await tile('layer=precip'));
+    assert.equal(snapHits.length, 1);
+    mode = '429';
+    assertError(await tile('layer=precip&forecast=10'), 429);
+
+    mode = 'ok';
+    const paused = await status();
+    assert.equal(paused.status, 200);
+    assert.equal(snapHits.length, 1, 'no lookup while paused');
+    assert.deepEqual(paused.body.latest.precip, { snapshot: LATEST, source: 'rainbow' }, 'cached values are still used');
+    assert.deepEqual(paused.body.latest.clouds, { snapshot: LATEST, source: 'computed' });
+
+    // The computed value is not cached: the next call after the pause asks the proxy
+    nowMs += 7 * 1000;
+    const after = await status();
+    assert.equal(after.body.latest.clouds.source, 'rainbow');
+    assert.equal(snapHits.length, 4);
+
+    // The proxy rate limits the snapshot endpoint itself
+    fresh();
+    snapMode = '429';
+    const limited = await status();
+    assert.equal(limited.status, 200);
+    assert.equal(limited.body.latest.clouds.source, 'computed');
+    assert.ok(snapHits.length >= 1);
+    const before = hits.length;
+    assertError(await tile('layer=clouds', { x: 8 }), 429, 'Weather upstream is rate limiting requests');
+    assert.equal(hits.length, before, 'tile misses wait for the pause');
+});
+
+test('25. the API key and session tokens stay out of logs, responses and audit lines on the snapshot paths', async () => {
+    const mark = logs.length;
+
+    fresh();
+    snapMode = '500';
+    echoSnapshot = 'on';
+    const sessions = [flight.token.user, flight.token.admin];
+
+    const results: Array<{ headers: Headers; text: string }> = [];
+    const st = await status();
+    results.push({ headers: st.headers, text: JSON.stringify(st.body) });
+    for (const [query, auth] of [['layer=clouds', 'query'], ['layer=precip&forecast=10', 'user'], [`layer=clouds&snapshot=${LATEST - 7800}`, 'user']] as const) {
+        const res = await tile(query, { auth });
+        results.push({ headers: res.headers, text: res.status === 200 ? '' : res.body.toString() });
+    }
+
+    // The snapshot lookup fails at the network level: the logged URL is redacted
+    fresh({ env: { url: 'https://127.0.0.1:1/weather' } });
+    const blocked = await status();
+    results.push({ headers: blocked.headers, text: JSON.stringify(blocked.body) });
+
+    for (const res of results) {
+        assert.ok(!JSON.stringify([...res.headers.entries()]).includes(KEY));
+        assert.ok(!res.text.includes(KEY));
+        for (const session of sessions) assert.ok(!res.text.includes(session));
+    }
+
+    const mine = logs.slice(mark);
+    assert.ok(mine.length > 0);
+    for (const line of mine) {
+        assert.ok(!line.includes(KEY), 'api key in log');
+        for (const session of sessions) assert.ok(!line.includes(session), 'session token in log');
+    }
+    assert.ok(mine.some(l => l.includes('/snapshot?layer=') && l.includes('api=***')), 'the failing lookup is logged with the key redacted');
+
+    const audit = mine.filter(l => l.startsWith('{') && l.includes('"type":"weather"')).map(l => JSON.parse(l));
+    const served = audit.filter(a => a.status === 200);
+    assert.ok(served.length >= 2);
+    for (const line of served) {
+        assert.equal(line.snapshot, LATEST);
+        assert.equal(line.immutable, true);
+        assert.ok(!('token' in line) && !('api' in line));
+    }
+    const refused = audit.find(a => a.status === 400);
+    assert.ok(refused);
+    assert.equal(refused.immutable, false);
 });
 
 test('stop upstream weather proxy', async () => {

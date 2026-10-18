@@ -5,6 +5,8 @@ import { FixedWindowLimiter } from './relay-limiter.js';
 import { TileCache, SingleFlight } from './relay-cache.js';
 import type { TileType } from './relay-cache.js';
 import { upstreamAllowForTests, __resetWarned } from './relay-config.js';
+import type { WeatherLayer } from './relay-request.js';
+import type { LayerLatest } from './relay-snapshot.js';
 
 export { upstreamAllowForTests };
 export type { TileType };
@@ -13,6 +15,9 @@ const pkg = JSON.parse(String(fs.readFileSync(new URL('../../../package.json', i
 
 export const UPSTREAM_TIMEOUT_MS = 8000;
 export const MAX_TILE_BYTES = 1024 * 1024;
+export const MAX_JSON_BYTES = 4096;
+/** How long the relay waits for the newest snapshot of a layer before it uses the computed one */
+export const LATEST_BUDGET_MS = 2500;
 export const UNAVAILABLE = 'Weather upstream unavailable';
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
@@ -34,6 +39,8 @@ export interface UpstreamResponse {
     error: boolean;
     cacheControl: string | null;
     retryAfterS: number | null;
+    /** `X-Weather-Snapshot` of the answer (the snapshot the proxy served), or null when absent or malformed */
+    snapshot: number | null;
 }
 
 export interface FlightResult {
@@ -41,6 +48,15 @@ export interface FlightResult {
     contentType: TileType;
     /** True when the tile is a transient fallback that must only be cached briefly by the client */
     short: boolean;
+    /** True when the proxy confirmed the snapshot, so the tile never changes */
+    immutable: boolean;
+}
+
+export interface RelayOptions {
+    now?: () => number;
+    upstreamTimeoutMs?: number;
+    cacheMaxBytes?: number;
+    latestBudgetMs?: number;
 }
 
 export interface RelayRuntime {
@@ -57,11 +73,16 @@ export interface RelayRuntime {
     cache: TileCache;
     flights: SingleFlight<FlightResult>;
     logged: Map<string, number>;
+    /** Newest snapshot per layer as reported by the proxy, cached for 30 s */
+    latest: Map<WeatherLayer, { value: LayerLatest; expires: number }>;
+    latestFlights: SingleFlight<LayerLatest>;
+    /** Longest wait for a newest-snapshot lookup before the computed value is used */
+    latestBudgetMs: number;
     /** Epoch ms until which no cache miss may call the weather proxy (0 = not paused). Per process. */
     pausedUntil: number;
 }
 
-function create(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMaxBytes?: number }): RelayRuntime {
+function create(opts: RelayOptions): RelayRuntime {
     const runtime: RelayRuntime = {
         now: opts.now ?? (() => Date.now()),
         upstreamTimeoutMs: opts.upstreamTimeoutMs ?? UPSTREAM_TIMEOUT_MS,
@@ -72,6 +93,9 @@ function create(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMax
         cache: undefined as unknown as TileCache,
         flights: new SingleFlight<FlightResult>(),
         logged: new Map(),
+        latest: new Map(),
+        latestFlights: new SingleFlight<LayerLatest>(),
+        latestBudgetMs: opts.latestBudgetMs ?? LATEST_BUDGET_MS,
         pausedUntil: 0,
     };
 
@@ -88,10 +112,10 @@ function create(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMax
 export const relay: RelayRuntime = create({});
 
 /**
- * Test hook: replace all limiters, the cache, the single-flight map and the
+ * Test hook: replace all limiters, the caches, the single-flight maps and the
  * warning memory. Production code never calls this.
  */
-export function __resetForTests(opts: { now?: () => number; upstreamTimeoutMs?: number; cacheMaxBytes?: number } = {}): void {
+export function __resetForTests(opts: RelayOptions = {}): void {
     for (const limiter of [relay.tile, relay.miss, relay.task, relay.status]) limiter.stop();
 
     Object.assign(relay, create(opts));
@@ -182,7 +206,12 @@ function parseRetryAfter(raw: string | null): number | null {
     return Number(raw.trim());
 }
 
-async function readBody(res: { body: ReadableStream<Uint8Array> | null }): Promise<Buffer | null> {
+function parseSnapshotHeader(raw: string | null): number | null {
+    if (raw === null || !/^[0-9]{1,12}$/.test(raw.trim())) return null;
+    return Number(raw.trim());
+}
+
+async function readBody(res: { body: ReadableStream<Uint8Array> | null }, maxBytes = MAX_TILE_BYTES): Promise<Buffer | null> {
     if (!res.body) return Buffer.alloc(0);
 
     const reader = res.body.getReader();
@@ -194,7 +223,7 @@ async function readBody(res: { body: ReadableStream<Uint8Array> | null }): Promi
         if (done) break;
 
         total += value.byteLength;
-        if (total > MAX_TILE_BYTES) {
+        if (total > maxBytes) {
             await reader.cancel().catch(() => undefined);
             return null;
         }
@@ -243,6 +272,7 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
         error: headers.has('x-weather-error'),
         cacheControl: headers.get('cache-control'),
         retryAfterS: parseRetryAfter(headers.get('retry-after')),
+        snapshot: parseSnapshotHeader(headers.get('x-weather-snapshot')),
     };
 
     if (res.status >= 300 && res.status < 400) {
@@ -275,4 +305,62 @@ export async function fetchUpstream(url: URL, agent = `CloudTAK/${pkg.version}`)
     result.contentType = type;
     result.body = body;
     return result;
+}
+
+/**
+ * Fetch a small JSON document from the weather proxy (the snapshot endpoint).
+ *
+ * Uses the same SSRF-safe fetch, timeout and redirect rules as `fetchUpstream`.
+ * Returns the status for every answer; `json` is null unless the status is 200
+ * and the body (at most 4096 bytes) is valid JSON. Throws a 502 for network
+ * errors, timeouts, SSRF blocks and redirects. The URL carries the API key and
+ * is only ever logged through `redactUrl`.
+ */
+export async function fetchJsonUpstream(
+    url: URL,
+    agent = `CloudTAK/${pkg.version}`,
+): Promise<{ status: number; json: unknown | null; retryAfterS: number | null }> {
+    let res;
+    try {
+        res = await fetch(url, {
+            headers: {
+                'user-agent': agent,
+                'accept': 'application/json',
+            },
+            redirect: 'manual',
+            timeout: relay.upstreamTimeoutMs,
+            safeUrlAllow: upstreamAllowForTests,
+        });
+    } catch (err) {
+        const name = err instanceof Error ? err.name : 'Error';
+        const status = err instanceof Err ? `blocked ${err.status}` : name;
+        throw unavailable(url, status);
+    }
+
+    const retryAfterS = parseRetryAfter(res.headers.get('retry-after'));
+
+    if (res.status >= 300 && res.status < 400) {
+        await res.body?.cancel().catch(() => undefined);
+        throw unavailable(url, `redirect ${res.status}`);
+    }
+
+    if (res.status !== 200) {
+        await res.body?.cancel().catch(() => undefined);
+        return { status: res.status, json: null, retryAfterS };
+    }
+
+    let body: Buffer | null;
+    try {
+        body = await readBody(res as unknown as { body: ReadableStream<Uint8Array> | null }, MAX_JSON_BYTES);
+    } catch (err) {
+        throw unavailable(url, err instanceof Error ? err.name : 'body');
+    }
+
+    if (body === null) return { status: 200, json: null, retryAfterS };
+
+    try {
+        return { status: 200, json: JSON.parse(body.toString('utf8')) as unknown, retryAfterS };
+    } catch {
+        return { status: 200, json: null, retryAfterS };
+    }
 }

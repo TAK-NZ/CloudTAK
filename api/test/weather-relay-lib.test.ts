@@ -1,24 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import http from 'node:http';
 import { getRelayConfig, upstreamAllowForTests, __resetWarned } from '../stateless/lib/weather/relay-config.js';
 import {
+    SNAPSHOT_WINDOW_S,
     buildUpstreamUrl,
+    effectiveSnapshot,
     latestSnapshot,
     parseTileRequest,
     tileCacheKey,
 } from '../stateless/lib/weather/relay-request.js';
 import { FixedWindowLimiter } from '../stateless/lib/weather/relay-limiter.js';
-import { TileCache, SingleFlight } from '../stateless/lib/weather/relay-cache.js';
+import {
+    DEFAULT_MAX_AGE_S,
+    DEFAULT_TTL_MS,
+    IMMUTABLE_MAX_AGE_S,
+    IMMUTABLE_TTL_MS,
+    TileCache,
+    SingleFlight,
+    tileLifetime,
+} from '../stateless/lib/weather/relay-cache.js';
+import {
+    LATEST_TTL_MS,
+    buildSnapshotUrl,
+    computedLatest,
+    parseSnapshotResponse,
+    resolveLatest,
+    statusLatest,
+} from '../stateless/lib/weather/relay-snapshot.js';
 import { riff, webp } from './weather-images.js';
 import {
     PAUSE_DEFAULT_S,
     PAUSE_MAX_S,
     PAUSE_MIN_S,
     __resetForTests,
+    fetchJsonUpstream,
     pauseUpstream,
     redactUrl,
     relay,
     sniffImageType,
+    upstreamAllowForTests as allowForTests,
     upstreamPausedFor,
 } from '../stateless/lib/weather/relay-upstream.js';
 
@@ -99,13 +120,63 @@ test('parseTileRequest: snapshot', () => {
     assert.equal(parse({}, `layer=precip&snapshot=${LATEST}`).snapshot, LATEST);
     assert.equal(parse({}, `layer=precip&snapshot=${LATEST - 7200}`).snapshot, LATEST - 7200);
 
+    // Newer than the newest is served as the newest, older than the window is refused
+    assert.equal(parse({}, `layer=precip&snapshot=${LATEST + 600}`).snapshot, LATEST);
+    assert.equal(parse({}, `layer=precip&snapshot=${LATEST + 6000}`).snapshot, LATEST);
     rejects({}, `layer=precip&snapshot=${LATEST - 7800}`);
-    rejects({}, `layer=precip&snapshot=${LATEST + 600}`);
+    rejects({}, `layer=precip&snapshot=${LATEST - 7200 - 600}`);
     rejects({}, `layer=precip&snapshot=${LATEST - 1}`);
     rejects({}, 'layer=precip&snapshot=179999940');
     rejects({}, 'layer=precip&snapshot=abc');
     rejects({}, 'layer=precip&snapshot=');
     rejects({}, `layer=precip&snapshot=${LATEST}0`);
+});
+
+test('effectiveSnapshot: clamps newer, refuses older than the window, never echoes', () => {
+    assert.equal(SNAPSHOT_WINDOW_S, 7200);
+    assert.equal(effectiveSnapshot(null, LATEST), LATEST);
+    assert.equal(effectiveSnapshot(LATEST, LATEST), LATEST);
+    assert.equal(effectiveSnapshot(LATEST - 600, LATEST), LATEST - 600);
+    assert.equal(effectiveSnapshot(LATEST - 7200, LATEST), LATEST - 7200);
+    assert.equal(effectiveSnapshot(LATEST + 600, LATEST), LATEST);
+    assert.equal(effectiveSnapshot(LATEST + 600000, LATEST), LATEST);
+
+    for (const requested of [LATEST - 7201, LATEST - 7800, 600]) {
+        assert.throws(
+            () => effectiveSnapshot(requested, LATEST),
+            (err: { status?: number; message?: string }) => err.status === 400
+                && err.message === 'snapshot out of range'
+                && !String(err.message).includes(String(requested)),
+            String(requested),
+        );
+    }
+});
+
+test('parseTileRequest: the window follows the latest of the layer', () => {
+    const lagging = LATEST - 600;
+    const latestFor = (layer: string) => layer === 'clouds' ? lagging : LATEST;
+    const clouds = (query: string) => parseTileRequest({ z: 4, x: 3, y: 5 }, new URLSearchParams(query), NOW_S, latestFor);
+
+    assert.equal(clouds('layer=clouds').snapshot, lagging);
+    assert.equal(clouds('layer=clouds&snapshot=latest').snapshot, lagging);
+    assert.equal(clouds(`layer=clouds&snapshot=${LATEST}`).snapshot, lagging);
+    assert.equal(clouds(`layer=clouds&snapshot=${lagging}`).snapshot, lagging);
+    assert.equal(clouds(`layer=clouds&snapshot=${lagging - 7200}`).snapshot, lagging - 7200);
+    assert.throws(() => clouds(`layer=clouds&snapshot=${lagging - 7800}`), (err: { status?: number }) => err.status === 400);
+
+    // Other layers keep their own window
+    assert.equal(clouds('layer=precip').snapshot, LATEST);
+    assert.equal(clouds(`layer=precip&snapshot=${LATEST - 7200}`).snapshot, LATEST - 7200);
+    assert.throws(() => clouds(`layer=precip&snapshot=${LATEST - 7800}`), (err: { status?: number }) => err.status === 400);
+
+    // Format errors still win over the window
+    assert.throws(() => clouds('layer=clouds&snapshot=abc'), (err: { message?: string }) => err.message === 'Invalid snapshot');
+
+    // Both requested snapshots share one cache key and one upstream URL
+    const a = clouds(`layer=clouds&snapshot=${LATEST}`);
+    const b = clouds(`layer=clouds&snapshot=${lagging}`);
+    assert.equal(tileCacheKey(a), tileCacheKey(b));
+    assert.equal(buildUpstreamUrl('https://u.example.com/w', a, KEY).toString(), buildUpstreamUrl('https://u.example.com/w', b, KEY).toString());
 });
 
 test('parseTileRequest: size, color, coverage, use_precip_type', () => {
@@ -326,6 +397,75 @@ test('TileCache: per entry cap', () => {
     assert.equal(defaults.maxEntryBytes, 1024 * 1024);
 });
 
+test('TileCache: a per entry TTL outlives the default and reports immutable', () => {
+    let now = 0;
+    const cache = new TileCache({ ttlMs: 1000, now: () => now });
+    cache.set('short', Buffer.from('s'), 'image/png');
+    cache.set('long', Buffer.from('l'), 'image/png', { ttlMs: 5000, immutable: true });
+    cache.set('plain', Buffer.from('p'), 'image/png', { ttlMs: 5000 });
+
+    assert.equal(cache.get('short')?.immutable, false);
+    assert.equal(cache.get('long')?.immutable, true);
+    assert.equal(cache.get('plain')?.immutable, false);
+
+    now = 1000;
+    assert.equal(cache.get('short'), undefined);
+    assert.equal(cache.get('long')?.body.toString(), 'l');
+
+    now = 4999;
+    assert.ok(cache.get('long'));
+    now = 5000;
+    assert.equal(cache.get('long'), undefined);
+    assert.equal(cache.bytes, 1, 'only the plain entry is left');
+
+    // Replacing an entry resets its flag and lifetime
+    cache.set('plain', Buffer.from('p'), 'image/png');
+    assert.equal(cache.get('plain')?.immutable, false);
+    now = 6000;
+    assert.equal(cache.get('plain'), undefined);
+});
+
+test('TileCache: LRU still evicts under the byte cap with 7200 s entries', () => {
+    const cache = new TileCache({ maxBytes: 300, maxEntryBytes: 300 });
+    for (let i = 0; i < 5; i++) {
+        assert.equal(cache.set(`k${i}`, Buffer.alloc(100), 'image/png', { ttlMs: IMMUTABLE_TTL_MS, immutable: true }), true);
+        assert.ok(cache.bytes <= cache.maxBytes);
+    }
+
+    assert.equal(cache.size, 3);
+    assert.equal(cache.get('k0'), undefined);
+    assert.equal(cache.get('k1'), undefined);
+    for (const key of ['k2', 'k3', 'k4']) assert.equal(cache.get(key)?.immutable, true, key);
+    assert.equal(cache.bytes, 300);
+});
+
+test('tileLifetime: immutable only when the proxy confirms the effective snapshot', () => {
+    assert.equal(IMMUTABLE_TTL_MS, 7200 * 1000);
+    assert.equal(IMMUTABLE_MAX_AGE_S, 3600);
+    assert.equal(DEFAULT_TTL_MS, 600 * 1000);
+    assert.equal(DEFAULT_MAX_AGE_S, 600);
+
+    const base: { effective: number; upstream: number | null; fallback: boolean; error: boolean; cacheable: boolean } = {
+        effective: LATEST, upstream: LATEST, fallback: false, error: false, cacheable: true,
+    };
+    const immutable = { immutable: true, ttlMs: 7_200_000, maxAge: 3600 };
+    const normal = { immutable: false, ttlMs: 600_000, maxAge: 600 };
+
+    const rows: Array<[string, Partial<typeof base>, typeof immutable]> = [
+        ['header equals the effective snapshot', {}, immutable],
+        ['header absent (older proxy)', { upstream: null }, normal],
+        ['header older (proxy stepped back)', { upstream: LATEST - 600 }, normal],
+        ['header newer', { upstream: LATEST + 600 }, normal],
+        ['fallback', { fallback: true }, normal],
+        ['error tile', { error: true }, normal],
+        ['not cacheable', { cacheable: false }, normal],
+    ];
+
+    for (const [name, change, expected] of rows) {
+        assert.deepEqual(tileLifetime({ ...base, ...change }), expected, name);
+    }
+});
+
 test('TileCache: remembers the content type', () => {
     let now = 0;
     const cache = new TileCache({ ttlMs: 1000, now: () => now });
@@ -342,6 +482,192 @@ test('TileCache: remembers the content type', () => {
     now = 1000;
     assert.equal(cache.get('png'), undefined);
     assert.equal(cache.get('webp'), undefined);
+});
+
+test('buildSnapshotUrl: exact URL, key encoded, no provider', () => {
+    const base = 'https://utils.example.com/weather';
+    const url = buildSnapshotUrl(base, 'clouds', KEY);
+    assert.equal(url.toString(), `${base}/snapshot?layer=clouds&api=${KEY}`);
+    assert.ok(!url.toString().includes('provider'));
+
+    const odd = buildSnapshotUrl(base, 'precip-global', 'a b&c=d~._-1234567');
+    assert.equal(odd.toString(), `${base}/snapshot?layer=precip-global&api=a%20b%26c%3Dd~._-1234567`);
+    assert.equal(odd.searchParams.get('api'), 'a b&c=d~._-1234567');
+});
+
+test('computedLatest and parseSnapshotResponse: accepts a valid answer', () => {
+    assert.deepEqual(computedLatest(NOW_S), { snapshot: LATEST, source: 'computed' });
+
+    assert.deepEqual(parseSnapshotResponse({ snapshot: LATEST, source: 'rainbow' }, NOW_S), { snapshot: LATEST, source: 'rainbow' });
+    assert.deepEqual(parseSnapshotResponse({ snapshot: LATEST, source: 'computed' }, NOW_S), { snapshot: LATEST, source: 'computed' });
+
+    // source defaults to rainbow; the current step and the oldest step of the window are fine
+    assert.deepEqual(parseSnapshotResponse({ snapshot: LATEST + 600 }, NOW_S), { snapshot: LATEST + 600, source: 'rainbow' });
+    assert.equal(parseSnapshotResponse({ snapshot: LATEST - 7200 }, NOW_S)?.snapshot, LATEST - 7200);
+
+    // Unknown fields are ignored and never copied
+    const extra = parseSnapshotResponse({ snapshot: LATEST, source: 'rainbow', layer: 'clouds', secret: 'SECRETVALUE' }, NOW_S);
+    assert.deepEqual(extra, { snapshot: LATEST, source: 'rainbow' });
+});
+
+test('parseSnapshotResponse: rejects everything else', () => {
+    const bad: unknown[] = [
+        null, undefined, 'x', 7, [], [{ snapshot: LATEST }], {},
+        { snapshot: String(LATEST) },
+        { snapshot: LATEST + 0.5 },
+        { snapshot: LATEST + 1 },
+        { snapshot: LATEST - 7800 },
+        { snapshot: LATEST - 7200 - 600 },
+        { snapshot: LATEST + 1200 },
+        { snapshot: null },
+        { snapshot: NaN },
+        { snapshot: LATEST, source: 'rainviewer' },
+        { snapshot: LATEST, source: null },
+        { snapshot: LATEST, source: 1 },
+    ];
+
+    for (const json of bad) assert.equal(parseSnapshotResponse(json, NOW_S), null, JSON.stringify(json));
+});
+
+test('fetchJsonUpstream, resolveLatest and statusLatest against a local proxy', async () => {
+    const hits: string[] = [];
+    let mode: 'ok' | '404' | '429' | 'big' | 'text' | '302' | 'slow' = 'ok';
+
+    const server = http.createServer((req, res) => {
+        hits.push(String(req.url));
+        const respond = () => {
+            switch (mode) {
+                case 'ok':
+                    res.writeHead(200, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify({ snapshot: LATEST - 600, source: 'rainbow' }));
+                    return;
+                case 'big':
+                    res.writeHead(200, { 'content-type': 'application/json' });
+                    res.end(JSON.stringify({ snapshot: LATEST, pad: 'x'.repeat(5000) }));
+                    return;
+                case 'text':
+                    res.writeHead(200, { 'content-type': 'text/plain' });
+                    res.end('not json');
+                    return;
+                case '302':
+                    res.writeHead(302, { location: '/elsewhere' });
+                    res.end();
+                    return;
+                case '429':
+                    res.writeHead(429, { 'retry-after': '9' });
+                    res.end('{}');
+                    return;
+                default:
+                    res.writeHead(Number(mode) || 200, { 'content-type': 'application/json' });
+                    res.end('{}');
+            }
+        };
+
+        if (mode === 'slow') {
+            setTimeout(respond, 400);
+            mode = 'ok';
+        } else {
+            respond();
+        }
+    });
+
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('no address');
+    const origin = `http://127.0.0.1:${address.port}`;
+    allowForTests.push(origin);
+
+    const quiet = console.warn;
+    console.warn = () => undefined;
+
+    try {
+        let now = NOW_S * 1000;
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        const cfg = { baseUrl: `${origin}/w`, key: KEY };
+        const url = buildSnapshotUrl(cfg.baseUrl, 'clouds', KEY);
+
+        assert.deepEqual(await fetchJsonUpstream(url), { status: 200, json: { snapshot: LATEST - 600, source: 'rainbow' }, retryAfterS: null });
+        assert.equal(hits[0], `/w/snapshot?layer=clouds&api=${KEY}`);
+
+        mode = '404';
+        assert.deepEqual(await fetchJsonUpstream(url), { status: 404, json: null, retryAfterS: null });
+        mode = '429';
+        assert.deepEqual(await fetchJsonUpstream(url), { status: 429, json: null, retryAfterS: 9 });
+        mode = 'big';
+        assert.deepEqual(await fetchJsonUpstream(url), { status: 200, json: null, retryAfterS: null }, 'more than 4096 bytes');
+        mode = 'text';
+        assert.deepEqual(await fetchJsonUpstream(url), { status: 200, json: null, retryAfterS: null });
+        mode = '302';
+        await assert.rejects(fetchJsonUpstream(url), (err: { status?: number; message?: string }) => err.status === 502 && err.message === 'Weather upstream unavailable');
+
+        // resolveLatest: a good answer is cached for 30 s and shared by concurrent callers
+        mode = 'ok';
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        hits.length = 0;
+        const results = await Promise.all(Array.from({ length: 5 }, () => resolveLatest('clouds', cfg, 'agent')));
+        assert.equal(hits.length, 1, 'single flight');
+        for (const r of results) assert.deepEqual(r, { snapshot: LATEST - 600, source: 'rainbow' });
+
+        await resolveLatest('clouds', cfg, 'agent');
+        assert.equal(hits.length, 1, 'cached');
+        now += LATEST_TTL_MS - 1;
+        await resolveLatest('clouds', cfg, 'agent');
+        assert.equal(hits.length, 1, 'still cached after 29.999 s');
+        now += 1;
+        await resolveLatest('clouds', cfg, 'agent');
+        assert.equal(hits.length, 2, 'refetched after 30 s');
+
+        // A failure gives the computed snapshot and is cached as well
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        hits.length = 0;
+        mode = '404';
+        const computed = { snapshot: latestSnapshot(Math.floor(now / 1000)), source: 'computed' };
+        assert.deepEqual(await resolveLatest('radars', cfg, 'agent'), computed);
+        mode = 'ok';
+        assert.deepEqual(await resolveLatest('radars', cfg, 'agent'), computed);
+        assert.equal(hits.length, 1);
+
+        // A 429 pauses the upstream; while paused the proxy is not asked and nothing is cached
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        hits.length = 0;
+        mode = '429';
+        assert.equal((await resolveLatest('precip', cfg, 'agent')).source, 'computed');
+        assert.equal(upstreamPausedFor(), 9);
+        mode = 'ok';
+        assert.equal((await resolveLatest('precip-global', cfg, 'agent')).source, 'computed');
+        assert.equal(hits.length, 1, 'no call while paused');
+
+        // The budget: a slow proxy does not hold the caller longer than latestBudgetMs
+        __resetForTests({ now: () => now, latestBudgetMs: 100 });
+        hits.length = 0;
+        mode = 'slow';
+        const started = Date.now();
+        assert.equal((await resolveLatest('clouds', cfg, 'agent')).source, 'computed');
+        assert.ok(Date.now() - started < 350, 'returned before the slow answer');
+
+        // The lookup keeps running and fills the cache for the next caller
+        await new Promise(resolve => setTimeout(resolve, 450));
+        assert.deepEqual(await resolveLatest('clouds', cfg, 'agent'), { snapshot: LATEST - 600, source: 'rainbow' });
+        assert.equal(hits.length, 1);
+
+        // statusLatest asks every layer once and never throws
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        hits.length = 0;
+        mode = 'ok';
+        const all = await statusLatest(cfg, 'agent');
+        assert.deepEqual(Object.keys(all), ['precip', 'precip-global', 'clouds', 'radars']);
+        assert.equal(hits.length, 4);
+
+        __resetForTests({ now: () => now, latestBudgetMs: 150 });
+        const dead = await statusLatest({ baseUrl: 'https://127.0.0.1:1/w', key: KEY }, 'agent');
+        assert.equal(dead.clouds.source, 'computed');
+    } finally {
+        console.warn = quiet;
+        allowForTests.length = 0;
+        server.closeAllConnections();
+        await new Promise<void>(resolve => server.close(() => resolve()));
+        __resetForTests();
+    }
 });
 
 test('sniffImageType: PNG and WebP by magic bytes', () => {
