@@ -118,10 +118,12 @@ forecast) and a Play button. Tiles come from the weather-proxy through a CloudTA
   for 5 to 120 s; cached tiles are still served and uncached tiles get `429` with `Retry-After`.
 - **Snapshots and caching:** `GET /api/weather/status` also reports the newest snapshot per layer
   (`latest`), read from the weather-proxy's `/snapshot` endpoint (cached 30 s; an older proxy
-  without it is tolerated and the clock-based value is used). Tiles that the proxy confirms for the
-  requested snapshot are cached 7200 s at the relay and 3600 s in the browser; all others keep 600 s.
+  without it is tolerated and the clock-based value is used). Tiles that the proxy confirms for an
+  explicitly requested (pinned) snapshot are cached 7200 s at the relay and 3600 s in the browser;
+  requests without a snapshot, with `snapshot=latest` or clamped to a lagging layer, and all other
+  tiles keep 600 s.
 - **Cost of one Play pass:** one pass is `13 frames x visible tiles x layers` uncached upstream
-  fetches (37 frames with "Include forecast when playing"). Measured in a real browser with 512 px
+  fetches (37 frames for Rain layers, because "Include forecast when playing" is on by default; Clouds and Radar always use 13). Measured in a real browser with 512 px
   tiles: about 20 tiles per layer and frame on a 1900 x 1400 screen (about 48 with Sharper 256 px
   tiles) and 2 tiles on a 390 x 844 phone (8 with Sharper). Three layers on a desktop screen are
   therefore about 780 fetches in the first pass, above the 500 fetches per minute per task cap, so
