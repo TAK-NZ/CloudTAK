@@ -126,9 +126,14 @@ forecast) and a Play button. Tiles come from the weather-proxy through a CloudTA
   fetches (37 frames for Rain layers, because "Include forecast when playing" is on by default; Clouds and Radar always use 13). Measured in a real browser with 512 px
   tiles: about 20 tiles per layer and frame on a 1900 x 1400 screen (about 48 with Sharper 256 px
   tiles) and 2 tiles on a 390 x 844 phone (8 with Sharper). Three layers on a desktop screen are
-  therefore about 780 fetches in the first pass, above the 500 fetches per minute per task cap, so
-  Play pauses on the 429 and resumes (by itself after at most a minute, or when the user presses
-  Play). A phone needs about 80. The second pass over the same frames made no request to the
+  therefore about 780 fetches for the past frames (about 1,260 with the forecast), above the 500
+  fetches per minute per task cap. The plugin therefore paces the first pass to about 180 tiles a
+  minute (a burst of 90, so no 60 s window holds more than 270): with Clouds, Rain Regional and
+  Radar and the forecast on, a 1900 x 1400 screen needs about 6.5 minutes for the first pass and
+  made no request that was answered 429 in the measurement. Several layers with Sharper tiles can
+  still exceed the limits; Play then pauses on the 429 and resumes (by itself after at most a
+  minute, or when the user presses Play). A phone needs about 80, which fits into the burst. The
+  second pass over the same frames made no request to the
   relay in the measurement (browser cache, 3600 s); other users are served from the relay cache
   (up to 7200 s). The limits are unchanged (900 tile requests per user and minute, 500 upstream
   fetches per task and minute).
