@@ -97,7 +97,8 @@ the `WEB_PLUGINS` build arg. This repo sets it from CDK config.
 
 ### **Weather plugin (cloudtak-plugin-weather)**
 Adds a weather button under the 3D terrain button in the map's left controls; it opens a bottom
-bar with rain, global rain, cloud and radar layers and a forecast slider. Tiles come from the weather-proxy through a CloudTAK API relay
+bar with rain, global rain, cloud and radar layers, a timeline slider (the last 2 hours and the rain
+forecast) and a Play button. Tiles come from the weather-proxy through a CloudTAK API relay
 (`/api/weather`), so browsers never see the proxy URL or key.
 
 | Variable | Required | Rule |
@@ -115,6 +116,15 @@ bar with rain, global rain, cloud and radar layers and a forecast slider. Tiles 
 - **Upstream limits:** each API task makes at most 500 weather-proxy fetches a minute (the
   proxy allows 600 per client IP). After a 429 from the proxy the task pauses upstream fetches
   for 5 to 120 s; cached tiles are still served and uncached tiles get `429` with `Retry-After`.
+- **Snapshots and caching:** `GET /api/weather/status` also reports the newest snapshot per layer
+  (`latest`), read from the weather-proxy's `/snapshot` endpoint (cached 30 s; an older proxy
+  without it is tolerated and the clock-based value is used). Tiles that the proxy confirms for the
+  requested snapshot are cached 7200 s at the relay and 3600 s in the browser; all others keep 600 s.
+- **Cost of one Play pass:** one pass is about `13 frames x visible tiles x layers` uncached upstream
+  fetches. With roughly 20 visible tiles and three layers that is about 800, which can exceed the
+  500 fetches per minute per task cap on the first pass; Play then pauses on the 429 and resumes.
+  Repeat passes are served from the relay cache (up to 7200 s) and the browser cache (3600 s). The
+  limits are unchanged (900 tile requests per user and minute, 500 upstream fetches per task and minute).
 - **Tile formats:** tiles are PNG, except `clouds` tiles, which are WebP. The relay detects the
   format from the image bytes and sets the `Content-Type`, so no weather-proxy change is needed.
 - **Restart:** values are read at request time but injected when the task starts. After

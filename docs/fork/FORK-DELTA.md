@@ -359,6 +359,23 @@ fetches tiles from the weather-proxy with a server-side key.
   the weather-proxy labels every tile `image/png`, so the relay checks the image bytes (PNG or
   WebP), sends the detected `Content-Type` (the route path keeps `.png`) and answers 502 for
   anything else.
+- **Snapshots.** `relay-snapshot.ts` (new) asks the proxy's `GET /snapshot?layer=` for the newest
+  snapshot of each layer (Rainbow publishes `clouds` later than rain). `GET /api/weather/status`
+  keeps its five fields and adds `latest` (`{snapshot, source: 'rainbow' | 'computed'}` per layer,
+  omitted when the relay is disabled), `stepSeconds: 600` and `windowSeconds: 7200`. The lookup is
+  cached 30 s per layer, shared by concurrent callers, skipped while the upstream is paused, and
+  waits at most 2.5 s; any failure (older proxy answering 404, 400, 5xx, bad JSON, timeout) gives
+  `source: 'computed'` and the status still answers 200. The tile route accepts a snapshot from
+  `latest - 7200` up to any newer value: a newer one is served as the layer's latest, an older one
+  is `400 snapshot out of range`. The cache key holds the effective snapshot, so a client clock
+  that runs ahead of a lagging layer shares one cache entry and one upstream call.
+- **Cache policy.** A tile whose upstream `X-Weather-Snapshot` equals the effective snapshot (and
+  that is not a fallback, error or `no-store` answer) is immutable: relay TTL 7200 s and
+  `Cache-Control: private, max-age=3600`. Without the header (older proxy) or with a different
+  value the TTL stays 600 s with `max-age=600`; fallback tiles are not cached at the relay and get
+  `max-age=30`. An upstream `400` is now answered as `400` (was `502`). The audit log line also
+  has `snapshot` and `immutable`. Upstream-owned files are untouched; the schema fixture does not
+  change because the new status fields are optional response fields.
 - **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two weather keys,
   because `schema.srv.test.ts` deep-equals it against `GET /api/schema`. **On sync:**
   re-run that test with `UPDATE=1` and keep upstream's keys.
