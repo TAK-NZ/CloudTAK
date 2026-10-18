@@ -344,6 +344,8 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#installing-cloudtak-plugins-web_plugins)
 for how to use it.
 
+Plugins that put controls at the bottom of the map share one convention so their bars do not cover each other (yield, minimize, selector dot). See [`PLUGIN-PANELS.md`](PLUGIN-PANELS.md).
+
 ### Weather plugin relay (`/api/weather`)
 `api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
 `api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`, `api/test/weather-images.ts`,
