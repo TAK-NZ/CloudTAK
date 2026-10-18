@@ -18,20 +18,23 @@ export const DEFAULT_MAX_AGE_S = 600;
 /**
  * How long a tile may be cached.
  *
- * A tile is immutable when the weather-proxy reports, in `X-Weather-Snapshot`,
- * the very snapshot the relay asked for, and the answer is neither a fallback
- * nor an error tile and the proxy allows caching. A missing header (older
- * proxy) or a different value (the proxy stepped back or clamped) keeps the
- * short lifetime.
+ * A tile is immutable when the request pinned an explicit snapshot that is the
+ * effective one (not `latest`, not absent, not clamped to the layer's newest),
+ * the weather-proxy reports, in `X-Weather-Snapshot`, that very snapshot, and
+ * the answer is neither a fallback nor an error tile and the proxy allows
+ * caching. An unpinned or clamped request, a missing header (older proxy) or a
+ * different value (the proxy stepped back) keeps the short lifetime.
  */
 export function tileLifetime(input: {
     effective: number;
+    pinned: boolean;
     upstream: number | null;
     fallback: boolean;
     error: boolean;
     cacheable: boolean;
 }): { immutable: boolean; ttlMs: number; maxAge: number } {
-    const immutable = input.upstream !== null
+    const immutable = input.pinned
+        && input.upstream !== null
         && input.upstream === input.effective
         && !input.fallback
         && !input.error

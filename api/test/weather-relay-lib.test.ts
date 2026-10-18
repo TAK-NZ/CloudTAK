@@ -439,20 +439,21 @@ test('TileCache: LRU still evicts under the byte cap with 7200 s entries', () =>
     assert.equal(cache.bytes, 300);
 });
 
-test('tileLifetime: immutable only when the proxy confirms the effective snapshot', () => {
+test('tileLifetime: immutable only for a pinned snapshot the proxy confirms', () => {
     assert.equal(IMMUTABLE_TTL_MS, 7200 * 1000);
     assert.equal(IMMUTABLE_MAX_AGE_S, 3600);
     assert.equal(DEFAULT_TTL_MS, 600 * 1000);
     assert.equal(DEFAULT_MAX_AGE_S, 600);
 
-    const base: { effective: number; upstream: number | null; fallback: boolean; error: boolean; cacheable: boolean } = {
-        effective: LATEST, upstream: LATEST, fallback: false, error: false, cacheable: true,
+    const base: { effective: number; pinned: boolean; upstream: number | null; fallback: boolean; error: boolean; cacheable: boolean } = {
+        effective: LATEST, pinned: true, upstream: LATEST, fallback: false, error: false, cacheable: true,
     };
     const immutable = { immutable: true, ttlMs: 7_200_000, maxAge: 3600 };
     const normal = { immutable: false, ttlMs: 600_000, maxAge: 600 };
 
     const rows: Array<[string, Partial<typeof base>, typeof immutable]> = [
         ['header equals the effective snapshot', {}, immutable],
+        ['not pinned (no snapshot, latest or clamped)', { pinned: false }, normal],
         ['header absent (older proxy)', { upstream: null }, normal],
         ['header older (proxy stepped back)', { upstream: LATEST - 600 }, normal],
         ['header newer', { upstream: LATEST + 600 }, normal],

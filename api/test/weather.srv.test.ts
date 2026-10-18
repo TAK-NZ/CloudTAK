@@ -1329,7 +1329,7 @@ test('22. a proxy 400 is a 400 for the client and is never cached', async () => 
     assert.equal(ok.headers.get('x-weather-cache'), 'miss');
 });
 
-test('23. tiles the proxy confirms for the effective snapshot are cached for two hours', async () => {
+test('23. pinned tiles the proxy confirms for the effective snapshot are cached for two hours', async () => {
     fresh();
     echoSnapshot = 'on';
     // Keep the layers where they are while the test clock moves
@@ -1365,7 +1365,7 @@ test('23. tiles the proxy confirms for the effective snapshot are cached for two
     fresh();
     echoSnapshot = 'on';
     delayMs = 100;
-    const shared = await Promise.all(Array.from({ length: 4 }, () => tile('layer=clouds')));
+    const shared = await Promise.all(Array.from({ length: 4 }, () => tile(`layer=clouds&snapshot=${LATEST}`)));
     for (const res of shared) {
         assertPng(res);
         assert.equal(res.headers.get('cache-control'), 'private, max-age=3600');
@@ -1423,6 +1423,102 @@ test('23b. everything else keeps the ten minute lifetime', async () => {
     assertError(await tile('layer=precip', { x: 9 }), 502, 'Weather upstream unavailable');
 });
 
+test('23c. a request that does not name its snapshot, or is clamped to a lagging layer, keeps the ten minute lifetime', async () => {
+    // Clouds lag one step behind the other layers
+    fresh();
+    echoSnapshot = 'on';
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST - 600, 'radars': LATEST };
+
+    // snapshot=LATEST is newer than the layer's newest, so it is served as LATEST - 600: not pinned
+    const clamped = `layer=clouds&snapshot=${LATEST}`;
+    const first = await tile(clamped);
+    assertPng(first);
+    assert.equal(first.headers.get('x-weather-snapshot'), String(LATEST - 600));
+    assert.equal(first.headers.get('cache-control'), 'private, max-age=600');
+
+    nowMs += 599 * 1000;
+    const hit = await tile(clamped);
+    assert.equal(hit.headers.get('x-weather-cache'), 'hit');
+    assert.equal(hit.headers.get('cache-control'), 'private, max-age=600');
+    nowMs += 2 * 1000;
+    assert.equal((await tile(clamped)).headers.get('x-weather-cache'), 'miss', 'the entry expired after 600 s');
+
+    // The same layer asked for exactly its newest snapshot is pinned
+    fresh();
+    echoSnapshot = 'on';
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST - 600, 'radars': LATEST };
+    const pinned = await tile(`layer=clouds&snapshot=${LATEST - 600}`);
+    assertPng(pinned);
+    assert.equal(pinned.headers.get('cache-control'), 'private, max-age=3600');
+    nowMs += 3600 * 1000;
+    assert.equal((await tile(`layer=clouds&snapshot=${LATEST - 600}`)).headers.get('x-weather-cache'), 'hit', 'cached for 7200 s');
+
+    // No snapshot and snapshot=latest follow the layer, so they are never long lived
+    fresh();
+    echoSnapshot = 'on';
+    for (const query of ['layer=precip', 'layer=precip&snapshot=latest']) {
+        const res = await tile(query);
+        assertPng(res);
+        assert.equal(res.headers.get('x-weather-snapshot'), String(LATEST), query);
+        assert.equal(res.headers.get('cache-control'), 'private, max-age=600', query);
+        const again = await tile(query);
+        assert.equal(again.headers.get('x-weather-cache'), 'hit', query);
+        assert.equal(again.headers.get('cache-control'), 'private, max-age=600', query);
+    }
+});
+
+test('23d. a cache hit never gives the long browser lifetime to an unpinned request', async () => {
+    // A pinned request fills the entry (7200 s)
+    fresh();
+    echoSnapshot = 'on';
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST, 'radars': LATEST };
+    const pinned = `layer=precip&snapshot=${LATEST}`;
+
+    assert.equal((await tile(pinned)).headers.get('cache-control'), 'private, max-age=3600');
+    for (const unpinned of ['layer=precip', 'layer=precip&snapshot=latest']) {
+        const hit = await tile(unpinned);
+        assert.equal(hit.headers.get('x-weather-cache'), 'hit', unpinned);
+        assert.equal(hit.headers.get('cache-control'), 'private, max-age=600', unpinned);
+    }
+    const pinnedHit = await tile(pinned);
+    assert.equal(pinnedHit.headers.get('x-weather-cache'), 'hit');
+    assert.equal(pinnedHit.headers.get('cache-control'), 'private, max-age=3600');
+    assert.equal(hits.length, 1);
+
+    // An unpinned request fills the entry (600 s); a pinned hit is not promoted
+    fresh();
+    echoSnapshot = 'on';
+    latestByLayer = { 'precip': LATEST, 'precip-global': LATEST, 'clouds': LATEST, 'radars': LATEST };
+    assert.equal((await tile('layer=precip')).headers.get('cache-control'), 'private, max-age=600');
+    const hit = await tile(pinned);
+    assert.equal(hit.headers.get('x-weather-cache'), 'hit');
+    assert.equal(hit.headers.get('cache-control'), 'private, max-age=600');
+    nowMs += 601 * 1000;
+    assert.equal((await tile(pinned)).headers.get('x-weather-cache'), 'miss', 'the entry lives 600 s');
+});
+
+test('23e. followers of one flight get the lifetime of their own request', async () => {
+    fresh();
+    echoSnapshot = 'on';
+    delayMs = 150;
+
+    const [leader, follower] = await (async () => {
+        const first = tile(`layer=clouds&snapshot=${LATEST}`);
+        // Let the leader reach the proxy before the follower arrives
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const second = tile('layer=clouds');
+        return await Promise.all([first, second]);
+    })();
+
+    assertPng(leader);
+    assertPng(follower);
+    assert.equal(hits.length, 1);
+    assert.equal(leader.headers.get('x-weather-cache'), 'miss');
+    assert.equal(follower.headers.get('x-weather-cache'), 'shared');
+    assert.equal(leader.headers.get('cache-control'), 'private, max-age=3600');
+    assert.equal(follower.headers.get('cache-control'), 'private, max-age=600');
+});
+
 test('24. the snapshot lookup is skipped while the upstream is paused and a 429 from it starts a pause', async () => {
     fresh();
 
@@ -1468,7 +1564,7 @@ test('25. the API key and session tokens stay out of logs, responses and audit l
     const results: Array<{ headers: Headers; text: string }> = [];
     const st = await status();
     results.push({ headers: st.headers, text: JSON.stringify(st.body) });
-    for (const [query, auth] of [['layer=clouds', 'query'], ['layer=precip&forecast=10', 'user'], [`layer=clouds&snapshot=${LATEST - 7800}`, 'user']] as const) {
+    for (const [query, auth] of [[`layer=clouds&snapshot=${LATEST}`, 'query'], [`layer=precip&forecast=10&snapshot=${LATEST}`, 'user'], [`layer=clouds&snapshot=${LATEST - 7800}`, 'user']] as const) {
         const res = await tile(query, { auth });
         results.push({ headers: res.headers, text: res.status === 200 ? '' : res.body.toString() });
     }

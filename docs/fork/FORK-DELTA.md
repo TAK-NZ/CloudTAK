@@ -369,10 +369,13 @@ fetches tiles from the weather-proxy with a server-side key.
   `latest - 7200` up to any newer value: a newer one is served as the layer's latest, an older one
   is `400 snapshot out of range`. The cache key holds the effective snapshot, so a client clock
   that runs ahead of a lagging layer shares one cache entry and one upstream call.
-- **Cache policy.** A tile whose upstream `X-Weather-Snapshot` equals the effective snapshot (and
-  that is not a fallback, error or `no-store` answer) is immutable: relay TTL 7200 s and
-  `Cache-Control: private, max-age=3600`. Without the header (older proxy) or with a different
-  value the TTL stays 600 s with `max-age=600`; fallback tiles are not cached at the relay and get
+- **Cache policy.** A tile is immutable only when the request named its snapshot (a 10-digit
+  `snapshot` equal to the effective one, so not absent, not `latest`, not clamped to a lagging
+  layer) and the upstream `X-Weather-Snapshot` equals it (and the answer is not a fallback, error
+  or `no-store`): relay TTL 7200 s and `Cache-Control: private, max-age=3600`. A cache hit gives
+  `max-age=3600` only to a pinned request; an unpinned request on the same entry gets
+  `max-age=600`, and an entry filled by an unpinned request keeps a 600 s TTL. Without the header
+  (older proxy) or with a different value the TTL stays 600 s with `max-age=600`; fallback tiles are not cached at the relay and get
   `max-age=30`. An upstream `400` is now answered as `400` (was `502`). The audit log line also
   has `snapshot` and `immutable`. Upstream-owned files are untouched; the schema fixture does not
   change because the new status fields are optional response fields.

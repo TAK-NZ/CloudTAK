@@ -64,7 +64,7 @@ function cacheable(cacheControl: string | null): boolean {
  * Turn an upstream answer into a tile, or throw the error the client sees.
  * Upstream bodies and messages are never forwarded.
  */
-function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string): FlightResult {
+function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string, pinned: boolean): FlightResult {
     if (up.status === 401 || up.status === 403) {
         logThrottled('error', 'upstream:auth', 'Weather relay: the weather proxy rejected the configured API key');
         throw upstreamErr(502, 'Weather upstream authentication failed');
@@ -91,6 +91,7 @@ function mapUpstream(up: UpstreamResponse, tile: TileRequest, cacheKey: string):
     const isCacheable = cacheable(up.cacheControl);
     const life = tileLifetime({
         effective: tile.snapshot,
+        pinned,
         upstream: up.snapshot,
         fallback: false,
         error: false,
@@ -218,6 +219,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const tile = parseTileRequest(req.params, search, nowS, layerLatest === undefined ? undefined : () => layerLatest as number);
             audit = tile;
 
+            // Only a URL that names its own snapshot is safe to keep in the browser for an hour.
+            // `latest`, no snapshot and a request clamped to the layer's newest change meaning.
+            const rawSnapshot = search.get('snapshot');
+            const pinned = rawSnapshot !== null && /^[0-9]{10}$/.test(rawSnapshot) && Number(rawSnapshot) === tile.snapshot;
+
             const cacheKey = tileCacheKey(tile);
             const cached = relay.cache.get(cacheKey);
             let body: Buffer;
@@ -248,7 +254,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 const url = buildUpstreamUrl(cfg.baseUrl, tile, cfg.key);
                 const { value, shared } = await relay.flights.run(cacheKey, async () => {
                     const up = await fetchUpstream(url, userAgent(config.API_URL));
-                    return mapUpstream(up, tile, cacheKey);
+                    return mapUpstream(up, tile, cacheKey, pinned);
                 });
 
                 body = value.body;
@@ -257,6 +263,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 immutable = value.immutable;
                 cache = shared ? 'shared' : 'miss';
             }
+
+            // The entry keeps the leader's flag; this request gets the long lifetime only if it is pinned too
+            immutable = immutable && pinned;
 
             status = 200;
             sent = contentType;
