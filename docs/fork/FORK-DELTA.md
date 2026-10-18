@@ -329,7 +329,7 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
   upstream's, re-add `pdfjs-dist@4.10.38` with `npm install --save-exact`, and check
   `git diff` shows no unrelated lockfile changes.
 - **`cloudtak.webPlugins` in `cdk/cdk.json`** (TAK-NZ only, per environment). `dev-test`
-  lists the rubbersheet fork; `prod` is `""`. The stack resolves the effective value
+  lists the rubbersheet fork and `cloudtak-plugin-weather`; `prod` is `""`. The stack resolves the effective value
   as `--context WebPlugins` (or `webPlugins`), then the `WEB_PLUGINS` env var, then
   `cdk.json`, validates it (https GitHub URLs only) and adds it to the main
   `CloudTAKDockerAsset` build args only when non-empty, so images without plugins keep
@@ -343,6 +343,78 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
 
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#installing-cloudtak-plugins-web_plugins)
 for how to use it.
+
+Plugins that put controls at the bottom of the map share one convention so their bars do not cover each other (yield, minimize, selector dot). See [`PLUGIN-PANELS.md`](PLUGIN-PANELS.md).
+
+### Weather plugin relay (`/api/weather`)
+`api/stateless/routes/weather.ts`, `api/stateless/lib/weather/relay-*.ts`,
+`api/test/weather-relay-lib.test.ts`, `api/test/weather.srv.test.ts`, `api/test/weather-images.ts`,
+`api/test/fixtures/get_schema.json`, `cdk/cdk.json`, `cloudtak-config.env.example`,
+`scripts/set-weather-proxy-config.sh`
+
+New files only, except the schema fixture and the `cdk.json` edits (plus `cloudtak-config.env.example`
+and the docs). The relay serves `GET /api/weather/status`
+and `GET /api/weather/tile/:z/:x/:y.png` for the `cloudtak-plugin-weather` plugin and
+fetches tiles from the weather-proxy with a server-side key.
+
+- **Tile image type.** The relay serves PNG or WebP tiles. Rainbow `clouds` tiles are WebP, but
+  the weather-proxy labels every tile `image/png`, so the relay checks the image bytes (PNG or
+  WebP), sends the detected `Content-Type` (the route path keeps `.png`) and answers 502 for
+  anything else.
+- **Snapshots.** `relay-snapshot.ts` (new) asks the proxy's `GET /snapshot?layer=` for the newest
+  snapshot of each layer (Rainbow publishes `clouds` later than rain). `GET /api/weather/status`
+  keeps its five fields and adds `latest` (`{snapshot, source: 'rainbow' | 'computed'}` per layer,
+  omitted when the relay is disabled), `stepSeconds: 600` and `windowSeconds: 7200`. The lookup is
+  cached 30 s per layer, shared by concurrent callers, skipped while the upstream is paused, and
+  waits at most 2.5 s; any failure (older proxy answering 404, 400, 5xx, bad JSON, timeout) gives
+  `source: 'computed'` and the status still answers 200. The tile route accepts a snapshot from
+  `latest - 7200` up to any newer value: a newer one is served as the layer's latest, an older one
+  is `400 snapshot out of range`. The cache key holds the effective snapshot, so a client clock
+  that runs ahead of a lagging layer shares one cache entry and one upstream call.
+- **Cache policy.** A tile is immutable only when the request named its snapshot (a 10-digit
+  `snapshot` equal to the effective one, so not absent, not `latest`, not clamped to a lagging
+  layer) and the upstream `X-Weather-Snapshot` equals it (and the answer is not a fallback, error
+  or `no-store`): relay TTL 7200 s and `Cache-Control: private, max-age=3600`. A cache hit gives
+  `max-age=3600` only to a pinned request; an unpinned request on the same entry gets
+  `max-age=600`, and an entry filled by an unpinned request keeps a 600 s TTL. Without the header
+  (older proxy) or with a different value the TTL stays 600 s with `max-age=600`; fallback tiles are not cached at the relay and get
+  `max-age=30`. An upstream `400` is now answered as `400` (was `502`). The audit log line also
+  has `snapshot` and `immutable`. Upstream-owned files are untouched; the schema fixture does not
+  change because the new status fields are optional response fields.
+- **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two weather keys,
+  because `schema.srv.test.ts` deep-equals it against `GET /api/schema`. **On sync:**
+  re-run that test with `UPDATE=1` and keep upstream's keys.
+- **Env vars.** `WEATHER_PROXY_URL`, `WEATHER_PROXY_KEY`, `WEATHER_RATE_LIMIT`, read from
+  the environment (S3 config file). There are no `FullConfig` keys, so `types.ts`,
+  `defaults.ts`, `config.ts` and `AdminConfig.vue` stay identical to upstream and cannot
+  conflict on sync.
+- **`cdk.json`.** `dev-test` `webPlugins` also lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-weather.git`.
+- **Licence.** The plugin repo is AGPL-3.0-only because its `lib/host.ts` imports
+  `app/src/std.ts`.
+- **Upstream pressure.** The weather-proxy allows 600 requests per minute per client IP and
+  re-arms its counter TTL on every allowed hit. The relay caps upstream fetches at 500 per
+  minute per API task. When the proxy answers 429, or that cap is hit, the task stops calling
+  the proxy for 5 to 120 s (the proxy's `Retry-After`, default 30 s). In that time cache hits
+  are still served and cache misses get `429` with `Retry-After` and `Cache-Control: no-store`.
+  The pause is in memory and per process. `WEATHER_RATE_LIMIT` (per user) is unchanged.
+- **Session token in URLs and access logs.** The plugin loads tiles through MapLibre, which
+  cannot send an `Authorization` header, so tile URLs carry `?token=<session token>`. The
+  platform access log (`morgan 'combined'` in `@openaddresses/batch-schema`, which skips only
+  2xx and 3xx responses) writes the full URL of every other response, so a 401, 403, 429 or
+  502 tile response would log a valid session token. Other CloudTAK tile routes already work
+  this way. The upstream-owned logger is not edited. Instead `weather.ts` has a `/weather`
+  middleware that hands the access log a copy of `req.originalUrl` with `token=***` and keeps
+  the real URL in `res.locals.weatherUrl` for the handler (covered by `weather.srv.test.ts`
+  test 19). Tokens are session tokens, so short sessions limit the exposure of anything logged
+  elsewhere, for example by a proxy in front of the API. A tile loader that sends an
+  `Authorization` header would remove the query token.
+- **Operator script.** `scripts/set-weather-proxy-config.sh` (new file, TAK-NZ only; `scripts/**`
+  is not in the CDK image asset) writes the three variables into the live `cloudtak-config.env`
+  in the BaseInfra config bucket, with a local backup, and never prints the key.
+
+See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#weather-plugin-cloudtak-plugin-weather)
+for setup.
 
 ---
 

@@ -1804,6 +1804,16 @@
         "query": false,
         "res": true
     },
+    "GET /weather/status": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "GET /weather/tile/:z/:x/:y.png": {
+        "body": false,
+        "query": true,
+        "res": false
+    },
     "POST /retention": {
         "body": true,
         "query": false,
