@@ -120,11 +120,16 @@ forecast) and a Play button. Tiles come from the weather-proxy through a CloudTA
   (`latest`), read from the weather-proxy's `/snapshot` endpoint (cached 30 s; an older proxy
   without it is tolerated and the clock-based value is used). Tiles that the proxy confirms for the
   requested snapshot are cached 7200 s at the relay and 3600 s in the browser; all others keep 600 s.
-- **Cost of one Play pass:** one pass is about `13 frames x visible tiles x layers` uncached upstream
-  fetches. With roughly 20 visible tiles and three layers that is about 800, which can exceed the
-  500 fetches per minute per task cap on the first pass; Play then pauses on the 429 and resumes.
-  Repeat passes are served from the relay cache (up to 7200 s) and the browser cache (3600 s). The
-  limits are unchanged (900 tile requests per user and minute, 500 upstream fetches per task and minute).
+- **Cost of one Play pass:** one pass is `13 frames x visible tiles x layers` uncached upstream
+  fetches (37 frames with "Include forecast when playing"). Measured in a real browser with 512 px
+  tiles: about 20 tiles per layer and frame on a 1900 x 1400 screen (about 48 with Sharper 256 px
+  tiles) and 2 tiles on a 390 x 844 phone (8 with Sharper). Three layers on a desktop screen are
+  therefore about 780 fetches in the first pass, above the 500 fetches per minute per task cap, so
+  Play pauses on the 429 and resumes (by itself after at most a minute, or when the user presses
+  Play). A phone needs about 80. The second pass over the same frames made no request to the
+  relay in the measurement (browser cache, 3600 s); other users are served from the relay cache
+  (up to 7200 s). The limits are unchanged (900 tile requests per user and minute, 500 upstream
+  fetches per task and minute).
 - **Tile formats:** tiles are PNG, except `clouds` tiles, which are WebP. The relay detects the
   format from the image bytes and sets the `Content-Type`, so no weather-proxy change is needed.
 - **Restart:** values are read at request time but injected when the task starts. After
