@@ -573,7 +573,7 @@ export interface paths {
         put: {
             parameters: {
                 query?: {
-                    /** @description GUID of a mission to also upload the attachment to */
+                    /** @description GUID of a mission to also upload the attachment to - requires a User token */
                     mission?: string;
                 };
                 header?: never;
@@ -1590,10 +1590,8 @@ export interface paths {
                         collection?: null | string;
                         overlay?: boolean;
                         hidden?: boolean;
-                        /** @default user */
-                        scope: "server" | "user";
+                        scope?: "server" | "user";
                         url?: string;
-                        /** @default 256 */
                         tilesize?: number;
                         attribution?: null | string;
                         frequency?: null | number;
@@ -2867,7 +2865,7 @@ export interface paths {
                              * @enum {string}
                              */
                             "search::agol::auth_method"?: "oauth2" | "legacy";
-                            /** @description AGOL Search Legacy Token */
+                            /** @description AGOL Search API Key */
                             "search::agol::token"?: string;
                             /** @description AGOL Search OAuth2 Client ID */
                             "search::agol::client_id"?: string;
@@ -2880,7 +2878,7 @@ export interface paths {
                              * @enum {string}
                              */
                             "routing::agol::auth_method"?: "oauth2" | "legacy";
-                            /** @description AGOL Routing Legacy Token */
+                            /** @description AGOL Routing API Key */
                             "routing::agol::token"?: string;
                             /** @description AGOL Routing OAuth2 Client ID */
                             "routing::agol::client_id"?: string;
@@ -3143,7 +3141,7 @@ export interface paths {
                          * @enum {string}
                          */
                         "search::agol::auth_method"?: "oauth2" | "legacy";
-                        /** @description AGOL Search Legacy Token */
+                        /** @description AGOL Search API Key */
                         "search::agol::token"?: string;
                         /** @description AGOL Search OAuth2 Client ID */
                         "search::agol::client_id"?: string;
@@ -3156,7 +3154,7 @@ export interface paths {
                          * @enum {string}
                          */
                         "routing::agol::auth_method"?: "oauth2" | "legacy";
-                        /** @description AGOL Routing Legacy Token */
+                        /** @description AGOL Routing API Key */
                         "routing::agol::token"?: string;
                         /** @description AGOL Routing OAuth2 Client ID */
                         "routing::agol::client_id"?: string;
@@ -3344,7 +3342,7 @@ export interface paths {
                              * @enum {string}
                              */
                             "search::agol::auth_method"?: "oauth2" | "legacy";
-                            /** @description AGOL Search Legacy Token */
+                            /** @description AGOL Search API Key */
                             "search::agol::token"?: string;
                             /** @description AGOL Search OAuth2 Client ID */
                             "search::agol::client_id"?: string;
@@ -3357,7 +3355,7 @@ export interface paths {
                              * @enum {string}
                              */
                             "routing::agol::auth_method"?: "oauth2" | "legacy";
-                            /** @description AGOL Routing Legacy Token */
+                            /** @description AGOL Routing API Key */
                             "routing::agol::token"?: string;
                             /** @description AGOL Routing OAuth2 Client ID */
                             "routing::agol::client_id"?: string;
@@ -3960,14 +3958,14 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/config/webhooks": {
+    "/api/config/layer": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Return the base URL that incoming Layer Webhooks are served from */
+        /** Deployment settings that apply to every Layer - webhook base URL, incoming email domain and VPC egress */
         get: {
             parameters: {
                 query?: never;
@@ -3984,115 +3982,20 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
-                            url: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/config/email": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Return the domain that incoming Layer Email is addressed to */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            domain: string;
+                            webhooks: {
+                                /** @description Base URL that incoming Layer Webhooks are served from */
+                                url: string;
+                            };
+                            email: {
+                                /** @description Domain that incoming Layer Email is addressed to */
+                                domain: string;
+                            };
+                            vpc: {
+                                /** @description Layers can be attached to the private VPC subnets */
+                                enabled: boolean;
+                                /** @description Static egress addresses used by VPC attached Layers */
+                                addresses: string[];
+                            };
                         };
                     };
                 };
@@ -5951,6 +5854,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -5975,6 +5883,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -6025,6 +5938,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -6568,6 +6482,11 @@ export interface paths {
                                         tool?: string;
                                         uid: string;
                                     };
+                                    /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                    missionProperty?: {
+                                        key: string;
+                                        value: string;
+                                    };
                                     details?: {
                                         type: string;
                                         callsign: string;
@@ -6592,6 +6511,11 @@ export interface paths {
                                 tag: string;
                             };
                             attachments?: string[];
+                            image?: {
+                                mime?: string;
+                                /** @description Base64 encoded image bytes */
+                                data: string;
+                            };
                             sensor?: {
                                 elevation?: number;
                                 vfov?: number;
@@ -6642,6 +6566,7 @@ export interface paths {
                                 callsign?: string;
                                 mission?: string;
                                 event?: string;
+                                device?: string;
                                 url?: string;
                                 mime?: string;
                                 remarks?: string;
@@ -7106,6 +7031,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -7130,6 +7060,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -7180,6 +7115,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -7845,6 +7781,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -7869,6 +7810,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -7919,6 +7865,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -8587,6 +8534,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -8611,6 +8563,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -8661,6 +8618,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -9131,6 +9089,11 @@ export interface paths {
                                                     tool?: string;
                                                     uid: string;
                                                 };
+                                                /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                                missionProperty?: {
+                                                    key: string;
+                                                    value: string;
+                                                };
                                                 details?: {
                                                     type: string;
                                                     callsign: string;
@@ -9155,6 +9118,11 @@ export interface paths {
                                             tag: string;
                                         };
                                         attachments?: string[];
+                                        image?: {
+                                            mime?: string;
+                                            /** @description Base64 encoded image bytes */
+                                            data: string;
+                                        };
                                         sensor?: {
                                             elevation?: number;
                                             vfov?: number;
@@ -9205,6 +9173,7 @@ export interface paths {
                                             callsign?: string;
                                             mission?: string;
                                             event?: string;
+                                            device?: string;
                                             url?: string;
                                             mime?: string;
                                             remarks?: string;
@@ -9772,6 +9741,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -9796,6 +9770,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -9846,6 +9825,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -10422,6 +10402,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -10446,6 +10431,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -10496,6 +10486,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -12729,7 +12720,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "version" | "memory" | "timeout" | "permissions" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
+                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "version" | "schema" | "memory" | "timeout" | "vpc" | "permissions" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description No Description */
@@ -12774,6 +12765,8 @@ export interface paths {
                                 /** @description Container tag as <integration prefix>-v<version> */
                                 task: string;
                                 version: string;
+                                /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                                schema: string;
                                 integration: {
                                     name: string;
                                     /** @description Base64 Data URL of the Integration Icon */
@@ -12781,6 +12774,8 @@ export interface paths {
                                 };
                                 memory: number;
                                 timeout: number;
+                                /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                                vpc: boolean;
                                 priority: "high" | "low" | "off";
                                 permissions: string[];
                                 /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -13214,6 +13209,11 @@ export interface paths {
                         alarm_points?: number;
                         /** @default false */
                         protected: boolean;
+                        /**
+                         * @description Attach the Lambda to the private VPC subnets - System Admin only as it grants access to internal resources
+                         * @default false
+                         */
+                        vpc: boolean;
                         /** @description Permissions granted to the Layer as <permission>:<level> pairs - ie video:read or video:* */
                         permissions?: string[];
                         /** @description Create an Incoming Config alongside the Layer */
@@ -13252,6 +13252,8 @@ export interface paths {
                             /** @description Container tag as <integration prefix>-v<version> */
                             task: string;
                             version: string;
+                            /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                            schema: string;
                             integration: {
                                 name: string;
                                 /** @description Base64 Data URL of the Integration Icon */
@@ -13259,6 +13261,8 @@ export interface paths {
                             };
                             memory: number;
                             timeout: number;
+                            /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                            vpc: boolean;
                             priority: "high" | "low" | "off";
                             permissions: string[];
                             /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -15499,6 +15503,8 @@ export interface paths {
                             /** @description Container tag as <integration prefix>-v<version> */
                             task: string;
                             version: string;
+                            /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                            schema: string;
                             integration: {
                                 name: string;
                                 /** @description Base64 Data URL of the Integration Icon */
@@ -15506,6 +15512,8 @@ export interface paths {
                             };
                             memory: number;
                             timeout: number;
+                            /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                            vpc: boolean;
                             priority: "high" | "low" | "off";
                             permissions: string[];
                             /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -16028,6 +16036,8 @@ export interface paths {
                         timeout?: number;
                         enabled?: boolean;
                         protected?: boolean;
+                        /** @description Attach the Lambda to the private VPC subnets - System Admin only as it grants access to internal resources */
+                        vpc?: boolean;
                         task?: string;
                         logging?: boolean;
                         alarm_period?: number;
@@ -16061,6 +16071,8 @@ export interface paths {
                             /** @description Container tag as <integration prefix>-v<version> */
                             task: string;
                             version: string;
+                            /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                            schema: string;
                             integration: {
                                 name: string;
                                 /** @description Base64 Data URL of the Integration Icon */
@@ -16068,6 +16080,8 @@ export interface paths {
                             };
                             memory: number;
                             timeout: number;
+                            /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                            vpc: boolean;
                             priority: "high" | "low" | "off";
                             permissions: string[];
                             /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -16715,6 +16729,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -16739,6 +16758,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -16789,6 +16813,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -17266,6 +17291,11 @@ export interface paths {
                                                     tool?: string;
                                                     uid: string;
                                                 };
+                                                /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                                missionProperty?: {
+                                                    key: string;
+                                                    value: string;
+                                                };
                                                 details?: {
                                                     type: string;
                                                     callsign: string;
@@ -17290,6 +17320,11 @@ export interface paths {
                                             tag: string;
                                         };
                                         attachments?: string[];
+                                        image?: {
+                                            mime?: string;
+                                            /** @description Base64 encoded image bytes */
+                                            data: string;
+                                        };
                                         sensor?: {
                                             elevation?: number;
                                             vfov?: number;
@@ -17340,6 +17375,7 @@ export interface paths {
                                             callsign?: string;
                                             mission?: string;
                                             event?: string;
+                                            device?: string;
                                             url?: string;
                                             mime?: string;
                                             remarks?: string;
@@ -17799,6 +17835,11 @@ export interface paths {
                                                     tool?: string;
                                                     uid: string;
                                                 };
+                                                /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                                missionProperty?: {
+                                                    key: string;
+                                                    value: string;
+                                                };
                                                 details?: {
                                                     type: string;
                                                     callsign: string;
@@ -17823,6 +17864,11 @@ export interface paths {
                                             tag: string;
                                         };
                                         attachments?: string[];
+                                        image?: {
+                                            mime?: string;
+                                            /** @description Base64 encoded image bytes */
+                                            data: string;
+                                        };
                                         sensor?: {
                                             elevation?: number;
                                             vfov?: number;
@@ -17873,6 +17919,7 @@ export interface paths {
                                             callsign?: string;
                                             mission?: string;
                                             event?: string;
+                                            device?: string;
                                             url?: string;
                                             mime?: string;
                                             remarks?: string;
@@ -19673,6 +19720,8 @@ export interface paths {
                                     subject: string;
                                     validFrom: string;
                                     validTo: string;
+                                    /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                    channels: boolean;
                                     /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                     known?: boolean;
                                     /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -19811,6 +19860,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -20052,6 +20103,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -20290,6 +20343,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -20413,6 +20468,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -20901,6 +20958,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -21239,11 +21298,9 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "created" | "updated" | "username" | "connection" | "event" | "type" | "name" | "manufacturer" | "model" | "serial" | "firmware" | "status" | "battery" | "simulated" | "external_id" | "remarks" | "metadata" | "enableRLS";
+                    sort: "id" | "created" | "updated" | "username" | "connection" | "type" | "name" | "editable" | "remarks" | "metadata" | "links" | "style" | "geometry";
                     /** @description Filter results by a human readable name field */
                     filter: string;
-                    /** @description Only return Devices assigned to the given Core Event */
-                    event?: string;
                     /** @description Only return Devices shared with the given TAK Channel bitpos - can be provided multiple times to match any of the given Channels */
                     channel?: number | number[];
                 };
@@ -21304,11 +21361,6 @@ export interface paths {
                                  */
                                 simulated: boolean;
                                 /**
-                                 * External ID
-                                 * @description ID of the Device in an external system
-                                 */
-                                external_id: string;
-                                /**
                                  * Remarks
                                  * @description Free text remarks about the Device
                                  */
@@ -21319,17 +21371,63 @@ export interface paths {
                                  */
                                 channels: number[];
                                 id: string;
+                                /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                                external_id: string;
+                                /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                                external_ids: {
+                                    [key: string]: string;
+                                };
                                 created: string;
                                 updated: string;
                                 username: null | string;
                                 /** @description Connection that created the Device if created by a Connection or Layer token */
                                 connection: null | number;
-                                /** @description Core Event the Device is currently assigned to */
-                                event: null | string;
+                                /** @description Can users other than the creator edit the Device */
+                                editable: boolean;
                                 battery: null | number;
                                 /** @description User defined key/value Device metadata */
                                 metadata: {
                                     [key: string]: unknown;
+                                };
+                                /** @description Named URLs associated with the Device */
+                                links: {
+                                    /**
+                                     * Name
+                                     * @description Human readable name of the Link
+                                     */
+                                    name: string;
+                                    /**
+                                     * URL
+                                     * @description URL the Link points at
+                                     */
+                                    url: string;
+                                }[];
+                                /** @description Point styling for the Device */
+                                style: {
+                                    /**
+                                     * Icon
+                                     * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                                     */
+                                    icon?: string;
+                                    /**
+                                     * Marker Color
+                                     * @description Hex colour of the Event marker - ie: #00ff00
+                                     */
+                                    "marker-color"?: string;
+                                    /**
+                                     * Marker Opacity
+                                     * @description Opacity of the Event marker
+                                     */
+                                    "marker-opacity"?: number;
+                                };
+                                /** @description Last known location of the Device */
+                                geometry: null | {
+                                    /** @constant */
+                                    type: "Point";
+                                    coordinates: [
+                                        number,
+                                        number
+                                    ];
                                 };
                             }[];
                         };
@@ -21423,8 +21521,15 @@ export interface paths {
                         name: string;
                         /** @description MIL-STD-2525E Symbol ID */
                         type: string;
-                        /** @description Core Event to assign the Device to */
-                        event?: null | string;
+                        /** @description Last known location of the Device */
+                        geometry?: null | {
+                            /** @constant */
+                            type: "Point";
+                            coordinates: [
+                                number,
+                                number
+                            ];
+                        };
                         /**
                          * @description Manufacturer of the Device - ie: Ortec, Nucsafe, DJI
                          * @default
@@ -21457,11 +21562,12 @@ export interface paths {
                          * @default false
                          */
                         simulated: boolean;
-                        /**
-                         * @description ID of the Device in an external system
-                         * @default
-                         */
-                        external_id: string;
+                        external_id?: {
+                            /** @description External system the ID belongs to - ie: active911, caltopo, cad */
+                            system: string;
+                            /** @description ID of the record in the external system - an empty value removes the system from the record */
+                            value: string;
+                        } | string;
                         /** @default  */
                         remarks: string;
                         /**
@@ -21472,10 +21578,44 @@ export interface paths {
                             [key: string]: unknown;
                         };
                         /**
-                         * @description TAK Server Channels to share the Device with
+                         * @description Named URLs associated with the Device
                          * @default []
                          */
-                        channels: number[];
+                        links: {
+                            /**
+                             * Name
+                             * @description Human readable name of the Link
+                             */
+                            name: string;
+                            /**
+                             * URL
+                             * @description URL the Link points at
+                             */
+                            url: string;
+                        }[];
+                        /**
+                         * @description Point styling for the Device
+                         * @default {}
+                         */
+                        style: {
+                            /**
+                             * Icon
+                             * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                             */
+                            icon?: string;
+                            /**
+                             * Marker Color
+                             * @description Hex colour of the Event marker - ie: #00ff00
+                             */
+                            "marker-color"?: string;
+                            /**
+                             * Marker Opacity
+                             * @description Opacity of the Event marker
+                             */
+                            "marker-opacity"?: number;
+                        };
+                        /** @description TAK Server Channels to share the Device with - required for users, a Connection or Layer token may omit it to share the Device with the Channels of its Connection */
+                        channels?: number[];
                     };
                 };
             };
@@ -21529,11 +21669,6 @@ export interface paths {
                              */
                             simulated: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Device in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Remarks
                              * @description Free text remarks about the Device
                              */
@@ -21544,17 +21679,63 @@ export interface paths {
                              */
                             channels: number[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             created: string;
                             updated: string;
                             username: null | string;
                             /** @description Connection that created the Device if created by a Connection or Layer token */
                             connection: null | number;
-                            /** @description Core Event the Device is currently assigned to */
-                            event: null | string;
+                            /** @description Can users other than the creator edit the Device */
+                            editable: boolean;
                             battery: null | number;
                             /** @description User defined key/value Device metadata */
                             metadata: {
                                 [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Device */
+                            links: {
+                                /**
+                                 * Name
+                                 * @description Human readable name of the Link
+                                 */
+                                name: string;
+                                /**
+                                 * URL
+                                 * @description URL the Link points at
+                                 */
+                                url: string;
+                            }[];
+                            /** @description Point styling for the Device */
+                            style: {
+                                /**
+                                 * Icon
+                                 * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                                 */
+                                icon?: string;
+                                /**
+                                 * Marker Color
+                                 * @description Hex colour of the Event marker - ie: #00ff00
+                                 */
+                                "marker-color"?: string;
+                                /**
+                                 * Marker Opacity
+                                 * @description Opacity of the Event marker
+                                 */
+                                "marker-opacity"?: number;
+                            };
+                            /** @description Last known location of the Device */
+                            geometry: null | {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
                             };
                         };
                     };
@@ -21706,11 +21887,6 @@ export interface paths {
                              */
                             simulated: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Device in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Remarks
                              * @description Free text remarks about the Device
                              */
@@ -21721,17 +21897,63 @@ export interface paths {
                              */
                             channels: number[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             created: string;
                             updated: string;
                             username: null | string;
                             /** @description Connection that created the Device if created by a Connection or Layer token */
                             connection: null | number;
-                            /** @description Core Event the Device is currently assigned to */
-                            event: null | string;
+                            /** @description Can users other than the creator edit the Device */
+                            editable: boolean;
                             battery: null | number;
                             /** @description User defined key/value Device metadata */
                             metadata: {
                                 [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Device */
+                            links: {
+                                /**
+                                 * Name
+                                 * @description Human readable name of the Link
+                                 */
+                                name: string;
+                                /**
+                                 * URL
+                                 * @description URL the Link points at
+                                 */
+                                url: string;
+                            }[];
+                            /** @description Point styling for the Device */
+                            style: {
+                                /**
+                                 * Icon
+                                 * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                                 */
+                                icon?: string;
+                                /**
+                                 * Marker Color
+                                 * @description Hex colour of the Event marker - ie: #00ff00
+                                 */
+                                "marker-color"?: string;
+                                /**
+                                 * Marker Opacity
+                                 * @description Opacity of the Event marker
+                                 */
+                                "marker-opacity"?: number;
+                            };
+                            /** @description Last known location of the Device */
+                            geometry: null | {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
                             };
                         };
                     };
@@ -21928,8 +22150,14 @@ export interface paths {
                         /** @description Human readable name */
                         name?: string;
                         type?: string;
-                        /** @description Core Event to assign the Device to - set to null to unassign */
-                        event?: null | string;
+                        geometry?: null | {
+                            /** @constant */
+                            type: "Point";
+                            coordinates: [
+                                number,
+                                number
+                            ];
+                        };
                         manufacturer?: string;
                         model?: string;
                         serial?: string;
@@ -21937,12 +22165,49 @@ export interface paths {
                         status?: string;
                         battery?: null | number;
                         simulated?: boolean;
-                        external_id?: string;
+                        external_id?: {
+                            /** @description External system the ID belongs to - ie: active911, caltopo, cad */
+                            system: string;
+                            /** @description ID of the record in the external system - an empty value removes the system from the record */
+                            value: string;
+                        } | string;
                         remarks?: string;
                         /** @description User defined key/value Device metadata - replaces the existing metadata object */
                         metadata?: {
                             [key: string]: unknown;
                         };
+                        /** @description Named URLs associated with the Device - replaces the existing links array */
+                        links?: {
+                            /**
+                             * Name
+                             * @description Human readable name of the Link
+                             */
+                            name: string;
+                            /**
+                             * URL
+                             * @description URL the Link points at
+                             */
+                            url: string;
+                        }[];
+                        /** @description Point styling for the Device - replaces the existing style object */
+                        style?: {
+                            /**
+                             * Icon
+                             * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                             */
+                            icon?: string;
+                            /**
+                             * Marker Color
+                             * @description Hex colour of the Event marker - ie: #00ff00
+                             */
+                            "marker-color"?: string;
+                            /**
+                             * Marker Opacity
+                             * @description Opacity of the Event marker
+                             */
+                            "marker-opacity"?: number;
+                        };
+                        /** @description TAK Server Channels to share the Device with - replaces the existing Channels, a Device must always be shared with at least one */
                         channels?: number[];
                     };
                 };
@@ -21997,11 +22262,6 @@ export interface paths {
                              */
                             simulated: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Device in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Remarks
                              * @description Free text remarks about the Device
                              */
@@ -22012,17 +22272,63 @@ export interface paths {
                              */
                             channels: number[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             created: string;
                             updated: string;
                             username: null | string;
                             /** @description Connection that created the Device if created by a Connection or Layer token */
                             connection: null | number;
-                            /** @description Core Event the Device is currently assigned to */
-                            event: null | string;
+                            /** @description Can users other than the creator edit the Device */
+                            editable: boolean;
                             battery: null | number;
                             /** @description User defined key/value Device metadata */
                             metadata: {
                                 [key: string]: unknown;
+                            };
+                            /** @description Named URLs associated with the Device */
+                            links: {
+                                /**
+                                 * Name
+                                 * @description Human readable name of the Link
+                                 */
+                                name: string;
+                                /**
+                                 * URL
+                                 * @description URL the Link points at
+                                 */
+                                url: string;
+                            }[];
+                            /** @description Point styling for the Device */
+                            style: {
+                                /**
+                                 * Icon
+                                 * @description Iconset Icon path to render the Event with - ie: <iconset uid>/<icon path>
+                                 */
+                                icon?: string;
+                                /**
+                                 * Marker Color
+                                 * @description Hex colour of the Event marker - ie: #00ff00
+                                 */
+                                "marker-color"?: string;
+                                /**
+                                 * Marker Opacity
+                                 * @description Opacity of the Event marker
+                                 */
+                                "marker-opacity"?: number;
+                            };
+                            /** @description Last known location of the Device */
+                            geometry: null | {
+                                /** @constant */
+                                type: "Point";
+                                coordinates: [
+                                    number,
+                                    number
+                                ];
                             };
                         };
                     };
@@ -23492,11 +23798,6 @@ export interface paths {
                                      */
                                     active: boolean;
                                     /**
-                                     * External ID
-                                     * @description ID of the Event in an external system
-                                     */
-                                    external_id: string;
-                                    /**
                                      * Editable
                                      * @description Can users other than the creator edit the Event
                                      * @default true
@@ -23542,6 +23843,12 @@ export interface paths {
                                         url: string;
                                     }[];
                                     id: string;
+                                    /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                                    external_id: string;
+                                    /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                                    external_ids: {
+                                        [key: string]: string;
+                                    };
                                     /** @description TAK Server Missions associated with the Event */
                                     missions: {
                                         /** @description Name of the TAK Server Mission */
@@ -23756,11 +24063,6 @@ export interface paths {
                                  */
                                 active: boolean;
                                 /**
-                                 * External ID
-                                 * @description ID of the Event in an external system
-                                 */
-                                external_id: string;
-                                /**
                                  * Editable
                                  * @description Can users other than the creator edit the Event
                                  * @default true
@@ -23806,6 +24108,12 @@ export interface paths {
                                     url: string;
                                 }[];
                                 id: string;
+                                /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                                external_id: string;
+                                /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                                external_ids: {
+                                    [key: string]: string;
+                                };
                                 /** @description TAK Server Missions associated with the Event */
                                 missions: {
                                     /** @description Name of the TAK Server Mission */
@@ -24128,11 +24436,6 @@ export interface paths {
                                  */
                                 active: boolean;
                                 /**
-                                 * External ID
-                                 * @description ID of the Event in an external system
-                                 */
-                                external_id: string;
-                                /**
                                  * Editable
                                  * @description Can users other than the creator edit the Event
                                  * @default true
@@ -24178,6 +24481,12 @@ export interface paths {
                                     url: string;
                                 }[];
                                 id: string;
+                                /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                                external_id: string;
+                                /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                                external_ids: {
+                                    [key: string]: string;
+                                };
                                 /** @description TAK Server Missions associated with the Event */
                                 missions: {
                                     /** @description Name of the TAK Server Mission */
@@ -25289,7 +25598,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "created" | "updated" | "username" | "connection" | "type" | "name" | "external_id" | "editable" | "remarks" | "metadata" | "links" | "style" | "geometry" | "enableRLS";
+                    sort: "id" | "created" | "updated" | "username" | "connection" | "type" | "name" | "editable" | "remarks" | "metadata" | "links" | "style" | "geometry";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description Only return Events shared with the given TAK Channel bitpos - can be provided multiple times to match any of the given Channels */
@@ -25350,11 +25659,6 @@ export interface paths {
                                  */
                                 active: boolean;
                                 /**
-                                 * External ID
-                                 * @description ID of the Event in an external system
-                                 */
-                                external_id: string;
-                                /**
                                  * Editable
                                  * @description Can users other than the creator edit the Event
                                  * @default true
@@ -25400,6 +25704,12 @@ export interface paths {
                                     url: string;
                                 }[];
                                 id: string;
+                                /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                                external_id: string;
+                                /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                                external_ids: {
+                                    [key: string]: string;
+                                };
                                 /** @description TAK Server Missions associated with the Event */
                                 missions: {
                                     /** @description Name of the TAK Server Mission */
@@ -25562,11 +25872,12 @@ export interface paths {
                          */
                         started?: string;
                         ended?: null | string;
-                        /**
-                         * @description ID of the Event in an external system
-                         * @default
-                         */
-                        external_id: string;
+                        external_id?: {
+                            /** @description External system the ID belongs to - ie: active911, caltopo, cad */
+                            system: string;
+                            /** @description ID of the record in the external system - an empty value removes the system from the record */
+                            value: string;
+                        } | string;
                         /**
                          * @description Can users other than the creator edit the Event
                          * @default true
@@ -25629,8 +25940,8 @@ export interface paths {
                              */
                             "marker-opacity"?: number;
                         };
-                        /** @description TAK Server Channels to share the Event with - at least one is required */
-                        channels: number[];
+                        /** @description TAK Server Channels to share the Event with - required for users, a Connection or Layer token may omit it to share the Event with the Channels of its Connection */
+                        channels?: number[];
                     };
                 };
             };
@@ -25682,11 +25993,6 @@ export interface paths {
                              */
                             active: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Event in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Editable
                              * @description Can users other than the creator edit the Event
                              * @default true
@@ -25732,6 +26038,12 @@ export interface paths {
                                 url: string;
                             }[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             /** @description TAK Server Missions associated with the Event */
                             missions: {
                                 /** @description Name of the TAK Server Mission */
@@ -25927,11 +26239,6 @@ export interface paths {
                              */
                             active: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Event in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Editable
                              * @description Can users other than the creator edit the Event
                              * @default true
@@ -25977,6 +26284,12 @@ export interface paths {
                                 url: string;
                             }[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             /** @description TAK Server Missions associated with the Event */
                             missions: {
                                 /** @description Name of the TAK Server Mission */
@@ -26245,7 +26558,12 @@ export interface paths {
                         /** Format: date-time */
                         started?: string;
                         ended?: null | string;
-                        external_id?: string;
+                        external_id?: {
+                            /** @description External system the ID belongs to - ie: active911, caltopo, cad */
+                            system: string;
+                            /** @description ID of the record in the external system - an empty value removes the system from the record */
+                            value: string;
+                        } | string;
                         editable?: boolean;
                         /** @description User defined key/value Event metadata - replaces the existing metadata object */
                         metadata?: {
@@ -26335,11 +26653,6 @@ export interface paths {
                              */
                             active: boolean;
                             /**
-                             * External ID
-                             * @description ID of the Event in an external system
-                             */
-                            external_id: string;
-                            /**
                              * Editable
                              * @description Can users other than the creator edit the Event
                              * @default true
@@ -26385,6 +26698,12 @@ export interface paths {
                                 url: string;
                             }[];
                             id: string;
+                            /** @description Deprecated - ID of the record under the default system, use external_ids - removed in v14 */
+                            external_id: string;
+                            /** @description IDs of the record in external systems keyed by system - ie: { "active911": "1234", "caltopo": "B42325" } */
+                            external_ids: {
+                                [key: string]: string;
+                            };
                             /** @description TAK Server Missions associated with the Event */
                             missions: {
                                 /** @description Name of the TAK Server Mission */
@@ -32667,7 +32986,7 @@ export interface paths {
                     /** @description Order in which results are returned based on the "sort" query param */
                     order: "asc" | "desc";
                     /** @description No Description */
-                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "version" | "memory" | "timeout" | "permissions" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
+                    sort: "id" | "uuid" | "created" | "updated" | "username" | "name" | "enabled" | "protected" | "description" | "priority" | "connection" | "logging" | "task" | "version" | "schema" | "memory" | "timeout" | "vpc" | "permissions" | "alarm_period" | "alarm_evals" | "alarm_points" | "enableRLS";
                     /** @description Filter results by a human readable name field */
                     filter: string;
                     /** @description No Description */
@@ -32713,6 +33032,8 @@ export interface paths {
                                 /** @description Container tag as <integration prefix>-v<version> */
                                 task: string;
                                 version: string;
+                                /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                                schema: string;
                                 integration: {
                                     name: string;
                                     /** @description Base64 Data URL of the Integration Icon */
@@ -32720,6 +33041,8 @@ export interface paths {
                                 };
                                 memory: number;
                                 timeout: number;
+                                /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                                vpc: boolean;
                                 priority: "high" | "low" | "off";
                                 permissions: string[];
                                 /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -33165,6 +33488,8 @@ export interface paths {
                             /** @description Container tag as <integration prefix>-v<version> */
                             task: string;
                             version: string;
+                            /** @description Version of the static Capabilities document the Task declares - 1.1 disables Legacy Styling in favour of Field Mapping, which applies only when the Layer holds feature:submit */
+                            schema: string;
                             integration: {
                                 name: string;
                                 /** @description Base64 Data URL of the Integration Icon */
@@ -33172,6 +33497,8 @@ export interface paths {
                             };
                             memory: number;
                             timeout: number;
+                            /** @description Attach the Lambda to the private VPC subnets - egress uses the static NAT addresses and internal resources are reachable */
+                            vpc: boolean;
                             priority: "high" | "low" | "off";
                             permissions: string[];
                             /** @description Deprecated: Layer Templates have been removed - this value is always false */
@@ -35613,6 +35940,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -35637,6 +35969,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -35687,6 +36024,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -36261,6 +36599,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -36285,6 +36628,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -36335,6 +36683,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -39543,6 +39892,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -39567,6 +39921,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -39617,6 +39976,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -40171,6 +40531,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -40195,6 +40560,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -40245,6 +40615,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -48553,6 +48924,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -48577,6 +48953,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -48627,6 +49008,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;
@@ -49180,6 +49562,11 @@ export interface paths {
                                         tool?: string;
                                         uid: string;
                                     };
+                                    /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                    missionProperty?: {
+                                        key: string;
+                                        value: string;
+                                    };
                                     details?: {
                                         type: string;
                                         callsign: string;
@@ -49204,6 +49591,11 @@ export interface paths {
                                 tag: string;
                             };
                             attachments?: string[];
+                            image?: {
+                                mime?: string;
+                                /** @description Base64 encoded image bytes */
+                                data: string;
+                            };
                             sensor?: {
                                 elevation?: number;
                                 vfov?: number;
@@ -49254,6 +49646,7 @@ export interface paths {
                                 callsign?: string;
                                 mission?: string;
                                 event?: string;
+                                device?: string;
                                 url?: string;
                                 mime?: string;
                                 remarks?: string;
@@ -49718,6 +50111,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -49742,6 +50140,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -49792,6 +50195,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -50454,6 +50858,11 @@ export interface paths {
                                             tool?: string;
                                             uid: string;
                                         };
+                                        /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                        missionProperty?: {
+                                            key: string;
+                                            value: string;
+                                        };
                                         details?: {
                                             type: string;
                                             callsign: string;
@@ -50478,6 +50887,11 @@ export interface paths {
                                     tag: string;
                                 };
                                 attachments?: string[];
+                                image?: {
+                                    mime?: string;
+                                    /** @description Base64 encoded image bytes */
+                                    data: string;
+                                };
                                 sensor?: {
                                     elevation?: number;
                                     vfov?: number;
@@ -50528,6 +50942,7 @@ export interface paths {
                                     callsign?: string;
                                     mission?: string;
                                     event?: string;
+                                    device?: string;
                                     url?: string;
                                     mime?: string;
                                     remarks?: string;
@@ -52255,6 +52670,143 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/profile/overlay/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Persist the stack order of the user's overlays.
+         *
+         *                 Ids are given bottom-first and each overlay's pos is set to its index. Basemaps keep
+         *                 their fixed position and may be omitted.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        ids: number[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: {
+                                id: number;
+                                name: string;
+                                active: boolean;
+                                username: string;
+                                created: string;
+                                updated: string;
+                                pos: number;
+                                type: string;
+                                frequency: null | number;
+                                iconset: null | string;
+                                opacity: number;
+                                visible: boolean;
+                                token: string | null;
+                                styles: unknown[];
+                                mode: string;
+                                mode_id: string | null;
+                                url: string;
+                            }[];
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
         trace?: never;
     };
     "/api/profile/overlay/{:overlay}": {
@@ -57999,10 +58551,19 @@ export interface paths {
                             auth: boolean;
                             /** @description Whether ALB OIDC authentication is enabled */
                             oidc_enabled?: boolean;
+                            /** @description Public metadata of an X509 certificate - clients derive expiry state from validTo */
                             certificate?: {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
+                                /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
+                                known?: boolean;
+                                /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
+                                revoked?: boolean;
+                                /** @description When the TAK Server revoked this certificate */
+                                revocationDate?: string;
                             };
                         };
                     };
@@ -58141,10 +58702,19 @@ export interface paths {
                             auth: boolean;
                             /** @description Whether ALB OIDC authentication is enabled */
                             oidc_enabled?: boolean;
+                            /** @description Public metadata of an X509 certificate - clients derive expiry state from validTo */
                             certificate?: {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
+                                /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
+                                known?: boolean;
+                                /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
+                                revoked?: boolean;
+                                /** @description When the TAK Server revoked this certificate */
+                                revocationDate?: string;
                             };
                         };
                     };
@@ -58385,6 +58955,8 @@ export interface paths {
                                     subject: string;
                                     validFrom: string;
                                     validTo: string;
+                                    /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                    channels: boolean;
                                     /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                     known?: boolean;
                                     /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -58562,6 +59134,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -58848,6 +59422,8 @@ export interface paths {
                                 subject: string;
                                 validFrom: string;
                                 validTo: string;
+                                /** @description The certificate carries the TAK Server channels Extended Key Usage - without it TAK Server ignores the client's channel (group) selection */
+                                channels: boolean;
                                 /** @description The TAK Server has a record of this certificate - only populated where the server was consulted */
                                 known?: boolean;
                                 /** @description The TAK Server has revoked this certificate - only populated where the server was consulted */
@@ -64345,6 +64921,11 @@ export interface paths {
                                                 tool?: string;
                                                 uid: string;
                                             };
+                                            /** @description Mission Key/Value Property that was set (ADD_CONTENT) or removed (REMOVE_CONTENT) - TAK Server 5.9+ */
+                                            missionProperty?: {
+                                                key: string;
+                                                value: string;
+                                            };
                                             details?: {
                                                 type: string;
                                                 callsign: string;
@@ -64369,6 +64950,11 @@ export interface paths {
                                         tag: string;
                                     };
                                     attachments?: string[];
+                                    image?: {
+                                        mime?: string;
+                                        /** @description Base64 encoded image bytes */
+                                        data: string;
+                                    };
                                     sensor?: {
                                         elevation?: number;
                                         vfov?: number;
@@ -64419,6 +65005,7 @@ export interface paths {
                                         callsign?: string;
                                         mission?: string;
                                         event?: string;
+                                        device?: string;
                                         url?: string;
                                         mime?: string;
                                         remarks?: string;

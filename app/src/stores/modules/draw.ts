@@ -19,10 +19,10 @@ import { coordEach } from '@turf/meta';
 import { distance } from '@turf/distance';
 import type { GeoJSONFeatureId } from 'maplibre-gl'
 import type COT from '../../base/cot.ts';
-import Filter from '../../base/filter.ts';
+import Filter, { EDIT_HIDE_PREFIX } from '../../base/filter.ts';
 import { OriginMode } from '../../base/cot.ts';
 import { createCircleEllipseShape } from '../../base/cot/ellipse.ts';
-import { std, stdurl, server } from '../../std.ts';
+import { std, server } from '../../std.ts';
 import type { Feature, FeatureCollection } from '../../types.ts';
 import type { paths } from '@cloudtak/api-types';
 import OverlayManager from '../../base/overlay.ts';
@@ -377,14 +377,16 @@ export default class DrawTool {
                         this.lasso.loading = true;
 
                         try {
-                            const url = stdurl(`/api/basemap/${ov.mode_id}/feature`);
-
-                            const fc = await std(url, {
-                                method: 'POST',
+                            const res = await server.POST('/api/basemap/{:basemapid}/feature', {
+                                params: { path: { ':basemapid': Number(ov.mode_id) } },
                                 body: {
-                                    polygon: feat.geometry
+                                    polygon: feat.geometry as Polygon
                                 }
-                            }) as FeatureCollection;
+                            });
+
+                            if (res.error) throw new Error(res.error.message);
+
+                            const fc = res.data as FeatureCollection;
 
                             mapStore.toImport = fc.features.map((f) => {
                                 const id = randomUUID();
@@ -812,7 +814,7 @@ export default class DrawTool {
 
         if (!this.editing) return;
 
-        await Filter.delete({ external: `hidden-${this.editing.id}` });
+        await Filter.delete({ external: `${EDIT_HIDE_PREFIX}${this.editing.id}` });
 
         if (refresh) {
             if (this.editing && this.editing.origin.mode === OriginMode.MISSION && this.editing.origin.mode_id) {
@@ -855,7 +857,7 @@ export default class DrawTool {
 
             await Filter.create(
                 cot.properties.callsign + ' Hidden',
-                `hidden-${cot.id}`,
+                `${EDIT_HIDE_PREFIX}${cot.id}`,
                 'AtlasDatabase',
                 true,
                 `id = "${cot.id}"`

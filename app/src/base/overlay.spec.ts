@@ -26,6 +26,8 @@ class FakeMap {
         }
     }
 
+    getLayersOrder() { return [...this.order]; }
+
     getLayer(id: string) { return this.layerSpecs.has(id) ? { id } : undefined; }
 
     moveLayer(id: string, beforeId?: string) {
@@ -86,7 +88,7 @@ async function makeOverlay(
         styles: styleLayers(id, nLayers) as any,
         token: null, tilejson: null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any, { skipSave: true, internal: opts.internal });
+    } as any, { internal: opts.internal });
 }
 
 function overlaySpan(overlay: Overlay): [number, number] {
@@ -101,14 +103,14 @@ beforeEach(() => {
     OverlayManager.loaded.splice(0, OverlayManager.loaded.length);
 });
 
-describe('OverlayManager.applyLoadedOrder', () => {
+describe('OverlayManager.applyOrder', () => {
     it('anchors past a layerless overlay (e.g. the auto-provisioned raster-dem terrain overlay) instead of corrupting the stack below it', async () => {
         // Regression test: the auto-provisioned terrain overlay
         // (ensureDefaultTerrain(), type raster-dem, always present, has zero
         // styles of its own) sitting between two real overlays in `loaded`
         // used to break moveBefore()'s anchor for whichever overlay was
         // sorted directly below it, pushing it (and everything below IT) to
-        // the literal top of the map on the next applyLoadedOrder() call.
+        // the literal top of the map on the next applyOrder() call.
         const basemap = await makeOverlay(1, -1, 'basemap', 2);
         const m1 = await makeOverlay(2, 0, 'overlay', 2);
         const m2 = await makeOverlay(3, 1, 'overlay', 2);
@@ -117,51 +119,11 @@ describe('OverlayManager.applyLoadedOrder', () => {
 
         OverlayManager.loaded.splice(0, OverlayManager.loaded.length, basemap, m1, m2, terrain, mapFeatures);
 
-        OverlayManager.applyLoadedOrder();
+        OverlayManager.applyOrder();
 
         const [, basemapTop] = overlaySpan(basemap);
         const [mapFeaturesBottom] = overlaySpan(mapFeatures);
 
         expect(basemapTop).toBeLessThan(mapFeaturesBottom);
-    });
-});
-
-describe('OverlayManager.reorderLoaded', () => {
-    it('keeps the basemap and Map Features pinned to the ends of the stack across a reorder of the two middle overlays', async () => {
-        const basemap = await makeOverlay(1, -1, 'basemap', 2);
-        const m1 = await makeOverlay(2, 0, 'overlay', 2);
-        const m2 = await makeOverlay(3, 1, 'overlay', 2);
-        const mapFeatures = await makeOverlay(-1, 3, 'internal', 3, { internal: true });
-
-        OverlayManager.loaded.splice(0, OverlayManager.loaded.length, basemap, m1, m2, mapFeatures);
-
-        // Drag m1 above m2 in the display (top-first) order; saveOrder() in
-        // MenuOverlays.vue reverses that back to bottom-first before calling
-        // reorderLoaded, exactly like this.
-        const orderedIds = [m2.id, m1.id];
-        await OverlayManager.reorderLoaded(orderedIds, m1.id);
-
-        expect(OverlayManager.loaded[0]).toBe(basemap);
-        expect(OverlayManager.loaded[OverlayManager.loaded.length - 1]).toBe(mapFeatures);
-
-        const [, basemapTop] = overlaySpan(basemap);
-        const [mapFeaturesBottom] = overlaySpan(mapFeatures);
-        expect(basemapTop).toBeLessThan(mapFeaturesBottom);
-    });
-
-    it('never reassigns pos on the basemap or an internal overlay even if their id lands in orderedIds', async () => {
-        const basemap = await makeOverlay(1, -1, 'basemap', 2);
-        const m1 = await makeOverlay(2, 0, 'overlay', 2);
-        const mapFeatures = await makeOverlay(-1, 3, 'internal', 3, { internal: true });
-
-        OverlayManager.loaded.splice(0, OverlayManager.loaded.length, basemap, m1, mapFeatures);
-
-        // Deliberately include the pinned overlays' ids to make sure the
-        // filter in reorderLoaded() excludes them structurally, not just by
-        // omission from the caller.
-        await OverlayManager.reorderLoaded([mapFeatures.id, m1.id, basemap.id], m1.id);
-
-        expect(basemap.pos).toBe(-1);
-        expect(mapFeatures.pos).toBe(3);
     });
 });

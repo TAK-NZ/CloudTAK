@@ -3,7 +3,7 @@
 * AtlasConnection - Maintain the WebSocket connection with CloudTAK Server
 */
 
-import { std } from '../std.ts';
+import { server, bearer } from '../std.ts';
 import { db, withDbRetry, isDatabaseSuspended, deferFeaturePersist, takeDeferredFeatureIds } from '../database.ts';
 import type { DBSubscriptionChanges, DBFeature } from '../database.ts';
 import { LngLatBounds } from 'maplibre-gl'
@@ -15,11 +15,13 @@ import COT, { OriginMode } from '../base/cot.ts';
 import ContactManager from '../base/contact.ts';
 import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../utils/events.ts';
+import { entityLink, entityLabel } from '../utils/core-entity.ts';
+import type { MissionChangePropertyBody } from '../utils/events.ts';
 import type { GeoJSONSourceDiff, LngLatLike } from 'maplibre-gl';
 import { booleanWithin } from '@turf/boolean-within';
 import { isEqual } from '@ver0/deep-equal';
 import type { Polygon } from 'geojson';
-import type { InputFeature, Feature, APIList, Contact } from '../types.ts';
+import type { InputFeature, Feature, Contact } from '../types.ts';
 import type {
     Feature as GeoJSONFeature,
     Geometry as GeoJSONGeometry,
@@ -68,6 +70,9 @@ export default class AtlasDatabase {
      *  with presence alerts for everyone already online at login time. */
     isInitialized: boolean;
 
+    // Vector ids of the render-only features currently on the map, per CoT
+    derived: Map<string, Set<number>>;
+
     subscriptionPending: Map<string, string>;
 
     breadcrumb: AtlasBreadcrumb & Comlink.ProxyMarked;
@@ -84,6 +89,7 @@ export default class AtlasDatabase {
         this.pendingUnhide = new Set();
         this.pendingHidden = new Set();
         this.pendingDelete = new Set();
+        this.derived = new Map();
 
         this.subscriptionPending = new Map(); // UID, Mission Guid
 
@@ -148,6 +154,40 @@ export default class AtlasDatabase {
     }
 
     /**
+     * Upsert the CoT's derived features and drop any it no longer produces.
+     * A GeoJSON source add replaces an existing id, so no add/update split
+     */
+    private renderDerived(cot: COT, diff: GeoJSONSourceDiff): void {
+        const current = new Set<number>();
+
+        for (const feat of cot.as_derived()) {
+            diff.add!.push(feat);
+            current.add(Number(feat.id));
+        }
+
+        const previous = this.derived.get(cot.id);
+        if (previous) {
+            for (const id of previous) {
+                if (!current.has(id)) diff.remove!.push(id);
+            }
+        }
+
+        if (current.size) {
+            this.derived.set(cot.id, current);
+        } else {
+            this.derived.delete(cot.id);
+        }
+    }
+
+    private removeDerived(id: string, diff: GeoJSONSourceDiff): void {
+        const previous = this.derived.get(id);
+        if (!previous) return;
+
+        for (const vectorId of previous) diff.remove!.push(vectorId);
+        this.derived.delete(id);
+    }
+
+    /**
      * Generate a GeoJSONDiff on existing COT Features
      */
     async diff(): Promise<GeoJSONSourceDiff> {
@@ -169,9 +209,11 @@ export default class AtlasDatabase {
 
             if (this.pendingHidden.has(String(cot.id))) {
                 diff.remove.push(cot.vectorId())
+                this.removeDerived(cot.id, diff);
                 this.pendingHidden.delete(cot.id);
             } else if (!cot.properties.archived && AtlasDatabase.staleElapsed(display_stale, stale, now)) {
                 diff.remove.push(cot.vectorId())
+                this.removeDerived(cot.id, diff);
                 staleDelete.add(cot.id);
             } else if (!cot.properties.archived) {
                 if (now < stale && (cot.properties['icon-opacity'] !== 1 || cot.properties['marker-opacity'] !== 1)) {
@@ -188,6 +230,7 @@ export default class AtlasDatabase {
                         }),
                         newGeometry: fresh.geometry
                     })
+                    this.renderDerived(cot, diff);
                 } else if (now > stale && (cot.properties['icon-opacity'] !== 0.5 || cot.properties['marker-opacity'] !== 0.5)) {
                     cot.properties['icon-opacity'] = 0.5;
                     cot.properties['marker-opacity'] = 0.5;
@@ -202,6 +245,7 @@ export default class AtlasDatabase {
                         }),
                         newGeometry: dimmed.geometry
                     })
+                    this.renderDerived(cot, diff);
                 }
             }
         }
@@ -212,6 +256,7 @@ export default class AtlasDatabase {
 
             const render = cot.as_rendered();
             diff.add.push(render);
+            this.renderDerived(cot, diff);
         }
 
         this.pendingUnhide.clear();
@@ -220,6 +265,7 @@ export default class AtlasDatabase {
             if (cot.is_self || staleDelete.has(cot.id) || this.pendingDelete.has(cot.id)) continue;
             const render = cot.as_rendered();
             diff.add.push(render);
+            this.renderDerived(cot, diff);
         }
 
         this.pendingCreate.clear();
@@ -236,6 +282,7 @@ export default class AtlasDatabase {
                 }),
                 newGeometry: render.geometry
             })
+            this.renderDerived(cot, diff);
         }
 
         this.pendingUpdate.clear();
@@ -249,6 +296,7 @@ export default class AtlasDatabase {
             if (!cot) continue;
 
             diff.remove.push(cot.vectorId());
+            this.removeDerived(id, diff);
             removed.add(id);
         }
 
@@ -336,6 +384,8 @@ export default class AtlasDatabase {
 
         const features: Array<GeoJSONFeature<GeoJSONGeometry, Record<string, unknown>>> = [];
 
+        this.derived.clear();
+
         for (const cot of this.cots.values()) {
             // The user's own position is drawn by the GeolocateControl puck
             // rather than as a CoT marker on the map.
@@ -355,6 +405,12 @@ export default class AtlasDatabase {
             }
 
             features.push(cot.as_rendered());
+
+            const derived = cot.as_derived();
+            if (derived.length) {
+                this.derived.set(cot.id, new Set(derived.map((feat) => Number(feat.id))));
+                features.push(...derived);
+            }
         }
 
         for (const id of deleted) this.cots.delete(id);
@@ -440,6 +496,73 @@ export default class AtlasDatabase {
         } else {
             return cots;
         }
+    }
+
+    /**
+     * Find CoTs whose callsign or remarks contain the query, callsign matches first
+     */
+    async search(
+        query: string,
+        opts: {
+            limit?: number;
+            mission?: boolean,
+        } = {}
+    ): Promise<Set<COT>> {
+        const needle = query.trim().toLowerCase();
+        const byCallsign: Array<COT> = [];
+        const byRemarks: Array<COT> = [];
+
+        if (!needle) return new Set();
+
+        const match = (props: Feature["properties"]): 'callsign' | 'remarks' | null => {
+            if ((props.callsign || '').toLowerCase().includes(needle)) return 'callsign';
+            if ((props.remarks || '').toLowerCase().includes(needle)) return 'remarks';
+            return null;
+        };
+
+        const full = () => opts.limit !== undefined && byCallsign.length >= opts.limit;
+
+        for (const cot of this.cots.values()) {
+            if (full()) break;
+            if (this.pendingDelete.has(cot.id)) continue;
+
+            const hit = match(cot.properties);
+            if (hit === 'callsign') byCallsign.push(cot);
+            else if (hit === 'remarks') byRemarks.push(cot);
+        }
+
+        if (opts.mission && !full()) {
+            for (const sub of await Subscription.localList({
+                subscribed: true
+            })) {
+                if (full()) break;
+
+                const store = await Subscription.from(sub.guid, {
+                    subscribed: true
+                });
+
+                if (!store) continue;
+
+                for (const feat of await store.feature.list()) {
+                    if (full()) break;
+
+                    const hit = match(feat.properties);
+                    if (!hit) continue;
+
+                    const cot = await COT.load(feat, {
+                        mode: OriginMode.MISSION,
+                        mode_id: sub.guid
+                    });
+
+                    if (hit === 'callsign') byCallsign.push(cot);
+                    else byRemarks.push(cot);
+                }
+            }
+        }
+
+        const ranked = byCallsign.concat(byRemarks);
+
+        return new Set(opts.limit === undefined ? ranked : ranked.slice(0, opts.limit));
     }
 
     async paths(store?: Map<string, COT>): Promise<Array<NestedArray>> {
@@ -574,9 +697,22 @@ export default class AtlasDatabase {
         // deleted (hydrate seeds archiveIds; this prunes against it).
         if (this.hydrating) await this.hydrating;
 
-        const archive = await std('/api/profile/feature', {
-            token: this.atlas.token
-        }) as APIList<Feature>;
+        const { data: archive, error } = await server.GET('/api/profile/feature', {
+            params: {
+                query: {
+                    format: 'geojson',
+                    deleted: false,
+                    download: false,
+                    limit: 1000,
+                    sort: 'id',
+                    page: 0,
+                    order: 'asc'
+                }
+            },
+            headers: bearer(this.atlas.token)
+        });
+
+        if (error) throw new Error(error.message);
 
         const serverIds = new Set<string>(archive.items.map((f) => String(f.id)));
 
@@ -678,10 +814,12 @@ export default class AtlasDatabase {
 
             if (cot.properties.archived) {
                 if (!opts.skipNetwork) {
-                    await std(`/api/profile/feature/${id}`, {
-                        token: this.atlas.token,
-                        method: 'DELETE'
+                    const { error } = await server.DELETE('/api/profile/feature/{:id}', {
+                        params: { path: { ':id': id }, query: { permanent: false } },
+                        headers: bearer(this.atlas.token)
                     });
+
+                    if (error) throw new Error(error.message);
                 }
 
                 this.atlas.postMessage({
@@ -807,6 +945,34 @@ export default class AtlasDatabase {
             }
 
             await sub.log.refresh();
+        } else if (task.properties.type === 't-x-m-c-p' && task.properties.mission && task.properties.mission.guid) {
+            // TAK Server 5.9+ Mission Property (key/value) changes. These aren't mission
+            // content, so nothing is stored or refreshed here - the change is broadcast
+            // for plugins. `changes` can be empty if the CoT carried no MissionProperty,
+            // in which case listeners should re-fetch the mission's properties.
+            const changes: MissionChangePropertyBody['changes'] = [];
+            for (const change of task.properties.mission.missionChanges || []) {
+                // `missionProperty` comes from node-cot >= 14.53.1; read it through a narrow
+                // type until api/derived-types.d.ts is next regenerated
+                const prop = (change as { missionProperty?: { key: string; value: string } }).missionProperty;
+                if (!prop) continue;
+                changes.push({
+                    type: change.type,
+                    key: prop.key,
+                    value: prop.value,
+                    creatorUid: change.creatorUid,
+                    timestamp: change.timestamp,
+                });
+            }
+
+            this.atlas.postMessage({
+                type: WorkerMessageType.Mission_Change_Property,
+                body: {
+                    guid: task.properties.mission.guid,
+                    name: task.properties.mission.name,
+                    changes
+                } satisfies MissionChangePropertyBody
+            });
         } else if (task.properties.type === 't-x-m-c-m' && task.properties.mission && task.properties.mission.guid) {
             const sub = await Subscription.from(task.properties.mission.guid, {
                 subscribed: true
@@ -1057,30 +1223,36 @@ export default class AtlasDatabase {
     }
 
     /**
-     * PATCH a locally moved Core Event marker back to the Event API - a
-     * failure is reverted on clients by the next Event rebroadcast
+     * PATCH a locally moved Core Entity marker back to the Entity API - a
+     * failure is reverted on clients by the next Entity rebroadcast
      */
     private async syncCoreEntityGeometry(cot: COT): Promise<void> {
-        const link = (cot.properties.links || []).find((link) => {
-            return link.type === 'core-event' && link.event;
-        });
+        const entity = entityLink(cot.properties.links);
 
-        if (!link || !link.event) return;
+        if (!entity) return;
         if (cot.geometry.type !== 'Point') return;
 
+        const geometry = {
+            type: 'Point' as const,
+            coordinates: cot.geometry.coordinates.slice(0, 2)
+        };
+
         try {
-            await std(`/api/core/event/${link.event}`, {
-                method: 'PATCH',
-                token: this.atlas.token,
-                body: {
-                    geometry: {
-                        type: 'Point',
-                        coordinates: cot.geometry.coordinates.slice(0, 2)
-                    }
-                }
-            });
+            const { error } = entity.kind === 'device'
+                ? await server.PATCH('/api/core/device/{:device}', {
+                    params: { path: { ':device': entity.id } },
+                    headers: bearer(this.atlas.token),
+                    body: { geometry }
+                })
+                : await server.PATCH('/api/core/event/{:event}', {
+                    params: { path: { ':event': entity.id } },
+                    headers: bearer(this.atlas.token),
+                    body: { geometry }
+                });
+
+            if (error) throw new Error(error.message);
         } catch (err) {
-            console.error(`Failed to sync Core Event geometry for ${cot.id}:`, err);
+            console.error(`Failed to sync Core ${entityLabel(entity)} geometry for ${cot.id}:`, err);
         }
     }
 

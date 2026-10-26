@@ -283,4 +283,23 @@ test('GET api/config/channels - requires authentication', async () => {
     }
 });
 
+test('GET api/config/layer', async () => {
+    try {
+        const res = await flight.fetch('/api/config/layer', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.admin,
+            },
+        }, true);
+
+        assert.deepEqual(res.body, {
+            webhooks: { url: 'http://localhost:5001' },
+            email: { domain: 'mail.localhost' },
+            vpc: { enabled: false, addresses: [] },
+        });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 flight.landing();
