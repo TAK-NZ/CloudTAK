@@ -598,8 +598,8 @@ builds a tree instead. The same approach drives the TAKTeamManager dashboard.
   quotes, because ECS passes the quotes of `KEY="value"` through, and falls back to the
   default for an empty or whitespace-only value.
 - **Types and schema fixture.** The new route is in `api/derived-types.d.ts` and in
-  `api/test/fixtures/get_schema.json`. The derived-types entry was written by hand in the
-  generator's format; regenerating from a deployed environment should leave it unchanged.
+  `api/test/fixtures/get_schema.json`. The derived-types entry was first written by hand;
+  the file was then regenerated from `map.test.tak.nz` and the entry came out identical.
 
 Other channel pickers (`GroupSelect`, `GroupSelectDropdown`,
 `PropertyCoreEntityChannels`, `Subscriptions`) are still flat lists.
