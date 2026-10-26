@@ -141,35 +141,45 @@ export default class OverlayManager extends BaseInterface {
     }
 
     /**
-     * Move every loaded overlay's map layers so their stacking matches
-     * stack() - idempotent, so it runs after every reconcile
+     * Bring the loaded overlays' map layers in line with stack() - idempotent,
+     * so it runs after every reconcile.
+     *
+     * The map also holds layers CloudTAK does not manage, most notably the
+     * layers plugins add (the weather plugin keeps its radar directly below Map
+     * Features). Only the overlays that are out of order are moved, and a
+     * basemap goes to the bottom of the map, so a repack never carries managed
+     * layers over a foreign layer they were already below. Packing every
+     * overlay up against Map Features used to push a vector basemap above the
+     * weather radar.
      */
     static applyOrder(): void {
-        const stack = this.stack();
+        const stack = this.stack().filter((overlay) => overlay.layerIds().length > 0);
+        const map = useMapStore().map;
 
         // Moving a layer forces a full symbol re-placement even when it does
         // not change position, so only touch the map when the order differs
         const desired = stack.flatMap((overlay) => overlay.layerIds());
         const managed = new Set(desired);
-        const current = useMapStore().map.getLayersOrder().filter((id) => managed.has(id));
+        const current = map.getLayersOrder().filter((id) => managed.has(id));
         if (current.length === desired.length && current.every((id, i) => id === desired[i])) return;
 
-        for (let i = stack.length - 1; i >= 0; i--) {
-            stack[i].moveBefore(this.anchorAbove(stack, i + 1));
-        }
-    }
+        // Top down: once an overlay sits below its neighbour, everything above
+        // it is already in order, so one pass settles the whole stack
+        for (let i = stack.length - 2; i >= 0; i--) {
+            const below = stack[i];
+            const above = stack[i + 1];
 
-    /**
-     * Nearest overlay at or above the given index that has a renderable
-     * layer on the map - overlays with no layers (e.g. raster-dem terrain,
-     * failed or still initializing) cannot be anchored against and are skipped
-     */
-    private static anchorAbove(stack: Overlay[], idx: number): Overlay | undefined {
-        for (let i = idx; i < stack.length; i++) {
-            if (stack[i].anchorLayerId()) return stack[i];
-        }
+            const position = new Map(map.getLayersOrder().map((id, idx) => [id, idx]));
+            const top = Math.max(...below.layerIds().map((id) => position.get(id) ?? -1));
+            const bottom = Math.min(...above.layerIds().map((id) => position.get(id) ?? Infinity));
+            if (top < bottom) continue;
 
-        return undefined;
+            if (below.mode === 'basemap') {
+                below.moveToBottom();
+            } else {
+                below.moveBefore(above);
+            }
+        }
     }
 
     /** Delete the overlay record and wait for the map to drop it */

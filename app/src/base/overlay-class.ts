@@ -537,6 +537,16 @@ export default class Overlay {
         if (display_text === 'Small') size = 4;
         if (display_text === 'Large') size = 16;
 
+        // A raster source can only back raster layers. Changing a basemap from
+        // vector to raster used to leave the vector style layers behind on the
+        // stored overlay, and MapLibre rejects every one of them with
+        // "layer ... requires a vector source", leaving the map blank.
+        // Fall back to the default raster style instead.
+        if (this.type === 'raster' && this.styles.some((l) => l.type !== 'raster' && l.type !== 'background')) {
+            console.warn(`Overlay ${this.id} (${this.name}) is raster but has non-raster styles - using the default raster style`);
+            this.styles = [];
+        }
+
         if (!this.styles.length && this.type === 'raster') {
             this.styles = [{
                 'id': String(this.id),
@@ -651,6 +661,23 @@ export default class Overlay {
             } else {
                 mapStore.map.moveLayer(layer.id);
             }
+        }
+    }
+
+    /**
+     * Move this overlay's layers to the bottom of the map, just above the shared
+     * background layer, so every other layer - including ones CloudTAK does not
+     * manage, such as plugin layers - draws over it
+     */
+    moveToBottom(): void {
+        const mapStore = useMapStore();
+        const own = new Set(this.styles.map((l) => l.id));
+        const before = mapStore.map.getLayersOrder().find((id) => id !== 'background' && !own.has(id));
+        if (!before) return;
+
+        for (const layer of this.styles) {
+            if (!mapStore.map.getLayer(layer.id)) continue;
+            mapStore.map.moveLayer(layer.id, before);
         }
     }
 

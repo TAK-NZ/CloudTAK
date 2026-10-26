@@ -211,7 +211,9 @@ export default class ProfileOverlayControl {
                 // unless the caller said otherwise. The frontend relies on this
                 // ("add" works whether or not the overlay already exists).
                 visible: patch.visible ?? (mode === 'mission' ? undefined : true),
-                styles: patch.styles ? ProfileOverlayControl.normalizeStyles(existing.id, patch.styles) : undefined,
+                styles: patch.styles
+                    ? ProfileOverlayControl.normalizeStyles(existing.id, patch.styles)
+                    : ProfileOverlayControl.staleStyles(existing.type, patch.type),
                 opacity: patch.opacity !== undefined ? String(patch.opacity) : undefined,
             });
 
@@ -259,9 +261,20 @@ export default class ProfileOverlayControl {
 
         return await this.config.models.ProfileOverlay.commit(id, {
             ...input,
-            styles: input.styles ? ProfileOverlayControl.normalizeStyles(id, input.styles) : undefined,
+            styles: input.styles
+                ? ProfileOverlayControl.normalizeStyles(id, input.styles)
+                : ProfileOverlayControl.staleStyles(overlay.type, input.type),
             opacity: input.opacity !== undefined ? String(input.opacity) : undefined,
         });
+    }
+
+    /**
+     * Styles are written for one source type. When the type changes and the
+     * caller supplied no replacement, the old layers can no longer be drawn
+     * (e.g. vector layers on a raster source), so clear them.
+     */
+    static staleStyles(current: string | null | undefined, next: string | undefined): Array<unknown> | undefined {
+        return next !== undefined && next !== current ? [] : undefined;
     }
 
     /**
