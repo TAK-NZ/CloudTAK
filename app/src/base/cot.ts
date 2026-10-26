@@ -1,7 +1,7 @@
 import { v4 as randomUUID } from 'uuid';
 import Type2525 from '@tak-ps/node-cot/2525';
-import { std } from '../std.ts';
-import { db, withDbRetry, isDatabaseSuspended, deferFeaturePersist, liveQuery } from '../database.ts';
+import { server, bearer } from '../std.ts';
+import { db, withDbRetry, isDatabaseSuspended, deferFeaturePersist, liveQuery, type DBTaxonomy } from '../database.ts';
 import { bbox } from '@turf/bbox'
 import { length } from '@turf/length'
 import { isEqual } from '@ver0/deep-equal';
@@ -9,13 +9,17 @@ import { WorkerMessageType } from '../utils/events.ts'
 import { TEAM_COLORS, strokeColorFor } from '../utils/team-colors.ts';
 import pointOnFeature from '@turf/point-on-feature';
 import { applyEllipseMutation } from './cot/ellipse.ts';
+import { derivedFeatures, type DerivedFeature } from './cot/derived.ts';
 import type { COTMutation, COTUpdate } from './cot/types.ts';
+import type { paths } from '@cloudtak/api-types';
 import type { Feature, FeaturePropertyCreator, Subscription } from '../types.ts'
 import type {
     BBox as GeoJSONBBox,
     Feature as GeoJSONFeature,
     Geometry as GeoJSONGeometry,
 } from 'geojson'
+
+type ProfileFeatureBody = paths["/api/profile/feature"]["put"]["requestBody"]["content"]["application/json"];
 
 export interface Origin {
     mode: OriginMode,
@@ -173,6 +177,8 @@ export default class COT {
     _liveQuerySubscription: { unsubscribe: () => void } | null;
 
     static selfUid: string | null = null;
+
+    static typeRequests = new Map<string, Promise<DBTaxonomy>>();
 
     _username?: string;
 
@@ -353,7 +359,25 @@ export default class COT {
                         }
                     }
 
+                    // Updates always carry the full property set, and a removed
+                    // icon arrives with the key absent (JSON drops undefined
+                    // on the way from the main thread) - without this the old
+                    // icon survives the assign and the removal silently reverts
+                    if (this._properties.icon && update.properties.icon === undefined) {
+                        delete this._properties.icon;
+                    }
+
+                    // The sensor cone is derived at render time from this block
+                    const sensorBefore = this._properties.sensor;
+                    if (sensorBefore && update.properties.sensor === undefined) {
+                        delete this._properties.sensor;
+                    }
+
                     Object.assign(this._properties, update.properties);
+
+                    if (!isEqual(sensorBefore, this._properties.sensor)) {
+                        visuallyChanged = true;
+                    }
 
                     if (this.is_skittle) this._properties.archived = false;
 
@@ -422,11 +446,13 @@ export default class COT {
             const tokenEntry = await db.config.get('token');
             if (!tokenEntry) return;
 
-            await std('/api/profile/feature', {
-                method: 'PUT',
-                token: tokenEntry.value as string,
-                body: this.as_feature()
-            })
+            const { error } = await server.PUT('/api/profile/feature', {
+                params: { query: { broadcast: false, submit: false, archive: true } },
+                headers: bearer(tokenEntry.value as string),
+                body: this.as_feature() as ProfileFeatureBody
+            });
+
+            if (error) throw new Error(error.message);
         }
     }
 
@@ -509,9 +535,13 @@ export default class COT {
     async subscription(): Promise<Subscription> {
         if (!this.is_skittle) throw new Error('Username can only be obtained for Users');
 
-        return (await std(`/api/marti/subscription/${this.id}`, {
-            method: 'GET'
-        }) as Subscription);
+        const { data, error } = await server.GET('/api/marti/subscription/{:clientuid}', {
+            params: { path: { ':clientuid': this.id } }
+        });
+
+        if (error) throw new Error(error.message);
+
+        return data;
     }
 
     async username(): Promise<string> {
@@ -590,6 +620,18 @@ export default class COT {
     }
 
     /**
+     * Render-only companions of this CoT (ie the sensor cone), keyed by a
+     * vector id derived from the CoT id so they can be replaced or removed
+     */
+    as_derived(): DerivedFeature[] {
+        return COT.as_derived(this.as_feature());
+    }
+
+    static as_derived(input: Feature): DerivedFeature[] {
+        return derivedFeatures(input, COT.vectorId);
+    }
+
+    /**
      * The slimmer we can get the Features, the better
      * This returns the minium feature we need to actually style the COT in the vector tiles
      */
@@ -655,6 +697,79 @@ export default class COT {
 
     bounds(): GeoJSONBBox {
         return bbox(this._geometry);
+    }
+
+    /**
+     * Human readable name for this Feature's CoT type - see {@link COT.resolveType}
+     */
+    async resolveType(): Promise<DBTaxonomy> {
+        return await COT.resolveType(this.properties.type);
+    }
+
+    /**
+     * Resolve a CoT type or 2525 SIDC to its human readable name, served from
+     * the taxonomy table when cached and otherwise fetched and cached. Never
+     * throws: offline or unknown types resolve to the type itself
+     */
+    static async resolveType(type: string): Promise<DBTaxonomy> {
+        if (!type) return { type, name: type, desc: '' };
+
+        try {
+            const cached = await db.taxonomy.get(type);
+            if (cached) return cached;
+        } catch (err) {
+            console.warn('Taxonomy lookup failed:', err);
+        }
+
+        let request = this.typeRequests.get(type);
+
+        if (!request) {
+            request = this.fetchType(type).finally(() => {
+                this.typeRequests.delete(type);
+            });
+
+            this.typeRequests.set(type, request);
+        }
+
+        return await request;
+    }
+
+    private static async fetchType(type: string): Promise<DBTaxonomy> {
+        const fallback: DBTaxonomy = { type, name: type, desc: '' };
+
+        let entry: DBTaxonomy;
+
+        try {
+            if (Type2525.isNumericSIDCConvertable(type)) {
+                const { data, error } = await server.GET('/api/type/2525e/{:sidc}', {
+                    params: { path: { ':sidc': type } }
+                });
+
+                if (error) throw new Error(error.message);
+
+                entry = { type, name: data.name || type, desc: data.remarks || '' };
+            } else {
+                const { data, error } = await server.GET('/api/type/cot/{:type}', {
+                    params: { path: { ':type': type } }
+                });
+
+                if (error) throw new Error(error.message);
+                if (!data.full || data.full === type) return fallback;
+
+                entry = { type, name: data.full, desc: data.desc || '' };
+            }
+        } catch (err) {
+            console.warn(`Could not resolve type ${type}:`, err);
+            return fallback;
+        }
+
+        try {
+            await db.taxonomy.put(entry);
+        } catch (err) {
+            console.warn('Taxonomy cache write failed:', err);
+        }
+
+        return entry;
     }
 
     async flyTo(): Promise<void> {

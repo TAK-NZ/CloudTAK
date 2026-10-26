@@ -465,10 +465,15 @@ Related: `initOverlays()` calls `this.updateBackground()` after
 `OverlayManager.appendLoaded(...)`, because `visibleBasemaps()` reads `loaded`,
 which was still empty when `addLayers()` ran — that was the missing ocean fill.
 
-`namespaceStyles()` in `overlay-class.ts` copies rather than mutates, so layer-id
-prefixing is idempotent. `replace()` used to mutate the caller's array, and
-`MenuBasemaps` passes `basemap.styles` straight from component state, which grew
-ids like `23-23-23-Background` on every re-selection.
+Layer-id prefixing is done server-side since v13.113.0, by
+`ProfileOverlayControl.normalizeStyles()` in `api/common/control/profile-overlay.ts`
+(upstream removed the client `Overlay.replace()` / `create()` save path, and with it
+our `namespaceStyles()` helper). It is idempotent, so re-selecting a basemap cannot
+grow ids like `23-23-23-Background`. **TAK-NZ change:** upstream rewrites `source`
+on every non-`background` layer; we also skip `hillshade`, because those layers
+point at the shared `__terrain__` raster-dem source rather than the overlay's own.
+Without that exemption a stored hillshade layer is re-pointed at a source it cannot
+use. Drop it if upstream ever supports a shared terrain source.
 
 ### Server-side elevation
 
@@ -786,6 +791,10 @@ additions that would need to be proposed upstream separately.
 
 - The Application Switcher dropdown is removed; logout redirects to
   `/api/logout`.
+- Creator/author rows show the username without a `mailto:` link
+  (`Property/PropertyAuthor.vue`, used by `CoTView.vue` and `CoreEntityView.vue`).
+  Authentik usernames need not be email addresses. `PropertyEmail.vue` is left
+  as upstream ships it so it cannot conflict.
 - Upstream's "Missions" are presented as "Data Syncs" where they face the user
   (route paths, store/prop names and DB fields stay `mission`/`missions`), and
   the `EmptyInfo` type check was corrected to match. Not yet applied

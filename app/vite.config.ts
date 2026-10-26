@@ -6,6 +6,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const milsymbolBrowserBundle = path.resolve(import.meta.dirname, 'node_modules/milsymbol/dist/milsymbol.js');
 
+// Video.js 10 custom elements used in templates - keep in sync with VideoPlayer.vue
+const videoJsElements = new Set(['live-video-player', 'live-video-skin']);
+
 /**
  * Vite compiles `?worker&url` bundles (Atlas + MapLibre workers) and their
  * chunks in a separate build it never records in `manifest.json`, so the
@@ -67,7 +70,13 @@ export default defineConfig(({ mode }) => {
             'import.meta.env.BUILD_YEAR': JSON.stringify(new Date().getFullYear()),
         },
         plugins: [
-            vue(),
+            vue({
+                template: {
+                    compilerOptions: {
+                        isCustomElement: (tag) => videoJsElements.has(tag),
+                    },
+                },
+            }),
             precacheWorkerAssetsPlugin(),
             {
                 name: 'configure-server',
