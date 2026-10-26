@@ -241,16 +241,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     },
                 });
 
-                let buffer: Buffer;
-                bb.on('file', async (fieldname, file) => {
-                    try {
-                        buffer = await stream2buffer(file);
-                    } catch (err) {
-                        Err.respond(err, res);
-                    }
+                let filePromise: Promise<Buffer> | undefined;
+
+                bb.on('file', (_fieldname, file) => {
+                    filePromise = stream2buffer(file);
                 }).on('finish', async () => {
                     try {
-                        const b = await BasemapParser.parse(String(buffer));
+                        if (!filePromise) {
+                            throw new Err(400, null, 'No XML file received');
+                        }
+
+                        const buffer = await filePromise;
+                        const b = await BasemapParser.parse(buffer.toString('utf8'));
 
                         if (!b.raw.customMapSource) {
                             res.json(imported);
@@ -625,9 +627,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             collection: Type.Optional(Type.Union([Type.Null(), Type.String()])),
             overlay: Type.Optional(Type.Boolean()),
             hidden: Type.Optional(Type.Boolean()),
-            scope: Type.Enum(ResourceCreationScope, { default: ResourceCreationScope.USER }),
+            scope: Type.Optional(Type.Enum(ResourceCreationScope)),
             url: Type.Optional(Type.String()),
-            tilesize: Type.Optional(Type.Integer({ default: 256, minimum: 256, maximum: 512 })),
+            tilesize: Type.Optional(Type.Integer({ minimum: 256, maximum: 512 })),
             attribution: Type.Optional(Type.Union([Type.Null(), Type.String()])),
             frequency: Type.Optional(Type.Union([Type.Null(), Type.Integer()])),
             minzoom: Type.Optional(Type.Integer()),

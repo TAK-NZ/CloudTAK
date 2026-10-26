@@ -109,12 +109,7 @@
         "query": false,
         "res": true
     },
-    "GET /config/webhooks": {
-        "body": false,
-        "query": false,
-        "res": true
-    },
-    "GET /config/email": {
+    "GET /config/layer": {
         "body": false,
         "query": false,
         "res": true
@@ -1472,6 +1467,11 @@
     "GET /profile/overlay": {
         "body": false,
         "query": true,
+        "res": true
+    },
+    "PATCH /profile/overlay/order": {
+        "body": true,
+        "query": false,
         "res": true
     },
     "GET /profile/overlay/:overlay": {

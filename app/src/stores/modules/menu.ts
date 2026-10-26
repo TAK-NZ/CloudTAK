@@ -2,6 +2,7 @@ import { ref, computed, toRaw, markRaw } from 'vue';
 import type { Component, Ref, ComputedRef } from "vue";
 import {
     IconBug,
+    IconCpu,
     IconMap,
     IconFiles,
     IconUsers,
@@ -23,6 +24,7 @@ import ProfileConfig from '../../base/profile.ts';
 import ContactManager from '../../base/contact.ts';
 import Chatroom from '../../base/chatroom.ts';
 import type { Profile } from '../../types.ts';
+import { isNativePlatform } from '../../utils/capacitor.ts';
 
 export type MenuItemConfig = {
     key: string;
@@ -118,6 +120,14 @@ export default class MenuManager {
                 tooltip: 'Contacts',
                 description: 'Manage and search for contacts',
                 icon: IconUsers,
+            },
+            {
+                key: 'devices',
+                label: 'Devices',
+                route: '/menu/devices',
+                tooltip: 'Devices',
+                description: 'Sensors and tracked hardware',
+                icon: IconCpu,
             },
             {
                 key: 'basemaps',
@@ -243,7 +253,10 @@ export default class MenuManager {
 
     get items(): ComputedRef<MenuItemConfig[]> {
         return computed(() => {
+            const native = isNativePlatform();
+
             let combined = [...this.baseMenuItems, ...this.pluginMenuItems.value].filter((item) => {
+                if (item.routeExternal && native) return false;
                 if (item.requiresSystemAdmin && !this.isSystemAdmin.value) return false;
                 if (item.requiresAgencyAdmin && !(this.isAgencyAdmin.value || this.isSystemAdmin.value)) return false;
                 return true;

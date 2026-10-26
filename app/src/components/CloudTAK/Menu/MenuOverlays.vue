@@ -143,6 +143,13 @@
                                                     @click.stop='router.push(`/menu/missions/${card.overlay.mode_id}`)'
                                                     v-text='card.overlay.name'
                                                 />
+                                                <a
+                                                    v-else-if='card.overlay.mode === "internal"'
+                                                    class='fw-semibold text-primary text-decoration-underline d-inline-flex align-items-center text-break cursor-pointer'
+                                                    title='Open Features Menu'
+                                                    @click.stop='router.push("/menu/features")'
+                                                    v-text='card.overlay.name'
+                                                />
                                                 <span
                                                     v-else
                                                     class='fw-semibold d-inline-flex align-items-center flex-grow-1 text-break'
@@ -175,11 +182,29 @@
                                     class='d-flex flex-column align-items-end gap-2'
                                 >
                                     <span
+                                        v-if='card.status.kind === "error"'
                                         class='badge rounded-pill'
                                         :class='`text-bg-${card.status.variant}`'
                                         :title='card.status.tooltip || ""'
                                     >
                                         {{ card.status.label }}
+                                    </span>
+                                    <span
+                                        v-else-if='card.status.kind === "pending"'
+                                        class='spinner-border spinner-border-sm text-secondary my-1'
+                                        role='status'
+                                        :title='card.status.tooltip || card.status.label'
+                                    >
+                                        <span class='visually-hidden'>{{ card.status.label }}</span>
+                                    </span>
+                                    <span
+                                        v-else
+                                        class='d-inline-block rounded-circle bg-success my-2'
+                                        style='width: 10px; height: 10px;'
+                                        role='status'
+                                        :title='card.status.label'
+                                    >
+                                        <span class='visually-hidden'>{{ card.status.label }}</span>
                                     </span>
 
                                     <div class='d-flex align-items-center gap-2 flex-wrap justify-content-end w-100'>
@@ -304,7 +329,7 @@ import { useMapStore } from '../../../stores/map.ts';
 import { profileAssetIdFromUrl } from '../../../utils/offline-tiles.ts';
 
 type OverlayBadge = { label: string; variant: string };
-type OverlayStatus = { label: string; variant: string; tooltip?: string };
+type OverlayStatus = { kind: 'ready' | 'pending' | 'error'; label: string; variant: string; tooltip?: string };
 type OverlayUpdate = Parameters<Overlay['update']>[0];
 type OverlayCard = { overlay: Overlay; visible: boolean; status: OverlayStatus; badges: OverlayBadge[]; offline: boolean };
 
@@ -366,7 +391,8 @@ const overlayCards = computed<OverlayCard[]>(() => {
     }
 
     // Menu lists the map stack top-first: topmost overlay first, basemap last
-    return cards.sort((a, b) => OverlayManager.loaded.indexOf(b.overlay) - OverlayManager.loaded.indexOf(a.overlay));
+    const stack = OverlayManager.stack();
+    return cards.sort((a, b) => stack.indexOf(b.overlay) - stack.indexOf(a.overlay));
 });
 
 const sortableCount = computed(() => overlayCards.value.filter((card) => !OverlayManager.isPinned(card.overlay)).length);
@@ -488,6 +514,7 @@ function hasOverlayDetails(overlay: Overlay): boolean {
 function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
     if (!overlay.healthy()) {
         return {
+            kind: 'error',
             label: 'Issue',
             variant: 'danger',
             tooltip: overlay._error?.message ?? 'Unknown error'
@@ -496,14 +523,17 @@ function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
 
     if (overlay.loading) {
         return {
+            kind: 'pending',
             label: 'Pending',
             variant: 'warning',
             tooltip: 'Overlay is still loading data from the server.'
         };
     }
 
-    if (!overlay.styles?.length) {
+    // Terrain is applied via setTerrain and never carries style layers
+    if (!overlay.styles?.length && overlay.type !== 'raster-dem') {
         return {
+            kind: 'pending',
             label: 'Pending',
             variant: 'warning',
             tooltip: 'Overlay does not contain any styles yet.'
@@ -511,6 +541,7 @@ function resolveOverlayStatus(overlay: Overlay): OverlayStatus {
     }
 
     return {
+        kind: 'ready',
         label: 'Ready',
         variant: 'success'
     };
@@ -560,14 +591,11 @@ async function saveOrder(sortableEv: SortableEvent) {
     if (!sortable) return;
     if (sortableEv.newIndex === undefined || isNaN(parseInt(String(sortableEv.newIndex)))) return;
 
-    const id = sortableEv.item.getAttribute('id');
-    if (!id) return;
-
     // The list is top-first while the manager orders bottom-first
     const overlay_ids = sortable.toArray().map((i) => parseInt(i)).reverse();
 
     try {
-        await OverlayManager.reorderLoaded(overlay_ids, id);
+        await OverlayManager.reorderLoaded(overlay_ids);
     } catch (err) {
         console.error('Failed to sync overlay order:', err);
     }
