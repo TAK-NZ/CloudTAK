@@ -136,6 +136,7 @@ import { from } from 'rxjs';
 import { useObservable } from '@vueuse/rxjs';
 import type { GroupChannel } from '../../../../src/types.ts';
 import GroupManager from '../../../base/group.ts';
+import { server } from '../../../std.ts';
 import {
     TablerNone,
     TablerIconButton,
@@ -146,6 +147,7 @@ import SearchSortFilter from '../util/SearchSortFilter.vue';
 import ChannelTreeItem from '../util/ChannelTreeItem.vue';
 import EmptyInfo from '../util/EmptyInfo.vue';
 import {
+    CHANNEL_FOLDER_SEPARATOR,
     buildChannelTree,
     filterChannelTree,
     folderPaths,
@@ -188,8 +190,21 @@ const channels = useObservable(
     { initialValue: [] }
 ) as Ref<GroupChannel[]>;
 
+// The server can override the separator (CHANNEL_FOLDER_SEPARATOR); until it
+// answers, or if the request fails, the default is used
+const separator = ref(CHANNEL_FOLDER_SEPARATOR);
+
+async function loadSeparator(): Promise<void> {
+    try {
+        const { data } = await server.GET('/api/config/channels');
+        if (data?.separator) separator.value = data.separator;
+    } catch (err) {
+        console.error('Failed to load the channel folder separator', err);
+    }
+}
+
 onMounted(async () => {
-    await refresh();
+    await Promise.all([refresh(), loadSeparator()]);
 });
 
 // Folders the user has opened, keyed by tree node path
@@ -202,7 +217,10 @@ const fullTree = computed(() => {
     // Plain copies: the observable list hands out reactive proxies that cannot be stored in the DB
     const copy: GroupChannel[] = JSON.parse(JSON.stringify(channels.value));
 
-    return buildChannelTree(copy, { descending: sort.value === 'Z → A' });
+    return buildChannelTree(copy, {
+        separator: separator.value,
+        descending: sort.value === 'Z → A',
+    });
 });
 
 const tree = computed(() => {

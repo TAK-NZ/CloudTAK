@@ -256,4 +256,31 @@ test('GET api/config (user - push firebase service-account identifiers restricte
     }
 });
 
+test('GET api/config/channels - defaults to " - " for any signed-in user', async () => {
+    try {
+        const res = await flight.fetch('/api/config/channels', {
+            method: 'GET',
+            auth: {
+                bearer: flight.token.user,
+            },
+        }, true);
+
+        assert.deepEqual(res.body, { separator: ' - ' });
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
+test('GET api/config/channels - requires authentication', async () => {
+    try {
+        const res = await flight.fetch('/api/config/channels', {
+            method: 'GET',
+        }, false);
+
+        assert.equal(res.status, 401);
+    } catch (err) {
+        assert.ifError(err);
+    }
+});
+
 flight.landing();

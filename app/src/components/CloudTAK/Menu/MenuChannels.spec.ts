@@ -1,6 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { Observable } from 'rxjs';
+
+const { serverGet } = vi.hoisted(() => ({ serverGet: vi.fn() }));
+
+vi.mock('../../../std.ts', () => ({
+    server: { GET: serverGet },
+}));
 
 const setChannels = vi.fn().mockResolvedValue([]);
 const setChannel = vi.fn().mockResolvedValue([]);
@@ -13,6 +19,7 @@ const names = [
     'Teams - AWS - Test',
     'XtraTools - Data Packages',
     'Everyone',
+    'Region / North',
 ];
 
 const channels = names.map((name) => ({
@@ -47,6 +54,12 @@ const stubs = {
     TablerIconButton: { template: '<div class="icon-button" @click="$emit(\'click\', $event)"><slot /></div>' },
     TablerRefreshButton: { template: '<div />' },
 };
+
+
+beforeEach(() => {
+    serverGet.mockReset();
+    serverGet.mockResolvedValue({ data: { separator: ' - ' } });
+});
 
 async function render() {
     const wrapper = mount(MenuChannels, { global: { stubs } });
@@ -109,5 +122,48 @@ describe('MenuChannels folder tree', () => {
         await teams.find('[title^="Turn"]').trigger('click');
 
         expect(setChannels).toHaveBeenCalledWith(['Teams - AWS', 'Teams - AWS - Test'], true);
+    });
+});
+
+describe('MenuChannels folder separator', () => {
+    it('asks the server for the separator', async () => {
+        await render();
+
+        expect(serverGet).toHaveBeenCalledWith('/api/config/channels');
+    });
+
+    it('keeps names that do not use the default separator as flat channels', async () => {
+        const wrapper = await render();
+
+        expect(wrapper.text()).toContain('Region / North');
+    });
+
+    it('splits names on the separator the server returns', async () => {
+        serverGet.mockResolvedValue({ data: { separator: ' / ' } });
+        const wrapper = await render();
+
+        // "Region / North" is now a folder, and "BCH - Alerts - ..." names stay flat
+        expect(wrapper.text()).toContain('Region');
+        expect(wrapper.text()).not.toContain('Region / North');
+        expect(wrapper.text()).toContain('BCH - Alerts - MetService');
+    });
+
+    it('falls back to the default separator when the request fails', async () => {
+        serverGet.mockRejectedValue(new Error('offline'));
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        const wrapper = await render();
+
+        expect(wrapper.text()).toContain('BCH');
+        expect(wrapper.text()).toContain('Teams');
+        errors.mockRestore();
+    });
+
+    it('falls back to the default separator when the server returns none', async () => {
+        serverGet.mockResolvedValue({ data: undefined, error: { message: 'nope' } });
+
+        const wrapper = await render();
+
+        expect(wrapper.text()).toContain('BCH');
     });
 });
