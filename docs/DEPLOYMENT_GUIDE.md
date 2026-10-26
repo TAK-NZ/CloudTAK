@@ -199,6 +199,24 @@ again changes nothing.
 
 ---
 
+## **📁 Channel folder separator (CHANNEL_FOLDER_SEPARATOR)**
+
+The Channels panel shows channel names as folders. `BCH - Alerts - MetService` is the channel
+`MetService` in the folder `Alerts` in the folder `BCH`, and a name can be a channel and a folder
+at once (`Teams - AWS` and `Teams - AWS - Test`). The separator defaults to ` - ` (space, dash,
+space). To change it, set `CHANNEL_FOLDER_SEPARATOR` in `s3://<config bucket>/cloudtak-config.env`
+(see `cloudtak-config.env.example`). Like the weather variables, it only applies with
+`--context useS3CloudTAKConfigFile=true`, and it is read when the API task starts.
+
+- Use the same value as TAK Team Manager's `CHANNEL_FOLDER_SEPARATOR`, so both apps split names the
+  same way.
+- Quote it so the surrounding spaces are visible and survive editors that trim lines:
+  `CHANNEL_FOLDER_SEPARATOR=" / "`. ECS passes the quotes through as part of the value, so
+  CloudTAK removes one matched pair of surrounding quotes (`"` or `'`) and keeps the spaces
+  between them. An unquoted value also works.
+- A missing, empty or all-whitespace value falls back to ` - `. A name that has an empty folder
+  segment (for example a leading or doubled separator) stays a single flat channel.
+
 ## **🚀 First-Time Setup**
 
 ### **Prerequisites**

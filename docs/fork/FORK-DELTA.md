@@ -566,6 +566,46 @@ See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 
 ---
 
+## Channels folder tree
+
+`app/src/components/CloudTAK/Menu/MenuChannels.vue`,
+`app/src/components/CloudTAK/util/{ChannelTreeItem,StandardItemChannel}.vue`,
+`app/src/utils/channel-tree.ts`, `app/src/workers/atlas-profile.ts`,
+`api/common/channel-folder-separator.ts`, `api/common/config.ts`,
+`api/stateless/routes/config.ts`, `api/test/fixtures/get_schema.json`
+
+TAK-NZ channel names encode a hierarchy with `" - "` (`BCH - Alerts - MetService`),
+and a name can be both a channel and a folder (`Teams - AWS` and
+`Teams - AWS - Test`). Upstream's Channels panel is a flat list, so the panel
+builds a tree instead. The same approach drives the TAKTeamManager dashboard.
+
+- `channel-tree.ts` splits names on a separator that defaults to `" - "`. One node per path can carry a channel and children, which is how
+  `Teams - AWS` stays a single row. Names with an empty segment stay flat at the
+  root, and a second name that trims to an existing path is kept as a flat
+  channel, so no channel is dropped.
+- `MenuChannels.vue` keeps the full channel name for all state changes and uses
+  the last segment only as the label. Filters match the full name and open every
+  folder while a filter is active.
+- `setChannels(names, active)` is new in `atlas-profile.ts`. A folder toggle sends
+  one channel-list update instead of one PUT per channel; `setChannel` now calls it.
+- `StandardItemChannel.vue` gained an optional `label` prop.
+- **Configurable separator.** `CHANNEL_FOLDER_SEPARATOR` (the same variable TAK Team
+  Manager reads) comes from the S3 `cloudtak-config.env`. `Config` resolves it once at
+  start (`channelFolderSeparator`, read from the environment like
+  `tileOriginHostnames`, so `ConfigInit` stays untouched) and `GET /api/config/channels`
+  returns `{ separator }` to any signed-in user. `MenuChannels.vue` falls back to
+  `" - "` if the request fails. `channel-folder-separator.ts` strips one matched pair of
+  quotes, because ECS passes the quotes of `KEY="value"` through, and falls back to the
+  default for an empty or whitespace-only value.
+- **Types and schema fixture.** The new route is in `api/derived-types.d.ts` and in
+  `api/test/fixtures/get_schema.json`. The derived-types entry was first written by hand;
+  the file was then regenerated from `map.test.tak.nz` and the entry came out identical.
+
+Other channel pickers (`GroupSelect`, `GroupSelectDropdown`,
+`PropertyCoreEntityChannels`, `Subscriptions`) are still flat lists.
+
+---
+
 ## Chat
 
 `api/stateful/lib/connection-web.ts`, `api/stateful/lib/connection-pool.ts`,

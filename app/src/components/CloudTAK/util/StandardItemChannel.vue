@@ -18,7 +18,8 @@
             <div class='flex-grow-1 overflow-hidden'>
                 <div
                     class='fw-semibold text-truncate'
-                    v-text='channel.name'
+                    :title='channel.name'
+                    v-text='label || channel.name'
                 />
                 <div
                     class='text-white-50 small text-truncate'
@@ -59,6 +60,8 @@ export type StandardChannel = Pick<GroupChannel, 'name' | 'description'>
 
 const props = defineProps<{
     channel: StandardChannel;
+    /** Shown instead of the full channel name, e.g. the last segment inside a folder */
+    label?: string;
 }>();
 
 defineEmits<{

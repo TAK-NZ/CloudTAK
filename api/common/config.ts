@@ -8,6 +8,7 @@ import Models from './models.js';
 import process from 'node:process';
 import * as pgtypes from './schema.js';
 import ETLEvents from './etl-events.js';
+import { resolveChannelFolderSeparator } from './channel-folder-separator.js';
 
 export type ServerMode = 'both' | 'api' | 'hub';
 
@@ -76,6 +77,8 @@ export default class Config {
     WEBHOOKS_URL: string;
     /** Hostnames of external tile CDNs that are allowed to bypass the tile proxy (from CLOUDTAK_TILE_ORIGINS). */
     tileOriginHostnames: Set<string>;
+    /** Separator that turns channel names into folders (from CHANNEL_FOLDER_SEPARATOR, default ' - '). */
+    channelFolderSeparator: string;
     MAIL_DOMAIN: string;
     Bucket?: string;
     pg: Pool<typeof pgtypes>;
@@ -114,6 +117,8 @@ export default class Config {
                     }
                 }),
         );
+        // TAK-NZ: read straight from the environment, like tileOriginHostnames above
+        this.channelFolderSeparator = resolveChannelFolderSeparator();
         this.MAIL_DOMAIN = init.MAIL_DOMAIN;
         this.pg = init.pg;
         this.Bucket = init.Bucket;

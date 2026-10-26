@@ -336,4 +336,21 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             Err.respond(err, res);
         }
     });
+    await schema.get('/config/channels', {
+        name: 'Channel Config',
+        group: 'Config',
+        description: 'Return the separator that turns channel names into a folder hierarchy',
+        res: Type.Object({
+            separator: Type.String(),
+        }),
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+            res.json({
+                separator: config.channelFolderSeparator,
+            });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
 }
