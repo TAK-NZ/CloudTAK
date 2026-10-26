@@ -567,6 +567,25 @@ TAK-NZ `byPosInternalLast`, `OverlayCard` component split and touch long-press
 handler were dropped in its favour. What `MenuOverlays.vue` still carries: the
 auto-provisioned hidden `raster-dem` terrain overlay is not listed as a card.
 
+**Stale styles after a type change.** Upstream v13.113 removed the client
+`Overlay.replace()`, which used to reset an overlay's styles when a basemap went from
+vector to raster. A raster overlay that kept vector style layers rendered blank
+(`layer "..." requires a vector source`), and the hillshade layer, whose source is the
+shared `__terrain__`, still drew on every map. Two TAK-NZ guards:
+`ProfileOverlayControl.staleStyles()` (used by `patch()` and `upsert()`) clears the
+stored styles when `type` changes and the request carries none, and
+`Overlay.init()` falls back to the default raster style when a raster overlay holds
+any layer other than `raster` or `background`. Keep both through syncs.
+
+**Stacking over layers CloudTAK does not manage.** Upstream's
+`OverlayManager.applyOrder()` repacked every overlay's layers directly below Map
+Features, which carried a re-added basemap over plugin layers such as the weather
+radar (kept directly below Map Features by the plugin's `markerAnchor()`). TAK-NZ
+`applyOrder()` moves only overlays that are out of order, and a basemap goes to the
+bottom of the map via `Overlay.moveToBottom()`. A newly added ordinary overlay still
+lands directly under Map Features, above the radar. `overlay-order.spec.ts` covers
+this; on a sync, re-check that file's `applyOrder` tests first.
+
 See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 
 ---
