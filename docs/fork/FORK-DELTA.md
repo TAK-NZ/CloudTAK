@@ -566,6 +566,34 @@ See [`README-IDEMPOTENT-OVERLAY.md`](README-IDEMPOTENT-OVERLAY.md).
 
 ---
 
+## Channels folder tree
+
+`app/src/components/CloudTAK/Menu/MenuChannels.vue`,
+`app/src/components/CloudTAK/util/{ChannelTreeItem,StandardItemChannel}.vue`,
+`app/src/utils/channel-tree.ts`, `app/src/workers/atlas-profile.ts`
+
+TAK-NZ channel names encode a hierarchy with `" - "` (`BCH - Alerts - MetService`),
+and a name can be both a channel and a folder (`Teams - AWS` and
+`Teams - AWS - Test`). Upstream's Channels panel is a flat list, so the panel
+builds a tree instead. The same approach drives the TAKTeamManager dashboard.
+
+- `channel-tree.ts` splits names on `CHANNEL_FOLDER_SEPARATOR` (a constant, not a
+  setting). One node per path can carry a channel and children, which is how
+  `Teams - AWS` stays a single row. Names with an empty segment stay flat at the
+  root, and a second name that trims to an existing path is kept as a flat
+  channel, so no channel is dropped.
+- `MenuChannels.vue` keeps the full channel name for all state changes and uses
+  the last segment only as the label. Filters match the full name and open every
+  folder while a filter is active.
+- `setChannels(names, active)` is new in `atlas-profile.ts`. A folder toggle sends
+  one channel-list update instead of one PUT per channel; `setChannel` now calls it.
+- `StandardItemChannel.vue` gained an optional `label` prop.
+
+Other channel pickers (`GroupSelect`, `GroupSelectDropdown`,
+`PropertyCoreEntityChannels`, `Subscriptions`) are still flat lists.
+
+---
+
 ## Chat
 
 `api/stateful/lib/connection-web.ts`, `api/stateful/lib/connection-pool.ts`,

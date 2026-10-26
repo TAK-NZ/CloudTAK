@@ -362,9 +362,18 @@ export default class AtlasProfile {
     }
 
     async setChannel(name: string, active: boolean): Promise<Array<GroupChannel>> {
+        return await this.setChannels([name], active);
+    }
+
+    /**
+     * Set the active state of several channels with a single channel-list update
+     */
+    async setChannels(names: Array<string>, active: boolean): Promise<Array<GroupChannel>> {
+        const targets = new Set(names);
+
         const channels = await GroupManager.list();
         channels.forEach((ch) => {
-            if (ch.name === name) ch.active = active;
+            if (targets.has(ch.name)) ch.active = active;
         });
 
         await this.atlas.db.clear({

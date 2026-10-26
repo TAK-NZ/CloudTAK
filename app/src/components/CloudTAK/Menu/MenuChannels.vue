@@ -22,6 +22,18 @@
                 />
             </TablerIconButton>
 
+            <TablerIconButton
+                v-if='hasFolders && !isFiltering'
+                :title='allExpanded ? "Collapse All Folders" : "Expand All Folders"'
+                @click='allExpanded ? collapseAll() : expandAll()'
+            >
+                <component
+                    :is='allExpanded ? IconChevronsUp : IconChevronsDown'
+                    :size='32'
+                    stroke='1'
+                />
+            </TablerIconButton>
+
             <TablerRefreshButton
                 :loading='syncing'
                 @click='refresh'
@@ -95,18 +107,22 @@
             />
 
             <TablerNone
-                v-if='!Object.keys(processChannels).length'
+                v-if='!tree.length'
                 :create='false'
             />
             <div
                 v-else
                 class='col-12 d-flex flex-column gap-2 py-3'
             >
-                <StandardItemChannel
-                    v-for='ch in processChannels'
-                    :key='ch.name'
-                    :channel='ch'
-                    @click='setStatus(ch, !ch.active)'
+                <ChannelTreeItem
+                    v-for='node in tree'
+                    :key='node.path'
+                    :node='node'
+                    :expanded='expanded'
+                    :force-expanded='isFiltering'
+                    @toggle-expand='toggleExpanded'
+                    @toggle-channel='toggleChannel'
+                    @toggle-folder='toggleFolder'
                 />
             </div>
         </template>
@@ -127,14 +143,21 @@ import {
 } from '@tak-ps/vue-tabler';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import SearchSortFilter from '../util/SearchSortFilter.vue';
-import StandardItemChannel from '../util/StandardItemChannel.vue';
+import ChannelTreeItem from '../util/ChannelTreeItem.vue';
 import EmptyInfo from '../util/EmptyInfo.vue';
+import {
+    buildChannelTree,
+    filterChannelTree,
+    folderPaths,
+} from '../../../utils/channel-tree.ts';
 import {
     IconEyeX,
     IconEyePlus,
     IconLetterCase,
     IconArrowUp,
     IconArrowDown,
+    IconChevronsDown,
+    IconChevronsUp,
 } from '@tabler/icons-vue';
 import { useMapStore } from '../../../stores/map.ts';
 const mapStore = useMapStore();
@@ -169,28 +192,52 @@ onMounted(async () => {
     await refresh();
 });
 
-const processChannels = computed<Record<string, GroupChannel>>(() => {
-    const filteredChannels: Record<string, GroupChannel> = {};
+// Folders the user has opened, keyed by tree node path
+const expanded = ref<Set<string>>(new Set());
 
-    JSON.parse(JSON.stringify(channels.value))
-        .sort((a: GroupChannel, b: GroupChannel) => {
-            const cmp = a.name.localeCompare(b.name);
-            return sort.value === 'Z → A' ? -cmp : cmp;
-        }).forEach((channel: GroupChannel) => {
-            filteredChannels[channel.name] = channel;
-        })
+// While filtering, every folder is shown open so the matches are visible
+const isFiltering = computed(() => paging.value.filter !== '' || filterActive.value !== null);
 
-    for (const key of Object.keys(filteredChannels)) {
-        const ch = filteredChannels[key];
-        if (!key.toLowerCase().includes(paging.value.filter.toLowerCase())) {
-            delete filteredChannels[key];
-        } else if (filterActive.value !== null && ch.active !== filterActive.value) {
-            delete filteredChannels[key];
-        }
-    }
+const fullTree = computed(() => {
+    // Plain copies: the observable list hands out reactive proxies that cannot be stored in the DB
+    const copy: GroupChannel[] = JSON.parse(JSON.stringify(channels.value));
 
-    return filteredChannels;
+    return buildChannelTree(copy, { descending: sort.value === 'Z → A' });
 });
+
+const tree = computed(() => {
+    const text = paging.value.filter.toLowerCase();
+
+    return filterChannelTree(fullTree.value, (ch) => {
+        if (!ch.name.toLowerCase().includes(text)) return false;
+        if (filterActive.value !== null && ch.active !== filterActive.value) return false;
+        return true;
+    });
+});
+
+const allFolderPaths = computed(() => folderPaths(fullTree.value));
+const hasFolders = computed(() => allFolderPaths.value.length > 0);
+const allExpanded = computed(() => {
+    return hasFolders.value && allFolderPaths.value.every((path) => expanded.value.has(path));
+});
+
+function toggleExpanded(path: string): void {
+    const next = new Set(expanded.value);
+    if (next.has(path)) {
+        next.delete(path);
+    } else {
+        next.add(path);
+    }
+    expanded.value = next;
+}
+
+function expandAll(): void {
+    expanded.value = new Set(allFolderPaths.value);
+}
+
+function collapseAll(): void {
+    expanded.value = new Set();
+}
 
 async function refresh() {
     syncing.value = true;
@@ -219,5 +266,23 @@ async function setStatus(channel: GroupChannel, active=false) {
     await GroupManager.put(update);
 
     await mapStore.worker.profile.setChannel(channel.name, active);
+}
+
+async function toggleChannel(channel: GroupChannel) {
+    await setStatus(channel, !channel.active);
+}
+
+/**
+ * Turn every channel in a folder on, or off if they are all already on
+ */
+async function toggleFolder(folderChannels: GroupChannel[]) {
+    const active = !folderChannels.every((ch) => ch.active !== false);
+
+    const names = folderChannels.map((ch) => ch.name);
+    const updates = folderChannels.map((ch) => ({ ...ch, active }));
+
+    await GroupManager.put(updates);
+
+    await mapStore.worker.profile.setChannels(names, active);
 }
 </script>
