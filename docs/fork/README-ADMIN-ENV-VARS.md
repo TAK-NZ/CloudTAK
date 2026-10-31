@@ -34,3 +34,21 @@ CLOUDTAK_Server_webtak="https://tak.example.com:8444"
 CLOUDTAK_Server_auth_p12_secret_arn="arn:aws:secretsmanager:..."
 CLOUDTAK_Server_auth_password="password"
 ```
+## SAR travel-time relay (`SAR_SERVICE_URL`, `SAR_SERVICE_KEY`, `SAR_RATE_LIMIT`)
+These variables configure the `/api/sar` relay for the `cloudtak-plugin-sar` plugin. They are plain
+environment variables, not `CLOUDTAK_Server_*` settings.
+
+| Variable | Required | Rule | Default |
+|----------|----------|------|---------|
+| `SAR_SERVICE_URL` | Yes | `https` URL of the SAR engine, may include a path such as `/sar`; no query, fragment or credentials; a trailing slash is stripped | none (relay disabled) |
+| `SAR_SERVICE_KEY` | Yes | Characters `[A-Za-z0-9._~-]`, 16 to 128 long | none (relay disabled) |
+| `SAR_RATE_LIMIT` | No | Travel-time calculations per user per minute, whole number 1 to 60 | 6 |
+
+- **Where:** `s3://<config bucket>/cloudtak-config.env`, applied with
+  `--context useS3CloudTAKConfigFile=true` when the API task starts. See `cloudtak-config.env.example`.
+- **Relay disabled:** when the URL or the key is missing or invalid, `GET /api/sar/status` returns
+  `enabled: false`, the plugin stays hidden and no call is made to the engine. An invalid value is
+  reported once in the log by name only.
+- **Secret handling:** the key is never logged and never sent to browsers.
+- **Details:** see the SAR section of [`FORK-DELTA.md`](FORK-DELTA.md#sar-plugin-relay-apisar) and
+  [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#sar-travel-time-plugin-cloudtak-plugin-sar).
