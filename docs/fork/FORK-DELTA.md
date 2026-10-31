@@ -329,7 +329,7 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
   upstream's, re-add `pdfjs-dist@4.10.38` with `npm install --save-exact`, and check
   `git diff` shows no unrelated lockfile changes.
 - **`cloudtak.webPlugins` in `cdk/cdk.json`** (TAK-NZ only, per environment). `dev-test`
-  lists the rubbersheet fork and `cloudtak-plugin-weather`; `prod` is `""`. The stack resolves the effective value
+  lists the rubbersheet fork, `cloudtak-plugin-weather` and `cloudtak-plugin-sar`; `prod` is `""`. The stack resolves the effective value
   as `--context WebPlugins` (or `webPlugins`), then the `WEB_PLUGINS` env var, then
   `cdk.json`, validates it (https GitHub URLs only) and adds it to the main
   `CloudTAKDockerAsset` build args only when non-empty, so images without plugins keep
@@ -469,9 +469,9 @@ audit line. Upstream-owned files are untouched.
 - **Env vars.** `SAR_SERVICE_URL`, `SAR_SERVICE_KEY`, `SAR_RATE_LIMIT`, read from the environment
   (S3 config file) on every call. No `FullConfig` keys, so `types.ts`, `defaults.ts`, `config.ts`
   and `AdminConfig.vue` stay identical to upstream. There is no operator script.
-- **`cdk.json`.** `webPlugins` is intentionally not changed. The image build clones the default
-  branch of the plugin repo, which has no plugin code until the plugin is merged. After the merge,
-  add `https://github.com/TAK-NZ/cloudtak-plugin-sar.git` to `cloudtak.webPlugins`.
+- **`cdk.json`.** `dev-test` `webPlugins` also lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-sar.git`. The image build clones the default branch of
+  the plugin repo, so the plugin must be merged there before the image is built.
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#sar-travel-time-plugin-cloudtak-plugin-sar)
 for setup.
 

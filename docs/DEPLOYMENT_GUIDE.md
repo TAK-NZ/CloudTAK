@@ -226,10 +226,10 @@ through an API relay (`/api/sar`), so browsers never see the engine URL or key.
   the file, deploy or run `aws ecs update-service --force-new-deployment`.
 - **Check:** after deploy, `curl -s -H "Authorization: Bearer $TOKEN" https://map.test.tak.nz/api/sar/status`
   should return `{"apiVersion":1,"enabled":true}`. The call does not contact the engine.
-- **Plugin not installed yet:** `cdk/cdk.json` `webPlugins` is intentionally not changed until the
-  plugin is merged to the default branch of `TAK-NZ/cloudtak-plugin-sar` (the image build clones
-  that branch). After the merge, add `https://github.com/TAK-NZ/cloudtak-plugin-sar.git` to
-  `cloudtak.webPlugins`, rebuild the image, and have users use Settings -> Refresh App.
+- **Plugin install:** `cdk/cdk.json` `dev-test` `webPlugins` lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-sar.git`. The image build clones the default branch of
+  that repo, so merge the plugin to `main` of `TAK-NZ/cloudtak-plugin-sar` **before** building the
+  image. Then rebuild the image and have users use Settings -> Refresh App.
 ---
 
 ## **📁 Channel folder separator (CHANNEL_FOLDER_SEPARATOR)**
