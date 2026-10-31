@@ -1819,6 +1819,16 @@
         "query": true,
         "res": false
     },
+    "GET /sar/status": {
+        "body": false,
+        "query": false,
+        "res": true
+    },
+    "POST /sar/travel-time": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "POST /retention": {
         "body": true,
         "query": false,
