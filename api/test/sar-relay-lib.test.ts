@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import http from 'node:http';
 import { Value } from '@sinclair/typebox/value';
 import { getSarConfig, upstreamAllowForTests, __resetWarned } from '../stateless/lib/sar/relay-config.js';
-import { TravelTimeBody, buildUpstreamBody } from '../stateless/lib/sar/relay-request.js';
-import type { TravelTimeRequest } from '../stateless/lib/sar/relay-request.js';
+import { TarrBody, TravelTimeBody, buildTarrUpstreamBody, buildUpstreamBody } from '../stateless/lib/sar/relay-request.js';
+import type { TarrRequest, TravelTimeRequest } from '../stateless/lib/sar/relay-request.js';
 import {
     ANALYSIS_FAILED,
     REJECTED,
     RESULT_KEYS,
+    RESULT_KEYS_TARR,
     TIMED_OUT,
     TOO_LARGE,
     UNAVAILABLE,
@@ -522,4 +524,202 @@ test('runtime: the limiters count per id within a window', () => {
     nowMs += 60000;
     assert.equal(relay.calc.hit('a', 2).ok, true);
     assert.equal(relay.upstreamTimeoutMs, 70000);
+});
+
+// TARR
+
+function tarrBody(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { ipp: { lat: -40, lng: 175 }, profile: 'Hiker', ecoregion: 'Temperate', terrain: 'Mountainous', ...over };
+}
+
+function tarrValid(value: unknown): boolean {
+    return Value.Check(TarrBody, value);
+}
+
+function tarrOk(extra: Record<string, unknown> = {}): EngineResult {
+    return {
+        status: 200,
+        failure: null,
+        json: {
+            status: 'ok',
+            mode: 'tarr',
+            contours: { type: 'FeatureCollection', features: [] },
+            parameters: { profile: 'Hiker', koester_km: { p25: 1, p50: 2, p75: 3 }, radius_km: 5.7, cell_size_m: 12.5 },
+            calibration: { region: 'Coconino County, Arizona', calibrated_for_nz: false },
+            bbox: { west: 175, south: -40, east: 175.1, north: -39.9 },
+            warnings: [],
+            data: { land_cover: 'lcdb', elevation: 'dem', osm_built_at: null },
+            attribution: ['a'],
+            disclaimer: 'Planning aid only.',
+            timings_s: { total: 1 },
+            ...extra,
+        },
+    };
+}
+
+function tarrError(result: EngineResult) {
+    const mapped = mapUpstream(result, 'tarr');
+    assert.equal(mapped.ok, false);
+    if (mapped.ok) throw new Error('unreachable');
+    return mapped.error;
+}
+
+test('tarr validation: a body with and without ecoregion and terrain passes', () => {
+    assert.equal(tarrValid(tarrBody()), true);
+    const bare = tarrBody();
+    delete bare.ecoregion;
+    delete bare.terrain;
+    assert.equal(tarrValid(bare), true);
+    const onlyEco = tarrBody();
+    delete onlyEco.terrain;
+    assert.equal(tarrValid(onlyEco), true);
+});
+
+test('tarr validation: latitude and longitude bounds are those of travel-time', () => {
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -48, lng: 165.5 } })), true);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -33.5, lng: 179.5 } })), true);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -48.01, lng: 175 } })), false);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -33.49, lng: 175 } })), false);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -40, lng: 165.49 } })), false);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -40, lng: 179.51 } })), false);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -40 } })), false);
+    assert.equal(tarrValid(tarrBody({ ipp: { lat: -40, lng: 175, alt: 1 } })), false);
+});
+
+test('tarr validation: profile is required, 1 to 40 characters from a safe set', () => {
+    const noProfile = tarrBody();
+    delete noProfile.profile;
+    assert.equal(tarrValid(noProfile), false);
+    assert.equal(tarrValid(tarrBody({ profile: '' })), false);
+    assert.equal(tarrValid(tarrBody({ profile: 'a' })), true);
+    assert.equal(tarrValid(tarrBody({ profile: 'a'.repeat(40) })), true);
+    assert.equal(tarrValid(tarrBody({ profile: 'a'.repeat(41) })), false);
+    assert.equal(tarrValid(tarrBody({ profile: 'Skier (Alpine)' })), true);
+    assert.equal(tarrValid(tarrBody({ profile: 'Child (10-12)' })), true);
+    for (const profile of ['<b>', 'a;b', 'a\nb', 'a_b', 'a/b', 'é']) {
+        assert.equal(tarrValid(tarrBody({ profile })), false, JSON.stringify(profile));
+    }
+    assert.equal(tarrValid(tarrBody({ profile: 5 })), false);
+    assert.equal(tarrValid(tarrBody({ profile: null })), false);
+});
+
+test('tarr validation: ecoregion and terrain are optional letters, at most 20', () => {
+    assert.equal(tarrValid(tarrBody({ ecoregion: 'a'.repeat(20) })), true);
+    assert.equal(tarrValid(tarrBody({ ecoregion: 'a'.repeat(21) })), false);
+    assert.equal(tarrValid(tarrBody({ terrain: 'a'.repeat(21) })), false);
+    assert.equal(tarrValid(tarrBody({ ecoregion: '' })), false);
+    assert.equal(tarrValid(tarrBody({ ecoregion: 'Dry1' })), false);
+    assert.equal(tarrValid(tarrBody({ terrain: 'Flat;' })), false);
+    // Not a string, including null
+    assert.equal(tarrValid(tarrBody({ ecoregion: 5 })), false);
+    assert.equal(tarrValid(tarrBody({ ecoregion: null })), false);
+    assert.equal(tarrValid(tarrBody({ terrain: true })), false);
+});
+
+test('tarr validation: extra keys, other modes\' fields and non-objects are rejected', () => {
+    assert.equal(tarrValid(tarrBody({ extra: 1 })), false);
+    assert.equal(tarrValid(tarrBody({ radius_km: 10 })), false);
+    assert.equal(tarrValid(tarrBody({ speed_kmh: 2.5 })), false);
+    assert.equal(tarrValid(null), false);
+    assert.equal(tarrValid([]), false);
+});
+
+test('buildTarrUpstreamBody: only the four fields, absent optionals dropped', () => {
+    assert.deepEqual(buildTarrUpstreamBody(tarrBody() as unknown as TarrRequest), {
+        ipp: { lat: -40, lng: 175 },
+        profile: 'Hiker',
+        ecoregion: 'Temperate',
+        terrain: 'Mountainous',
+    });
+    const bare = tarrBody();
+    delete bare.ecoregion;
+    delete bare.terrain;
+    const built = buildTarrUpstreamBody(bare as unknown as TarrRequest);
+    assert.deepEqual(Object.keys(built).sort(), ['ipp', 'profile']);
+    const leaked = { ...tarrBody(), extra: 'x', ipp: { lat: -40, lng: 175, alt: 1 } } as unknown as TarrRequest;
+    assert.deepEqual(buildTarrUpstreamBody(leaked).ipp, { lat: -40, lng: 175 });
+    assert.ok(!('extra' in buildTarrUpstreamBody(leaked)));
+});
+
+test('mapUpstream tarr: 200 passes exactly RESULT_KEYS_TARR and drops everything else', () => {
+    const mapped = mapUpstream(tarrOk({ secret: 'x', internal_path: '/var/task', apiKey: KEY }), 'tarr');
+    assert.equal(mapped.ok, true);
+    if (!mapped.ok) return;
+    assert.deepEqual(Object.keys(mapped.body).sort(), [...RESULT_KEYS_TARR].sort());
+    assert.ok('calibration' in mapped.body);
+    assert.ok(!JSON.stringify(mapped.body).includes('/var/task'));
+    // Travel-time keeps its own list
+    assert.ok(!(RESULT_KEYS as readonly string[]).includes('calibration'));
+});
+
+test('mapUpstream tarr: a travel-time answer is a 502 and the reverse too', () => {
+    const wrongWay = tarrError(ok());
+    assert.equal(wrongWay.status, 502);
+    assert.equal(wrongWay.message, UNAVAILABLE);
+    const reverse = mapUpstream(tarrOk());
+    assert.equal(reverse.ok, false);
+    if (!reverse.ok) assert.equal(reverse.error.status, 502);
+    // The default mode is travel-time
+    const explicit = mapUpstream(ok(), 'travel-time');
+    assert.equal(explicit.ok, true);
+});
+
+test('mapUpstream tarr: 200 with a wrong shape is a 502', () => {
+    const shapes: unknown[] = [
+        null,
+        {},
+        { status: 'error', mode: 'tarr', contours: { type: 'FeatureCollection', features: [] } },
+        { status: 'ok', mode: 'tarr' },
+        { status: 'ok', mode: 'tarr', contours: { type: 'Feature', features: [] } },
+        { status: 'ok', mode: 'tarr', contours: { type: 'FeatureCollection', features: 'none' } },
+    ];
+    for (const json of shapes) {
+        const e = tarrError(answer(200, json));
+        assert.equal(e.status, 502, JSON.stringify(json));
+        assert.equal(e.message, UNAVAILABLE);
+    }
+});
+
+test('mapUpstream tarr: errors are mapped as for travel-time', () => {
+    const dense = tarrError(answer(422, { status: 'error', code: 'area_too_dense', message: 'Move the start point.', ipp: { lat: -40 } }));
+    assert.equal(dense.status, 422);
+    assert.equal(dense.message, 'Move the start point.');
+    assert.deepEqual(dense.extra, { code: 'area_too_dense' });
+    assert.equal(tarrError(answer(400)).message, REJECTED);
+    assert.equal(tarrError(answer(413)).message, TOO_LARGE);
+    assert.equal(tarrError(answer(500)).message, ANALYSIS_FAILED);
+    assert.equal(tarrError(answer(404)).status, 502);
+    const timeout = tarrError(answer(504));
+    assert.equal(timeout.status, 504);
+    assert.equal(timeout.message, TIMED_OUT);
+});
+
+test('callEngine: the route selects the engine path and defaults to /travel-time', async () => {
+    const urls: string[] = [];
+    const server = http.createServer((req, res) => {
+        urls.push(String(req.url));
+        req.resume();
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{"status":"ok"}');
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Could not determine server address');
+    const origin = `http://127.0.0.1:${address.port}`;
+    upstreamAllowForTests.push(origin);
+    try {
+        __resetForTests();
+        const cfg = { enabled: true, baseUrl: `${origin}/sar`, key: KEY, rate: 6 };
+        const tarr = await callEngine(cfg, buildTarrUpstreamBody(tarrBody() as unknown as TarrRequest), 'test-agent', '/tarr');
+        assert.equal(tarr.status, 200);
+        const travel = await callEngine(cfg, buildUpstreamBody(body() as TravelTimeRequest));
+        assert.equal(travel.status, 200);
+        assert.deepEqual(urls, ['/sar/tarr', '/sar/travel-time']);
+    } finally {
+        upstreamAllowForTests.splice(upstreamAllowForTests.indexOf(origin), 1);
+        await new Promise<void>((resolve) => {
+            server.closeAllConnections();
+            server.close(() => resolve());
+        });
+    }
 });
