@@ -1829,6 +1829,11 @@
         "query": false,
         "res": true
     },
+    "POST /sar/tarr": {
+        "body": true,
+        "query": false,
+        "res": true
+    },
     "POST /retention": {
         "body": true,
         "query": false,

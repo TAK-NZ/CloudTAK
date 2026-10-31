@@ -12,12 +12,15 @@ import { liveQuery } from 'dexie';
 import { from, type Observable } from 'rxjs';
 import * as mapgl from 'maplibre-gl';
 import { std, stdurl } from './src/std.ts';
+import type { InputFeature } from './src/types.ts';
+import { OriginMode } from './src/base/cot.ts';
 
 const FloatingGeneric = defineAsyncComponent(() => import('./src/components/CloudTAK/util/FloatingGeneric.vue'));
 
 export type { MenuItemConfig };
 export type { BottomBarItemConfig };
 export type { DBFeature };
+export type { InputFeature };
 
 /**
  * Configuration stored with a floating pane created by the plugin API
@@ -198,6 +201,41 @@ export class PluginAPI {
                     }
                     return db.feature.toArray();
                 })) as Observable<DBFeature[]>;
+            },
+            /**
+             * Add features to the map as features authored by the user.
+             *
+             * `authored` makes the store treat them like features drawn by the user:
+             * they are saved to the local profile and, when filed in a Data Sync, pushed
+             * to the TAK Server. Each feature is copied first, so later changes to the
+             * input do not reach the store.
+             *
+             * @param features The features to add. `id` must be unique; inside a Data Sync it must be unique per Data Sync
+             * @param opts.mission GUID of a Data Sync to file the features in. The user must be subscribed to it, otherwise the add rejects
+             */
+            add: async (features: InputFeature[], opts: {
+                mission?: string;
+            } = {}): Promise<void> => {
+                const mapStore = useMapStore(this.pinia);
+                const input = features.map((f) => {
+                    const copy = JSON.parse(JSON.stringify(f)) as InputFeature;
+                    if (opts.mission) copy.origin = { mode: OriginMode.MISSION, mode_id: opts.mission };
+                    return copy;
+                });
+                await mapStore.worker.db.addAll(input, { authored: true });
+                await mapStore.refresh();
+            },
+            /**
+             * Remove features from the map by id. Every id is tried; if any removal
+             * fails the first failure is thrown after all have been attempted.
+             *
+             * @param ids The ids of the features to remove
+             */
+            remove: async (ids: string[]): Promise<void> => {
+                const mapStore = useMapStore(this.pinia);
+                const results = await Promise.allSettled(ids.map((id) => mapStore.worker.db.remove(id)));
+                const failed = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+                if (failed) throw failed.reason;
             }
         }
     }

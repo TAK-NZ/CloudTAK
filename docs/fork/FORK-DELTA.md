@@ -419,27 +419,41 @@ for setup.
 `api/stateless/routes/sar.ts`, `api/stateless/lib/sar/relay-*.ts`,
 `api/test/sar-relay-lib.test.ts`, `api/test/sar.srv.test.ts`,
 `api/test/fixtures/get_schema.json`, `cloudtak-config.env.example`
-New files only, except the schema fixture (plus `cloudtak-config.env.example` and the docs). The
-relay serves `GET /api/sar/status` and `POST /api/sar/travel-time` for the `cloudtak-plugin-sar`
-plugin and calls the SAR engine (`POST {SAR_SERVICE_URL}/travel-time`) with a server-side key in
+New files only, except the schema fixture, `app/plugin.ts` (the `feature.add` / `feature.remove`
+entry below), `cloudtak-config.env.example` and the docs. The
+relay serves `GET /api/sar/status`, `POST /api/sar/travel-time` and `POST /api/sar/tarr` for the
+`cloudtak-plugin-sar` plugin and calls the SAR engine (`POST {SAR_SERVICE_URL}/travel-time` or
+`/tarr`) with a server-side key in
 the `x-api-key` header. It follows the weather relay: same config parsing, the weather
 `FixedWindowLimiter` (imported, not copied), `@tak-ps/node-safeurl` for the upstream call, and an
-audit line. Upstream-owned files are untouched.
-- **Endpoints.** `GET /api/sar/status` returns `{apiVersion: 1, enabled}` and never calls the
-  engine (60 calls per user and minute). `POST /api/sar/travel-time` takes
+audit line. Apart from `app/plugin.ts`, upstream-owned files are untouched.
+- **Endpoints.** `GET /api/sar/status` returns `{apiVersion: 1, enabled, modes}` (`modes` is
+  `['travel-time', 'tarr']` whatever the configuration; a plugin that gets no `modes` treats the
+  relay as travel-time only) and never calls the engine (60 calls per user and minute). `POST /api/sar/travel-time` takes
   `{ipp: {lat, lng}, speed_kmh, intervals_hours, radius_km?}`. Bounds: latitude -48 to -33.5,
   longitude 165.5 to 179.5, speed 0.1 to 10 km/h, 1 to 8 bands of 0.25 to 24 hours, radius 1 to
   30 km. Both need a user session. The platform validator coerces number strings and drops
   unknown keys; the relay rebuilds the engine request from the parsed values (bands sorted and
   unique), so nothing else is forwarded.
-- **Order in the POST handler.** Session, configuration (502 when disabled), per-user rate limit
-  (`SAR_RATE_LIMIT`, default 6 a minute, `429` with `Retry-After`), engine call.
+- **TARR.** `POST /api/sar/tarr` takes `{ipp: {lat, lng}, profile, ecoregion?, terrain?}` with the
+  same `ipp` bounds. `profile` is 1 to 40 characters from `A-Za-z0-9 ()-`; `ecoregion` and
+  `terrain` are 1 to 20 letters. The relay does not know the profile list (it would drift); the
+  engine checks membership and answers 400, which the relay reports as
+  `The SAR service rejected the request`. The request has no radius, speed or interval: the
+  engine derives them. The relay rebuilds `{ipp, profile, ecoregion?, terrain?}` from the parsed
+  values and calls `{SAR_SERVICE_URL}/tarr`. It uses the same 8 KB cap, error shape and mapping
+  as travel-time. A 200 is accepted only with `mode: 'tarr'`; a travel-time answer on the TARR
+  route (or the reverse) is a 502.
+- **Order in the POST handlers.** Session, configuration (502 when disabled), per-user rate limit
+  (`SAR_RATE_LIMIT`, default 6 a minute, `429` with `Retry-After`), engine call. Travel-time and
+  TARR share one limiter, so one call of each uses two of the allowed calls.
 - **Answers.** Every response carries `Cache-Control: no-store`. The engine's answer is mapped as
   follows and engine messages are never forwarded, except the 422 message:
 
   | Engine | Relay |
   |---|---|
   | 200 with `status: 'ok'`, `mode: 'travel-time'` and a `FeatureCollection` | 200 with only `status, mode, contours, parameters, bbox, warnings, data, attribution, disclaimer, timings_s` |
+  | TARR: 200 with `status: 'ok'`, `mode: 'tarr'` and a `FeatureCollection` | 200 with the same keys plus `calibration` |
   | 200 with invalid JSON or another shape | 502 `SAR service unavailable` |
   | 422 with a string `message` | 422 with the message (control characters removed, at most 300 characters) plus `code` (lowercase token, for example `area_too_dense` for dense city requests), `suggested_radius_km` (finite, 1 to 30) and `suggested_max_hours` (finite, 0.25 to 24), each only when valid. Other upstream fields are dropped. A 422 without `code` (sea, lake, out of range) passes through the same way |
   | 422 not parseable | 502 |
@@ -458,10 +472,11 @@ audit line. Upstream-owned files are untouched.
   the cap protects the engine, not the API's memory.
 - **Audit line.** `console.info(JSON.stringify({type: 'sar', username, status, ms, speed_kmh,
   intervals, radius_km, upstream}))`. `intervals` is the number of bands and `radius_km` the
-  requested radius (or null). It never contains the coordinates, the key, a session token or an
-  engine body. Strings that are logged pass through a redaction that removes the key, `x-api-key`
+  requested radius (or null). The TARR line is
+  `{type: 'sar', mode: 'tarr', username, status, ms, profile, upstream}`. Neither contains the
+  coordinates, the key, a session token or an engine body. Strings that are logged pass through a redaction that removes the key, `x-api-key`
   values and bearer tokens.
-- **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two SAR keys by hand
+- **Schema fixture.** `api/test/fixtures/get_schema.json` gained the three SAR keys by hand
   (`schema.srv.test.ts` deep-equals it against `GET /api/schema`). The fixture is already stale on
   `main` (basemap sprite and certificate renew routes), so that test fails before and after this
   change; the failing diff contains no `/sar/` line. **On sync:** re-run that test with
@@ -474,6 +489,23 @@ audit line. Upstream-owned files are untouched.
   the plugin repo, so the plugin must be merged there before the image is built.
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#sar-travel-time-plugin-cloudtak-plugin-sar)
 for setup.
+### Plugin API: `feature.add` and `feature.remove`
+`app/plugin.ts`, `app/src/test/plugin-api.spec.ts`
+`PluginAPI.feature` had only the read side (`list`, `stream`). The SAR plugin turns its result
+into map features that users can move into a Data Sync or a data package, so it needs a write
+side. An additive block in `get feature()` (plus two imports and `export type { InputFeature }`)
+adds:
+- `add(features, {mission?})`: deep-copies the features, sets `origin = {mode: 'Mission', mode_id}`
+  on each copy when `mission` is given (the user must be subscribed to that Data Sync, otherwise
+  the store rejects), calls `mapStore.worker.db.addAll(copies, {authored: true})`, then
+  `mapStore.refresh()`. `authored` is what the draw tool uses: the features are saved to the
+  profile and, in a Data Sync, pushed to the TAK Server.
+- `remove(ids)`: `mapStore.worker.db.remove(id)` for every id; if any fails, the first failure is
+  thrown after all were tried.
+- **Rejected alternative.** Importing `useMapStore` by relative path from the plugin, as Rubber
+  Sheet imports host files. It needs no host change, but the plugin would depend on the shape of
+  the Comlink worker and on an initialised Pinia, and every plugin test would have to mock both.
+- **On sync:** keep the block; if upstream adds its own write API, switch to it.
 
 ---
 

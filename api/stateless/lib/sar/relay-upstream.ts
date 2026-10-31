@@ -3,7 +3,7 @@ import { fetch } from '@tak-ps/node-safeurl';
 import { FixedWindowLimiter } from '../weather/relay-limiter.js';
 import { upstreamAllowForTests, __resetWarned } from './relay-config.js';
 import type { SarConfig } from './relay-config.js';
-import type { UpstreamBody } from './relay-request.js';
+import type { TarrUpstreamBody, UpstreamBody } from './relay-request.js';
 import { HOURS, RADIUS } from './relay-request.js';
 
 export { upstreamAllowForTests };
@@ -36,6 +36,12 @@ export const RESULT_KEYS = [
     'disclaimer',
     'timings_s',
 ] as const;
+
+/** The TARR answer also carries the calibration block */
+export const RESULT_KEYS_TARR = [...RESULT_KEYS, 'calibration'] as const;
+
+export type RelayMode = 'travel-time' | 'tarr';
+export type EngineRoute = '/travel-time' | '/tarr';
 
 const LOG_INTERVAL_MS = 60000;
 
@@ -78,7 +84,7 @@ export interface RelayOptions {
 export interface RelayRuntime {
     now: () => number;
     upstreamTimeoutMs: number;
-    /** Travel-time calculations per user per minute (the limit comes from SAR_RATE_LIMIT at each hit) */
+    /** Calculations (travel-time and TARR share it) per user per minute (the limit comes from SAR_RATE_LIMIT at each hit) */
     calc: FixedWindowLimiter;
     /** Status calls per user per minute */
     status: FixedWindowLimiter;
@@ -190,12 +196,17 @@ async function readBody(res: { body: ReadableStream<Uint8Array> | null }, maxByt
  * The body is parsed only for 200 and 422 answers; any other answer is
  * reported by its status alone and its body is discarded.
  */
-export async function callEngine(cfg: SarConfig, body: UpstreamBody, agent = `CloudTAK/${pkg.version}`): Promise<EngineResult> {
+export async function callEngine(
+    cfg: SarConfig,
+    body: UpstreamBody | TarrUpstreamBody,
+    agent = `CloudTAK/${pkg.version}`,
+    route: EngineRoute = '/travel-time',
+): Promise<EngineResult> {
     if (!cfg.baseUrl || !cfg.key) return fail('network');
 
     let res;
     try {
-        res = await fetch(new URL(`${cfg.baseUrl}/travel-time`), {
+        res = await fetch(new URL(`${cfg.baseUrl}${route}`), {
             method: 'POST',
             headers: {
                 'x-api-key': cfg.key,
@@ -276,9 +287,9 @@ export function sanitizeCode(raw: unknown): string | undefined {
     if (typeof raw !== 'string') return undefined;
     return /^[a-z][a-z0-9_]{0,63}$/.test(raw) ? raw : undefined;
 }
-function validResult(json: unknown): json is Record<string, unknown> {
+function validResult(json: unknown, mode: RelayMode): json is Record<string, unknown> {
     if (!isObject(json)) return false;
-    if (json.status !== 'ok' || json.mode !== 'travel-time') return false;
+    if (json.status !== 'ok' || json.mode !== mode) return false;
     const contours = json.contours;
     return isObject(contours) && contours.type === 'FeatureCollection' && Array.isArray(contours.features);
 }
@@ -292,16 +303,16 @@ function err(status: number, message: string, more: Partial<MappedError> = {}): 
  * are never forwarded, except the whitelisted keys of a 200 and the sanitised
  * message of a 422.
  */
-export function mapUpstream(result: EngineResult): Mapped {
+export function mapUpstream(result: EngineResult, mode: RelayMode = 'travel-time'): Mapped {
     if (result.failure === 'timeout') return err(504, TIMED_OUT, { retryAfterS: RETRY_AFTER_TIMEOUT_S });
     if (result.failure !== null || result.status === null) return err(502, UNAVAILABLE);
 
     switch (result.status) {
         case 200: {
-            if (!validResult(result.json)) return err(502, UNAVAILABLE);
+            if (!validResult(result.json, mode)) return err(502, UNAVAILABLE);
 
             const body: Record<string, unknown> = {};
-            for (const name of RESULT_KEYS) {
+            for (const name of mode === 'tarr' ? RESULT_KEYS_TARR : RESULT_KEYS) {
                 if (result.json[name] !== undefined) body[name] = result.json[name];
             }
             return { ok: true, body };

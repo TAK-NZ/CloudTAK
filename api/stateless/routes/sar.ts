@@ -4,7 +4,7 @@ import Err from '@openaddresses/batch-error';
 import Auth from '../../common/auth.js';
 import type ConfigStateless from '../config.js';
 import { getSarConfig } from '../lib/sar/relay-config.js';
-import { MAX_BODY_BYTES, TravelTimeBody, buildUpstreamBody } from '../lib/sar/relay-request.js';
+import { MAX_BODY_BYTES, TarrBody, TravelTimeBody, buildTarrUpstreamBody, buildUpstreamBody } from '../lib/sar/relay-request.js';
 import {
     STATUS_LIMIT,
     TOO_LARGE,
@@ -29,6 +29,20 @@ const TravelTimeResult = Type.Object({
     mode: Type.Literal('travel-time'),
     contours: Type.Any(),
     parameters: Type.Optional(Type.Any()),
+    bbox: Type.Optional(Type.Any()),
+    warnings: Type.Optional(Type.Array(Type.Any())),
+    data: Type.Optional(Type.Any()),
+    attribution: Type.Optional(Type.Array(Type.String())),
+    disclaimer: Type.Optional(Type.String()),
+    timings_s: Type.Optional(Type.Any()),
+});
+
+const TarrResult = Type.Object({
+    status: Type.Literal('ok'),
+    mode: Type.Literal('tarr'),
+    contours: Type.Any(),
+    parameters: Type.Optional(Type.Any()),
+    calibration: Type.Optional(Type.Any()),
     bbox: Type.Optional(Type.Any()),
     warnings: Type.Optional(Type.Array(Type.Any())),
     data: Type.Optional(Type.Any()),
@@ -65,10 +79,11 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/sar/status', {
         name: 'SAR Status',
         group: 'SAR',
-        description: 'Report whether the SAR travel-time relay is enabled. Makes no call to the SAR service.',
+        description: 'Report whether the SAR relay is enabled and which modes it routes. Makes no call to the SAR service.',
         res: Type.Object({
             apiVersion: Type.Literal(1),
             enabled: Type.Boolean(),
+            modes: Type.Array(Type.String()),
         }),
     }, async (req, res) => {
         try {
@@ -81,6 +96,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             res.json({
                 apiVersion: 1,
                 enabled: getSarConfig().enabled,
+                modes: ['travel-time', 'tarr'],
             });
         } catch (err) {
             fail(err, res);
@@ -130,6 +146,47 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 speed_kmh: req.body?.speed_kmh ?? null,
                 intervals: Array.isArray(req.body?.intervals_hours) ? req.body.intervals_hours.length : null,
                 radius_km: req.body?.radius_km ?? null,
+                upstream,
+            }));
+        }
+    });
+
+    await schema.post('/sar/tarr', {
+        name: 'SAR TARR',
+        group: 'SAR',
+        description: 'Calculate terrain-aware range rings from an initial planning point through the configured SAR service',
+        body: TarrBody,
+        res: TarrResult,
+    }, async (req, res) => {
+        const started = Date.now();
+        let username = '';
+        let status = 500;
+        let upstream: number | null = null;
+        try {
+            const user = await Auth.as_user(config, req);
+            username = user.email;
+            const cfg = getSarConfig();
+            if (!cfg.enabled) throw relayErr(502, UNAVAILABLE);
+            const rate = relay.calc.hit(user.email.toLowerCase(), cfg.rate);
+            if (!rate.ok) throw relayErr(429, 'Too many SAR requests', { retryAfterS: rate.retryAfterS });
+            const result = await callEngine(cfg, buildTarrUpstreamBody(req.body), userAgent(config.API_URL), '/tarr');
+            upstream = result.status;
+            const mapped = mapUpstream(result, 'tarr');
+            if (!mapped.ok) throw relayErr(mapped.error.status, mapped.error.message, mapped.error);
+            status = 200;
+            res.setHeader('Cache-Control', 'no-store');
+            res.status(200).json(mapped.body as typeof TarrResult.static);
+        } catch (err) {
+            status = fail(err, res);
+        } finally {
+            // Never the coordinates, the key, a token or an upstream body
+            console.info(JSON.stringify({
+                type: 'sar',
+                mode: 'tarr',
+                username,
+                status,
+                ms: Date.now() - started,
+                profile: typeof req.body?.profile === 'string' ? req.body.profile : null,
                 upstream,
             }));
         }
