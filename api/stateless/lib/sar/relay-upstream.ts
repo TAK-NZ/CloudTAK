@@ -4,7 +4,7 @@ import { FixedWindowLimiter } from '../weather/relay-limiter.js';
 import { upstreamAllowForTests, __resetWarned } from './relay-config.js';
 import type { SarConfig } from './relay-config.js';
 import type { UpstreamBody } from './relay-request.js';
-import { RADIUS } from './relay-request.js';
+import { HOURS, RADIUS } from './relay-request.js';
 
 export { upstreamAllowForTests };
 
@@ -55,7 +55,7 @@ export interface MappedError {
     message: string;
     retryAfterS?: number;
     /** Extra fields for the error body */
-    extra?: Record<string, number>;
+    extra?: Record<string, number | string>;
 }
 
 export interface MappedOk {
@@ -260,6 +260,22 @@ export function sanitizeSuggestedRadius(raw: unknown): number | undefined {
     return Math.round(raw * 10) / 10;
 }
 
+/**
+ * A suggested maximum band length is kept only when it is a finite number in
+ * the engine's band range, rounded to two decimals
+ */
+export function sanitizeSuggestedHours(raw: unknown): number | undefined {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
+    if (raw < HOURS[0] || raw > HOURS[1]) return undefined;
+    return Math.round(raw * 100) / 100;
+}
+/**
+ * An error code is a short machine readable token; anything else is dropped
+ */
+export function sanitizeCode(raw: unknown): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    return /^[a-z][a-z0-9_]{0,63}$/.test(raw) ? raw : undefined;
+}
 function validResult(json: unknown): json is Record<string, unknown> {
     if (!isObject(json)) return false;
     if (json.status !== 'ok' || json.mode !== 'travel-time') return false;
@@ -297,8 +313,15 @@ export function mapUpstream(result: EngineResult): Mapped {
             const message = sanitizeMessage(json.message);
             if (!message) return err(502, UNAVAILABLE);
 
-            const suggested = sanitizeSuggestedRadius(json.suggested_radius_km);
-            return err(422, message, suggested === undefined ? {} : { extra: { suggested_radius_km: suggested } });
+            // Only these fields are forwarded; each is type-checked and dropped when invalid
+            const extra: Record<string, number | string> = {};
+            const code = sanitizeCode(json.code);
+            if (code !== undefined) extra.code = code;
+            const radius = sanitizeSuggestedRadius(json.suggested_radius_km);
+            if (radius !== undefined) extra.suggested_radius_km = radius;
+            const hours = sanitizeSuggestedHours(json.suggested_max_hours);
+            if (hours !== undefined) extra.suggested_max_hours = hours;
+            return err(422, message, Object.keys(extra).length ? { extra } : {});
         }
         case 400:
             return err(400, REJECTED);

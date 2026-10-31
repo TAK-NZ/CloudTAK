@@ -15,9 +15,9 @@ import {
     userAgent,
 } from '../lib/sar/relay-upstream.js';
 
-type RelayErr = Err & { retryAfterS?: number; extra?: Record<string, number> };
+type RelayErr = Err & { retryAfterS?: number; extra?: Record<string, number | string> };
 
-function relayErr(status: number, message: string, more: { retryAfterS?: number; extra?: Record<string, number> } = {}): RelayErr {
+function relayErr(status: number, message: string, more: { retryAfterS?: number; extra?: Record<string, number | string> } = {}): RelayErr {
     const err: RelayErr = new Err(status, null, message, false);
     if (more.retryAfterS !== undefined) err.retryAfterS = more.retryAfterS;
     if (more.extra) err.extra = more.extra;
@@ -147,7 +147,7 @@ function fail(err: unknown, res: Parameters<typeof Err.respond>[1]): number {
     if (typeof retry === 'number') res.setHeader('Retry-After', String(retry));
 
     if (relayError?.extra && relayError instanceof Err && !res.headersSent) {
-        // Err.respond cannot add fields, and the 422 body carries suggested_radius_km
+        // Err.respond cannot add fields, and the 422 body carries code and the suggestions
         res.status(relayError.status).json({
             status: relayError.status,
             message: relayError.safe,

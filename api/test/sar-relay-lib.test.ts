@@ -19,6 +19,8 @@ import {
     relay,
     sanitizeMessage,
     sanitizeSuggestedRadius,
+    sanitizeSuggestedHours,
+    sanitizeCode,
 } from '../stateless/lib/sar/relay-upstream.js';
 import type { EngineResult } from '../stateless/lib/sar/relay-upstream.js';
 
@@ -372,6 +374,27 @@ test('mapUpstream: 422 drops an out of range suggestion but keeps the message', 
     assert.equal(e.extra, undefined);
 });
 
+test('mapUpstream: area_too_dense forwards only whitelisted, type-checked fields', () => {
+    const both = error(answer(422, { code: 'area_too_dense', message: 'Dense.', suggested_radius_km: 17, suggested_max_hours: 4.5, trace: 'x', ipp: {} }));
+    assert.equal(both.status, 422);
+    assert.deepEqual(both.extra, { code: 'area_too_dense', suggested_radius_km: 17, suggested_max_hours: 4.5 });
+    assert.deepEqual(error(answer(422, { code: 'area_too_dense', message: 'Dense.', suggested_radius_km: 17 })).extra, { code: 'area_too_dense', suggested_radius_km: 17 });
+    assert.deepEqual(error(answer(422, { code: 'area_too_dense', message: 'Dense.', suggested_max_hours: 4.5 })).extra, { code: 'area_too_dense', suggested_max_hours: 4.5 });
+    assert.deepEqual(error(answer(422, { code: 'area_too_dense', message: 'Dense.' })).extra, { code: 'area_too_dense' });
+    const junk = error(answer(422, { code: 5, message: 'Dense.', suggested_radius_km: '17', suggested_max_hours: Infinity }));
+    assert.equal(junk.status, 422);
+    assert.equal(junk.message, 'Dense.');
+    assert.equal(junk.extra, undefined);
+    assert.equal(error(answer(422, { code: 'Bad Code!', message: 'Dense.' })).extra, undefined);
+});
+test('sanitizeSuggestedHours and sanitizeCode', () => {
+    assert.equal(sanitizeSuggestedHours(4.5), 4.5);
+    assert.equal(sanitizeSuggestedHours(0.25), 0.25);
+    assert.equal(sanitizeSuggestedHours(24), 24);
+    for (const bad of [0.24, 24.1, 0, -1, NaN, Infinity, '4', null, undefined]) assert.equal(sanitizeSuggestedHours(bad), undefined);
+    assert.equal(sanitizeCode('area_too_dense'), 'area_too_dense');
+    for (const bad of [5, '', 'A', 'a b', 'x'.repeat(65), null]) assert.equal(sanitizeCode(bad), undefined);
+});
 test('mapUpstream: 400, 413 and 500', () => {
     const e400 = error(answer(400, null));
     assert.deepEqual([e400.status, e400.message], [400, REJECTED]);

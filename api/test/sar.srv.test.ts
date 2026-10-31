@@ -20,6 +20,7 @@ const LNG = 175.654321;
 const COORDS = ['40.123456', '175.654321'];
 
 type Mode = 'ok' | 'ok-extra' | '422' | '422-suggest' | '422-junk' | '422-range' | '422-text'
+    | 'dense-both' | 'dense-radius' | 'dense-hours' | 'dense-none' | 'dense-junk' | 'dense-extra'
     | '400' | '413' | '401' | '403' | '404' | '405' | '500' | '502-html' | '503' | '504-html'
     | '200-html' | '200-shape' | '302' | 'slow';
 
@@ -201,6 +202,24 @@ test('start upstream SAR engine', async () => {
                     return;
                 case '422-range':
                     json(422, { status: 'error', message: 'Out of range.', suggested_radius_km: 500 });
+                    return;
+                case 'dense-both':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.', suggested_radius_km: 17, suggested_max_hours: 4.5 });
+                    return;
+                case 'dense-radius':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.', suggested_radius_km: 17 });
+                    return;
+                case 'dense-hours':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.', suggested_max_hours: 4.5 });
+                    return;
+                case 'dense-none':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.' });
+                    return;
+                case 'dense-junk':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.', suggested_radius_km: '17', suggested_max_hours: null });
+                    return;
+                case 'dense-extra':
+                    json(422, { status: 'error', code: 'area_too_dense', message: 'Dense area.', suggested_radius_km: 17, trace: 'UPSTREAM-BODY-SECRET', ipp: { lat: -40.123456, lng: 175.654321 } });
                     return;
                 case '422-text':
                     html(422);
@@ -502,6 +521,28 @@ test('8b. a 422 carries a sanitised message and a valid suggested radius', async
     assert.ok(!('suggested_radius_km' in range.body));
 });
 
+test('8c. area_too_dense passes the code and only valid suggestions', async () => {
+    fresh({ env: { rate: '60' } });
+    const expected: Array<[Mode, Record<string, unknown>]> = [
+        ['dense-both', { code: 'area_too_dense', suggested_radius_km: 17, suggested_max_hours: 4.5 }],
+        ['dense-radius', { code: 'area_too_dense', suggested_radius_km: 17 }],
+        ['dense-hours', { code: 'area_too_dense', suggested_max_hours: 4.5 }],
+        ['dense-none', { code: 'area_too_dense' }],
+        ['dense-junk', { code: 'area_too_dense' }],
+        ['dense-extra', { code: 'area_too_dense', suggested_radius_km: 17 }],
+    ];
+    for (const [m, fields] of expected) {
+        mode = m;
+        const res = await post(validBody());
+        assert.equal(res.status, 422, m);
+        assert.deepEqual(res.body, { status: 422, message: 'Dense area.', ...fields, messages: [] }, m);
+    }
+    // A 422 without a code carries no code
+    mode = '422';
+    const plain = await post(validBody());
+    assert.equal(plain.status, 422);
+    assert.ok(!('code' in plain.body));
+});
 test('9. a slow upstream is a 504 with Retry-After', async () => {
     fresh({ upstreamTimeoutMs: 200 });
     mode = 'slow';
@@ -583,7 +624,7 @@ test('13. the key, session tokens and coordinates stay out of logs, responses an
     fresh({ env: { rate: '60' } });
     const start = logs.length;
 
-    for (const m of ['401', '500', '422', '502-html', '200-html', 'ok'] as Mode[]) {
+    for (const m of ['401', '500', '422', 'dense-both', 'dense-extra', '502-html', '200-html', 'ok'] as Mode[]) {
         mode = m;
         await post(validBody(), 'admin');
     }

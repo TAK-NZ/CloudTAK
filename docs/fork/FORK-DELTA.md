@@ -441,7 +441,7 @@ audit line. Upstream-owned files are untouched.
   |---|---|
   | 200 with `status: 'ok'`, `mode: 'travel-time'` and a `FeatureCollection` | 200 with only `status, mode, contours, parameters, bbox, warnings, data, attribution, disclaimer, timings_s` |
   | 200 with invalid JSON or another shape | 502 `SAR service unavailable` |
-  | 422 with a string `message` | 422 with the message (control characters removed, at most 300 characters) and `suggested_radius_km` only when it is a finite number from 1 to 30 |
+  | 422 with a string `message` | 422 with the message (control characters removed, at most 300 characters) plus `code` (lowercase token, for example `area_too_dense` for dense city requests), `suggested_radius_km` (finite, 1 to 30) and `suggested_max_hours` (finite, 0.25 to 24), each only when valid. Other upstream fields are dropped. A 422 without `code` (sea, lake, out of range) passes through the same way |
   | 422 not parseable | 502 |
   | 400 | 400 `The SAR service rejected the request` |
   | 413 | 413 `Request too large` |
