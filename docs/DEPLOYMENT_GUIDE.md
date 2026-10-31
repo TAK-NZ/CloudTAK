@@ -197,6 +197,39 @@ again changes nothing.
   the key is outside what the relay accepts (`A-Za-z0-9._~-`, 16 to 128), because the relay
   would then stay disabled.
 
+### **SAR travel-time plugin (cloudtak-plugin-sar)**
+Adds a travel-time tool for search and rescue planning in New Zealand: the user picks an Initial
+Planning Point on the map, enters a walking speed and time bands, and gets contours of how far a
+subject could travel in each band. The calculation runs in the SAR engine; CloudTAK calls it
+through an API relay (`/api/sar`), so browsers never see the engine URL or key.
+
+| Variable | Required | Rule |
+|----------|----------|------|
+| `SAR_SERVICE_URL` | Yes | `https` URL of the SAR engine, may include a path such as `/sar`; no query, fragment or credentials; a trailing slash is stripped |
+| `SAR_SERVICE_KEY` | Yes | Characters `[A-Za-z0-9._~-]`, 16 to 128 long |
+| `SAR_RATE_LIMIT` | No | Travel-time calculations per user per minute, 1 to 60, default 6 |
+
+- **Where:** the variables live in `s3://<config bucket>/cloudtak-config.env` (see
+  `cloudtak-config.env.example`) and only apply with `--context useS3CloudTAKConfigFile=true`,
+  like the weather variables. Add three plain `KEY=value` lines (no quotes, no `export`). There is
+  no helper script for SAR.
+- **Never logged:** the key is not written to logs or sent to browsers. An invalid value is
+  reported once in the log by variable name only, and the relay stays disabled.
+- **Limits:** a request body is limited to 8 KB. Each calculation can take up to a minute on the
+  first call; the relay waits 70 seconds for the engine (the load balancer idle timeout is already
+  4000 s). A slow or unavailable engine gives `504` with `Retry-After: 30`.
+- **Test values:** `SAR_SERVICE_URL=https://utils.test.tak.nz/sar`. Use the dedicated
+  `cloudtak-relay` client entry (`apiKeys.cloudtak-relay`) of the Utils SAR engine API key file
+  for `SAR_SERVICE_KEY`. Do not reuse another consumer's key and do not paste it into tickets,
+  chat or shell history.
+- **Restart:** values are read at request time but injected when the task starts. After changing
+  the file, deploy or run `aws ecs update-service --force-new-deployment`.
+- **Check:** after deploy, `curl -s -H "Authorization: Bearer $TOKEN" https://map.test.tak.nz/api/sar/status`
+  should return `{"apiVersion":1,"enabled":true}`. The call does not contact the engine.
+- **Plugin install:** `cdk/cdk.json` `dev-test` `webPlugins` lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-sar.git`. The image build clones the default branch of
+  that repo, so merge the plugin to `main` of `TAK-NZ/cloudtak-plugin-sar` **before** building the
+  image. Then rebuild the image and have users use Settings -> Refresh App.
 ---
 
 ## **📁 Channel folder separator (CHANNEL_FOLDER_SEPARATOR)**

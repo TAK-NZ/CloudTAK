@@ -329,7 +329,7 @@ adds the plumbing to set that arg and the dependency the first plugin needs.
   upstream's, re-add `pdfjs-dist@4.10.38` with `npm install --save-exact`, and check
   `git diff` shows no unrelated lockfile changes.
 - **`cloudtak.webPlugins` in `cdk/cdk.json`** (TAK-NZ only, per environment). `dev-test`
-  lists the rubbersheet fork and `cloudtak-plugin-weather`; `prod` is `""`. The stack resolves the effective value
+  lists the rubbersheet fork, `cloudtak-plugin-weather` and `cloudtak-plugin-sar`; `prod` is `""`. The stack resolves the effective value
   as `--context WebPlugins` (or `webPlugins`), then the `WEB_PLUGINS` env var, then
   `cdk.json`, validates it (https GitHub URLs only) and adds it to the main
   `CloudTAKDockerAsset` build args only when non-empty, so images without plugins keep
@@ -414,6 +414,65 @@ fetches tiles from the weather-proxy with a server-side key.
   in the BaseInfra config bucket, with a local backup, and never prints the key.
 
 See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#weather-plugin-cloudtak-plugin-weather)
+for setup.
+### SAR plugin relay (`/api/sar`)
+`api/stateless/routes/sar.ts`, `api/stateless/lib/sar/relay-*.ts`,
+`api/test/sar-relay-lib.test.ts`, `api/test/sar.srv.test.ts`,
+`api/test/fixtures/get_schema.json`, `cloudtak-config.env.example`
+New files only, except the schema fixture (plus `cloudtak-config.env.example` and the docs). The
+relay serves `GET /api/sar/status` and `POST /api/sar/travel-time` for the `cloudtak-plugin-sar`
+plugin and calls the SAR engine (`POST {SAR_SERVICE_URL}/travel-time`) with a server-side key in
+the `x-api-key` header. It follows the weather relay: same config parsing, the weather
+`FixedWindowLimiter` (imported, not copied), `@tak-ps/node-safeurl` for the upstream call, and an
+audit line. Upstream-owned files are untouched.
+- **Endpoints.** `GET /api/sar/status` returns `{apiVersion: 1, enabled}` and never calls the
+  engine (60 calls per user and minute). `POST /api/sar/travel-time` takes
+  `{ipp: {lat, lng}, speed_kmh, intervals_hours, radius_km?}`. Bounds: latitude -48 to -33.5,
+  longitude 165.5 to 179.5, speed 0.1 to 10 km/h, 1 to 8 bands of 0.25 to 24 hours, radius 1 to
+  30 km. Both need a user session. The platform validator coerces number strings and drops
+  unknown keys; the relay rebuilds the engine request from the parsed values (bands sorted and
+  unique), so nothing else is forwarded.
+- **Order in the POST handler.** Session, configuration (502 when disabled), per-user rate limit
+  (`SAR_RATE_LIMIT`, default 6 a minute, `429` with `Retry-After`), engine call.
+- **Answers.** Every response carries `Cache-Control: no-store`. The engine's answer is mapped as
+  follows and engine messages are never forwarded, except the 422 message:
+
+  | Engine | Relay |
+  |---|---|
+  | 200 with `status: 'ok'`, `mode: 'travel-time'` and a `FeatureCollection` | 200 with only `status, mode, contours, parameters, bbox, warnings, data, attribution, disclaimer, timings_s` |
+  | 200 with invalid JSON or another shape | 502 `SAR service unavailable` |
+  | 422 with a string `message` | 422 with the message (control characters removed, at most 300 characters) plus `code` (lowercase token, for example `area_too_dense` for dense city requests), `suggested_radius_km` (finite, 1 to 30) and `suggested_max_hours` (finite, 0.25 to 24), each only when valid. Other upstream fields are dropped. A 422 without `code` (sea, lake, out of range) passes through the same way |
+  | 422 not parseable | 502 |
+  | 400 | 400 `The SAR service rejected the request` |
+  | 413 | 413 `Request too large` |
+  | 401, 403, 404, 405, other 4xx, redirect, network error, blocked address, relay disabled | 502 `SAR service unavailable` (401 and 403 also log that the key was rejected, at most once a minute) |
+  | 500 | 500 `Analysis failed. Try again, or try a smaller area.` |
+  | 502, 503, 504, timeout, HTML error page | 504 `SAR service timed out` with `Retry-After: 30` |
+  | relay rate limit | 429 `Too many SAR requests` with `Retry-After` |
+
+- **Timeout.** The relay waits 70 s for the engine (a cold calculation takes up to about a
+  minute). The ALB idle timeout is 4000 s, so no CDK change is needed.
+- **Body cap.** A `/sar` router middleware answers `413` when `Content-Length` or the re-serialised
+  body is over 8192 bytes. The platform body parser in `stateless/lib/server/api.ts`
+  (upstream-owned, `limit: 50`) still reads up to 50 MB before this runs. **Known limitation:**
+  the cap protects the engine, not the API's memory.
+- **Audit line.** `console.info(JSON.stringify({type: 'sar', username, status, ms, speed_kmh,
+  intervals, radius_km, upstream}))`. `intervals` is the number of bands and `radius_km` the
+  requested radius (or null). It never contains the coordinates, the key, a session token or an
+  engine body. Strings that are logged pass through a redaction that removes the key, `x-api-key`
+  values and bearer tokens.
+- **Schema fixture.** `api/test/fixtures/get_schema.json` gained the two SAR keys by hand
+  (`schema.srv.test.ts` deep-equals it against `GET /api/schema`). The fixture is already stale on
+  `main` (basemap sprite and certificate renew routes), so that test fails before and after this
+  change; the failing diff contains no `/sar/` line. **On sync:** re-run that test with
+  `UPDATE=1` and keep upstream's keys.
+- **Env vars.** `SAR_SERVICE_URL`, `SAR_SERVICE_KEY`, `SAR_RATE_LIMIT`, read from the environment
+  (S3 config file) on every call. No `FullConfig` keys, so `types.ts`, `defaults.ts`, `config.ts`
+  and `AdminConfig.vue` stay identical to upstream. There is no operator script.
+- **`cdk.json`.** `dev-test` `webPlugins` also lists
+  `https://github.com/TAK-NZ/cloudtak-plugin-sar.git`. The image build clones the default branch of
+  the plugin repo, so the plugin must be merged there before the image is built.
+See [`../DEPLOYMENT_GUIDE.md`](../DEPLOYMENT_GUIDE.md#sar-travel-time-plugin-cloudtak-plugin-sar)
 for setup.
 
 ---
