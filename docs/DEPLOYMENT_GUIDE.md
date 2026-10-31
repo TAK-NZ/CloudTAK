@@ -198,16 +198,17 @@ again changes nothing.
   would then stay disabled.
 
 ### **SAR travel-time plugin (cloudtak-plugin-sar)**
-Adds a travel-time tool for search and rescue planning in New Zealand: the user picks an Initial
-Planning Point on the map, enters a walking speed and time bands, and gets contours of how far a
-subject could travel in each band. The calculation runs in the SAR engine; CloudTAK calls it
+Adds two search and rescue planning tools for New Zealand: the user picks an Initial Planning
+Point on the map and gets either travel-time contours (a walking speed and time bands) or TARR
+range rings (Koester subject-distance rings for a chosen subject profile, adjusted for terrain).
+The calculation runs in the SAR engine; CloudTAK calls it
 through an API relay (`/api/sar`), so browsers never see the engine URL or key.
 
 | Variable | Required | Rule |
 |----------|----------|------|
 | `SAR_SERVICE_URL` | Yes | `https` URL of the SAR engine, may include a path such as `/sar`; no query, fragment or credentials; a trailing slash is stripped |
 | `SAR_SERVICE_KEY` | Yes | Characters `[A-Za-z0-9._~-]`, 16 to 128 long |
-| `SAR_RATE_LIMIT` | No | Travel-time calculations per user per minute, 1 to 60, default 6 |
+| `SAR_RATE_LIMIT` | No | Calculations per user per minute, 1 to 60, default 6. Travel-time and TARR calls count together |
 
 - **Where:** the variables live in `s3://<config bucket>/cloudtak-config.env` (see
   `cloudtak-config.env.example`) and only apply with `--context useS3CloudTAKConfigFile=true`,
@@ -225,7 +226,10 @@ through an API relay (`/api/sar`), so browsers never see the engine URL or key.
 - **Restart:** values are read at request time but injected when the task starts. After changing
   the file, deploy or run `aws ecs update-service --force-new-deployment`.
 - **Check:** after deploy, `curl -s -H "Authorization: Bearer $TOKEN" https://map.test.tak.nz/api/sar/status`
-  should return `{"apiVersion":1,"enabled":true}`. The call does not contact the engine.
+  should return `{"apiVersion":1,"enabled":true,"modes":["travel-time","tarr"]}`. The call does not
+  contact the engine.
+- **Order:** TARR needs the new SAR engine (`POST /tarr`). Upgrade the engine first. Until then
+  TARR answers `SAR service unavailable` (502) and travel-time keeps working.
 - **Plugin install:** `cdk/cdk.json` `dev-test` `webPlugins` lists
   `https://github.com/TAK-NZ/cloudtak-plugin-sar.git`. The image build clones the default branch of
   that repo, so merge the plugin to `main` of `TAK-NZ/cloudtak-plugin-sar` **before** building the
