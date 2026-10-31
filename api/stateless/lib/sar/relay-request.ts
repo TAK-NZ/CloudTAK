@@ -48,3 +48,41 @@ export function buildUpstreamBody(body: TravelTimeRequest): UpstreamBody {
     if (body.radius_km !== undefined) out.radius_km = body.radius_km;
     return out;
 }
+
+export const PROFILE_MAX = 40;
+
+/**
+ * TARR request. The relay does not know the engine's profile list (it would
+ * drift); it only bounds the text and the engine checks membership.
+ */
+export const TarrBody = Type.Object({
+    ipp: Type.Object({
+        lat: Type.Number({ minimum: LAT[0], maximum: LAT[1] }),
+        lng: Type.Number({ minimum: LNG[0], maximum: LNG[1] }),
+    }, { additionalProperties: false }),
+    profile: Type.String({ minLength: 1, maxLength: PROFILE_MAX, pattern: '^[A-Za-z0-9 ()-]+$' }),
+    ecoregion: Type.Optional(Type.String({ minLength: 1, maxLength: 20, pattern: '^[A-Za-z]+$' })),
+    terrain: Type.Optional(Type.String({ minLength: 1, maxLength: 20, pattern: '^[A-Za-z]+$' })),
+}, { additionalProperties: false });
+
+export type TarrRequest = Static<typeof TarrBody>;
+
+export interface TarrUpstreamBody {
+    ipp: { lat: number; lng: number };
+    profile: string;
+    ecoregion?: string;
+    terrain?: string;
+}
+
+/**
+ * Rebuild the engine TARR request from the parsed values so nothing else is forwarded
+ */
+export function buildTarrUpstreamBody(body: TarrRequest): TarrUpstreamBody {
+    const out: TarrUpstreamBody = {
+        ipp: { lat: body.ipp.lat, lng: body.ipp.lng },
+        profile: body.profile,
+    };
+    if (body.ecoregion !== undefined) out.ecoregion = body.ecoregion;
+    if (body.terrain !== undefined) out.terrain = body.terrain;
+    return out;
+}
