@@ -595,6 +595,8 @@ test('13. the key, session tokens and coordinates stay out of logs, responses an
     configure({ rate: '60' });
     await post(validBody({ pad: 'x'.repeat(9000) }), 'admin');
     await post(validBody(), 'none');
+    // A schema failure carries the coordinates in the request; they must not be logged
+    assert.equal((await post(validBody({ speed_kmh: 99 }), 'admin')).status, 400);
 
     assert.ok(logs.length > 0);
     const sessions = Object.values(flight.token);
