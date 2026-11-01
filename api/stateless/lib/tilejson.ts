@@ -68,7 +68,7 @@ export async function basemapTileJSON(
                 .replace(/\{\$?y\}/g, '{y}')
                 .replace(/\{\$?q\}/g, '{q}');
         } else {
-            tileURL = config.API_URL + `/api/basemap/${basemap.id}/tiles/{z}/{x}/{y}`;
+            tileURL = `${config.BASEMAP_TILES_URL}/${basemap.id}/tiles/{z}/{x}/{y}`;
             if (opts.token) tileURL = tileURL + `?token=${opts.token}`;
         }
     }
