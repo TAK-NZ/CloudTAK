@@ -29,6 +29,7 @@
                         <GroupSelect
                             v-model='config.channels'
                             :active='true'
+                            direction='IN'
                         />
                     </div>
                     <div class='form-hint mt-1'>

@@ -95,6 +95,7 @@
                         :limit='1'
                         :disabled='props.disabled'
                         :connection='props.connection'
+                        direction='IN'
                         @update:model-value='dest.value = $event[0] ?? ""; format()'
                     />
                 </div>

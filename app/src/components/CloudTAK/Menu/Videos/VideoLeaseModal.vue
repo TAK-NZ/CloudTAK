@@ -379,6 +379,7 @@
                         <GroupSelect
                             v-model='channels'
                             :limit='1'
+                            direction='IN'
                         />
                     </div>
                     <div
