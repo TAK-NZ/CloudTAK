@@ -16,6 +16,15 @@ on:
       # do. The fork-delta docs live under docs/**, already excluded above.
       - '.upstream-version'
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        # The image tag is a hash of api/, app/, tasks/ and the plugin URLs, so a
+        # change inside a web plugin repo (same URLs) reuses the existing image.
+        # This adds a timestamp to the tag so the image is rebuilt and redeployed.
+        description: 'Rebuild the image even if the tag exists (picks up changed web plugins)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -33,6 +42,8 @@ jobs:
   # Build Docker images for demo environment
   build-images:
     uses: ./.github/workflows/demo-build.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild || false }}
     secrets: inherit
 
   # Validate production configuration without deploying
