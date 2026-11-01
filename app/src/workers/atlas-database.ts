@@ -12,6 +12,7 @@ import type Atlas from './atlas.ts';
 import Subscription from '../base/subscription.ts';
 import { coordEach } from '@turf/meta'
 import COT, { OriginMode } from '../base/cot.ts';
+import FeatureOutbox, { OutboxState, isPendingFeature } from '../base/feature-outbox.ts';
 import ContactManager from '../base/contact.ts';
 import TAKNotification, { NotificationType } from '../base/notification.ts';
 import { WorkerMessageType } from '../utils/events.ts';
@@ -88,6 +89,15 @@ export default class AtlasDatabase {
         this.subscriptionPending = new Map(); // UID, Mission Guid
 
         this.breadcrumb = Comlink.proxy(new AtlasBreadcrumb(this));
+
+        // The Deleted list is read from the API, so it refreshes once a delete lands there
+        FeatureOutbox.onConfirmed = (id, state) => {
+            if (state !== OutboxState.Delete) return;
+
+            this.atlas.postMessage({
+                type: WorkerMessageType.Feature_Archived_Removed
+            });
+        };
     }
 
     async makeActiveMission(guid? : string): Promise<void> {
@@ -125,13 +135,20 @@ export default class AtlasDatabase {
     /**
      * Return a Set of coordinates within the given Map bounds
      * so that vertex snapping can take place when editing
+     *
+     * @param opts.missions - Mission GUIDs whose features should also contribute vertices
      */
-    async snapping(bboxarr: [number, number][]): Promise<Set<[number, number]>> {
+    async snapping(
+        bboxarr: [number, number][],
+        opts: {
+            missions?: string[]
+        } = {}
+    ): Promise<Set<[number, number]>> {
         const bounds = new LngLatBounds(bboxarr as [LngLatLike, LngLatLike]);
         const coords = new Set<[number, number]>();
 
-        for (const cot of this.cots.values()) {
-            coordEach(cot.geometry, (coord) => {
+        const collect = (geometry: Feature["geometry"]) => {
+            coordEach(geometry, (coord) => {
                 const min = coord.slice(0, 2) as [number, number];
 
                 if (min[0] < -180 || min[0] > 180 || min[1] < -90 || min[1] > 90) {
@@ -142,6 +159,22 @@ export default class AtlasDatabase {
                     coords.add(min);
                 }
             });
+        };
+
+        for (const cot of this.cots.values()) {
+            collect(cot.geometry);
+        }
+
+        if (opts.missions && opts.missions.length) {
+            const feats = await db.subscription_feature
+                .where('mission')
+                .anyOf(opts.missions)
+                .filter((f) => !f.deleted)
+                .toArray();
+
+            for (const feat of feats) {
+                collect(feat.geometry);
+            }
         }
 
         return coords;
@@ -311,19 +344,15 @@ export default class AtlasDatabase {
         if (!ids.size) return;
 
         const removal = (async () => {
-            await withDbRetry(() => db.feature.bulkDelete([...ids]));
+            // A delete awaiting confirmation keeps its tombstone row
+            await withDbRetry(() => db.feature.bulkDelete([...ids].filter((id) => !FeatureOutbox.isTombstone(id))));
 
             const revived: DBFeature[] = [];
             for (const id of ids) {
                 const cot = this.cots.get(id);
                 if (!cot || cot.origin.mode !== OriginMode.CONNECTION) continue;
 
-                revived.push({
-                    id: cot.id,
-                    path: cot.path,
-                    properties: cot.properties,
-                    geometry: cot.geometry
-                });
+                revived.push(FeatureOutbox.row(cot.as_feature()));
             }
 
             if (revived.length) {
@@ -645,13 +674,17 @@ export default class AtlasDatabase {
      * sync.
      */
     async hydrate(): Promise<void> {
+        await FeatureOutbox.load();
+
         const features = await db.feature.toArray();
 
         for (const feat of features) {
+            if (feat.deleted) continue;
+
             // Seed archiveIds so the subsequent loadArchive() can prune
             // features deleted on the server while this client was offline -
             // without this the cached copy would linger until a later sync.
-            if (feat.properties.archived) {
+            if (feat.properties.archived && !isPendingFeature(feat)) {
                 this.archiveIds.add(String(feat.id));
             }
 
@@ -710,7 +743,10 @@ export default class AtlasDatabase {
 
         const serverIds = new Set<string>(archive.items.map((f) => String(f.id)));
 
+        // An unconfirmed local change outranks the server copy until it is pushed
         for (const a of archive.items) {
+            if (FeatureOutbox.isPending(String(a.id))) continue;
+
             await this.add(a, {
                 skipSave: true,
                 skipBroadcast: true
@@ -718,7 +754,7 @@ export default class AtlasDatabase {
         }
 
         for (const id of this.archiveIds) {
-            if (serverIds.has(id)) continue;
+            if (serverIds.has(id) || FeatureOutbox.isPending(id)) continue;
 
             const cot = this.cots.get(id);
             if (!cot || !cot.properties.archived || cot.origin.mode !== OriginMode.CONNECTION) continue;
@@ -744,17 +780,14 @@ export default class AtlasDatabase {
             const cot = this.cots.get(id);
             if (!cot || cot.origin.mode !== OriginMode.CONNECTION) continue;
 
-            rows.push({
-                id: cot.id,
-                path: cot.path,
-                properties: cot.properties,
-                geometry: cot.geometry
-            });
+            rows.push(FeatureOutbox.row(cot.as_feature()));
         }
 
         if (rows.length) {
             await withDbRetry(() => db.feature.bulkPut(rows));
         }
+
+        if (rows.some(isPendingFeature)) void FeatureOutbox.push();
 
         return rows.length;
     }
@@ -771,7 +804,9 @@ export default class AtlasDatabase {
         id: string,
         opts: {
             mission?: boolean,
-            skipNetwork?: boolean
+            skipNetwork?: boolean,
+            /** The removal mirrors server state and must not discard an unconfirmed local edit */
+            keepPending?: boolean
         } = {
             mission: false,
             skipNetwork: false
@@ -787,38 +822,29 @@ export default class AtlasDatabase {
             return;
         }
 
-        const breadcrumbUid = cot.properties.breadcrumb
-            ? String(cot.properties.uid || cot.id).replace(/\.track$/, '')
-            : cot.id;
-        const breadcrumbId = `${breadcrumbUid}.track`;
-        const breadcrumbEntry = await db.breadcrumb.get(breadcrumbId);
+        // The server copy was deleted before the local edit reached it - the edit is resubmitted
+        if (opts.keepPending && FeatureOutbox.isPending(id) && !FeatureOutbox.isTombstone(id)) {
+            return;
+        }
 
-        if (breadcrumbEntry) {
-            await this.breadcrumb.remove(breadcrumbUid);
-
-            if (this.cots.has(breadcrumbId)) {
-                this.pendingDelete.add(breadcrumbId);
-            }
-
-            await withDbRetry(() => db.feature.delete(breadcrumbId));
+        // A deleted CoT takes its breadcrumb trail & history points with it
+        if (await db.breadcrumb.get(AtlasBreadcrumb.trackId(cot.id))) {
+            await this.breadcrumb.remove(cot.id);
         }
 
         if (cot.origin.mode === OriginMode.CONNECTION) {
             this.pendingDelete.add(id);
 
             if (cot.properties.archived) {
-                if (!opts.skipNetwork) {
-                    const { error } = await server.DELETE('/api/profile/feature/{:id}', {
-                        params: { path: { ':id': id }, query: { permanent: false } },
-                        headers: bearer(this.atlas.token)
+                if (opts.skipNetwork) {
+                    FeatureOutbox.discard(id);
+
+                    this.atlas.postMessage({
+                        type: WorkerMessageType.Feature_Archived_Removed
                     });
-
-                    if (error) throw new Error(error.message);
+                } else {
+                    await FeatureOutbox.tombstone(cot.as_feature({ clone: true }));
                 }
-
-                this.atlas.postMessage({
-                    type: WorkerMessageType.Feature_Archived_Removed
-                });
             }
         } else if (cot.origin.mode === OriginMode.MISSION && cot.origin.mode_id) {
             const subscription = await Subscription.from(cot.origin.mode_id, {
@@ -1093,6 +1119,13 @@ export default class AtlasDatabase {
 
             return exists;
         } else {
+            // Server state (archive loads, sync events) never overwrites a
+            // local change that has not been confirmed by the API yet. The
+            // startup hydrate also passes skipSave but is local state (skipDatabase).
+            if (opts.skipSave && opts.skipDatabase !== true && FeatureOutbox.isPending(feat.id)) {
+                return FeatureOutbox.isTombstone(feat.id) ? undefined : exists;
+            }
+
             if (exists) {
                 const existing = exists;
                 const geometryMoved = opts.authored === true
@@ -1152,16 +1185,16 @@ export default class AtlasDatabase {
 
                 const created = exists;
                 if (opts.skipDatabase !== true) {
+                    const save = opts.skipSave !== true && created.savable;
+
                     // Backgrounded on native: keep it in memory, persist on resume
                     if (isDatabaseSuspended()) {
                         deferFeaturePersist(created.id);
+                        if (save) FeatureOutbox.deferQueue(created.id);
+                    } else if (save) {
+                        await created.save();
                     } else {
-                        await withDbRetry(() => db.feature.put({
-                            id: created.id,
-                            path: created.path,
-                            properties: created.properties,
-                            geometry: created.geometry
-                        }));
+                        await withDbRetry(() => db.feature.put(FeatureOutbox.row(created.as_feature())));
                     }
                 }
 

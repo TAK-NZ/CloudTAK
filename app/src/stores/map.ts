@@ -13,8 +13,10 @@ import { defineStore } from 'pinia'
 import { markRaw } from 'vue';
 import DrawTool, { DrawToolMode } from './modules/draw.ts';
 import IconManager from './modules/icons.ts';
+import FontManager from './modules/fonts.ts';
 import MenuManager from './modules/menu.ts';
 import BottomBarManager from './modules/bottombar.ts';
+import HistoryLayer from './modules/history.ts';
 import { useDeviceStore, type BatteryInfo, type NativeDeliveryOptions } from './device.ts';
 import { useAppStore } from './app.ts';
 import * as Comlink from 'comlink';
@@ -34,7 +36,7 @@ import { invalidateOfflinePMTiles } from './modules/pmtiles.ts';
 import { FeatureVisibility } from './modules/feature-visibility.ts';
 import Subscription from '../base/subscription.ts';
 import Filter from '../base/filter.ts';
-import { stdurl, getRuntimeToken, serverUrl } from '../std.js';
+import { getRuntimeToken, serverUrl } from '../std.js';
 import * as mapgl from 'maplibre-gl'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import type Atlas from '../workers/atlas.ts';
@@ -100,6 +102,7 @@ export const useMapStore = defineStore('cloudtak', {
         _icons?: IconManager;
         _menu?: unknown;
         _bottomBar?: unknown;
+        _history?: unknown;
 
         _removeOrientationListener?: () => Promise<void>;
         _cotResync?: Promise<void>;
@@ -283,6 +286,10 @@ export const useMapStore = defineStore('cloudtak', {
         bottomBar: function(): BottomBarManager {
             if (!this._bottomBar) throw new Error('BottomBar Manager has not yet initialized');
             return this._bottomBar as BottomBarManager;
+        },
+        history: function(): HistoryLayer {
+            if (!this._history) throw new Error('History Layer has not yet initialized');
+            return this._history as HistoryLayer;
         },
         worker: function(): Comlink.Remote<Atlas> {
             if (!this._worker) throw new Error('Atlas worker has not yet started');
@@ -670,6 +677,15 @@ export const useMapStore = defineStore('cloudtak', {
             if (this._overlaySubscription) {
                 this._overlaySubscription.unsubscribe();
                 this._overlaySubscription = undefined;
+            }
+
+            if (this._history) {
+                try {
+                    this.history.destroy();
+                } catch (err) {
+                    console.error('Failed to destroy history layer:', err);
+                }
+                this._history = undefined;
             }
 
             if (this._map) {
@@ -1138,6 +1154,8 @@ export const useMapStore = defineStore('cloudtak', {
                     await this.loadMission(msg.body.guid).catch((err: unknown) => {
                         console.error(`Mission:${msg.body.guid} render failed after feature change:`, err);
                     });
+                } else if (msg.type === WorkerMessageType.History_Change) {
+                    if (this._history) this.history.onChange(msg.body);
                 } else if (msg.type === WorkerMessageType.Iconset_Change) {
                     // `purge` iconsets changed content: drop their MapLibre images to
                     // re-resolve. `added` iconsets are newly cached: only retry fallbacks.
@@ -1210,8 +1228,6 @@ export const useMapStore = defineStore('cloudtak', {
                 console.error('Failed to load map configuration, using defaults', err);
             }
 
-            const glyphs = `${String(stdurl('/api/fonts'))}/{fontstack}/{range}.pbf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-
             const init: mapgl.MapOptions = {
                 container: this.container,
                 hash: true,
@@ -1227,7 +1243,7 @@ export const useMapStore = defineStore('cloudtak', {
                 clickTolerance: 10,
                 style: {
                     version: 8,
-                    glyphs,
+                    'font-faces': FontManager.fontFaces(),
                     sprite: sprites,
                     state: {
                         theme: { default: useAppStore().resolvedTheme },
@@ -1390,7 +1406,7 @@ export const useMapStore = defineStore('cloudtak', {
 
             map.on('moveend', async () => {
                 if (this.draw.mode !== DrawToolMode.STATIC) {
-                    this.draw.snapping = await this.worker.db.snapping(this.map.getBounds().toArray());
+                    await this.draw.refreshSnapping();
                 } else {
                     this.draw.snapping.clear();
                 }
@@ -1549,6 +1565,13 @@ export const useMapStore = defineStore('cloudtak', {
 
             OverlayManager.applyOrder();
 
+            this._history = markRaw(new HistoryLayer(this));
+            try {
+                this.history.init();
+            } catch (err) {
+                console.error('Failed to initialize history layer:', err);
+            }
+
             await FeatureVisibility.apply();
 
             // Mission loading is fire-and-forget so it does not block map init;
@@ -1687,6 +1710,7 @@ export const useMapStore = defineStore('cloudtak', {
             if (!this._map) return;
 
             OverlayManager.applyOrder();
+            if (this._history) this.history.restack();
 
             this.updateBackground();
             await this.updateAttribution();
@@ -1749,7 +1773,7 @@ export const useMapStore = defineStore('cloudtak', {
             // background color; checked bottom-up, the base-most one wins.
             let color: PropertyValueSpecification<string> = 'hsl(47, 26%, 88%)';
 
-            for (const overlay of OverlayManager.visibleBasemaps()) {
+            for (const overlay of OverlayManager.visible('basemap')) {
                 const bg = overlay.styles.find(
                     (l): l is Extract<LayerSpecification, { type: 'background' }> => l.type === 'background'
                 );
@@ -1764,7 +1788,7 @@ export const useMapStore = defineStore('cloudtak', {
             this.map.setPaintProperty('background', 'background-color', color);
         },
         updateAttribution: async function(): Promise<void> {
-            const attributions = OverlayManager.visibleBasemaps()
+            const attributions = OverlayManager.visible('basemap')
                 .map((overlay) => overlay.attribution)
                 .filter((a): a is string => !!a);
 
