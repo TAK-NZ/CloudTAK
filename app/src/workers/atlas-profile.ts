@@ -376,10 +376,7 @@ export default class AtlasProfile {
             if (targets.has(ch.name)) ch.active = active;
         });
 
-        await this.atlas.db.clear({
-            ignoreArchived: true,
-            skipNetwork: false
-        })
+        await this.clearFeaturesOnDeactivate(active);
 
         return await this.updateChannels(channels);
     }
@@ -390,12 +387,27 @@ export default class AtlasProfile {
             ch.active = active;
         });
 
+        await this.clearFeaturesOnDeactivate(active);
+
+        return await this.updateChannels(channels);
+    }
+
+    /**
+     * Drop the non-archived features from the store when channels are
+     * deactivated. A CoT carries no channel information, so the features of
+     * the deactivated channels cannot be told apart from the rest.
+     *
+     * Activating channels must not clear: nothing re-sends the features of the
+     * channels that were already active, so they would vanish until their next
+     * report.
+     */
+    private async clearFeaturesOnDeactivate(active: boolean): Promise<void> {
+        if (active) return;
+
         await this.atlas.db.clear({
             ignoreArchived: true,
             skipNetwork: false
-        })
-
-        return await this.updateChannels(channels);
+        });
     }
 
     async updateChannels(channels: Array<GroupChannel>): Promise<Array<GroupChannel>> {
