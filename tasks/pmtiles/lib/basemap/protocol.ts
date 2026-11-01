@@ -178,6 +178,16 @@ export class BasemapProtocol {
                 headers: opts.headers as Record<string, string>,
             });
 
+            // An upstream rejection is not a CloudTAK auth failure. Relaying a
+            // 403 as-is made it look like one, so report it as a bad gateway
+            // naming the host, and never forward the upstream body.
+            if (upstream.statusCode >= 400 && upstream.statusCode !== 404) {
+                upstream.body.resume();
+                upstream.body.on('error', () => {});
+                console.error(`Error: BasemapTileUpstream: ${url.hostname} returned ${upstream.statusCode}`);
+                throw new Err(502, null, `Upstream tile server (${url.hostname}) returned ${upstream.statusCode}`);
+            }
+
             const contentLength = Number(upstream.headers['content-length']);
             if (upstream.statusCode === 200 && !isNaN(contentLength)) {
                 try {

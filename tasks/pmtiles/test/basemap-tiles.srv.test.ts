@@ -14,6 +14,7 @@ let api: http.Server;
 let Basemap: typeof import('../lib/basemap.js').default;
 
 const apiRequests: string[] = [];
+const upstreamTileHeaders: http.IncomingHttpHeaders[] = [];
 
 const sharingToken = 'etl.' + jwt.sign({ id: 42, access: 'basemap', internal: true, t: 1 }, 'test-secret');
 const userToken = jwt.sign({ email: 'owner@example.com', access: 'user' }, 'test-secret');
@@ -86,6 +87,19 @@ test('Setup', async () => {
 
         const url = new URL(String(req.url), 'http://127.0.0.1');
         const token = url.searchParams.get('token') || '';
+
+        if (url.pathname.startsWith('/echo-headers/')) {
+            upstreamTileHeaders.push(req.headers);
+            res.writeHead(200, { 'content-type': 'image/png' });
+            res.end(Buffer.from('tile'));
+            return;
+        }
+
+        if (url.pathname.startsWith('/forbidden/')) {
+            res.writeHead(403, { 'content-type': 'text/html' });
+            res.end('<html>Forbidden</html>');
+            return;
+        }
 
         if (url.pathname.startsWith('/oversized/')) {
             res.writeHead(200, { 'content-type': 'image/png', 'content-length': String(10 * 1024 * 1024) });
@@ -160,6 +174,26 @@ test('Setup', async () => {
         id: 47,
         name: 'Oversized',
         url: `${process.env.API_URL}/oversized/{z}/{x}/{y}.png`,
+        protocol: 'zxy',
+        minzoom: 0,
+        maxzoom: 16,
+    };
+
+    basemaps[49] = {
+        ...base,
+        id: 49,
+        name: 'Header Echo',
+        url: `${process.env.API_URL}/echo-headers/{z}/{x}/{y}.png`,
+        protocol: 'zxy',
+        minzoom: 0,
+        maxzoom: 16,
+    };
+
+    basemaps[50] = {
+        ...base,
+        id: 50,
+        name: 'Forbidden Upstream',
+        url: `${process.env.API_URL}/forbidden/{z}/{x}/{y}.png`,
         protocol: 'zxy',
         minzoom: 0,
         maxzoom: 16,
@@ -368,6 +402,37 @@ test('GET /tiles/basemap/:basemapid/tiles/:z/:x/:y reports upstream failures as 
 
     assert.equal(res.status, 400);
     assert.equal((await res.json()).message, 'Failed to fetch tile');
+});
+
+test('GET /tiles/basemap/:basemapid/tiles/:z/:x/:y sends a CloudTAK User-Agent and Referer upstream, not the browser User-Agent', async () => {
+    upstreamTileHeaders.length = 0;
+
+    const res = await fetch(`${baseURL()}/tiles/basemap/49/tiles/3/2/1?token=${userToken}`, {
+        headers: {
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/156.0.0.0 Safari/537.36',
+            'accept': 'image/png',
+        },
+    });
+
+    assert.equal(res.status, 200);
+    assert.equal(upstreamTileHeaders.length, 1);
+
+    const sent = upstreamTileHeaders[0];
+    assert.match(String(sent['user-agent']), /^CloudTAK /);
+    assert.ok(!String(sent['user-agent']).includes('Mozilla'));
+    assert.equal(sent['referer'], `${process.env.API_URL}/`);
+    assert.equal(sent['accept'], 'image/png');
+});
+
+test('GET /tiles/basemap/:basemapid/tiles/:z/:x/:y reports an upstream 403 as 502 rather than relaying it', async () => {
+    const res = await fetch(`${baseURL()}/tiles/basemap/50/tiles/3/2/1?token=${userToken}`);
+
+    assert.equal(res.status, 502);
+
+    const body = await res.json();
+    assert.equal(body.status, 502);
+    assert.match(body.message, /^Upstream tile server \(127\.0\.0\.1\) returned 403$/);
+    assert.ok(!JSON.stringify(body).includes('Forbidden'), 'Upstream body must not be relayed');
 });
 
 test('GET /tiles/basemap/:basemapid/tiles/:z/:x/:y rejects tiles over the Lambda response limit by content-length', async () => {

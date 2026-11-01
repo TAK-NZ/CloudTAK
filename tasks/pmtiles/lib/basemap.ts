@@ -46,6 +46,26 @@ export default class Basemap {
     }
 
     /**
+     * Headers for the upstream tile request. The caller's User-Agent is never
+     * forwarded: some tile servers (e.g. tiles.openrailwaymap.org) answer a
+     * browser User-Agent without a Referer with a 403. Mirrors the CloudTAK
+     * API tile route.
+     */
+    static upstreamHeaders(client: {
+        accept?: string;
+        acceptLanguage?: string;
+    } = {}): Record<string, string | undefined> {
+        const apiUrl = Basemap.apiUrl().replace(/\/+$/, '');
+
+        return {
+            'user-agent': `CloudTAK (+${apiUrl})`,
+            'referer': `${apiUrl}/`,
+            'accept': client.accept,
+            'accept-language': client.acceptLanguage,
+        };
+    }
+
+    /**
      * Load a Basemap by ID, serving from the per-container cache when fresh.
      * The caller's token is forwarded so the API applies its own permission checks.
      */

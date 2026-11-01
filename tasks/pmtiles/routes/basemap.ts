@@ -78,11 +78,10 @@ export default async function router(schema: Schema) {
                 req.params.y,
                 res,
                 {
-                    headers: {
-                        'user-agent': req.headers['user-agent'],
-                        'accept': req.headers['accept'],
-                        'accept-language': req.headers['accept-language'],
-                    },
+                    headers: Basemap.upstreamHeaders({
+                        accept: req.headers['accept'],
+                        acceptLanguage: req.headers['accept-language'],
+                    }),
                 },
             );
         } catch (err) {
