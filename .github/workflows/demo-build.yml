@@ -105,7 +105,9 @@ jobs:
             exit 1
           fi
           
-          if [[ "${{ github.event.inputs.force_rebuild }}" == "true" ]]; then
+          # inputs.* covers a manual run of this workflow and the force_rebuild
+          # that demo-deploy.yml passes in through workflow_call
+          if [[ "${{ inputs.force_rebuild }}" == "true" ]]; then
             TIMESTAMP=$(date +%Y%m%d-%H%M%S)
             CLOUDTAK_TAG="cloudtak-${CONTENT_SHA}-${TIMESTAMP}"
           else
