@@ -110,6 +110,8 @@ const props = defineProps<{
     connection?: number,
     limit?: number,
     active?: boolean,
+    /** Only offer Channels with this TAK Server direction - 'IN' for Channels the user can write to */
+    direction?: string,
     modelValue: Array<string>
 }>();
 
@@ -177,6 +179,10 @@ async function fetch() {
         return (a.name > b.name) ? 1 : ((b.name > a.name) ? -1 : 0);
     }).forEach((channel: GroupChannel) => {
         if (props.active && !channel.active) {
+            return;
+        }
+
+        if (props.direction && !channel.direction.includes(props.direction)) {
             return;
         }
 

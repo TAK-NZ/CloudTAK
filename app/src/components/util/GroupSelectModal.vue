@@ -40,6 +40,7 @@
                 v-else
                 v-model='selectedNames'
                 :active='true'
+                direction='IN'
             />
         </div>
         <div class='modal-footer'>

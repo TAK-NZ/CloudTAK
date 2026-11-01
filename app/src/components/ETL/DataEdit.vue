@@ -50,6 +50,7 @@
                                         <GroupSelect
                                             v-model='data.mission_groups'
                                             :connection='Number(route.params.connectionid)'
+                                            direction='IN'
                                         />
                                     </div>
                                     <div class='col-md-12'>
