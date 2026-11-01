@@ -597,6 +597,34 @@ Elevation and profile route additions with their test suites, plus
 `icon-image` with `linz-topographic:` to match the sprite id MapLibre assigns to
 non-default named sprites.
 
+### Basemap tile proxy: upstream User-Agent, Referer and errors
+
+`api/stateless/routes/basemap.ts`, `api/stateless/lib/basemap/{zxy,hosted}.ts`,
+`tasks/pmtiles/routes/basemap.ts`, `tasks/pmtiles/lib/basemap.ts`,
+`tasks/pmtiles/lib/basemap/protocol.ts`
+
+Some tile servers answer a browser User-Agent with no Referer with a 403
+(`tiles.openrailwaymap.org` does). The proxy used to forward the end user's
+User-Agent and relay that 403, which looked like a CloudTAK auth failure.
+
+- The upstream request carries `User-Agent: CloudTAK (+<API_URL>)` and
+  `Referer: <API_URL>/` instead of the client's User-Agent. The API appends its
+  package version to the User-Agent. The tile server does not, as its own
+  `package.json` is `0.0.0`.
+- An upstream status of 400 or above, other than 404, becomes a 502 naming the
+  upstream host. The upstream body is never relayed.
+
+**Two copies must stay in step.** Since v13.117.0 proxied tiles are served by the
+tile server (`BASEMAP_TILES_URL`), not the API, so the API route above only
+serves clients that still use the old URL. The v13.117.0 sync lost this fix for
+the tile server until it was ported there. Upstream has the bug in both places
+and has not fixed it, so check both after a sync. On the tile server the
+headers come from `Basemap.upstreamHeaders()` and the 502 mapping lives in
+`BasemapProtocol.pipe()`.
+
+Tests: `api/test/basemap-zxy-proxy.test.ts`, `tasks/pmtiles/test/basemap-proxy.test.ts`
+and the two header and 502 cases in `tasks/pmtiles/test/basemap-tiles.srv.test.ts`.
+
 ---
 
 ## Icons, sprites and styling
