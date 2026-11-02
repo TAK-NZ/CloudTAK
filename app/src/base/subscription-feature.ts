@@ -14,6 +14,13 @@ import { WorkerMessageType } from '../utils/events.ts';
 
 type SubmitFeature = paths["/api/marti/missions/{:guid}/cot"]["put"]["requestBody"]["content"]["application/json"]["features"][number];
 
+/** A Data Sync feature the TAK Server holds but that the API could not parse */
+export type InvalidFeature = {
+    id?: string;
+    callsign?: string;
+    error: string;
+};
+
 // Matches the feature cap on PUT /api/marti/missions/:guid/cot
 const PUSH_BATCH = 100;
 
@@ -97,7 +104,12 @@ export default class SubscriptionFeature {
         return headers;
     }
 
-    async refresh(): Promise<void> {
+    /**
+     * Replace the stored features with the server's copy
+     *
+     * @returns Features the TAK Server holds that could not be parsed and so were not stored
+     */
+    async refresh(): Promise<Array<InvalidFeature>> {
         const channel = new BroadcastChannel('cloudtak');
         try {
             const { data, error } = await server.GET('/api/marti/missions/{:guid}/cot', {
@@ -108,6 +120,15 @@ export default class SubscriptionFeature {
             if (error || !data) throw new Error('Failed to fetch mission features');
 
             const list = data as unknown as FeatureCollection;
+
+            // Features that failed parsing are reported by the API rather than failing the request
+            const invalid = (data as unknown as { invalid?: Array<InvalidFeature> }).invalid ?? [];
+
+            for (const entry of invalid) {
+                console.warn(
+                    `Mission ${this.parent.guid} feature could not be loaded: ${entry.callsign || entry.id || 'unknown'} - ${entry.error}`
+                );
+            }
 
             for (const feat of list.features) {
                 await COT.style(feat);
@@ -202,6 +223,8 @@ export default class SubscriptionFeature {
                     guid: this.parent.guid
                 }
             });
+
+            return invalid;
         } finally {
             channel.close();
         }
