@@ -600,6 +600,38 @@ client-supplied `elevation` param when no terrain basemap is configured.
 
 See [`README-SERVER-SIDE-ELEVATION.md`](README-SERVER-SIDE-ELEVATION.md).
 
+### Query Mode tides
+`api/stateless/lib/tides.ts`, `api/stateless/routes/search.ts`,
+`api/derived-types.d.ts`, `api/test/fixtures/get_schema.json`,
+`app/src/components/CloudTAK/Query/Tides.vue`,
+`app/src/components/CloudTAK/QueryView.vue`, `app/src/types.ts`
+Query Mode shows predicted tides for the tapped point: the nearest station, the
+next high and low, the current level and trend, and a chart with a table of
+highs and lows. Predictions come from the Open Waters tides API
+(`https://api.openwaters.io/tides`, harmonic constituents via Slackwater; for NZ
+the data is LINZ, CC BY 4.0, so the station's `attribution` text is shown).
+- **Server side, not browser direct.** `GET /search/reverse/:longitude/:latitude/tides`
+  fetches upstream, so the CSP `connect-src` needs no new origin and the result is
+  cached in-process (30 minutes, keyed by 0.01 degree coordinates, units and the
+  hour-truncated window start, at most 500 entries).
+- **Distance cutoff.** The upstream API always returns the nearest station, even
+  2000 km away. `MAX_STATION_DISTANCE_KM` (50) in `tides.ts` turns a farther
+  station into `tides: null`, which the panel shows as "No Tide Station Nearby".
+  Upstream failures are a 502, not `null`.
+- **Units.** The client passes the user's `display_elevation` (`meter` or `feet`)
+  as `units`; the server maps it to the upstream `meters` or `feet`. Station
+  distance follows `display_distance`.
+- **Window.** 12 hours before to 36 hours after now (about 290 ten-minute points).
+  The 24 hour chart view is a slice of that.
+- **Times** are shown in the station's IANA time zone by default, with a toggle to
+  the device zone. A missing or invalid zone falls back to UTC, as in the Sun
+  Phase section.
+- The chart uses the existing `chart.js` dependency with a linear time axis (there
+  is no date adapter) and a small inline plugin for the now line and the
+  high/low labels.
+- `derived-types.d.ts` was edited by hand for this route. Regenerate it with
+  `typegen` on the next sync, as described in the notes below.
+
 ### PMTiles task
 
 `tasks/pmtiles/**`

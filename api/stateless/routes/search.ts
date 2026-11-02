@@ -11,6 +11,8 @@ import { Feature } from '@tak-ps/node-cot';
 import type ConfigStateless from '../config.js';
 import { getElevation } from '../lib/terrain.js';
 import { timezoneAt, sunTimesAt } from '../lib/sun.js';
+import { getTides, TideResponse } from '../lib/tides.js';
+import { Profile_Elevation } from '../../common/enums.js';
 
 function optionalISOString(date: Date | null): string | null {
     if (date === null) return null;
@@ -365,6 +367,39 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 : null;
 
             res.json({ elevation });
+        } catch (err) {
+            Err.respond(err, res);
+        }
+    });
+
+    await schema.get('/search/reverse/:longitude/:latitude/tides', {
+        name: 'Reverse Tides',
+        group: 'Search',
+        description: 'Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 50 km.',
+        params: Type.Object({
+            latitude: Type.Number(),
+            longitude: Type.Number(),
+        }),
+        query: Type.Object({
+            units: Type.Enum(Profile_Elevation, {
+                description: 'Unit for tide heights. Pass the user\'s display::elevation setting.',
+                default: Profile_Elevation.METER,
+            }),
+        }),
+        res: Type.Object({
+            tides: Type.Union([Type.Null(), TideResponse]),
+        }),
+    }, async (req, res) => {
+        try {
+            await Auth.as_user(config, req);
+
+            const tides = await getTides(
+                req.params.longitude,
+                req.params.latitude,
+                req.query.units === Profile_Elevation.FEET ? 'feet' : 'meters',
+            );
+
+            res.json({ tides });
         } catch (err) {
             Err.respond(err, res);
         }

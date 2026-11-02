@@ -78,6 +78,13 @@
                 class='py-2'
             />
 
+            <QueryTides
+                :key='`tides-${refreshKey}`'
+                :longitude='coords[0]'
+                :latitude='coords[1]'
+                class='py-2'
+            />
+
             <QuerySun
                 :key='`sun-${refreshKey}`'
                 :longitude='coords[0]'
@@ -109,6 +116,7 @@ import {
     IconNavigationFilled
 } from '@tabler/icons-vue';
 import QueryWeather from './Query/Weather.vue';
+import QueryTides from './Query/Tides.vue';
 import QuerySun from './Query/Sun.vue';
 import QueryMagnetic from './Query/Magnetic.vue';
 import QueryReverse from './Query/Reverse.vue';

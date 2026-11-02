@@ -65819,6 +65819,156 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search/reverse/{:longitude}/{:latitude}/tides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 50 km. */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description Unit for tide heights. Pass the user's display::elevation setting. */
+                    units?: "meter" | "feet";
+                };
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":latitude": number;
+                    /** @description No Description */
+                    ":longitude": number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            tides: null | {
+                                station: {
+                                    /** @description Station identifier, e.g. linz/070 */
+                                    id: string;
+                                    name: string;
+                                    latitude: number;
+                                    longitude: number;
+                                    /** @description Distance from the queried point to the station, in kilometers */
+                                    distance: number;
+                                    /** @description IANA timezone of the station */
+                                    timezone?: string;
+                                    /** @description Vertical datum the heights are measured above, e.g. CD (chart datum) or LAT */
+                                    datum: string;
+                                    /** @description Attribution text required by the data license */
+                                    attribution?: string;
+                                };
+                                /** @enum {string} */
+                                units: "meters" | "feet";
+                                /** @description ISO 8601 UTC start of the prediction window */
+                                start: string;
+                                /** @description ISO 8601 UTC end of the prediction window */
+                                end: string;
+                                extremes: {
+                                    /** @description ISO 8601 UTC instant */
+                                    time: string;
+                                    level: number;
+                                    /** @enum {string} */
+                                    type: "high" | "low";
+                                }[];
+                                timeline: {
+                                    /** @description ISO 8601 UTC instant */
+                                    time: string;
+                                    level: number;
+                                }[];
+                            };
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search/route": {
         parameters: {
             query?: never;

@@ -1909,6 +1909,11 @@
         "query": true,
         "res": true
     },
+    "GET /search/reverse/:longitude/:latitude/tides": {
+        "body": false,
+        "query": true,
+        "res": true
+    },
     "GET /search/route": {
         "body": false,
         "query": true,
