@@ -65829,9 +65829,9 @@ export interface paths {
         /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 50 km. */
         get: {
             parameters: {
-                query?: {
+                query: {
                     /** @description Unit for tide heights. Pass the user's display::elevation setting. */
-                    units?: "meter" | "feet";
+                    units: "meter" | "feet";
                 };
                 header?: never;
                 path: {
@@ -65867,7 +65867,6 @@ export interface paths {
                                     /** @description Attribution text required by the data license */
                                     attribution?: string;
                                 };
-                                /** @enum {string} */
                                 units: "meters" | "feet";
                                 /** @description ISO 8601 UTC start of the prediction window */
                                 start: string;
@@ -65877,7 +65876,6 @@ export interface paths {
                                     /** @description ISO 8601 UTC instant */
                                     time: string;
                                     level: number;
-                                    /** @enum {string} */
                                     type: "high" | "low";
                                 }[];
                                 timeline: {

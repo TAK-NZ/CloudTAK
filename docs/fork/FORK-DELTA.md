@@ -629,8 +629,6 @@ the data is LINZ, CC BY 4.0, so the station's `attribution` text is shown).
 - The chart uses the existing `chart.js` dependency with a linear time axis (there
   is no date adapter) and a small inline plugin for the now line and the
   high/low labels.
-- `derived-types.d.ts` was edited by hand for this route. Regenerate it with
-  `typegen` on the next sync, as described in the notes below.
 
 ### PMTiles task
 
