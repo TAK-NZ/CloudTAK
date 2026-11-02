@@ -1305,6 +1305,15 @@ export const useMapStore = defineStore('cloudtak', {
                 url: 'https://basemaps.linz.govt.nz/v1/sprites/topographic'
             });
 
+            // Open Waters Seamap chart symbols. Same approach as the LINZ sprite:
+            // public CDN (Access-Control-Allow-Origin: *), so tiles.openwaters.io
+            // must be listed in CLOUDTAK_TILE_ORIGINS for the CSP. Seamap style
+            // layers reference images as 'freenauticalchart:<name>'.
+            sprites.push({
+                id: 'freenauticalchart',
+                url: 'https://tiles.openwaters.io/seamap/sprites/freenauticalchart'
+            });
+
             let initCenter = '-100,40';
             let initZoom = 4;
             let initPitch = 0;

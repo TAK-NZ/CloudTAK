@@ -201,11 +201,11 @@ export default class IconManager {
 
             this.addColoredImage(id, baseId, color);
         } else {
-            // Skip LINZ sprite images - these come from the `linz-topographic`
-            // named sprite and MapLibre resolves them itself. Routing them to
-            // loadIconsetImage would look for a Dexie iconset called
-            // 'linz-topographic', which does not exist.
-            if (!id.startsWith('linz-topographic:')) {
+            // Skip named-sprite images - `linz-topographic` (LINZ) and
+            // `freenauticalchart` (Open Waters Seamap) are loaded by MapLibre
+            // itself. Routing them to loadIconsetImage would look for a Dexie
+            // iconset with that name, which does not exist.
+            if (!id.startsWith('linz-topographic:') && !id.startsWith('freenauticalchart:')) {
                 await this.loadIconsetImage(id);
             }
         }
