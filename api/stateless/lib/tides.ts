@@ -14,8 +14,15 @@ import { wrapLongitude } from './sun.js';
  */
 export const TIDES_API = 'https://api.openwaters.io/tides';
 
-/** Stations further than this from the queried point are treated as "no station". */
-export const MAX_STATION_DISTANCE_KM = 50;
+/**
+ * Stations further than this from the queried point are treated as "no station".
+ *
+ * Generous on purpose: along a long open coast with few stations (the NZ West
+ * Coast, for one) the nearest station can be 150 km away and is still far more
+ * useful than nothing. The client warns about stations beyond its own, much
+ * smaller, distance (NEAR_STATION_KM in Query/Tides.vue).
+ */
+export const MAX_STATION_DISTANCE_KM = 200;
 
 /** The prediction window starts this long before "now" and runs for WINDOW_HOURS. */
 export const WINDOW_LOOKBACK_HOURS = 12;

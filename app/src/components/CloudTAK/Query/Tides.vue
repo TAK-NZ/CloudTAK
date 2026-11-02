@@ -57,6 +57,14 @@
                     />
                 </div>
 
+                <TablerInlineAlert
+                    v-if='farStation'
+                    class='mt-2'
+                    severity='warning'
+                    title='Distant station'
+                    :description='"The nearest station is " + formatStationDistance(tides.station.distance) + " away. Tide times and heights at this location may differ."'
+                />
+
                 <div
                     v-if='currentLevel !== null'
                     class='d-flex align-items-center mt-2'
@@ -222,7 +230,8 @@ import {
 } from '@tabler/icons-vue';
 import {
     TablerLoading,
-    TablerAlert
+    TablerAlert,
+    TablerInlineAlert
 } from '@tak-ps/vue-tabler';
 
 type Tides = NonNullable<SearchReverseTides['tides']>;
@@ -236,6 +245,11 @@ const props = defineProps<{
 }>();
 
 const HOUR = 60 * 60 * 1000;
+
+// The API only returns a station within 200 km. Beyond this distance the
+// result is shown with a warning, since tides can differ noticeably between a
+// station and a point that far from it.
+const NEAR_STATION_KM = 50;
 
 const loading = ref(true);
 const error = ref<Error | undefined>();
@@ -341,6 +355,8 @@ const extremeRows = computed(() => {
         .filter((e) => e.t >= view.value.start && e.t <= view.value.end)
         .map((extreme) => ({ extreme, day: formatDay(extreme.t) }));
 });
+
+const farStation = computed(() => (tides.value?.station.distance ?? 0) > NEAR_STATION_KM);
 
 const unitLabel = computed(() => tides.value?.units === 'feet' ? 'ft' : 'm');
 
