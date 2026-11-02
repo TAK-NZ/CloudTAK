@@ -117,6 +117,18 @@
                         />
 
                         <div class='ms-auto d-flex'>
+                            <TablerIconButton
+                                v-if='markerFor(content) || exifLocations.has(content.hash)'
+                                title='Zoom to Photo Location'
+                                @click='flyToPhoto(content)'
+                            >
+                                <IconMapPin
+                                    :size='24'
+                                    stroke='1'
+                                    color='currentColor'
+                                    class='cursor-pointer'
+                                />
+                            </TablerIconButton>
                             <TablerDelete
                                 v-if='props.subscription.role && props.subscription.role.permissions.includes("MISSION_WRITE")'
                                 displaytype='icon'
@@ -200,7 +212,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { Preferences } from '@capacitor/preferences';
 import { from } from 'rxjs';
 import { liveQuery } from '../../../../database.ts';
@@ -210,12 +222,17 @@ import { useRouter } from 'vue-router';
 import { stdurl, server } from '../../../../std.ts';
 import Subscription from '../../../../base/subscription.ts';
 import type { DBSubscriptionContent } from '../../../../database.ts';
-import type { Attachment } from '../../../../types.ts';
+import type { Attachment, Feature } from '../../../../types.ts';
 import { useFloatStore } from '../../../../stores/float.ts';
+import { useMapStore } from '../../../../stores/map.ts';
+import { showCrosshair } from '../../../../utils/map-crosshair.ts';
+import { photoLocation, mayHavePhotoLocation } from '../../../../utils/photo-location.ts';
+import type { PhotoLocation } from '../../../../utils/photo-location.ts';
 import {
     IconPlus,
     IconFileImport,
     IconDownload,
+    IconMapPin,
     IconPhoto,
     IconFiles,
 } from '@tabler/icons-vue';
@@ -237,6 +254,7 @@ const props = defineProps<{
 }>();
 
 const floatStore = useFloatStore();
+const mapStore = useMapStore();
 
 const router = useRouter();
 
@@ -249,6 +267,37 @@ const contents: Ref<Array<DBSubscriptionContent>> = useObservable(
         return await props.subscription.contents.list();
     }))
 );
+
+const features: Ref<Array<Feature> | undefined> = useObservable(
+    from(liveQuery(async () => {
+        return await props.subscription.feature.list();
+    }))
+);
+
+/**
+ * Markers that list a photo as an attachment, by the lower case hash of the photo.
+ * The exact hash is the only link used: a marker without one, such as ATAK's
+ * QuickPic marker, is not guessed at
+ */
+const markersByHash = computed<Map<string, Feature>>(() => {
+    const map = new Map<string, Feature>();
+
+    for (const feat of features.value || []) {
+        const attachments = feat.properties.attachments;
+        if (!Array.isArray(attachments)) continue;
+
+        for (const hash of attachments) {
+            const key = String(hash).toLowerCase();
+            if (!map.has(key)) map.set(key, feat);
+        }
+    }
+
+    return map;
+});
+
+function markerFor(content: DBSubscriptionContent): Feature | undefined {
+    return markersByHash.value.get(content.hash.toLowerCase());
+}
 
 const filteredContents = computed(() => {
     return (contents.value || []).filter((c) => {
@@ -270,10 +319,35 @@ const filteredContents = computed(() => {
 
 const upload = ref(false);
 const token = ref<string | null>(null);
+const tokenLoaded = ref(false);
 
 onMounted(async () => {
     token.value = (await Preferences.get({ key: 'token' })).value;
+    tokenLoaded.value = true;
 });
+
+/** Locations read from the photos' own EXIF data, by file hash */
+const exifLocations = ref<Map<string, PhotoLocation>>(new Map());
+
+// The photos have to be fetched to read them, so only look once the list is shown
+watch([filteredContents, features, tokenLoaded, mode], async () => {
+    // Wait for the markers too so photos that already have one are not read
+    if (mode.value !== 'photos' || !tokenLoaded.value || features.value === undefined) return;
+
+    for (const content of filteredContents.value) {
+        if (
+            markerFor(content)
+            || exifLocations.value.has(content.hash)
+            || !mayHavePhotoLocation(content.name, content.mimeType)
+        ) continue;
+
+        void photoLocation(content.hash, downloadAssetUrl(content.hash, content.name)).then((location) => {
+            if (!location) return;
+
+            exifLocations.value = new Map(exifLocations.value).set(content.hash, location);
+        });
+    }
+}, { immediate: true });
 
 const loading = ref(false)
 
@@ -312,6 +386,45 @@ function downloadAssetUrl(hash: string, name: string) {
     if (token.value) url.searchParams.set('token', token.value);
     url.searchParams.set('name', name);
     return url.toString();
+}
+
+async function flyToPhoto(content: DBSubscriptionContent) {
+    const feat = markerFor(content);
+
+    if (!feat) {
+        // No marker - use the location in the photo itself
+        const location = exifLocations.value.get(content.hash);
+        if (!location) return;
+
+        showCrosshair(mapStore.map, [location.lng, location.lat]);
+
+        // Only zoom, like ATAK does for a photo attached straight to a Data Sync.
+        // Jump like COT.flyTo does so every zoom to a location behaves the same
+        mapStore.map.flyTo({
+            center: [location.lng, location.lat],
+            zoom: Math.max(mapStore.map.getZoom(), 16),
+            speed: Infinity
+        });
+
+        return;
+    }
+
+    if (feat.geometry.type === 'Point') {
+        showCrosshair(mapStore.map, [feat.geometry.coordinates[0], feat.geometry.coordinates[1]]);
+    }
+
+    const cot = await mapStore.worker.db.get(String(feat.id), {
+        mission: true
+    });
+
+    if (cot) {
+        cot.flyTo();
+    } else if (feat.geometry.type === 'Point') {
+        mapStore.map.flyTo({
+            center: [feat.geometry.coordinates[0], feat.geometry.coordinates[1]],
+            zoom: Math.max(mapStore.map.getZoom(), 14)
+        });
+    }
 }
 
 function openAttachment(content: DBSubscriptionContent) {

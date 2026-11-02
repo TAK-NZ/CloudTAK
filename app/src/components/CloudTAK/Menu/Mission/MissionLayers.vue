@@ -577,10 +577,23 @@ async function refresh() {
     error.value = undefined;
     refreshing.value = true;
     try {
-        await Promise.all([
+        const [invalid] = await Promise.all([
             props.subscription.feature.refresh(),
             props.subscription.layer.refresh(),
         ]);
+
+        if (invalid.length) {
+            const names = invalid
+                .slice(0, 3)
+                .map((entry) => `${entry.callsign || entry.id || 'Unknown'} (${entry.error})`)
+                .join(', ');
+
+            const more = invalid.length > 3 ? `, and ${invalid.length - 3} more` : '';
+
+            error.value = new Error(
+                `${invalid.length} ${invalid.length === 1 ? 'feature' : 'features'} could not be loaded: ${names}${more}`
+            );
+        }
     } finally {
         refreshing.value = false;
     }

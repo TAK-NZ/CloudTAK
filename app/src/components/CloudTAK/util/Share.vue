@@ -403,11 +403,46 @@ async function share() {
         });
 
         if (error) throw new Error(error.message);
+
+        // The package route does not add the features to the Data Sync's local store,
+        // so pull them in from the server instead of waiting for them to be pushed
+        // back over the live connection
+        await refreshMissions(
+            Array.from(selectedMissions.value).map((mission) => mission.guid),
+            feats.map((f) => String(f.properties.id || f.id))
+        );
     }
 
     loading.value = false;
 
     emit('done');
+}
+
+// TAK Server adds package CoTs to a Data Sync asynchronously
+const REFRESH_DELAYS_MS = [0, 500, 1000, 2000];
+
+/**
+ * Refresh the features of Data Syncs that were just shared to until the shared
+ * features are listed. Never throws - the share itself already succeeded.
+ */
+async function refreshMissions(guids: string[], ids: string[]): Promise<void> {
+    for (const guid of guids) {
+        try {
+            const sub = await Subscription.from(guid, { subscribed: true });
+            if (!sub) continue;
+
+            for (const delay of REFRESH_DELAYS_MS) {
+                if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+
+                await sub.feature.refresh();
+
+                const listed = new Set((await sub.feature.list()).map((f) => String(f.id)));
+                if (ids.every((id) => listed.has(id))) break;
+            }
+        } catch (err) {
+            console.warn(`Failed to refresh Data Sync ${guid} after sharing`, err);
+        }
+    }
 }
 
 async function broadcast() {

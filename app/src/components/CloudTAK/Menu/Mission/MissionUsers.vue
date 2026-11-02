@@ -194,6 +194,9 @@ import { TablerBadge, TablerNone, TablerInput, TablerDropdown, TablerIconButton,
 import { IconPlus, IconMail, IconChevronDown, IconChevronUp, IconPencil } from '@tabler/icons-vue';
 import type { MissionSubscriptions, Contact as ContactType, MissionInvite, MissionRoleType } from '../../../../types.ts';
 import Subscription from '../../../../base/subscription.ts';
+import ContactManager from '../../../../base/contact.ts';
+import ProfileConfig from '../../../../base/profile.ts';
+import { useMapStore } from '../../../../stores/map.ts';
 import MenuTemplate from '../../util/MenuTemplate.vue';
 import StandardItem from '../../util/StandardItem.vue';
 import UserClientSelect from '../../util/UserClientSelect.vue';
@@ -207,9 +210,11 @@ const props = defineProps<{
 
 const router = useRouter();
 const deviceStore = useDeviceStore();
+const mapStore = useMapStore();
 const loading = ref(false);
 const filter = ref('');
 const subscriptions = ref<MissionSubscriptions>([])
+const teams = ref<Map<string, string>>(new Map());
 const invites = ref<MissionInvite[]>([]);
 const inviteUsername = ref('');
 const showInvites = ref(false);
@@ -280,6 +285,7 @@ async function fetchSubscriptions() {
     loading.value = true;
     try {
         subscriptions.value = await props.subscription.subscriptions();
+        await loadTeams(subscriptions.value);
         if (canInvite.value) {
             invites.value = await props.subscription.invites();
         }
@@ -290,13 +296,44 @@ async function fetchSubscriptions() {
     }
 }
 
+// The subscriptions API does not return a team, so look it up from the local
+// contact records (populated from CoT presence markers), keyed by client UID.
+async function loadTeams(subs: MissionSubscriptions) {
+    const next = new Map<string, string>();
+
+    // The current user is never stored as a contact, their team is a profile setting
+    try {
+        const selfUid = await mapStore.worker.profile.uid();
+        const takGroup = (await ProfileConfig.get('tak_group'))?.value;
+
+        if (typeof takGroup === 'string' && takGroup && subs.some((sub) => sub.clientUid === selfUid)) {
+            next.set(selfUid, takGroup);
+        }
+    } catch (err) {
+        console.error(err);
+    }
+
+    await Promise.all(subs.map(async (sub) => {
+        if (next.has(sub.clientUid)) return;
+
+        try {
+            const contact = await ContactManager.from(sub.clientUid);
+            if (contact && contact.team) next.set(sub.clientUid, contact.team);
+        } catch (err) {
+            console.error(err);
+        }
+    }));
+
+    teams.value = next;
+}
+
 function toContact(sub: MissionSubscriptions[number]): ContactType {
     return {
         uid: sub.clientUid,
         callsign: sub.username,
         role: sub.role.type,
         notes: sub.role.type,
-        team: '',
+        team: teams.value.get(sub.clientUid) || '',
         takv: '',
         filterGroups: null
     };
