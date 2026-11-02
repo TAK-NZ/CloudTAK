@@ -375,7 +375,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/search/reverse/:longitude/:latitude/tides', {
         name: 'Reverse Tides',
         group: 'Search',
-        description: 'Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 50 km.',
+        description: 'Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km.',
         params: Type.Object({
             latitude: Type.Number(),
             longitude: Type.Number(),

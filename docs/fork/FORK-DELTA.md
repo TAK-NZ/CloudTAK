@@ -615,8 +615,11 @@ the data is LINZ, CC BY 4.0, so the station's `attribution` text is shown).
   cached in-process (30 minutes, keyed by 0.01 degree coordinates, units and the
   hour-truncated window start, at most 500 entries).
 - **Distance cutoff.** The upstream API always returns the nearest station, even
-  2000 km away. `MAX_STATION_DISTANCE_KM` (50) in `tides.ts` turns a farther
+  2000 km away. `MAX_STATION_DISTANCE_KM` (200) in `tides.ts` turns a farther
   station into `tides: null`, which the panel shows as "No Tide Station Nearby".
+  Stations between `NEAR_STATION_KM` (50, in `Tides.vue`) and 200 km are shown
+  with a "Distant station" warning, because on a sparse open coast (the NZ West
+  Coast has a station every 150 km or more) a far station beats no answer.
   Upstream failures are a 502, not `null`.
 - **Units.** The client passes the user's `display_elevation` (`meter` or `feet`)
   as `units`; the server maps it to the upstream `meters` or `feet`. Station

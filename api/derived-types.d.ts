@@ -65826,7 +65826,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 50 km. */
+        /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km. */
         get: {
             parameters: {
                 query: {
