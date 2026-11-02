@@ -1,0 +1,248 @@
+[
+  {
+    "id": "depth-areas",
+    "type": "fill",
+    "source": "Open Waters Seascape",
+    "source-layer": "depare",
+    "filter": [
+      "any",
+      [
+        "!",
+        [
+          "has",
+          "sys"
+        ]
+      ],
+      [
+        "==",
+        [
+          "get",
+          "sys"
+        ],
+        "m"
+      ]
+    ],
+    "minzoom": 6,
+    "layout": {
+      "fill-sort-key": [
+        "get",
+        "rank"
+      ]
+    },
+    "paint": {
+      "fill-color": [
+        "case",
+        [
+          "!",
+          [
+            "has",
+            "drval1"
+          ]
+        ],
+        "#1f86cb",
+        [
+          "<",
+          [
+            "get",
+            "drval1"
+          ],
+          0
+        ],
+        "#58af9c",
+        [
+          "case",
+          [
+            "<",
+            [
+              "get",
+              "drval1"
+            ],
+            1.99
+          ],
+          "#1f86cb",
+          [
+            "step",
+            [
+              "get",
+              "drval1"
+            ],
+            "#3fa2e4",
+            1.99,
+            "#5db5f0",
+            4.99,
+            "#7fc7f8",
+            9.99,
+            "#a5d9fb",
+            19.99,
+            "#c9e9fd",
+            49.99,
+            "#e9f7ff"
+          ]
+        ]
+      ],
+      "fill-opacity": 1
+    }
+  },
+  {
+    "id": "unsurveyed",
+    "type": "fill",
+    "source": "Open Waters Seascape",
+    "source-layer": "depare",
+    "filter": [
+      "!",
+      [
+        "has",
+        "drval1"
+      ]
+    ],
+    "paint": {
+      "fill-pattern": "freenauticalchart:unsurveyed"
+    }
+  },
+  {
+    "id": "contour-lines",
+    "type": "line",
+    "source": "Open Waters Seascape",
+    "source-layer": "contours",
+    "filter": [
+      "!=",
+      [
+        "get",
+        "sys"
+      ],
+      "ft"
+    ],
+    "minzoom": 6,
+    "paint": {
+      "line-color": [
+        "case",
+        [
+          "==",
+          [
+            "get",
+            "depth_abs_m"
+          ],
+          2
+        ],
+        "#4C5B63",
+        "#768c97"
+      ],
+      "line-width": [
+        "case",
+        [
+          "==",
+          [
+            "get",
+            "depth_abs_m"
+          ],
+          2
+        ],
+        1.5,
+        0.8
+      ]
+    }
+  },
+  {
+    "id": "contour-labels",
+    "type": "symbol",
+    "source": "Open Waters Seascape",
+    "source-layer": "contours",
+    "filter": [
+      "!=",
+      [
+        "get",
+        "sys"
+      ],
+      "ft"
+    ],
+    "minzoom": 8,
+    "layout": {
+      "symbol-placement": "line",
+      "text-field": [
+        "to-string",
+        [
+          "get",
+          "depth_abs_m"
+        ]
+      ],
+      "text-size": [
+        "interpolate",
+        [
+          "linear"
+        ],
+        [
+          "zoom"
+        ],
+        8,
+        9,
+        13,
+        12
+      ],
+      "text-font": [
+        "Open Sans Bold"
+      ],
+      "text-letter-spacing": 0.1,
+      "text-max-angle": 30,
+      "text-padding": 50
+    },
+    "paint": {
+      "text-color": "#768c97",
+      "text-halo-color": "#fff",
+      "text-halo-width": 1
+    }
+  },
+  {
+    "id": "soundings",
+    "type": "symbol",
+    "source": "Open Waters Seascape",
+    "source-layer": "soundings",
+    "minzoom": 7,
+    "layout": {
+      "text-field": [
+        "to-string",
+        [
+          "get",
+          "depth_m"
+        ]
+      ],
+      "text-font": [
+        "Open Sans Bold"
+      ],
+      "text-size": [
+        "interpolate",
+        [
+          "linear"
+        ],
+        [
+          "zoom"
+        ],
+        8,
+        9,
+        13,
+        12
+      ],
+      "symbol-sort-key": [
+        "get",
+        "depth_m"
+      ],
+      "text-padding": 8
+    },
+    "paint": {
+      "text-color": [
+        "case",
+        [
+          "<=",
+          [
+            "get",
+            "depth_m"
+          ],
+          2
+        ],
+        "#000",
+        "#768c97"
+      ],
+      "text-halo-color": "#fff",
+      "text-halo-width": 1
+    }
+  }
+]

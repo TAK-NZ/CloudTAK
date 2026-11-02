@@ -529,6 +529,19 @@ sprite through `GET /api/basemap/sprite/:name.json|.png` and registered sprites
 per overlay reactively; that caused timing races and was replaced by loading the
 sprite unconditionally in the map init style.
 
+The Open Waters chart sprite (`freenauticalchart`, from `tiles.openwaters.io`) is loaded the
+same way, and `IconManager` skips `freenauticalchart:` image ids like it does
+`linz-topographic:` ones. The matching style layers are CloudTAK `styles` arrays in
+`config/Seamap_Vector_Map_Styles/`: `Seamap_Overlay_CDN.migrated.json` (the `seamap` source,
+55 layers) and `Seascape_Overlay_CDN.migrated.json` (the Seascape layers from Seamap's own
+`style.json`, 5 layers, which is what the Open Waters viewer draws). Both are zxy/mvt/vector
+overlays that must be set to Tile Size 512, because at the form default of 256 MapLibre
+evaluates zoom one level deeper. `tiles.openwaters.io` must be in `CLOUDTAK_TILE_ORIGINS`, or the
+browser blocks the sprite. Labels use `Open Sans Bold`, the only face declared in `font-faces`.
+The depth shading and hillshade layers are omitted, because the shared `__terrain__` source
+would apply them to the land DEM. Setup is in
+[`OPEN-WATERS-OVERLAYS.md`](../OPEN-WATERS-OVERLAYS.md).
+
 `vector_layers` is emitted **only when actually known**. Upstream's
 `[{id:'out'}]` default is CloudTAK's ETL convention and is wrong for proxied LINZ
 tiles; there is no `vector_layers` column, so it always fired. v13.26.0 emitted
