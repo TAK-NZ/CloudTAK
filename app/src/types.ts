@@ -255,6 +255,7 @@ export type SearchReverseMagnetic = paths["/api/search/reverse/{:longitude}/{:la
 export type SearchReverseWeather = paths["/api/search/reverse/{:longitude}/{:latitude}/weather"]["get"]["responses"]["200"]["content"]["application/json"]
 export type SearchReverseReverse = paths["/api/search/reverse/{:longitude}/{:latitude}/reverse"]["get"]["responses"]["200"]["content"]["application/json"]
 export type SearchReverseElevation = paths["/api/search/reverse/{:longitude}/{:latitude}/elevation"]["get"]["responses"]["200"]["content"]["application/json"]
+export type SearchReverseTides = paths["/api/search/reverse/{:longitude}/{:latitude}/tides"]["get"]["responses"]["200"]["content"]["application/json"]
 
 // Below are CloudTAK ETL Specific Data Types
 
