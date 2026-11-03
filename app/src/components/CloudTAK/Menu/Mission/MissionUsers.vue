@@ -29,6 +29,8 @@
                             :input='true'
                             placeholder='Username'
                             :groups='typeof subscription.meta.groups === "string" ? [subscription.meta.groups] : subscription.meta.groups'
+                            :exclude-uids='excludedUids'
+                            :exclude-callsigns='invitedCallsigns'
                             @click.stop
                             @select='inviteUser($event)'
                         />
@@ -43,6 +45,13 @@
                 </template>
             </TablerDropdown>
         </template>
+
+        <div
+            v-if='error'
+            class='col-12 px-2 py-2'
+        >
+            <TablerAlert :err='error' />
+        </div>
 
         <div class='col-12 px-2 py-2'>
             <TablerInput
@@ -135,12 +144,11 @@
                     @chat='router.push(`/menu/chats/new?callsign=${$event.callsign}&uid=${$event.uid}`)'
                 >
                     <template
-                        v-if='canInvite || canManageRoles'
+                        v-if='canManageRoles'
                         #actions
                     >
                         <div class='d-flex align-items-center gap-2'>
                             <TablerIconButton
-                                v-if='canManageRoles'
                                 title='Edit User'
                                 @click.stop='toggleEdit(sub.clientUid)'
                             >
@@ -150,7 +158,6 @@
                                 />
                             </TablerIconButton>
                             <TablerDelete
-                                v-if='canInvite'
                                 label='Remove User'
                                 displaytype='icon'
                                 @delete='removeUser(sub)'
@@ -162,23 +169,28 @@
                         v-if='canManageRoles && editingUid === sub.clientUid'
                         #expanded
                     >
-                        <div class='d-flex align-items-center gap-2'>
+                        <div class='d-flex flex-column align-items-start gap-1'>
                             <select
                                 class='form-select form-select-sm'
                                 style='width: auto;'
                                 :value='sub.role.type'
-                                @change='changeRole(sub, ($event.target as HTMLSelectElement).value as MissionRoleType)'
+                                @change='changeRole(sub, $event.target as HTMLSelectElement)'
                             >
-                                <option value='MISSION_OWNER'>
-                                    Owner
-                                </option>
-                                <option value='MISSION_SUBSCRIBER'>
-                                    Subscriber
-                                </option>
-                                <option value='MISSION_READONLY_SUBSCRIBER'>
-                                    Read Only
+                                <option
+                                    v-for='option of roleOptions'
+                                    :key='option.value'
+                                    :value='option.value'
+                                    :disabled='!!roleDisabledReason(sub, option.value)'
+                                    :title='roleDisabledReason(sub, option.value)'
+                                >
+                                    {{ option.label }}
                                 </option>
                             </select>
+                            <small
+                                v-if='lowerRolesBlockedReason'
+                                class='text-secondary'
+                                v-text='lowerRolesBlockedReason'
+                            />
                         </div>
                     </template>
                 </Contact>
@@ -190,7 +202,7 @@
 <script setup lang='ts'>
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { TablerBadge, TablerNone, TablerInput, TablerDropdown, TablerIconButton, TablerDelete } from '@tak-ps/vue-tabler';
+import { TablerAlert, TablerBadge, TablerNone, TablerInput, TablerDropdown, TablerIconButton, TablerDelete } from '@tak-ps/vue-tabler';
 import { IconPlus, IconMail, IconChevronDown, IconChevronUp, IconPencil } from '@tabler/icons-vue';
 import type { MissionSubscriptions, Contact as ContactType, MissionInvite, MissionRoleType } from '../../../../types.ts';
 import Subscription from '../../../../base/subscription.ts';
@@ -219,6 +231,27 @@ const invites = ref<MissionInvite[]>([]);
 const inviteUsername = ref('');
 const showInvites = ref(false);
 const editingUid = ref<string | null>(null);
+const error = ref<Error | undefined>(undefined);
+
+function fail(err: unknown): void {
+    error.value = err instanceof Error ? err : new Error(String(err));
+}
+
+const roleOptions: Array<{ value: MissionRoleType, label: string }> = [
+    { value: 'MISSION_OWNER', label: 'Owner' },
+    { value: 'MISSION_SUBSCRIBER', label: 'Subscriber' },
+    { value: 'MISSION_READONLY_SUBSCRIBER', label: 'Read Only' },
+];
+
+const roleRank: Record<MissionRoleType, number> = {
+    MISSION_READONLY_SUBSCRIBER: 0,
+    MISSION_SUBSCRIBER: 1,
+    MISSION_OWNER: 2,
+};
+
+function roleLabel(role: MissionRoleType): string {
+    return roleOptions.find((option) => option.value === role)?.label || role;
+}
 
 const isOffline = computed(() => !deviceStore.network.isOnline);
 
@@ -234,6 +267,32 @@ const canManageRoles = computed(() => {
         || props.subscription.role.permissions.includes('MISSION_SET_ROLE');
 });
 
+// TAK Server refuses to assign a role below the default role of a Mission,
+// unless the Mission is password protected
+const roleFloor = computed<MissionRoleType | undefined>(() => {
+    if (props.subscription.meta.passwordProtected) return undefined;
+    return props.subscription.meta.defaultRole?.type;
+});
+
+const lowerRolesBlockedReason = computed(() => {
+    if (!roleFloor.value || roleRank[roleFloor.value] === 0) return undefined;
+    return `Roles below ${roleLabel(roleFloor.value)} (the default role) can't be assigned unless the Data Sync is password protected or its default role is lowered`;
+});
+
+function roleDisabledReason(sub: MissionSubscriptions[number], role: MissionRoleType): string | undefined {
+    if (role === sub.role.type) return undefined;
+
+    if (roleRank[role] > roleRank[props.subscription.role.type]) {
+        return `Your own role can't grant ${roleLabel(role)}`;
+    }
+
+    if (roleFloor.value && roleRank[role] < roleRank[roleFloor.value]) {
+        return `Below the default role (${roleLabel(roleFloor.value)}), only allowed on password protected Data Syncs`;
+    }
+
+    return undefined;
+}
+
 const filteredSubscriptions = computed(() => {
     if (!filter.value) return subscriptions.value;
     return subscriptions.value.filter(sub => {
@@ -245,13 +304,40 @@ onMounted(async () => {
     await fetchSubscriptions();
 });
 
+// Members and pending invites cannot be invited again, TAK Server answers with a bare 500
+const excludedUids = computed<string[]>(() => {
+    return [
+        ...subscriptions.value.map((sub) => sub.clientUid),
+        ...invites.value
+            .filter((invite) => invite.type === 'clientUid' && invite.invitee)
+            .map((invite) => String(invite.invitee)),
+    ];
+});
+
+const invitedCallsigns = computed<string[]>(() => {
+    return invites.value
+        .filter((invite) => (invite.type === 'callsign' || !invite.type) && invite.invitee)
+        .map((invite) => String(invite.invitee));
+});
+
 async function inviteUser(selection?: { callsign: string } | ContactType) {
     const invitee = selection ? selection.callsign : inviteUsername.value;
     if (!invitee) return;
 
-    await props.subscription.invite(invitee);
+    error.value = undefined;
 
-    inviteUsername.value = '';
+    if (invitedCallsigns.value.some((callsign) => callsign.toLowerCase() === invitee.toLowerCase())) {
+        fail(new Error(`${invitee} has already been invited`));
+        return;
+    }
+
+    try {
+        await props.subscription.invite(invitee);
+        inviteUsername.value = '';
+    } catch (err) {
+        fail(err);
+    }
+
     await fetchSubscriptions();
 }
 
@@ -260,14 +346,32 @@ function toggleEdit(clientUid: string) {
 }
 
 async function removeUser(sub: MissionSubscriptions[number]) {
-    await props.subscription.removeUser(sub.clientUid);
-    if (editingUid.value === sub.clientUid) editingUid.value = null;
+    error.value = undefined;
+
+    try {
+        await props.subscription.removeUser(sub.clientUid);
+        if (editingUid.value === sub.clientUid) editingUid.value = null;
+    } catch (err) {
+        fail(err);
+    }
+
     await fetchSubscriptions();
 }
 
-async function changeRole(sub: MissionSubscriptions[number], role: MissionRoleType) {
+async function changeRole(sub: MissionSubscriptions[number], select: HTMLSelectElement) {
+    const role = select.value as MissionRoleType;
     if (role === sub.role.type) return;
-    await props.subscription.changeRole(sub, role);
+
+    error.value = undefined;
+
+    try {
+        await props.subscription.changeRole(sub, role);
+    } catch (err) {
+        // The list is unchanged so Vue will not reset what the user picked
+        select.value = sub.role.type;
+        fail(err);
+    }
+
     await fetchSubscriptions();
 }
 
@@ -331,8 +435,8 @@ function toContact(sub: MissionSubscriptions[number]): ContactType {
     return {
         uid: sub.clientUid,
         callsign: sub.username,
-        role: sub.role.type,
-        notes: sub.role.type,
+        role: roleLabel(sub.role.type),
+        notes: roleLabel(sub.role.type),
         team: teams.value.get(sub.clientUid) || '',
         takv: '',
         filterGroups: null

@@ -355,6 +355,15 @@ async function fetchMission(reload = false): Promise<void> {
         }
 
         setSubscription(sub);
+
+        // The local copy can predate fields such as the default role, pick them up
+        if (!reload && navigator.onLine && subscription.value) {
+            subscription.value.fetch()
+                .then(() => {
+                    if (seq === fetchSeq) triggerRef(subscription);
+                })
+                .catch((err) => console.warn('Failed to refresh mission details', err));
+        }
     } catch (err) {
         if (seq !== fetchSeq) return;
 

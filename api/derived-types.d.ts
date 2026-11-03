@@ -40041,6 +40041,11 @@ export interface paths {
                                     expiration?: number;
                                 };
                             }[];
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                         };
                     };
                 };
@@ -40243,6 +40248,8 @@ export interface paths {
                         keywords?: string[];
                         /** @description Updated set of groups (channels) to assign to the Mission. Caller must be MISSION_OWNER or admin. */
                         groups?: string[];
+                        /** @description Role given to anyone who subscribes without an explicit role. Requires the MISSION_SET_ROLE permission */
+                        defaultRole?: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
                     };
                 };
             };
@@ -40344,6 +40351,11 @@ export interface paths {
                                     expiration?: number;
                                 };
                             }[];
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                         };
                     };
                 };
@@ -43127,6 +43139,224 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/marti/missions/{:guid}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or change the password of a mission. Requires the MISSION_SET_PASSWORD permission */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":guid": string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        /** Remove the password from a mission. Requires the MISSION_SET_PASSWORD permission */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description No Description */
+                    ":guid": string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+                /** @description Error Response */
+                500: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            status: number;
+                            message: string;
+                            /** @description Extended error details (ie: TAK Server exception trace) */
+                            details?: string;
+                        };
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/marti/missions/{:guid}/contacts": {
         parameters: {
             query?: never;
@@ -43935,7 +44165,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove one or more active subscribers from a mission by UID */
+        /** Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission */
         delete: {
             parameters: {
                 query: {

@@ -132,6 +132,115 @@
                     <TablerBorder class='cloudtak-accent'>
                         <template #label>
                             <p class='text-uppercase text-secondary small mb-0'>
+                                Access
+                            </p>
+                        </template>
+                        <div class='row gy-3 gx-0 gx-sm-3'>
+                            <div class='col-12 col-lg-6'>
+                                <small class='text-uppercase text-secondary d-block mb-1'>Default Role</small>
+                                <div
+                                    v-if='canSetDefaultRole'
+                                    class='d-flex align-items-center gap-2'
+                                >
+                                    <select
+                                        v-model='defaultRoleDraft'
+                                        class='form-select form-select-sm'
+                                        style='width: auto;'
+                                        :disabled='saving.access'
+                                    >
+                                        <option
+                                            v-for='option of roleOptions'
+                                            :key='option.value'
+                                            :value='option.value'
+                                        >
+                                            {{ option.label }}
+                                        </option>
+                                    </select>
+                                    <button
+                                        v-if='defaultRoleDraft && defaultRoleDraft !== currentDefaultRole'
+                                        class='btn btn-sm btn-primary'
+                                        :disabled='saving.access'
+                                        @click='saveDefaultRole'
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                                <p
+                                    v-else
+                                    class='fw-semibold p-0 mb-0'
+                                    v-text='defaultRoleLabel'
+                                />
+                                <small class='text-secondary'>Role given to anyone who subscribes without an explicit role</small>
+                            </div>
+                            <div class='col-12 col-lg-6'>
+                                <small class='text-uppercase text-secondary d-block mb-1'>Password</small>
+                                <p class='fw-semibold p-0 mb-1 d-flex align-items-center gap-2'>
+                                    <IconLock
+                                        v-if='passwordProtected'
+                                        :size='18'
+                                        stroke='1'
+                                    />
+                                    <IconLockOpen
+                                        v-else
+                                        :size='18'
+                                        stroke='1'
+                                    />
+                                    <span v-text='passwordProtected ? "Password protected" : "No password"' />
+                                </p>
+                                <template v-if='canSetPassword'>
+                                    <div
+                                        v-if='editingPassword'
+                                        class='d-flex flex-column gap-2'
+                                    >
+                                        <TablerInput
+                                            v-model='passwordDraft'
+                                            type='password'
+                                            autocomplete='new-password'
+                                            label='New Password'
+                                        />
+                                        <div class='d-flex gap-2'>
+                                            <button
+                                                class='btn btn-sm btn-primary'
+                                                :disabled='!passwordDraft || saving.access'
+                                                @click='savePassword'
+                                            >
+                                                Save
+                                            </button>
+                                            <button
+                                                class='btn btn-sm'
+                                                :disabled='saving.access'
+                                                @click='cancelEditingPassword'
+                                            >
+                                                Cancel
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-else
+                                        class='d-flex align-items-center gap-2'
+                                    >
+                                        <button
+                                            class='btn btn-sm'
+                                            :disabled='saving.access'
+                                            @click='editingPassword = true'
+                                            v-text='passwordProtected ? "Change Password" : "Set Password"'
+                                        />
+                                        <TablerDelete
+                                            v-if='passwordProtected'
+                                            label='Remove Password'
+                                            displaytype='icon'
+                                            @delete='removePassword'
+                                        />
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </TablerBorder>
+                </div>
+                <div class='col-12'>
+                    <TablerBorder class='cloudtak-accent'>
+                        <template #label>
+                            <p class='text-uppercase text-secondary small mb-0'>
                                 Quick Actions
                             </p>
                         </template>
@@ -258,9 +367,9 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { Preferences } from '@capacitor/preferences';
-import type { MissionSubscriptions } from '../../../../types.ts';
+import type { MissionSubscriptions, MissionRoleType } from '../../../../types.ts';
 import { useRoute, useRouter } from 'vue-router';
 import { stdurl } from '../../../../std.ts'
 import Subscription from '../../../../base/subscription.ts';
@@ -275,10 +384,14 @@ import {
     IconMinus,
     IconCheck,
     IconX,
+    IconLock,
+    IconLockOpen,
 } from '@tabler/icons-vue';
 import {
     TablerAlert,
     TablerBorder,
+    TablerDelete,
+    TablerInput,
     TablerLoading,
     TablerModal,
     TablerNone,
@@ -325,6 +438,69 @@ const canEditGroups = computed(() => {
     return props.subscription.role.type === 'MISSION_OWNER';
 });
 
+function hasPermission(permission: string): boolean {
+    return props.subscription.role.type === 'MISSION_OWNER'
+        || props.subscription.role.permissions.includes(permission);
+}
+const canSetDefaultRole = computed(() => hasPermission('MISSION_SET_ROLE'));
+const canSetPassword = computed(() => hasPermission('MISSION_SET_PASSWORD'));
+const roleOptions: Array<{ value: MissionRoleType, label: string }> = [
+    { value: 'MISSION_OWNER', label: 'Owner' },
+    { value: 'MISSION_SUBSCRIBER', label: 'Subscriber' },
+    { value: 'MISSION_READONLY_SUBSCRIBER', label: 'Read Only' },
+];
+const currentDefaultRole = computed<MissionRoleType | undefined>(() => props.subscription.meta.defaultRole?.type);
+const defaultRoleLabel = computed(() => {
+    return roleOptions.find((option) => option.value === currentDefaultRole.value)?.label || 'Unknown';
+});
+const passwordProtected = computed(() => !!props.subscription.meta.passwordProtected);
+const defaultRoleDraft = ref<MissionRoleType | undefined>(currentDefaultRole.value);
+watch(currentDefaultRole, (role) => {
+    defaultRoleDraft.value = role;
+});
+const editingPassword = ref(false);
+const passwordDraft = ref('');
+async function saveDefaultRole(): Promise<void> {
+    if (!defaultRoleDraft.value) return;
+    try {
+        saving.value.access = true;
+        error.value = undefined;
+        await props.subscription.update({ defaultRole: defaultRoleDraft.value });
+    } catch (err) {
+        defaultRoleDraft.value = currentDefaultRole.value;
+        fail(err);
+    } finally {
+        saving.value.access = false;
+    }
+}
+function cancelEditingPassword(): void {
+    editingPassword.value = false;
+    passwordDraft.value = '';
+}
+async function savePassword(): Promise<void> {
+    if (!passwordDraft.value) return;
+    try {
+        saving.value.access = true;
+        error.value = undefined;
+        await props.subscription.setPassword(passwordDraft.value);
+        cancelEditingPassword();
+    } catch (err) {
+        fail(err);
+    } finally {
+        saving.value.access = false;
+    }
+}
+async function removePassword(): Promise<void> {
+    try {
+        saving.value.access = true;
+        error.value = undefined;
+        await props.subscription.setPassword();
+    } catch (err) {
+        fail(err);
+    } finally {
+        saving.value.access = false;
+    }
+}
 const groupList = computed<string[]>(() => {
     const groups = props.subscription.meta.groups;
     if (!groups) return [];
@@ -429,6 +605,9 @@ onMounted(async () => {
 const loading = ref({
     users: false,
     subscribe: false,
+});
+const saving = ref({
+    access: false,
 });
 
 async function fetchSubscriptions() {

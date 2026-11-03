@@ -162,8 +162,8 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, computed, onUnmounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, watch, onUnmounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
     IconRoute,
     IconHistory,
@@ -199,9 +199,14 @@ type TrailEntry = {
 
 const mapStore = useMapStore();
 const router = useRouter();
+const route = useRoute();
 
 const entries = ref<TrailEntry[]>([]);
-const filter = ref('');
+// A trail linked to from elsewhere (CoT view, map) arrives as ?uid= and is listed on its own
+const filter = ref(typeof route.query.uid === 'string' ? route.query.uid : '');
+watch(() => route.query.uid, (uid) => {
+    if (typeof uid === 'string') filter.value = uid;
+});
 
 const query = ref({
     relative: '1 Hour',

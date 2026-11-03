@@ -44,6 +44,28 @@ function announce(event: SubscriptionEvent): void {
 }
 
 /**
+ * TAK Server errors reach us as a JSON document inside the message,
+ * eg: {"status":"FORBIDDEN","code":10,"message":": validateRoleAssignment failed! ..."}
+ * Return only the readable part
+ */
+function serverMessage(error: { message?: string } | undefined, fallback: string): string {
+    const message = error?.message;
+    if (!message) return fallback;
+
+    try {
+        const parsed = JSON.parse(message);
+        if (parsed && typeof parsed.message === 'string') {
+            const inner = parsed.message.replace(/^[:\s]+/, '').trim();
+            if (inner) return inner;
+        }
+    } catch {
+        // Not JSON, use as is
+    }
+
+    return message;
+}
+
+/**
  * High Level Wrapper around the Data/Mission Sync API
  */
 export default class Subscription {
@@ -283,7 +305,8 @@ export default class Subscription {
             token?: string,
             description?: string,
             keywords?: string[],
-            groups?: string[]
+            groups?: string[],
+            defaultRole?: MissionRoleType
         }
     ): Promise<void> {
         if (body.subscribed !== undefined) {
@@ -312,11 +335,17 @@ export default class Subscription {
                 });
             }
 
-            if (body.description !== undefined || body.keywords !== undefined || body.groups !== undefined) {
-                const patch: { description?: string; keywords?: string[]; groups?: string[] } = {};
+            if (
+                body.description !== undefined
+                || body.keywords !== undefined
+                || body.groups !== undefined
+                || body.defaultRole !== undefined
+            ) {
+                const patch: { description?: string; keywords?: string[]; groups?: string[]; defaultRole?: MissionRoleType } = {};
                 if (body.description !== undefined) patch.description = body.description;
                 if (body.keywords !== undefined) patch.keywords = body.keywords;
                 if (body.groups !== undefined) patch.groups = body.groups;
+                if (body.defaultRole !== undefined) patch.defaultRole = body.defaultRole;
 
                 const { data, error } = await server.PATCH('/api/marti/missions/{:guid}', {
                     params: {
@@ -326,7 +355,7 @@ export default class Subscription {
                     body: patch
                 });
 
-                if (error) throw new Error(error.message || 'Failed to update mission');
+                if (error) throw new Error(serverMessage(error, 'Failed to update mission'));
 
                 if (data) {
                     Object.assign(this.meta, data as unknown as Mission);
@@ -429,7 +458,7 @@ export default class Subscription {
      * Refresh the caller's role from the server - it changes when the user
      * subscribes, is promoted by an owner, or gains a mission token
      */
-    async refreshRole(): Promise<MissionRole> {
+    async refreshRole(opts: { announce?: boolean } = {}): Promise<MissionRole> {
         const { data, error } = await server.GET('/api/marti/missions/{:guid}/role', {
             params: {
                 path: { ':guid': this.guid }
@@ -444,6 +473,19 @@ export default class Subscription {
         await db.subscription.update(this.guid, {
             role: JSON.parse(JSON.stringify(this.role)),
         });
+
+        // Other live instances (eg: an open Mission view) reload from the local DB
+        if (opts.announce) {
+            announce({
+                guid: this.guid,
+                type: SubscriptionEventType.UPDATE,
+                origin: this._id,
+                state: {
+                    dirty: this.dirty,
+                    subscribed: this.subscribed,
+                }
+            });
+        }
 
         return this.role;
     }
@@ -464,6 +506,11 @@ export default class Subscription {
         await this.contents.refresh(meta.contents);
 
         this.meta = meta;
+
+        // Keep the local copy current, it is what the Subscription is rebuilt from on the next load
+        await db.subscription.update(this.guid, {
+            meta: JSON.parse(JSON.stringify(meta)),
+        });
 
         return meta;
     }
@@ -567,7 +614,7 @@ export default class Subscription {
             }
         });
 
-        if (error) throw new Error('Failed to invite user to mission');
+        if (error) throw new Error(serverMessage(error, 'Failed to invite user to mission, they may already be a member or have a pending invite'));
     }
 
     async changeRole(sub: { clientUid: string, username: string }, role: MissionRoleType): Promise<void> {
@@ -583,7 +630,7 @@ export default class Subscription {
             }
         });
 
-        if (error) throw new Error('Failed to change user role');
+        if (error) throw new Error(serverMessage(error, 'Failed to change user role'));
 
         await this.refreshRole();
     }
@@ -614,13 +661,53 @@ export default class Subscription {
         });
     }
 
+    /**
+     * Remove a subscriber from the Mission, requires the MISSION_SET_ROLE permission
+     */
     async removeUser(uid: string): Promise<void> {
-        await server.DELETE('/api/marti/missions/{:guid}/user', {
+        const { error } = await server.DELETE('/api/marti/missions/{:guid}/user', {
             params: {
                 path: { ':guid': this.guid },
                 query: { uid }
             },
             headers: Subscription.headers(this.missiontoken)
+        });
+
+        if (error) throw new Error(serverMessage(error, 'Failed to remove user from mission'));
+    }
+
+    /**
+     * Set or change the Mission password (or remove it when no password is given),
+     * requires the MISSION_SET_PASSWORD permission
+     */
+    async setPassword(password?: string): Promise<void> {
+        const params = {
+            params: {
+                path: { ':guid': this.guid }
+            },
+            headers: Subscription.headers(this.missiontoken)
+        };
+
+        const { error } = password
+            ? await server.PUT('/api/marti/missions/{:guid}/password', { ...params, body: { password } })
+            : await server.DELETE('/api/marti/missions/{:guid}/password', params);
+
+        if (error) throw new Error(serverMessage(error, 'Failed to update mission password'));
+
+        const meta = await this.fetch();
+
+        await db.subscription.update(this.guid, {
+            meta: JSON.parse(JSON.stringify(meta)),
+        });
+
+        announce({
+            guid: this.guid,
+            type: SubscriptionEventType.UPDATE,
+            origin: this._id,
+            state: {
+                dirty: this.dirty,
+                subscribed: this.subscribed,
+            }
         });
     }
 

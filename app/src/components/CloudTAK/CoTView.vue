@@ -154,6 +154,10 @@
                                     v-if='breadcrumbLive'
                                     class='breadcrumb-live'
                                 />
+                                <span
+                                    v-else-if='breadcrumbTrail'
+                                    class='breadcrumb-live breadcrumb-trail'
+                                />
                             </div>
                         </TablerIconButton>
 
@@ -587,7 +591,8 @@ import FeatureIcon from './util/FeatureIcon.vue';
 import BufferInput from './Inputs/BufferInput.vue';
 import MenuTemplate from './util/MenuTemplate.vue';
 import type COT from '../../base/cot.ts';
-import type { DBTaxonomy } from '../../database.ts';
+import { liveQuery, type DBTaxonomy } from '../../database.ts';
+import { trailSummary } from '../../base/trail.ts';
 import type { Feature } from '../../types.ts';
 import { OriginMode } from '../../base/cot.ts'
 import Subscription from '../../base/subscription.ts'
@@ -715,6 +720,23 @@ const modeOptions = computed<Array<PropertyTab>>(() => {
     return opts;
 });
 const breadcrumbLive = ref(false);
+// A recorded trail exists for this CoT, even when it is no longer recording
+const breadcrumbTrail = ref(false);
+let breadcrumbTrailSubscription: { unsubscribe(): void } | undefined;
+watch(() => cot.value?.id, (id) => {
+    breadcrumbTrailSubscription?.unsubscribe();
+    breadcrumbTrail.value = false;
+    if (!id) return;
+
+    breadcrumbTrailSubscription = liveQuery(() => trailSummary(id)).subscribe({
+        next: (summary) => {
+            breadcrumbTrail.value = !!summary && summary.points > 0;
+        },
+        error: (err: unknown) => {
+            console.error('Trail summary subscription failed', err);
+        },
+    });
+}, { immediate: true });
 const bufferCotId = ref<string | null>(null);
 const actionIconSize = 28;
 
@@ -798,6 +820,7 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    breadcrumbTrailSubscription?.unsubscribe();
     if (interval.value) clearInterval(interval.value);
     if (cot.value && cot.value._liveQuerySubscription) {
         cot.value._liveQuerySubscription.unsubscribe();
@@ -1112,5 +1135,8 @@ async function deleteCOT() {
     border-radius: 50%;
     background: #e74c3c;
     border: 2px solid var(--tblr-body-bg, #1a1a2e);
+}
+.breadcrumb-trail {
+    background: #3498db;
 }
 </style>
