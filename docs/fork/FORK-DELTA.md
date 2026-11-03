@@ -964,6 +964,75 @@ additions that would need to be proposed upstream separately.
 
 ---
 
+## Data Sync users, default role and password
+
+`api/stateless/lib/control/mission.ts`, `api/stateless/routes/marti-mission.ts`,
+`app/src/base/subscription.ts`,
+`app/src/components/CloudTAK/Menu/Mission/{MissionUsers,MissionInfo}.vue`,
+`app/src/components/CloudTAK/Menu/MenuMission.vue`,
+`app/src/components/CloudTAK/util/UserClientSelect.vue`,
+`app/src/workers/{atlas-connection,atlas-database,atlas-profile}.ts`
+
+- **Removing a user.** The unsubscribe call TAK Server exposes is the "leave this mission"
+  call of a client: it only drops the live connection and filters on the caller's username,
+  so it never removed anyone else. `MissionControl.removeSubscribers()` removes a
+  subscriber with a role-less `PUT .../role` instead (what ATAK does). It needs
+  `MISSION_SET_ROLE`, so the button follows `canManageRoles`.
+- **Role changes.** TAK Server refuses a role below the mission's default role unless the
+  mission has a password (`validateRoleAssignment`, hardcoded). `MissionUsers.vue` greys
+  those roles out, and `serverMessage()` in `subscription.ts` unwraps TAK Server's JSON
+  error text so the reason is shown.
+- **Default role and password.** `PATCH /marti/missions/:guid` accepts `defaultRole`;
+  node-tak's `Mission.update()` cannot send it, so `MissionControl.setDefaultRole()`
+  re-creates its request and adds the parameter. `PUT`/`DELETE .../password` are new. The
+  "Access" section of `MissionInfo.vue` shows and edits both. TAK Server returns
+  `defaultRole` in the mission JSON but node-tak's schema omits it, so the `GET`/`PATCH`
+  responses declare it with `Type.Composite`.
+- **Stale local copy.** `Subscription.fetch()` now persists what it fetched, and
+  `MenuMission.vue` refreshes in the background after opening from the local copy.
+  Otherwise fields added later (`defaultRole`) stayed empty for missions opened before.
+- **Invites.** `UserClientSelect.vue` hides current members and pending invitees. TAK Server
+  answers a duplicate invite with a bare 500.
+- **ATAK's role-change warning.** ATAK shows "running an older version of the TAK platform"
+  unless the `takv` platform starts with `ATAK` (tested: `ATAK-CIV` and `ATAK-CloudTAK`
+  clear it, `CloudTAK` does not; the version number does not matter). CloudTAK announces
+  `ATAK-CloudTAK` (`atlas-profile.ts`) and now handles `t-x-m-r`, the role-change push, by
+  refreshing the role (`atlas-connection.ts`, `atlas-database.ts`). Nothing reads the
+  platform value, and TAK Team Manager classifies CloudTAK from the Client UID alone.
+  Revert the platform line to restore the honest name at the cost of ATAK's warning.
+- `api/derived-types.d.ts` is regenerated from Test (`openapi-typescript`), not edited.
+
+Drop the individual pieces when upstream adopts them: a working removal and the default
+role/password controls would replace most of this; the stale-copy fix is a plain bug.
+
+---
+
+## Breadcrumb trail actions
+
+`app/src/base/trail.ts`, `app/src/components/CloudTAK/util/{TrailActions,TrailPointBanner,Breadcrumb}.vue`,
+`app/src/components/CloudTAK/{CoTView,Menu/MenuFeatView,Menu/MenuHistory}.vue`,
+`app/src/stores/modules/history.ts`
+
+- Upstream v13.115 turned a trail into `feature_history` points drawn by the HistoryLayer.
+  It is no longer a selectable `<uid>.track` feature, so it cannot be selected or deleted
+  where it is seen, and the only removal is the trash button in the History menu, which
+  nothing links to. Deleting the CoT removes its trail as well.
+- The Breadcrumb dropdown of a CoT has a Trail section (point count and span, Zoom,
+  History, Clear Trail) and the Breadcrumb button shows a dot whenever a trail exists, not
+  only while it records. Clear asks for a second click in place: the dropdown closes on any
+  click outside its menu, so the usual confirmation dialog (teleported to the body) would
+  be unmounted before the click is handled.
+- Clicking within 8px of the trail line opens a popup with the same actions
+  (`HistoryLayer.onTrailClick`), and a history point opened in the feature viewer shows
+  them in a banner (`TrailPointBanner.vue`). `/menu/history?uid=` lists a single trail.
+- The new UI is in new TAK-NZ-only files (`trail.ts`, `TrailActions.vue`,
+  `TrailPointBanner.vue`); the synced files carry small edits so a sync conflicts as
+  little as possible.
+
+Drop this when upstream gives the trail its own entry points from the CoT and the map.
+
+---
+
 ## Terminology and UI
 
 `app/src/components/CloudTAK/MainMenuContents.vue`,
