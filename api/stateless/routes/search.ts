@@ -12,6 +12,7 @@ import type ConfigStateless from '../config.js';
 import { getElevation } from '../lib/terrain.js';
 import { timezoneAt, sunTimesAt } from '../lib/sun.js';
 import { getTides, TideResponse } from '../lib/tides.js';
+import { isInland, INLAND_KM } from '../lib/coast.js';
 import { Profile_Elevation } from '../../common/enums.js';
 
 function optionalISOString(date: Date | null): string | null {
@@ -375,7 +376,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.get('/search/reverse/:longitude/:latitude/tides', {
         name: 'Reverse Tides',
         group: 'Search',
-        description: 'Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km.',
+        description: `Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km, or, with inland set, when the point is on land more than ${INLAND_KM} km from the sea.`,
         params: Type.Object({
             latitude: Type.Number(),
             longitude: Type.Number(),
@@ -388,10 +389,19 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         }),
         res: Type.Object({
             tides: Type.Union([Type.Null(), TideResponse]),
+            inland: Type.Optional(Type.Boolean({
+                description: `The point is on land more than ${INLAND_KM} km from the sea, so there are no tides to show`,
+            })),
         }),
     }, async (req, res) => {
         try {
             await Auth.as_user(config, req);
+
+            // Nothing to ask the tide service about, and nothing for the client to show
+            if (isInland(req.params.longitude, req.params.latitude)) {
+                res.json({ tides: null, inland: true });
+                return;
+            }
 
             const tides = await getTides(
                 req.params.longitude,
