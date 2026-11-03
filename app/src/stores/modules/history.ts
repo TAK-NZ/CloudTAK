@@ -9,15 +9,12 @@ import type { Feature } from '../../types.ts';
 import type { useMapStore } from '../map.ts';
 import type { HistoryChangeBody } from '../../utils/events.ts';
 import router from '../../router.ts';
-import { trailSummary, zoomToTrail, summaryLabel, type TrailSummary } from '../../base/trail.ts';
 
 export const HISTORY_SOURCE = 'cloudtak-history';
 export const HISTORY_LINE_LAYER = 'cloudtak-history-line';
 export const HISTORY_POINT_LAYER = 'cloudtak-history-point';
 export const HISTORY_DEFAULT_COLOR = '#ff0000';
 export const HISTORY_POPUP_CLASS = 'cloudtak-history-popup';
-/** Marks the clickable trail popup - the hover popup of a point ignores the pointer */
-export const TRAIL_POPUP_CLASS = 'cloudtak-trail-popup';
 
 const RENDER_DEBOUNCE_MS = 300;
 /** A 2px dashed trail is too thin to hit exactly, so a click or hover counts within this many px */
@@ -223,7 +220,6 @@ export default class HistoryLayer {
     private queuedAll: boolean;
     private busy: Promise<void> | null;
     private popup: mapgl.Popup | null;
-    private trailPopup: mapgl.Popup | null;
     private trailCursor: boolean;
     private initialized: boolean;
 
@@ -240,7 +236,6 @@ export default class HistoryLayer {
         this.queuedAll = false;
         this.busy = null;
         this.popup = null;
-        this.trailPopup = null;
         this.trailCursor = false;
         this.initialized = false;
 
@@ -433,8 +428,6 @@ export default class HistoryLayer {
 
         this.onLeave();
         this.popup = null;
-        if (this.trailPopup) this.trailPopup.remove();
-        this.trailPopup = null;
         this.trailCursor = false;
         this.rows.clear();
         this.byUid.clear();
@@ -678,99 +671,19 @@ export default class HistoryLayer {
         });
         if (covered) return;
 
-        void this.showTrail(uid, event.lngLat).catch((err: unknown) => {
-            console.error('Failed to open the trail popup', err);
+        // The same radial menu as a CoT, with the actions that make sense for a trail
+        void this.mapStore.radialClick({
+            id: uid,
+            type: 'Feature',
+            properties: { id: uid },
+            geometry: { type: 'Point', coordinates: [event.lngLat.lng, event.lngLat.lat] },
+        } as unknown as Feature, {
+            lngLat: event.lngLat,
+            point: event.point,
+            mode: 'trail',
+        }).catch((err: unknown) => {
+            console.error('Failed to open the trail menu', err);
         });
-    }
-
-    /** Open a popup on the trail with the actions that can be taken on it */
-    private async showTrail(uid: string, lngLat: mapgl.LngLat): Promise<void> {
-        const summary = await trailSummary(uid);
-        if (!summary || !this.initialized) return;
-
-        if (this.trailPopup) this.trailPopup.remove();
-
-        const popup = new mapgl.Popup({
-            closeButton: true,
-            closeOnClick: true,
-            className: `${HISTORY_POPUP_CLASS} ${TRAIL_POPUP_CLASS}`,
-            maxWidth: '300px',
-        });
-
-        popup.setDOMContent(this.trailPopupContent(summary, () => popup.remove()));
-        popup.setLngLat(lngLat).addTo(this.mapStore.map);
-        this.trailPopup = popup;
-    }
-
-    private trailPopupContent(summary: TrailSummary, close: () => void): HTMLElement {
-        const root = document.createElement('div');
-
-        const text = (className: string, value: string): HTMLElement => {
-            const el = document.createElement('div');
-            el.className = className;
-            el.textContent = value;
-            return el;
-        };
-
-        const actions = document.createElement('div');
-        actions.className = 'cloudtak-history-popup-actions';
-
-        const button = (label: string, action: () => void | Promise<void>, danger = false): HTMLButtonElement => {
-            const el = document.createElement('button');
-            el.type = 'button';
-            el.textContent = label;
-            if (danger) el.className = 'cloudtak-history-popup-danger';
-            el.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                Promise.resolve(action()).catch((err: unknown) => {
-                    console.error(`Trail action "${label}" failed`, err);
-                });
-            });
-            return el;
-        };
-
-        // Clearing asks twice, in place: a trail can hold hours of positions
-        const confirm = button('Confirm Clear', async () => {
-            await this.mapStore.worker.db.breadcrumb.remove(summary.uid);
-            close();
-        }, true);
-        const cancel = button('Cancel', () => {
-            confirm.hidden = true;
-            cancel.hidden = true;
-            clear.hidden = false;
-        });
-        const clear = button('Clear Trail', () => {
-            confirm.hidden = false;
-            cancel.hidden = false;
-            clear.hidden = true;
-        }, true);
-        confirm.hidden = true;
-        cancel.hidden = true;
-
-        actions.append(
-            button('Open CoT', async () => {
-                close();
-                await router.push(`/cot/${encodeURIComponent(summary.uid)}`);
-            }),
-            button('Zoom', async () => {
-                await zoomToTrail(this.mapStore.map, summary.uid);
-            }),
-            button('History', async () => {
-                close();
-                await router.push({ path: '/menu/history', query: { uid: summary.uid } });
-            }),
-            clear,
-            confirm,
-            cancel
-        );
-
-        root.append(
-            text('cloudtak-history-popup-title', summary.callsign),
-            text('cloudtak-history-popup-muted', summaryLabel(summary)),
-            actions
-        );
-
-        return root;
     }
 }
 
@@ -790,22 +703,6 @@ function ensureStyles(): void {
     line-height: 1.3;
     min-width: 160px;
 }
-.${HISTORY_POPUP_CLASS}.${TRAIL_POPUP_CLASS} { pointer-events: auto; }
-.${HISTORY_POPUP_CLASS}.${TRAIL_POPUP_CLASS} .maplibregl-popup-close-button { color: inherit; }
-.${HISTORY_POPUP_CLASS} .cloudtak-history-popup-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.${HISTORY_POPUP_CLASS} .cloudtak-history-popup-actions button {
-    background: transparent;
-    color: inherit;
-    border: 1px solid currentColor;
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    opacity: 0.85;
-}
-.${HISTORY_POPUP_CLASS} .cloudtak-history-popup-actions button:hover { opacity: 1; }
-.${HISTORY_POPUP_CLASS} .cloudtak-history-popup-actions button[hidden] { display: none; }
-.${HISTORY_POPUP_CLASS} .cloudtak-history-popup-actions .cloudtak-history-popup-danger { color: #e74c3c; }
 .${HISTORY_POPUP_CLASS} .cloudtak-history-popup-title { font-weight: 600; }
 
 .${HISTORY_POPUP_CLASS} .cloudtak-history-popup-time,
