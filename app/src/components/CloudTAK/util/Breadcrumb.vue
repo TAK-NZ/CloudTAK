@@ -23,7 +23,25 @@
                 @update:model-value='onLiveToggle'
             />
         </div>
+        <div class='px-3 pb-2 small text-muted'>
+            Records each position while on. Switching it off stops recording but keeps the trail until it is cleared.
+        </div>
 
+        <div class='dropdown-divider my-0' />
+        <div class='px-3 pt-2 pb-1 d-flex align-items-center'>
+            <IconRoute
+                :size='18'
+                stroke='1'
+                class='me-2 text-muted'
+            />
+            <span class='text-body'>Trail</span>
+        </div>
+        <div class='px-3 pb-2'>
+            <TrailActions
+                :uid='uid'
+                @cleared='onTrailCleared'
+            />
+        </div>
         <div class='dropdown-divider my-0' />
 
         <TablerLoading
@@ -86,6 +104,7 @@ import {
     TablerToggle
 } from '@tak-ps/vue-tabler';
 import { useMapStore } from '../../../stores/map.ts';
+import TrailActions from './TrailActions.vue';
 import type { InputFeature } from '../../../types.ts';
 
 const mapStore = useMapStore();
@@ -115,6 +134,13 @@ watch(() => props.uid, async (uid) => {
     error.value = null;
     liveEnabled.value = await mapStore.worker.db.breadcrumb.get(uid);
 });
+
+// Clearing a trail also stops its live recording
+function onTrailCleared(): void {
+    liveEnabled.value = false;
+    loaded.value = null;
+    emit('live', false);
+}
 
 async function onLiveToggle(enabled: boolean): Promise<void> {
     await mapStore.worker.db.breadcrumb.set(props.uid, enabled);
