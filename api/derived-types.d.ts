@@ -39969,11 +39969,6 @@ export interface paths {
                                 permissions: string[];
                                 type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
                             };
-                            defaultRole?: {
-                                permissions: string[];
-                                hibernateLazyInitializer?: unknown;
-                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
-                            };
                             inviteOnly: boolean;
                             expiration: number;
                             guid: string;
@@ -40046,6 +40041,11 @@ export interface paths {
                                     expiration?: number;
                                 };
                             }[];
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                         };
                     };
                 };
@@ -40279,11 +40279,6 @@ export interface paths {
                                 permissions: string[];
                                 type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
                             };
-                            defaultRole?: {
-                                permissions: string[];
-                                hibernateLazyInitializer?: unknown;
-                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
-                            };
                             inviteOnly: boolean;
                             expiration: number;
                             guid: string;
@@ -40356,6 +40351,11 @@ export interface paths {
                                     expiration?: number;
                                 };
                             }[];
+                            defaultRole?: {
+                                permissions: string[];
+                                hibernateLazyInitializer?: unknown;
+                                type: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                            };
                         };
                     };
                 };
