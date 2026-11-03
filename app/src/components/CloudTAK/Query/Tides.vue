@@ -1,5 +1,8 @@
 <template>
-    <div class='col-12 row g-0'>
+    <div
+        v-if='visible'
+        class='col-12 row g-0'
+    >
         <div class='col-12 d-flex align-items-center'>
             <label class='subheader mx-2'>Tides</label>
             <button
@@ -21,23 +24,23 @@
         />
         <div
             v-else-if='tides'
-            class='col-12 px-2 py-2 rounded'
-            style='border: 1px solid var(--tblr-border-color);'
+            class='col-12'
         >
-            <button
-                type='button'
-                class='w-100 bg-transparent border-0 p-0 text-start text-reset'
-                :aria-expanded='expanded'
-                @click='expanded = !expanded'
+            <TablerSlidedown
+                :click-anywhere-expand='true'
+                :click-anywhere-collapse='true'
             >
-                <div class='d-flex align-items-center'>
+                <div class='d-flex align-items-center py-2 px-2'>
                     <IconWaveSine
-                        :size='32'
+                        :size='40'
                         stroke='1'
                     />
-                    <div class='mx-2 flex-grow-1'>
+                    <div
+                        class='mx-2 flex-grow-1'
+                        style='min-width: 0;'
+                    >
                         <div
-                            class='fw-bold'
+                            class='fw-bold text-truncate'
                             v-text='tides.station.name'
                         />
                         <div
@@ -45,158 +48,164 @@
                             v-text='formatStationDistance(tides.station.distance) + " away"'
                         />
                     </div>
-                    <IconChevronUp
-                        v-if='expanded'
-                        :size='20'
-                        stroke='1'
-                    />
-                    <IconChevronDown
-                        v-else
-                        :size='20'
-                        stroke='1'
-                    />
+                    <div
+                        v-if='currentLevel !== null'
+                        class='ms-auto text-end'
+                    >
+                        <div class='d-flex align-items-center justify-content-end'>
+                            <component
+                                :is='rising ? IconTrendingUp : IconTrendingDown'
+                                :size='24'
+                                stroke='1'
+                                :class='rising ? "text-green" : "text-orange"'
+                            />
+                            <div
+                                class='ms-1'
+                                style='font-size: 30px;'
+                                v-text='formatHeight(currentLevel)'
+                            />
+                        </div>
+                        <div
+                            class='small text-muted'
+                            v-text='rising ? "Rising" : "Falling"'
+                        />
+                    </div>
                 </div>
-
-                <TablerInlineAlert
-                    v-if='farStation'
-                    class='mt-2'
-                    severity='warning'
-                    title='Distant station'
-                    :description='"The nearest station is " + formatStationDistance(tides.station.distance) + " away. Tide times and heights at this location may differ."'
-                />
-
                 <div
-                    v-if='currentLevel !== null'
-                    class='d-flex align-items-center mt-2'
+                    v-if='farStation'
+                    class='px-2 pb-2'
                 >
-                    <component
-                        :is='rising ? IconTrendingUp : IconTrendingDown'
-                        :size='24'
-                        stroke='1'
-                        :class='rising ? "text-green" : "text-orange"'
-                    />
-                    <span
-                        class='mx-2 h3 mb-0'
-                        v-text='formatHeight(currentLevel)'
-                    />
-                    <span
-                        class='text-muted'
-                        v-text='rising ? "Rising" : "Falling"'
+                    <TablerInlineAlert
+                        severity='warning'
+                        title='Distant station'
+                        :description='"The nearest station is " + formatStationDistance(tides.station.distance) + " away. Tide times and heights at this location may differ."'
                     />
                 </div>
-
-                <div class='row g-2 mt-1'>
+                <div class='row px-2 pb-2'>
                     <div
                         v-for='next in nextTides'
                         :key='next.label'
-                        class='col-6'
+                        class='col-6 mb-2'
                     >
-                        <div class='small text-muted'>
-                            Next {{ next.label }}
+                        <div class='d-flex align-items-center text-muted'>
+                            <component
+                                :is='next.label === "High" ? IconArrowUp : IconArrowDown'
+                                :size='20'
+                                stroke='1'
+                            />
+                            <span class='ms-2 small'>Next {{ next.label }}</span>
                         </div>
                         <template v-if='next.extreme'>
-                            <div v-text='formatWhen(next.extreme.t)' />
                             <div
-                                class='small text-muted'
+                                class='ms-4'
+                                v-text='formatWhen(next.extreme.t)'
+                            />
+                            <div
+                                class='ms-4 small text-muted'
                                 v-text='formatHeight(next.extreme.y) + " · " + fromNow(next.extreme.t)'
                             />
                         </template>
                         <div
                             v-else
-                            class='text-muted'
+                            class='ms-4 text-muted'
                         >
                             --
                         </div>
                     </div>
                 </div>
-            </button>
+                <template #expanded>
+                    <div class='col-12 border-top pt-2'>
+                        <div class='d-flex align-items-center mb-2'>
+                            <div
+                                class='btn-group btn-group-sm'
+                                role='group'
+                                aria-label='Chart range'
+                            >
+                                <button
+                                    type='button'
+                                    class='btn'
+                                    :class='range === 24 ? "btn-primary" : "btn-outline-secondary"'
+                                    @click='range = 24'
+                                >
+                                    24 h
+                                </button>
+                                <button
+                                    type='button'
+                                    class='btn'
+                                    :class='range === 48 ? "btn-primary" : "btn-outline-secondary"'
+                                    @click='range = 48'
+                                >
+                                    48 h
+                                </button>
+                            </div>
+                            <span
+                                class='ms-auto small text-muted'
+                                v-text='"Height above " + datumLabel'
+                            />
+                        </div>
 
-            <div
-                v-if='expanded'
-                class='border-top mt-2 pt-2'
-            >
-                <div class='d-flex align-items-center mb-2'>
-                    <div
-                        class='btn-group btn-group-sm'
-                        role='group'
-                        aria-label='Chart range'
-                    >
-                        <button
-                            type='button'
-                            class='btn'
-                            :class='range === 24 ? "btn-primary" : "btn-outline-secondary"'
-                            @click='range = 24'
+                        <div
+                            class='tide-chart-shell'
+                            role='img'
+                            :aria-label='chartLabel'
                         >
-                            24 h
-                        </button>
-                        <button
-                            type='button'
-                            class='btn'
-                            :class='range === 48 ? "btn-primary" : "btn-outline-secondary"'
-                            @click='range = 48'
+                            <canvas ref='canvasRef' />
+                        </div>
+
+                        <template
+                            v-for='(row, i) in extremeRows'
+                            :key='row.extreme.t'
                         >
-                            48 h
-                        </button>
-                    </div>
-                    <span
-                        class='ms-auto small text-muted'
-                        v-text='"Height above " + datumLabel'
-                    />
-                </div>
+                            <div
+                                v-if='i === 0 || row.day !== extremeRows[i - 1].day'
+                                class='py-1 font-weight-bold small text-muted border-bottom'
+                                :class='{ "mt-2": i > 0 }'
+                                v-text='row.day'
+                            />
+                            <div class='d-flex align-items-center py-1'>
+                                <component
+                                    :is='row.extreme.type === "high" ? IconArrowUp : IconArrowDown'
+                                    :size='16'
+                                    stroke='1'
+                                    :class='row.extreme.type === "high" ? "text-green" : "text-orange"'
+                                />
+                                <span
+                                    class='mx-2'
+                                    style='width: 3rem;'
+                                    v-text='row.extreme.type === "high" ? "High" : "Low"'
+                                />
+                                <span
+                                    class='flex-grow-1'
+                                    v-text='formatClock(row.extreme.t)'
+                                />
+                                <span
+                                    class='ms-auto font-weight-bold'
+                                    v-text='formatHeight(row.extreme.y)'
+                                />
+                            </div>
+                        </template>
 
-                <div
-                    class='tide-chart-shell'
-                    role='img'
-                    :aria-label='chartLabel'
-                >
-                    <canvas ref='canvasRef' />
-                </div>
-
-                <template
-                    v-for='(row, i) in extremeRows'
-                    :key='row.extreme.t'
-                >
-                    <div
-                        v-if='i === 0 || row.day !== extremeRows[i - 1].day'
-                        class='py-1 font-weight-bold small text-muted border-bottom'
-                        :class='{ "mt-2": i > 0 }'
-                        v-text='row.day'
-                    />
-                    <div class='d-flex align-items-center py-1'>
-                        <component
-                            :is='row.extreme.type === "high" ? IconArrowUp : IconArrowDown'
-                            :size='16'
-                            stroke='1'
-                            :class='row.extreme.type === "high" ? "text-green" : "text-orange"'
-                        />
-                        <span
-                            class='mx-2'
-                            style='width: 3rem;'
-                            v-text='row.extreme.type === "high" ? "High" : "Low"'
-                        />
-                        <span
-                            class='flex-grow-1'
-                            v-text='formatClock(row.extreme.t)'
-                        />
-                        <span
-                            class='ms-auto font-weight-bold'
-                            v-text='formatHeight(row.extreme.y)'
+                        <div class='small text-muted mt-3'>
+                            Predictions only. Not for navigation.
+                            <button
+                                v-if='tides.station.attribution'
+                                type='button'
+                                class='btn btn-link btn-sm p-0 ms-1 small text-muted'
+                                :aria-expanded='showSource'
+                                @click='showSource = !showSource'
+                            >
+                                Data sources
+                            </button>
+                        </div>
+                        <div
+                            v-if='showSource && tides.station.attribution'
+                            class='small text-muted mt-1'
+                            style='overflow-wrap: anywhere;'
+                            v-text='tides.station.attribution'
                         />
                     </div>
                 </template>
-
-                <div class='small text-muted mt-3'>
-                    Predictions computed from harmonic constituents, not observations.
-                    Weather, storm surge and river flow are not included.
-                    Not for navigation.
-                </div>
-                <div
-                    v-if='tides.station.attribution'
-                    class='small text-muted mt-2'
-                    style='overflow-wrap: anywhere;'
-                    v-text='tides.station.attribution'
-                />
-            </div>
+            </TablerSlidedown>
         </div>
         <div
             v-else
@@ -221,14 +230,13 @@ import Chart from 'chart.js/auto';
 import type { ChartData, ChartOptions, Plugin, TooltipItem } from 'chart.js';
 import {
     IconWaveSine,
-    IconChevronDown,
-    IconChevronUp,
     IconTrendingUp,
     IconTrendingDown,
     IconArrowUp,
     IconArrowDown
 } from '@tabler/icons-vue';
 import {
+    TablerSlidedown,
     TablerLoading,
     TablerAlert,
     TablerInlineAlert
@@ -255,10 +263,20 @@ const loading = ref(true);
 const error = ref<Error | undefined>();
 const tides = ref<Tides | null>(null);
 
+// A point on land far from the sea has no tides, so the whole section is left out.
+// The server decides, so the section is also held back briefly while it loads:
+// otherwise a quick inland answer would flash a spinner and then vanish.
+const inland = ref(false);
+const revealed = ref(false);
+const REVEAL_DELAY_MS = 400;
+let revealTimer: ReturnType<typeof setTimeout> | undefined;
+const visible = computed(() => !inland.value && (revealed.value || !loading.value));
+
 // The unit follows the user's Elevation Unit and Distance Unit display settings.
 const distanceUnit = ref('meter');
 
-const expanded = ref(false);
+// The licence text of the data source is long, so it stays folded away until asked for
+const showSource = ref(false);
 const range = ref<24 | 48>(24);
 const useDeviceTime = ref(false);
 const now = ref(Date.now());
@@ -268,6 +286,10 @@ let chart: Chart<'line'> | null = null;
 let timer: ReturnType<typeof setInterval> | undefined;
 
 onMounted(async () => {
+    revealTimer = setTimeout(() => {
+        revealed.value = true;
+    }, REVEAL_DELAY_MS);
+
     try {
         const elevation = (await ProfileConfig.get('display_elevation'))?.value;
         distanceUnit.value = (await ProfileConfig.get('display_distance'))?.value || 'meter';
@@ -280,6 +302,7 @@ onMounted(async () => {
         });
 
         if (reqError) throw new Error(reqError.message || String(reqError));
+        inland.value = data.inland === true;
         tides.value = data.tides;
     } catch (err) {
         error.value = err instanceof Error ? err : new Error(String(err));
@@ -295,6 +318,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     if (timer) clearInterval(timer);
+    if (revealTimer) clearTimeout(revealTimer);
     destroyChart();
 });
 
@@ -462,7 +486,7 @@ function fromNow(t: number): string {
     return relativeTimeFormatter.format(Math.round(minutes / 60), 'hour');
 }
 
-watch([expanded, range, tides, useDeviceTime, now], async () => {
+watch([range, tides, useDeviceTime, now], async () => {
     await nextTick();
     renderChart();
 });
@@ -499,7 +523,7 @@ function clockTicks(min: number, max: number, step: number): number[] {
 function renderChart(): void {
     const canvas = canvasRef.value;
 
-    if (!expanded.value || !canvas || !tides.value || !timeline.value.length) {
+    if (!canvas || !tides.value || !timeline.value.length) {
         destroyChart();
         return;
     }
