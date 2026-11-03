@@ -24,7 +24,7 @@
             />
         </div>
         <div class='px-3 pb-2 small text-muted'>
-            Records each position while on. Switching it off stops recording but keeps the trail until it is cleared.
+            Turning it off stops recording. The trail stays until cleared.
         </div>
 
         <div class='dropdown-divider my-0' />
