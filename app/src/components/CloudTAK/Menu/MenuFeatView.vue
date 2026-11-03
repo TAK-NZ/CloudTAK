@@ -71,6 +71,7 @@
                 </TablerIconButton>
             </div>
 
+            <TrailPointBanner :feature-id='feature.id' />
             <div
                 class='overflow-auto overflow-x-hidden flex-grow-1'
                 style='min-height: 0;'
@@ -187,6 +188,7 @@ import Handlebars from 'handlebars';
 import { server, getRuntimeToken } from '../../../std.ts';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import FeatureIcon from '../util/FeatureIcon.vue';
+import TrailPointBanner from '../util/TrailPointBanner.vue';
 import Coordinate from '../util/Coordinate.vue';
 import CopyField from '../util/CopyField.vue';
 import KeyValueRow from '../util/KeyValueRow.vue';
