@@ -1026,10 +1026,14 @@ role/password controls would replace most of this; the stale-copy fix is a plain
 - Clicking within 8px of the trail line opens the radial menu in a new `trail` mode
   (`HistoryLayer.onTrailClick` calls `mapStore.radialClick`) with only the items that make
   sense for a trail: open the CoT, zoom, History and clear (no confirmation, like the
-  radial delete of a CoT). `RadialMenu.vue` gained the `trail` items and two icons
-  (`radial-zoom`, `radial-history`), and `Map.vue`'s `handleRadial` the `trail:*` events.
-  A history point opened in the feature viewer shows the actions in a banner
-  (`TrailPointBanner.vue`). `/menu/history?uid=` lists a single trail.
+  radial delete of a CoT). Clicking one of the dots opens the same menu centred on the
+  dot instead of upstream's jump to the feature viewer, with an extra "Point details" item
+  that opens that viewer (`HistoryLayer.open`), so what the CoT reported at that moment is
+  still reachable. `RadialMenu.vue` gained the `trail` items and three icons
+  (`radial-zoom`, `radial-history`, `radial-point`), and `Map.vue`'s `handleRadial` the
+  `trail:*` events; the radial's key also includes `properties.radialKey`, so clicking
+  another dot of the same trail re-centres it. The viewer shows the trail actions in a
+  banner (`TrailPointBanner.vue`). `/menu/history?uid=` lists a single trail.
 - The new UI is in new TAK-NZ-only files (`trail.ts`, `TrailActions.vue`,
   `TrailPointBanner.vue`); the synced files carry small edits so a sync conflicts as
   little as possible.

@@ -612,8 +612,47 @@ export default class HistoryLayer {
             return !feat.layer.id.startsWith('cloudtak-history') && feat.properties && feat.properties.id !== undefined;
         });
         if (covered) return;
+        if (row.geometry.type !== 'Point') return;
 
-        this.select(row);
+        // Hide the hover popup and open the same menu as the trail line, centred on the dot
+        this.onLeave();
+        this.openTrailRadial(
+            row.uid,
+            new mapgl.LngLat(row.geometry.coordinates[0], row.geometry.coordinates[1]),
+            event.point,
+            row.id
+        );
+    }
+
+    /** Open the properties the CoT reported at a point of its trail in the feature viewer */
+    async open(id: string): Promise<void> {
+        const row = this.rows.get(id) ?? await db.feature_history.get(id);
+        if (row) this.select(row);
+    }
+
+    /**
+     * Open the radial menu for a trail - the line or one of its dots (`historyId`).
+     * The target is a stand-in feature: RadialMenu and Map.vue only need the UID of the
+     * CoT, the dot when there is one, and a key that changes with every click so that
+     * clicking another dot of the same trail re-centres the menu.
+     */
+    private openTrailRadial(uid: string, lngLat: mapgl.LngLat, point: mapgl.Point, historyId?: string): void {
+        void this.mapStore.radialClick({
+            id: uid,
+            type: 'Feature',
+            properties: {
+                id: uid,
+                historyId,
+                radialKey: `${historyId ?? 'line'}@${lngLat.lng.toFixed(6)},${lngLat.lat.toFixed(6)}`,
+            },
+            geometry: { type: 'Point', coordinates: [lngLat.lng, lngLat.lat] },
+        } as unknown as Feature, {
+            lngLat,
+            point,
+            mode: 'trail',
+        }).catch((err: unknown) => {
+            console.error('Failed to open the trail menu', err);
+        });
     }
 
     /** Whether the map can be clicked right now - not mid-draw and not over an open radial */
@@ -672,18 +711,7 @@ export default class HistoryLayer {
         if (covered) return;
 
         // The same radial menu as a CoT, with the actions that make sense for a trail
-        void this.mapStore.radialClick({
-            id: uid,
-            type: 'Feature',
-            properties: { id: uid },
-            geometry: { type: 'Point', coordinates: [event.lngLat.lng, event.lngLat.lat] },
-        } as unknown as Feature, {
-            lngLat: event.lngLat,
-            point: event.point,
-            mode: 'trail',
-        }).catch((err: unknown) => {
-            console.error('Failed to open the trail menu', err);
-        });
+        this.openTrailRadial(uid, event.lngLat, event.point);
     }
 }
 
