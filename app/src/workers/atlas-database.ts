@@ -999,6 +999,13 @@ export default class AtlasDatabase {
                     changes
                 } satisfies MissionChangePropertyBody
             });
+        } else if (task.properties.type === 't-x-m-r' && task.properties.mission && task.properties.mission.guid) {
+            const sub = await Subscription.from(task.properties.mission.guid);
+            if (!sub) {
+                console.error(`Cannot refresh the role for ${task.properties.mission.guid} as it is not known locally`);
+                return;
+            }
+            await sub.refreshRole({ announce: true });
         } else if (task.properties.type === 't-x-m-c-m' && task.properties.mission && task.properties.mission.guid) {
             const sub = await Subscription.from(task.properties.mission.guid, {
                 subscribed: true

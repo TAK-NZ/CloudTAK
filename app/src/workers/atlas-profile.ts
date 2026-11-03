@@ -604,7 +604,9 @@ export default class AtlasProfile {
                 },
                 takv: {
                     device: navigator.userAgent,
-                    platform: 'CloudTAK',
+                    // ATAK only offers role changes to clients whose platform starts with "ATAK",
+                    // anything else is reported as "an older version of the TAK platform"
+                    platform: 'ATAK-CloudTAK',
                     os: navigator.platform,
                     version: this.server.version
                 },

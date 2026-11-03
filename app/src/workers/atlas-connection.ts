@@ -352,6 +352,9 @@ export default class AtlasConnection {
                         type: WorkerMessageType.Mission_Invite,
                         body: task.properties.mission
                     });
+                } else if (task.properties.type === 't-x-m-r' && task.properties.mission) {
+                    // TAK Server tells us our role on a Mission was changed by an owner
+                    await this.atlas.db.subChange(task);
                 } else if (task.properties.type === 't-x-g-c') {
                     this.atlas.postMessage({
                         type: WorkerMessageType.Channel_Change
