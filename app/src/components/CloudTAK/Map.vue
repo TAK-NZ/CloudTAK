@@ -292,7 +292,7 @@
             <!-- Keyed on the radial target so repointing at a new feature remounts the component and regenerates its menu items -->
             <RadialMenu
                 v-else-if='mapStore.radial.mode'
-                :key='`${mapStore.radial.mode}:${mapStore.radial.cot?.properties?.id ?? ""}`'
+                :key='`${mapStore.radial.mode}:${mapStore.radial.cot?.properties?.id ?? ""}:${mapStore.radial.cot?.properties?.radialKey ?? ""}`'
                 @close='closeRadial'
                 @click='handleRadial($event)'
             />
@@ -392,6 +392,7 @@ import COT from '../../base/cot.ts';
 import MapLoading from './MapLoading.vue';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import RadialMenu from './RadialMenu/RadialMenu.vue';
+import { zoomToTrail } from '../../base/trail.ts';
 import { useMapStore } from '../../stores/map.ts';
 import { useDeviceStore } from '../../stores/device.ts';
 import { useAppStore } from '../../stores/app.ts';
@@ -863,6 +864,22 @@ async function handleRadial(event: string): Promise<void> {
     } else if (event === 'cot:play') {
         await floatStore.addCOT(mapStore.radial.cot.properties.id);
         closeRadial()
+    } else if (event.startsWith('trail:')) {
+        // The radial of a breadcrumb trail carries the UID of the CoT it belongs to
+        const uid = String(mapStore.radial.cot.properties.id);
+        const historyId = (mapStore.radial.cot.properties as Record<string, unknown>).historyId;
+        closeRadial()
+        if (event === 'trail:view') {
+            await router.push(`/cot/${encodeURIComponent(uid)}`);
+        } else if (event === 'trail:point' && historyId) {
+            await mapStore.history.open(String(historyId));
+        } else if (event === 'trail:zoom') {
+            await zoomToTrail(mapStore.map, uid);
+        } else if (event === 'trail:history') {
+            await router.push({ path: '/menu/history', query: { uid } });
+        } else if (event === 'trail:clear') {
+            await mapStore.worker.db.breadcrumb.remove(uid);
+        }
     } else if (event === 'cot:delete') {
         const cot = mapStore.radial.cot;
         closeRadial()

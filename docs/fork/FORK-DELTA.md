@@ -1011,7 +1011,8 @@ role/password controls would replace most of this; the stale-copy fix is a plain
 
 `app/src/base/trail.ts`, `app/src/components/CloudTAK/util/{TrailActions,TrailPointBanner,Breadcrumb}.vue`,
 `app/src/components/CloudTAK/{CoTView,Menu/MenuFeatView,Menu/MenuHistory}.vue`,
-`app/src/stores/modules/history.ts`
+`app/src/stores/modules/history.ts`, `app/src/components/CloudTAK/Map.vue`,
+`app/src/components/CloudTAK/RadialMenu/RadialMenu.vue`
 
 - Upstream v13.115 turned a trail into `feature_history` points drawn by the HistoryLayer.
   It is no longer a selectable `<uid>.track` feature, so it cannot be selected or deleted
@@ -1022,9 +1023,17 @@ role/password controls would replace most of this; the stale-copy fix is a plain
   only while it records. Clear asks for a second click in place: the dropdown closes on any
   click outside its menu, so the usual confirmation dialog (teleported to the body) would
   be unmounted before the click is handled.
-- Clicking within 8px of the trail line opens a popup with the same actions
-  (`HistoryLayer.onTrailClick`), and a history point opened in the feature viewer shows
-  them in a banner (`TrailPointBanner.vue`). `/menu/history?uid=` lists a single trail.
+- Clicking within 8px of the trail line opens the radial menu in a new `trail` mode
+  (`HistoryLayer.onTrailClick` calls `mapStore.radialClick`) with only the items that make
+  sense for a trail: open the CoT, zoom, History and clear (no confirmation, like the
+  radial delete of a CoT). Clicking one of the dots opens the same menu centred on the
+  dot instead of upstream's jump to the feature viewer, with an extra "Point details" item
+  that opens that viewer (`HistoryLayer.open`), so what the CoT reported at that moment is
+  still reachable. `RadialMenu.vue` gained the `trail` items and three icons
+  (`radial-zoom`, `radial-history`, `radial-point`), and `Map.vue`'s `handleRadial` the
+  `trail:*` events; the radial's key also includes `properties.radialKey`, so clicking
+  another dot of the same trail re-centres it. The viewer shows the trail actions in a
+  banner (`TrailPointBanner.vue`). `/menu/history?uid=` lists a single trail.
 - The new UI is in new TAK-NZ-only files (`trail.ts`, `TrailActions.vue`,
   `TrailPointBanner.vue`); the synced files carry small edits so a sync conflicts as
   little as possible.

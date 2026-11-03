@@ -87,6 +87,45 @@
             fill='none'
         /><path d='M13 5h8' /><path d='M13 9h5' /><path d='M13 15h8' /><path d='M13 19h5' /><path d='M3 4m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z' /><path d='M3 14m0 1a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z' /></symbol>
         <symbol
+            id='radial-point'
+            viewBox='0 0 24 24'
+            stroke-width='2'
+            stroke='#fff'
+            fill='none'
+            stroke-linecap='round'
+            stroke-linejoin='round'
+        ><path
+            stroke='none'
+            d='M0 0h24v24H0z'
+            fill='none'
+        /><path d='M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0' /><path d='M17.657 16.657l-4.243 4.243a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0' /></symbol>
+        <symbol
+            id='radial-zoom'
+            viewBox='0 0 24 24'
+            stroke-width='2'
+            stroke='#fff'
+            fill='none'
+            stroke-linecap='round'
+            stroke-linejoin='round'
+        ><path
+            stroke='none'
+            d='M0 0h24v24H0z'
+            fill='none'
+        /><path d='M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0' /><path d='M17 17l-2.5 -2.5' /><path d='M10 4l2 -2l2 2' /><path d='M20 10l2 2l-2 2' /><path d='M4 10l-2 2l2 2' /><path d='M10 20l2 2l2 -2' /></symbol>
+        <symbol
+            id='radial-history'
+            viewBox='0 0 24 24'
+            stroke-width='2'
+            stroke='#fff'
+            fill='none'
+            stroke-linecap='round'
+            stroke-linejoin='round'
+        ><path
+            stroke='none'
+            d='M0 0h24v24H0z'
+            fill='none'
+        /><path d='M12 8l0 4l2 2' /><path d='M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5' /></symbol>
+        <symbol
             id='radial-pencil'
             viewBox='0 0 24 24'
             stroke-width='2'
@@ -390,6 +429,16 @@ async function genMenuItems(
             menuItems.value.push({ id: 'cut', icon: '#radial-scissors' })
         }
         menuItems.value.push({ id: 'view', icon: '#radial-view' })
+    } else if (mode === 'trail') {
+        // A breadcrumb trail is not a CoT: there is nothing to edit, lock or buffer, only to open, frame, list and clear
+        menuItems.value.push({ id: 'view', icon: '#radial-view' })
+        // Clicking one of the dots of a trail also offers what the CoT reported at that moment
+        if (radialCot && (radialCot.properties as Record<string, unknown> | undefined)?.historyId) {
+            menuItems.value.push({ id: 'point', icon: '#radial-point' })
+        }
+        menuItems.value.push({ id: 'zoom', icon: '#radial-zoom' })
+        menuItems.value.push({ id: 'history', icon: '#radial-history' })
+        menuItems.value.push({ id: 'clear', icon: '#radial-trash' })
     } else if (mode === 'context') {
         menuItems.value.push({ id: 'new', icon: '#radial-pencil-plus' })
 
