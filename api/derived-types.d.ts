@@ -66056,7 +66056,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km. */
+        /** Get predicted tides from the nearest tide station to a given point. Resolves to null when no station is within 200 km, or, with inland set, when the point is on land more than 10 km from the sea. */
         get: {
             parameters: {
                 query: {
@@ -66114,6 +66114,8 @@ export interface paths {
                                     level: number;
                                 }[];
                             };
+                            /** @description The point is on land more than 10 km from the sea, so there are no tides to show */
+                            inland?: boolean;
                         };
                     };
                 };
