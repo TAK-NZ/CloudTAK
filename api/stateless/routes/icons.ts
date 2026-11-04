@@ -447,11 +447,17 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 }
 
                 // When scoped to a single iconset, the response is stable for a given
-                // version+updated pair, so we can return a strong ETag and allow shared
-                // caching. A 304 short-circuits the entire DB icon fetch for repeat loads.
+                // version+updated pair, so we can return a strong ETag. A 304 short-circuits
+                // the entire DB icon fetch for repeat loads.
+                //
+                // The URL does not change when icons are added, edited or re-imported, so the
+                // browser must revalidate on every request (no-cache) instead of reusing a
+                // stored copy for a fixed time: a max-age would let the client store a stale
+                // icon list under the new iconset version. The response is also checked
+                // against the signed-in user, so it must stay out of shared caches (private).
                 const etag = `"${iconset.uid}-v${iconset.version}-${new Date(iconset.updated).getTime()}"`;
                 res.set('ETag', etag);
-                res.set('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
+                res.set('Cache-Control', 'private, no-cache');
 
                 if (req.headers['if-none-match'] === etag) {
                     res.status(304).end();
