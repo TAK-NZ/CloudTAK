@@ -184,7 +184,6 @@ import { useMapStore } from '../../../stores/map.ts';
 import type { LngLatLike, MapGeoJSONFeature } from 'maplibre-gl';
 import type { Feature } from 'geojson';
 import pointOnFeature from '@turf/point-on-feature';
-import Handlebars from 'handlebars';
 import { server, getRuntimeToken } from '../../../std.ts';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import FeatureIcon from '../util/FeatureIcon.vue';
@@ -200,6 +199,7 @@ import PropertyElevation from '../Property/PropertyElevation.vue';
 import PropertyRemarks from '../Property/PropertyRemarks.vue';
 import { cutOverlayFeature, getFeatureOverlay } from '../util/featureCut.ts';
 import { featureHtmlDescription, proxyHtmlImages } from '../util/proxyImages.ts';
+import { renderTitleTemplate } from '../util/titleTemplate.ts';
 import {
     TablerIconButton
 } from '@tak-ps/vue-tabler';
@@ -258,17 +258,10 @@ const featureTitle = computed(() => {
     const props = feature.value.properties || {};
 
     if (titleTemplate.value) {
-        try {
-            let tmpl = titleTemplate.value;
-            // Bare property name (e.g. "callsign") => wrap as handlebars expression
-            if (/^[a-zA-Z0-9_]+$/.test(tmpl)) {
-                tmpl = `{{${tmpl}}}`;
-            }
-            const result = Handlebars.compile(tmpl)(props);
-            if (result && result.trim().length > 0) return result;
-        } catch {
-            // Fall through to default
-        }
+        // Handlebars.compile() needs 'unsafe-eval', which the CSP blocks, so
+        // the template is rendered from its AST instead
+        const result = renderTitleTemplate(titleTemplate.value, props);
+        if (result) return result;
     }
 
     return props.name || props.callsign || 'No Name';
