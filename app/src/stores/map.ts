@@ -10,7 +10,7 @@
 import { v4 as randomUUID } from 'uuid';
 import { Preferences } from '@capacitor/preferences';
 import { defineStore } from 'pinia'
-import { markRaw } from 'vue';
+import { markRaw, shallowRef } from 'vue';
 import DrawTool, { DrawToolMode } from './modules/draw.ts';
 import IconManager from './modules/icons.ts';
 import FontManager from './modules/fonts.ts';
@@ -111,9 +111,20 @@ function waitForAtlasWorkerReady(worker: Worker): Promise<void> {
  * These live outside Pinia state deliberately: `destroy()` ends with
  * `$reset()`, which would roll a state-resident counter back to its initial
  * value mid-teardown and defeat the check.
+ *
+ * The Atlas worker handles live here for a second reason. `atlasWorker` is a
+ * Comlink remote, whose proxy answers every property read - including Vue's
+ * internal `__v_raw` - with another proxy. Held in Pinia state, `$reset()`
+ * writes over it through the reactive `set` trap, which calls `toRaw()` on the
+ * old value, recurses without end and throws "Maximum call stack size
+ * exceeded" half way through the reset. A shallowRef never calls `toRaw()` on
+ * what it holds, and keeps `worker` / `hasWorker` reactive.
  */
 let destroyPromise: Promise<void> | undefined;
 let lifecycle = 0;
+const atlasWorker = shallowRef<Comlink.Remote<Atlas>>();
+let atlasRawWorker: Worker | undefined;
+let atlasWorkerReady: Promise<void> | undefined;
 
 export type TAKNotification = { type: string; name: string; body: string; url: string; created: string; }
 
@@ -178,9 +189,6 @@ export const useMapStore = defineStore('cloudtak', {
         // Native app is in the background: storage is suspended, timers paused
         backgrounded: boolean;
 
-        _rawWorker?: Worker;
-        _workerReady?: Promise<void>;
-        _worker?: Comlink.Remote<Atlas>;
         mission: Subscription | undefined;
         terrainEnabled: boolean;
         container?: HTMLElement;
@@ -221,9 +229,6 @@ export const useMapStore = defineStore('cloudtak', {
         }
     } => {
         return {
-            _rawWorker: undefined,
-            _workerReady: undefined,
-            _worker: undefined,
             _destroying: undefined,
             _bottomBar: markRaw(new BottomBarManager()),
             timer: null,
@@ -314,14 +319,19 @@ export const useMapStore = defineStore('cloudtak', {
             return this._history as HistoryLayer;
         },
         worker: function(): Comlink.Remote<Atlas> {
-            if (!this._worker) throw new Error('Atlas worker has not yet started');
-            return this._worker as Comlink.Remote<Atlas>;
+            const worker = atlasWorker.value;
+            if (!worker) throw new Error('Atlas worker has not yet started');
+            return worker;
+        },
+        // Whether the Atlas worker has been started and not yet torn down
+        hasWorker: function(): boolean {
+            return atlasWorker.value !== undefined;
         }
     },
     actions: {
         // A refreshed login token - the worker reconnects its WebSocket with it
         updateToken: async function(token: string): Promise<void> {
-            if (!this._worker) return;
+            if (!atlasWorker.value) return;
             await this.worker.setToken(token);
         },
 
@@ -551,7 +561,7 @@ export const useMapStore = defineStore('cloudtak', {
             }
         },
         startWorker: function() {
-            if (this._rawWorker) return;
+            if (atlasRawWorker) return;
 
             // The server URL rides along on the worker name so the worker's
             // module evaluation never waits on IndexedDB
@@ -565,9 +575,9 @@ export const useMapStore = defineStore('cloudtak', {
                 true
             );
 
-            this._rawWorker = markRaw(rawWorker);
-            this._workerReady = waitForAtlasWorkerReady(rawWorker);
-            this._worker = markRaw(Comlink.wrap<Atlas>(rawWorker));
+            atlasRawWorker = rawWorker;
+            atlasWorkerReady = waitForAtlasWorkerReady(rawWorker);
+            atlasWorker.value = markRaw(Comlink.wrap<Atlas>(rawWorker));
         },
         startRefreshTimer: function() {
             if (this.timer) window.clearInterval(this.timer);
@@ -593,7 +603,7 @@ export const useMapStore = defineStore('cloudtak', {
             }
 
             // Worker first - its WebSocket handlers are the busiest writers
-            if (this._worker) {
+            if (atlasWorker.value) {
                 try {
                     await withTimeout(this.worker.suspend(), WORKER_LIFECYCLE_TIMEOUT_MS, 'Atlas worker suspend');
                 } catch (err) {
@@ -611,7 +621,7 @@ export const useMapStore = defineStore('cloudtak', {
             // against a still-suspended main-thread database
             resumeDatabase();
 
-            if (this._worker) {
+            if (atlasWorker.value) {
                 try {
                     await withTimeout(this.worker.resume(), WORKER_LIFECYCLE_TIMEOUT_MS, 'Atlas worker resume');
                 } catch (err) {
@@ -661,8 +671,8 @@ export const useMapStore = defineStore('cloudtak', {
         },
         _teardown: async function(): Promise<void> {
             // Capture current worker instances to avoid races with $reset()/state() creating new ones.
-            const currentWorker = this._worker;
-            const currentRawWorker = this._rawWorker;
+            const currentWorker = atlasWorker.value;
+            const currentRawWorker = atlasRawWorker;
             const deviceStore = useDeviceStore();
 
             if (this.timer) {
@@ -734,6 +744,13 @@ export const useMapStore = defineStore('cloudtak', {
                 }
             }
             OverlayManager.clearLoaded();
+
+            // Forget the (terminated) worker before resetting the store, so a
+            // failed reset can never leave init() bound to a dead worker
+            atlasWorker.value = undefined;
+            atlasRawWorker = undefined;
+            atlasWorkerReady = undefined;
+
             this.$reset();
         },
         makeActiveMission: async function(mission?: Subscription): Promise<void> {
@@ -1074,7 +1091,7 @@ export const useMapStore = defineStore('cloudtak', {
             // worker, the map and the store state. Map.vue's onBeforeUnmount
             // fires destroy() without awaiting it, so init() has to wait for it
             // here. Without this, startWorker() below early-returns while
-            // `_rawWorker` is still set, binding this init to a worker that is
+            // `atlasRawWorker` is still set, binding this init to a worker that is
             // about to be terminated - and Comlink RPCs against a terminated
             // worker never settle, so `worker.init()` would hang forever behind
             // the map loading spinner. destroy()'s trailing $reset() would also
@@ -1143,11 +1160,11 @@ export const useMapStore = defineStore('cloudtak', {
 
             // Checkpoint before the first worker RPC. Past this point a
             // concurrent destroy() has already terminated the worker and
-            // $reset() has dropped `_worker`, so `this.worker` would either
+            // teardown has dropped the worker, so `this.worker` would either
             // throw or hand back a proxy whose calls never resolve.
             if (superseded()) return abandon();
 
-            await withTimeout(this._workerReady!, WORKER_READY_TIMEOUT_MS, 'Atlas worker startup');
+            await withTimeout(atlasWorkerReady!, WORKER_READY_TIMEOUT_MS, 'Atlas worker startup');
 
             if (superseded()) return abandon();
 

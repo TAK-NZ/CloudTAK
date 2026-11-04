@@ -240,7 +240,7 @@ async function submit(): Promise<void> {
 
         // Provisional marker so the Event appears immediately - the CoT
         // broadcast replaces it under the same UID, or it goes stale
-        if (mapStore._worker) {
+        if (mapStore.hasWorker) {
             try {
                 await mapStore.worker.db.add({
                     id: res.data.id,
