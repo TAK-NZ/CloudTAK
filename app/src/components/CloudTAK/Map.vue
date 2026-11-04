@@ -649,7 +649,13 @@ onMounted(async () => {
                 break;
             }
 
-            await mapStore.destroy();
+            // A failed teardown must not replace the boot error that got us
+            // here - it would escape onMounted and reach App.vue's error dialog
+            try {
+                await mapStore.destroy();
+            } catch (destroyErr) {
+                console.error('Failed to tear down map state before retrying boot:', destroyErr);
+            }
             mapStore.loadingStage = 'Load failed - retrying…';
             await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
         }

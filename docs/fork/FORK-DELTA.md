@@ -908,6 +908,20 @@ The fix has three parts, all of which need to stay together:
    `terminate()`, because `init()` waits on it.
 3. `Map.vue` honours `init()`'s boolean return and stops wiring up a superseded
    mount.
+4. **The Atlas worker handles are not Pinia state either.** The Comlink remote
+   (`atlasWorker`, a module-level `shallowRef`), the raw `Worker` and the ready
+   promise live outside the store; `hasWorker` is the reactive check components
+   use. A Comlink proxy answers every property read — including Vue's internal
+   `__v_raw` — with another proxy, so when `$reset()` wrote `undefined` over a
+   state-resident remote, the reactive `set` trap's `toRaw(oldValue)` recursed
+   until `RangeError: Maximum call stack size exceeded`. That aborted the reset
+   half way (leaving a closed `BroadcastChannel` and stale flags) and, because
+   `Map.vue`'s teardown calls did not catch it, surfaced as the "Website Error"
+   dialog on `/login` after a rejected session. `Map.vue` now catches teardown
+   failures in both `onBeforeUnmount` and the boot-retry loop, so a failed
+   teardown can never replace the original boot error. Regression test:
+   `app/src/test/map-store-destroy.spec.ts`. Upstream still holds `_worker` in
+   state ([dfpc-coe/CloudTAK#2014](https://github.com/dfpc-coe/CloudTAK/issues/2014)).
 
 See [`README-WEBSOCKET-RECONNECTION.md`](README-WEBSOCKET-RECONNECTION.md) and
 [`README-OIDC-WEBSOCKET-FIXES.md`](README-OIDC-WEBSOCKET-FIXES.md).

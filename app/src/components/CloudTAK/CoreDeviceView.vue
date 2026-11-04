@@ -506,7 +506,7 @@ async function patch(body: Record<string, unknown>): Promise<void> {
 }
 
 async function syncMapFeature(): Promise<void> {
-    if (!device.value || !mapStore._worker) return;
+    if (!device.value || !mapStore.hasWorker) return;
 
     try {
         const cot = await mapStore.worker.db.get(device.value.id);
@@ -584,7 +584,7 @@ async function deleteDevice(): Promise<void> {
 
         // The Device is gone server side - drop its marker locally rather than
         // waiting for it to go stale on the map
-        if (mapStore._worker) {
+        if (mapStore.hasWorker) {
             try {
                 await mapStore.worker.db.remove(device.value.id, { skipNetwork: true });
             } catch (err) {
