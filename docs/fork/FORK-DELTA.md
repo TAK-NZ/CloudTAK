@@ -704,10 +704,13 @@ and the two header and 502 cases in `tasks/pmtiles/test/basemap-tiles.srv.test.t
 
 - An iconset with no spritesheet data returns an empty sprite rather than a 400.
 - The sprite-key regex handles icon filenames containing dots.
-- `GET /api/icon` sends `ETag` and `Cache-Control: public, max-age=3600` when
-  filtered to a single iconset, so browsers can 304 instead of re-downloading up
-  to 10 MB of base64 icon data after an IndexedDB clear. Unfiltered requests get
-  `no-store`.
+- `GET /api/icon` sends `ETag` and `Cache-Control: private, no-cache` when
+  filtered to a single iconset, so browsers revalidate and get a 304 instead of
+  re-downloading up to 10 MB of base64 icon data after an IndexedDB clear.
+  Unfiltered requests get `no-store`. It was `public, max-age=3600` before: the
+  URL does not change when an iconset is re-imported or edited, so the browser
+  kept serving the old icon list for up to an hour (a hard refresh was needed),
+  and `public` allowed shared caches to store a per-user response.
 - Large raster icons are scaled to 32px max via canvas, so an oversized icon
   cannot fill the screen.
 - 113 logo and app-icon assets are TAK.NZ branding.
