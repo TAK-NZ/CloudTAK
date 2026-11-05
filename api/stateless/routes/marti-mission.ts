@@ -33,14 +33,6 @@ import AttachmentControl from '../lib/control/attachment.js';
 
 const MISSION_COT_SUBMIT_MAX = 100;
 
-// TAK Server returns the default role of a Mission, node-tak's schema does not declare it
-const MissionWithDefaultRole = Type.Composite([
-    Mission,
-    Type.Object({
-        defaultRole: Type.Optional(MissionRole),
-    }),
-]);
-
 export default async function router(schema: Schema, config: ConfigStateless) {
     const takserver = new TAKServerControl(config);
     const missionControl = new MissionControl(config);
@@ -67,7 +59,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             start: Type.Optional(Type.String()),
             end: Type.Optional(Type.String()),
         }),
-        res: MissionWithDefaultRole,
+        res: Mission,
     }, async (req, res) => {
         try {
             const { api, opts } = await missionControl.context(req, req.params.guid);
@@ -321,17 +313,18 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             defaultRole: Type.Optional(Type.Enum(MissionSubscriberRole, {
                 description: 'Role given to anyone who subscribes without an explicit role. Requires the MISSION_SET_ROLE permission',
             })),
+            password: Type.Optional(Type.Unsafe<string | null>({
+                type: ['string', 'null'],
+                minLength: 1,
+                description: 'New password, or null to remove the password. Requires the MISSION_SET_PASSWORD permission',
+            })),
         }),
-        res: MissionWithDefaultRole,
+        res: Mission,
     }, async (req, res) => {
         try {
-            const { api, opts } = await missionControl.context(req, req.params.guid);
+            const { user, api, opts } = await missionControl.context(req, req.params.guid);
 
-            const { groups, defaultRole, ...rest } = req.body;
-
-            if (defaultRole !== undefined) {
-                await missionControl.setDefaultRole(api, req.params.guid, defaultRole, opts);
-            }
+            const { groups, password, ...rest } = req.body;
 
             const mission = await api.Mission.update(
                 req.params.guid,
@@ -341,6 +334,14 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 },
                 opts,
             );
+
+            if (password === null) {
+                await api.Mission.removePassword(req.params.guid, opts, profileUid(user.email));
+                mission.passwordProtected = false;
+            } else if (password !== undefined) {
+                await api.Mission.setPassword(req.params.guid, password, opts, profileUid(user.email));
+                mission.passwordProtected = true;
+            }
 
             res.json(mission);
         } catch (err) {
@@ -589,55 +590,6 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             res.json({
                 status: 200,
                 message: 'Role Updated',
-            });
-        } catch (err) {
-            Err.respond(err, res);
-        }
-    });
-
-    await schema.put('/marti/missions/:guid/password', {
-        name: 'Set Mission Password',
-        group: 'MartiMissions',
-        params: Type.Object({
-            guid: Type.String(),
-        }),
-        description: 'Set or change the password of a mission. Requires the MISSION_SET_PASSWORD permission',
-        body: Type.Object({
-            password: Type.String({ minLength: 1 }),
-        }),
-        res: StandardResponse,
-    }, async (req, res) => {
-        try {
-            const { api, opts } = await missionControl.context(req, req.params.guid);
-
-            await missionControl.setPassword(api, req.params.guid, req.body.password, opts);
-
-            res.json({
-                status: 200,
-                message: 'Password Updated',
-            });
-        } catch (err) {
-            Err.respond(err, res);
-        }
-    });
-
-    await schema.delete('/marti/missions/:guid/password', {
-        name: 'Delete Mission Password',
-        group: 'MartiMissions',
-        params: Type.Object({
-            guid: Type.String(),
-        }),
-        description: 'Remove the password from a mission. Requires the MISSION_SET_PASSWORD permission',
-        res: StandardResponse,
-    }, async (req, res) => {
-        try {
-            const { api, opts } = await missionControl.context(req, req.params.guid);
-
-            await missionControl.setPassword(api, req.params.guid, undefined, opts);
-
-            res.json({
-                status: 200,
-                message: 'Password Removed',
             });
         } catch (err) {
             Err.respond(err, res);
@@ -962,7 +914,9 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const uids = Array.isArray(req.query.uid) ? req.query.uid : [req.query.uid];
 
-            await missionControl.removeSubscribers(api, req.params.guid, uids, opts);
+            for (const uid of uids) {
+                await api.Mission.removeUser(req.params.guid, { clientUid: uid }, opts);
+            }
 
             res.json({
                 status: 200,
