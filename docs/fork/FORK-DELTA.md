@@ -1082,6 +1082,39 @@ Drop this when upstream gives the trail its own entry points from the CoT and th
 
 ---
 
+## Routing: NZTA road events
+`api/stateless/lib/routing/nzta-events.ts` (new), `api/stateless/lib/routing/agol.ts`,
+`api/stateless/lib/interface-route.ts`, `api/stateless/routes/search.ts`,
+`app/src/components/CloudTAK/Menu/MenuRoutesNew.vue`
+- **Why:** an ArcGIS route knows nothing about NZTA closures. `/search/route?nzta=true`
+  (the checkbox on `/menu/routes/new`, on by default) makes the route go round active
+  full closures and lists NZTA delays on the route. Off, outside New Zealand, or for a
+  walking mode, the route is exactly what upstream returns.
+- **Closures:** the NZTA feed (`journeys.nzta.govt.nz/assets/map-data-cache/delays.json`,
+  cached for a minute) is read while ArcGIS solves. If a closure that is in force
+  during the trip lies within 0.3 km of the route, one second solve is made with every
+  such closure as a restriction barrier (points in `barriers`, lines in
+  `polylineBarriers`, at most 100 features, nearest first). The detour is reported as
+  extra km and minutes. If no route exists, or ArcGIS refuses the barriers, the direct
+  route is returned with a note.
+- **Delays are reported, not routed.** The feed gives delay length only as free text
+  ("expect up to 10 minute delays"), and ArcGIS's own traffic may already reflect some
+  of it, so delays never change the route or its time. The remarks list the events
+  within 1 km of the route (worst first, at most 8) and a total "up to N min", counting
+  an event only if the trip overlaps the hours its comment states ("between 7am and
+  7pm"). Wording that does not parse is listed but adds no minutes.
+- **Fails soft:** if the feed cannot be read the route is still returned, with a line
+  saying events are unknown.
+- **Where it shows:** the NZTA text is placed first in the route's `remarks`, ahead of the
+  turn-by-turn directions.
+- Logic follows the `TAK-NZ/tak-infra` `lambda/arcgis-geocode` reference implementation.
+  Only "depart now" is supported, and `startTime` is not sent, so ArcGIS time is whatever
+  the travel mode gives.
+- `api/derived-types.d.ts` was edited by hand for the new `nzta` query parameter;
+  regenerating it from a live API produces the same entry.
+**Not done:** delay minutes as ArcGIS added-cost barriers. See the risks (an "up to"
+upper bound, hours limits, possible double counting with ArcGIS traffic).
+---
 ## Terminology and UI
 
 `app/src/components/CloudTAK/MainMenuContents.vue`,

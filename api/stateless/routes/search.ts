@@ -440,6 +440,10 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                 description: 'Travel mode for routing',
                 default: 'Driving Time',
             })),
+            nzta: Type.Optional(Type.Boolean({
+                description: 'Route around active NZTA road closures and list NZTA delays in the route remarks. Applies to driving routes within New Zealand only',
+                default: false,
+            })),
         }),
         res: RouteResponse,
     }, async (req, res) => {
@@ -458,6 +462,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
                     req.query.provider || routeManager.defaultProvider,
                     stops,
                     req.query.travelMode,
+                    { nzta: req.query.nzta },
                 );
 
                 if (route.features.length === 1) {
