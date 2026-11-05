@@ -156,7 +156,7 @@
                                 @click.stop='toggleEdit(group.key)'
                             >
                                 <IconPencil
-                                    :size='20'
+                                    :size='32'
                                     stroke='1'
                                 />
                             </TablerIconButton>
