@@ -141,6 +141,7 @@
             >
                 <Contact
                     :contact='toGroupContact(group)'
+                    :meta='groupMeta(group)'
                     :button-chat='group.subs.length === 1'
                     :fly-to-click='group.subs.length === 1'
                     @chat='router.push(`/menu/chats/new?callsign=${$event.callsign}&uid=${$event.uid}`)'
@@ -224,7 +225,9 @@
                         v-for='sub of group.subs'
                         :key='sub.clientUid'
                         :contact='toClientContact(sub, group)'
+                        :meta='clientMeta(sub, group)'
                         :compact='true'
+                        :chat-icon-size='32'
                         @chat='router.push(`/menu/chats/new?callsign=${$event.callsign}&uid=${$event.uid}`)'
                     >
                         <template
@@ -555,7 +558,7 @@ function clientLabel(sub: MissionSubscriptions[number]): string {
 
 function joinedLabel(sub: MissionSubscriptions[number]): string {
     const date = new Date(sub.createTime);
-    return isNaN(date.getTime()) ? '' : `joined ${date.toLocaleDateString()}`;
+    return isNaN(date.getTime()) ? '' : `Joined ${date.toLocaleDateString()}`;
 }
 
 type UserGroup = {
@@ -584,6 +587,31 @@ function groupRoleLabel(group: UserGroup): string {
 // (TAK Server changes every client of a username together) but chatting with
 // and removing a client act on its client UID, so users with several clients
 // get one row per client underneath.
+// One short line per fact: the client (kept to a single line) and the join date apart from it
+function clientMeta(sub: MissionSubscriptions[number], group: UserGroup): string[] {
+    return [
+        [clientLabel(sub), group.role ? '' : roleLabel(sub.role.type)].filter(Boolean).join(' · '),
+        joinedLabel(sub),
+    ].filter(Boolean);
+}
+
+function groupMeta(group: UserGroup): string[] {
+    const callsign = groupCallsign(group);
+    const username = group.username && callsign !== group.username ? group.username : '';
+
+    if (group.subs.length > 1) {
+        return [
+            [groupRoleLabel(group), username, `${group.subs.length} clients`].filter(Boolean).join(' · '),
+        ];
+    }
+
+    const sub = group.subs[0];
+    return [
+        [groupRoleLabel(group), username, clientLabel(sub)].filter(Boolean).join(' · '),
+        joinedLabel(sub),
+    ].filter(Boolean);
+}
+
 function toGroupContact(group: UserGroup): ContactType {
     const callsign = groupCallsign(group);
     const single = group.subs.length === 1 ? group.subs[0] : undefined;
