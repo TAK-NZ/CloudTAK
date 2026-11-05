@@ -8,8 +8,15 @@ import { Feature } from '@tak-ps/node-cot';
 import { CoTParser } from '@tak-ps/node-cot';
 import ArcGISTokenManager from '../search/arcgis-token-manager.js';
 import arcgisSettings from '../search/arcgis-settings.js';
-import { RouteInterface } from '../interface-route.js';
+import { RouteInterface, RouteOptions } from '../interface-route.js';
 import { RouteConfig } from './types.js';
+import {
+    fetchNZTAEvents,
+    inNewZealand,
+    planClosures,
+    describeOutcome,
+} from './nzta-events.js';
+import type { ClosureBarriers, DetourState, NZTAEvent } from './nzta-events.js';
 
 export const AGOLRouteContainer = Type.Object({
     checksum: Type.Optional(Type.String()),
@@ -178,28 +185,57 @@ export default class AGOLRoute implements RouteInterface {
         }
     }
 
-    async route(
+    /**
+     * Solve a route. With barriers the request is a POST, as polyline barriers can be too long for a query string.
+     * Rejects with 'No Route Found' when ArcGIS finds none.
+     */
+    async solve(
         stops: Array<[number, number]>,
         travelMode?: string,
-    ): Promise<Static<typeof Feature.FeatureCollection>> {
-        const url = new URL(this.routingApi);
-        url.searchParams.append('stops', stops.map(stop => stop.join(',')).join(';'));
-        url.searchParams.append('f', 'json');
+        barriers?: ClosureBarriers,
+    ): Promise<Static<typeof AGOLRouteContainer>> {
+        const params = new URLSearchParams();
+        params.append('stops', stops.map(stop => stop.join(',')).join(';'));
+        params.append('f', 'json');
 
         if (travelMode) {
             const mode = this.routeModes.get(travelMode);
 
             if (!mode) throw new Err(400, null, `Travel Mode not found`);
 
-            url.searchParams.append('travelMode', JSON.stringify(mode));
+            params.append('travelMode', JSON.stringify(mode));
+        }
+
+        if (barriers?.points.length) {
+            params.append('barriers', barriers.points.map(point => point.join(',')).join(';'));
+        }
+
+        if (barriers?.lines.length) {
+            params.append('polylineBarriers', JSON.stringify({
+                spatialReference: { wkid: 4326 },
+                features: barriers.lines.map(line => ({
+                    geometry: { paths: [line], spatialReference: { wkid: 4326 } },
+                })),
+            }));
         }
 
         if (this.tokenManager) {
             const token = await this.tokenManager.getValidToken();
-            if (token) url.searchParams.append('token', token);
+            if (token) params.append('token', token);
         }
 
-        const res = await fetch(url);
+        let res;
+        if (barriers) {
+            res = await fetch(this.routingApi, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params.toString(),
+            });
+        } else {
+            const url = new URL(this.routingApi);
+            url.search = params.toString();
+            res = await fetch(url);
+        }
 
         const body = await res.typed(AGOLRouteContainer);
 
@@ -214,6 +250,81 @@ export default class AGOLRoute implements RouteInterface {
         // Check for routing errors
         if (!body.routes || !body.routes.features || body.routes.features.length === 0) {
             throw new Error('No Route Found');
+        }
+
+        return body;
+    }
+
+    /** Does the travel mode drive on roads? NZTA closures are meaningless to a pedestrian route. */
+    private isDrivingMode(travelMode?: string): boolean {
+        if (!travelMode) return true;
+        const type = this.routeModes.get(travelMode)?.type;
+        return type === 'AUTOMOBILE' || type === 'TRUCK';
+    }
+
+    async route(
+        stops: Array<[number, number]>,
+        travelMode?: string,
+        opts: RouteOptions = {},
+    ): Promise<Static<typeof Feature.FeatureCollection>> {
+        const useNZTA = !!opts.nzta && inNewZealand(stops) && this.isDrivingMode(travelMode);
+
+        // Fetched while ArcGIS solves. A failure must never stop the route being returned.
+        const eventsRequest: Promise<NZTAEvent[] | null> | undefined = useNZTA
+            ? fetchNZTAEvents().catch((err: unknown) => {
+                    console.error('NZTA events unavailable:', err instanceof Error ? err.message : err);
+                    return null;
+                })
+            : undefined;
+
+        const direct = await this.solve(stops, travelMode);
+        let body = direct;
+        let nzta = '';
+
+        if (eventsRequest) {
+            const events = await eventsRequest;
+            const directFeature = direct.routes?.features?.[0];
+            const directPath = directFeature?.geometry?.paths?.[0];
+
+            if (directFeature && directPath) {
+                const directSummary = {
+                    km: Number(directFeature.attributes?.Total_Kilometers) || 0,
+                    minutes: Number(directFeature.attributes?.Total_TravelTime) || 0,
+                };
+
+                const now = new Date();
+                const window = { start: now, end: new Date(now.getTime() + directSummary.minutes * 60_000) };
+
+                let detour: DetourState = 'found';
+                let finalFeature = directFeature;
+                const plan = events ? planClosures(events, directPath, window) : null;
+
+                if (plan) {
+                    try {
+                        body = await this.solve(stops, travelMode, plan.barriers);
+                        finalFeature = body.routes?.features?.[0] ?? directFeature;
+                    } catch (err) {
+                        if (err instanceof Error && err.message === 'API not authorized') throw err;
+
+                        // Either there is no way round, or ArcGIS refused the barriers. The direct route is still returned.
+                        console.error('NZTA closure detour failed:', err instanceof Error ? err.message : err);
+                        detour = err instanceof Error && err.message === 'No Route Found' ? 'none' : 'failed';
+                    }
+                }
+
+                nzta = describeOutcome({
+                    events,
+                    window,
+                    direct: directSummary,
+                    final: {
+                        km: Number(finalFeature.attributes?.Total_Kilometers) || 0,
+                        minutes: Number(finalFeature.attributes?.Total_TravelTime) || 0,
+                    },
+                    finalPath: finalFeature.geometry?.paths?.[0] ?? null,
+                    blocking: plan?.blocking ?? [],
+                    detour,
+                });
+            }
         }
 
         const processed: Static<typeof Feature.FeatureCollection> = {
@@ -246,7 +357,8 @@ export default class AGOLRoute implements RouteInterface {
 
                 // Add directions as remarks if available
                 const directions = body.directions?.[0]?.features?.map(dir => dir.attributes?.text).filter(Boolean).join('\n');
-                if (directions) norm.properties.remarks = directions;
+                const remarks = [nzta, directions].filter(Boolean).join('\n\n');
+                if (remarks) norm.properties.remarks = remarks;
 
                 processed.features.push(norm);
             }

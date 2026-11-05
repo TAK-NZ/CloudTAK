@@ -66220,6 +66220,11 @@ export interface paths {
                     end: string;
                     /** @description Travel mode for routing */
                     travelMode?: string;
+                    /**
+                     * @description Route around active NZTA road closures and list NZTA delays in the route remarks. Applies to driving routes within New Zealand only
+                     * @default false
+                     */
+                    nzta?: boolean;
                 };
                 header?: never;
                 path?: never;

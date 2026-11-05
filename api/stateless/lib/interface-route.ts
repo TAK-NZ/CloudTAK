@@ -7,6 +7,11 @@ import { arcgisSettingKeys } from './search/arcgis-settings.js';
 import { ProviderManager } from './interface-provider.js';
 import type { ProviderLoader, ProviderSettingKey } from './interface-provider.js';
 
+export interface RouteOptions {
+    /** Route around active NZTA full closures and report NZTA delays. Only applies to driving routes within New Zealand. */
+    nzta?: boolean;
+}
+
 /**
  * @class
  *
@@ -21,7 +26,8 @@ export interface RouteInterface {
 
     route(
         stops: Array<[number, number]>,
-        travelMode?: string
+        travelMode?: string,
+        opts?: RouteOptions,
     ): Promise<Static<typeof Feature.FeatureCollection>>;
 }
 
@@ -64,6 +70,7 @@ export class RouteManager extends ProviderManager<RouteInterface> {
         provider: string,
         stops: Array<[number, number]>,
         travelMode?: string,
+        opts?: RouteOptions,
     ): Promise<Static<typeof Feature.FeatureCollection>> {
         const route = this.get(provider);
 
@@ -71,6 +78,6 @@ export class RouteManager extends ProviderManager<RouteInterface> {
             throw new Err(400, null, `Invalid routing provider: ${provider}`);
         }
 
-        return await route.route(stops, travelMode);
+        return await route.route(stops, travelMode, opts);
     }
 }

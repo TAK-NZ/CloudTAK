@@ -48,6 +48,13 @@
                         :options='modes.map(m => m.name)'
                     />
                 </div>
+                <div class='my-2'>
+                    <TablerToggle
+                        v-model='routePlan.nzta'
+                        label='Include NZTA road events'
+                        description='Route around active NZTA road closures and list NZTA delays on the route. New Zealand driving routes only.'
+                    />
+                </div>
                 <div class='my-3'>
                     <button
                         :disabled='!routePlan.start || !routePlan.end'
@@ -71,6 +78,7 @@ import {
     TablerEnum,
     TablerAlert,
     TablerLoading,
+    TablerToggle,
 } from '@tak-ps/vue-tabler';
 import { server } from '../../../std.ts';
 import { useMapStore } from '../../../stores/map.ts';
@@ -103,11 +111,13 @@ const routePlan = ref<{
         coordinates: [number, number]
     }
     travelMode: string;
+    nzta: boolean;
 }>({
     provider: '',
     start: null,
     end: null,
-    travelMode: ''
+    travelMode: '',
+    nzta: true
 });
 
 const error = ref<Error | undefined>();
@@ -197,6 +207,7 @@ async function generateRoute(): Promise<void> {
                     callsign: routePlan.value.start.name + ' to ' + routePlan.value.end.name,
                     provider,
                     travelMode,
+                    nzta: routePlan.value.nzta,
                 }
             }
         });
