@@ -482,7 +482,7 @@ async function savePassword(): Promise<void> {
     try {
         saving.value.access = true;
         error.value = undefined;
-        await props.subscription.setPassword(passwordDraft.value);
+        await props.subscription.update({ password: passwordDraft.value });
         cancelEditingPassword();
     } catch (err) {
         fail(err);
@@ -494,7 +494,7 @@ async function removePassword(): Promise<void> {
     try {
         saving.value.access = true;
         error.value = undefined;
-        await props.subscription.setPassword();
+        await props.subscription.update({ password: null });
     } catch (err) {
         fail(err);
     } finally {

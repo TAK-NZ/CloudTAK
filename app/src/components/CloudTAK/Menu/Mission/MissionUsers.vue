@@ -129,18 +129,21 @@
             </div>
 
             <TablerNone
-                v-if='!filteredSubscriptions.length'
+                v-if='!groupedSubscriptions.length'
                 :create='false'
                 label='No Mission Subscribers'
             />
             <div
-                v-for='sub of filteredSubscriptions'
+                v-for='group of groupedSubscriptions'
                 v-else
-                :key='sub.clientUid'
+                :key='group.key'
                 class='col-lg-12'
             >
                 <Contact
-                    :contact='toContact(sub)'
+                    :contact='toGroupContact(group)'
+                    :meta='groupMeta(group)'
+                    :button-chat='group.subs.length === 1'
+                    :fly-to-click='group.subs.length === 1'
                     @chat='router.push(`/menu/chats/new?callsign=${$event.callsign}&uid=${$event.uid}`)'
                 >
                     <template
@@ -150,50 +153,96 @@
                         <div class='d-flex align-items-center gap-2'>
                             <TablerIconButton
                                 title='Edit User'
-                                @click.stop='toggleEdit(sub.clientUid)'
+                                @click.stop='toggleEdit(group.key)'
                             >
                                 <IconPencil
-                                    :size='20'
+                                    :size='32'
                                     stroke='1'
                                 />
                             </TablerIconButton>
                             <TablerDelete
+                                v-if='group.subs.length === 1'
                                 label='Remove User'
                                 displaytype='icon'
-                                @delete='removeUser(sub)'
+                                :disabled='isLastOwnerClient(group.subs[0])'
+                                @delete='removeClient(group.subs[0], group)'
                             />
                         </div>
                     </template>
 
                     <template
-                        v-if='canManageRoles && editingUid === sub.clientUid'
+                        v-if='canManageRoles && editingKey === group.key'
                         #expanded
                     >
                         <div class='d-flex flex-column align-items-start gap-1'>
                             <select
                                 class='form-select form-select-sm'
                                 style='width: auto;'
-                                :value='sub.role.type'
-                                @change='changeRole(sub, $event.target as HTMLSelectElement)'
+                                :value='group.role'
+                                @change='changeRole(group, $event.target as HTMLSelectElement)'
                             >
+                                <option
+                                    v-if='!group.role'
+                                    value=''
+                                    disabled
+                                >
+                                    Mixed roles
+                                </option>
                                 <option
                                     v-for='option of roleOptions'
                                     :key='option.value'
                                     :value='option.value'
-                                    :disabled='!!roleDisabledReason(sub, option.value)'
-                                    :title='roleDisabledReason(sub, option.value)'
+                                    :disabled='!!roleDisabledReason(group, option.value)'
+                                    :title='roleDisabledReason(group, option.value)'
                                 >
                                     {{ option.label }}
                                 </option>
                             </select>
                             <small
-                                v-if='lowerRolesBlockedReason'
+                                v-if='group.subs.length > 1'
+                                class='text-secondary'
+                                v-text='`Applies to all ${group.subs.length} clients of this user`'
+                            />
+                            <small
+                                v-if='isLastOwnerUser(group)'
+                                class='text-secondary'
+                                v-text='"This is the only owner. Make someone else an owner before changing this role or removing the user"'
+                            />
+                            <small
+                                v-else-if='lowerRolesBlockedReason'
                                 class='text-secondary'
                                 v-text='lowerRolesBlockedReason'
                             />
                         </div>
                     </template>
                 </Contact>
+
+                <div
+                    v-if='group.subs.length > 1'
+                    class='ms-4 ps-2 border-start'
+                >
+                    <Contact
+                        v-for='sub of group.subs'
+                        :key='sub.clientUid'
+                        :contact='toClientContact(sub, group)'
+                        :meta='clientMeta(sub, group)'
+                        :compact='true'
+                        :chat-icon-size='32'
+                        @chat='router.push(`/menu/chats/new?callsign=${$event.callsign}&uid=${$event.uid}`)'
+                    >
+                        <template
+                            v-if='canManageRoles'
+                            #actions
+                        >
+                            <TablerDelete
+                                label='Remove Client'
+                                displaytype='icon'
+                                :disabled='isLastOwnerClient(sub)'
+                                @delete='removeClient(sub, group)'
+                            />
+                        </template>
+                    </Contact>
+                </div>
             </div>
         </template>
     </MenuTemplate>
@@ -227,10 +276,12 @@ const loading = ref(false);
 const filter = ref('');
 const subscriptions = ref<MissionSubscriptions>([])
 const teams = ref<Map<string, string>>(new Map());
+const callsigns = ref<Map<string, string>>(new Map());
+const clients = ref<Map<string, string>>(new Map());
 const invites = ref<MissionInvite[]>([]);
 const inviteUsername = ref('');
 const showInvites = ref(false);
-const editingUid = ref<string | null>(null);
+const editingKey = ref<string | null>(null);
 const error = ref<Error | undefined>(undefined);
 
 function fail(err: unknown): void {
@@ -279,8 +330,37 @@ const lowerRolesBlockedReason = computed(() => {
     return `Roles below ${roleLabel(roleFloor.value)} (the default role) can't be assigned unless the Data Sync is password protected or its default role is lowered`;
 });
 
-function roleDisabledReason(sub: MissionSubscriptions[number], role: MissionRoleType): string | undefined {
-    if (role === sub.role.type) return undefined;
+// TAK Server lets the last owner demote or remove themselves, which leaves
+// nobody able to manage the Data Sync, so the API refuses it and we grey it out
+const ownerClientCount = computed(() => {
+    return subscriptions.value.filter((sub) => sub.role.type === 'MISSION_OWNER').length;
+});
+
+const ownerKeys = computed(() => {
+    return new Set(
+        subscriptions.value
+            .filter((sub) => sub.role.type === 'MISSION_OWNER')
+            .map((sub) => sub.username || sub.clientUid)
+    );
+});
+
+// Demoting a user changes all of their clients, so it removes the last owner
+// when this is the only user with an owner client
+function isLastOwnerUser(group: UserGroup): boolean {
+    return ownerKeys.value.has(group.key) && ownerKeys.value.size <= 1;
+}
+
+// Removing a client only removes that client
+function isLastOwnerClient(sub: MissionSubscriptions[number]): boolean {
+    return sub.role.type === 'MISSION_OWNER' && ownerClientCount.value <= 1;
+}
+
+function roleDisabledReason(group: UserGroup, role: MissionRoleType): string | undefined {
+    if (role === group.role) return undefined;
+
+    if (role !== 'MISSION_OWNER' && isLastOwnerUser(group)) {
+        return 'A Data Sync must keep at least one owner';
+    }
 
     if (roleRank[role] > roleRank[props.subscription.role.type]) {
         return `Your own role can't grant ${roleLabel(role)}`;
@@ -293,10 +373,29 @@ function roleDisabledReason(sub: MissionSubscriptions[number], role: MissionRole
     return undefined;
 }
 
-const filteredSubscriptions = computed(() => {
-    if (!filter.value) return subscriptions.value;
-    return subscriptions.value.filter(sub => {
-        return sub.username.toLowerCase().includes(filter.value.toLowerCase());
+// One person can be subscribed from several clients, each with its own client UID
+const groupedSubscriptions = computed<UserGroup[]>(() => {
+    const groups = new Map<string, UserGroup>();
+
+    for (const sub of subscriptions.value) {
+        const key = sub.username || sub.clientUid;
+        const group = groups.get(key);
+
+        if (group) {
+            group.subs.push(sub);
+            if (group.role !== sub.role.type) group.role = '';
+        } else {
+            groups.set(key, { key, username: sub.username, subs: [sub], role: sub.role.type });
+        }
+    }
+
+    const list = Array.from(groups.values());
+    if (!filter.value) return list;
+
+    const needle = filter.value.toLowerCase();
+    return list.filter((group) => {
+        return group.username.toLowerCase().includes(needle)
+            || group.subs.some((sub) => (callsigns.value.get(sub.clientUid) || '').toLowerCase().includes(needle));
     });
 });
 
@@ -341,16 +440,16 @@ async function inviteUser(selection?: { callsign: string } | ContactType) {
     await fetchSubscriptions();
 }
 
-function toggleEdit(clientUid: string) {
-    editingUid.value = editingUid.value === clientUid ? null : clientUid;
+function toggleEdit(key: string) {
+    editingKey.value = editingKey.value === key ? null : key;
 }
 
-async function removeUser(sub: MissionSubscriptions[number]) {
+async function removeClient(sub: MissionSubscriptions[number], group: UserGroup) {
     error.value = undefined;
 
     try {
         await props.subscription.removeUser(sub.clientUid);
-        if (editingUid.value === sub.clientUid) editingUid.value = null;
+        if (editingKey.value === group.key && group.subs.length <= 1) editingKey.value = null;
     } catch (err) {
         fail(err);
     }
@@ -358,17 +457,22 @@ async function removeUser(sub: MissionSubscriptions[number]) {
     await fetchSubscriptions();
 }
 
-async function changeRole(sub: MissionSubscriptions[number], select: HTMLSelectElement) {
+async function changeRole(group: UserGroup, select: HTMLSelectElement) {
     const role = select.value as MissionRoleType;
-    if (role === sub.role.type) return;
+    if (!role || role === group.role) return;
 
     error.value = undefined;
 
     try {
-        await props.subscription.changeRole(sub, role);
+        // With a username TAK Server changes every client of the user,
+        // without one only the client that is given
+        await props.subscription.changeRole({
+            clientUid: group.subs[0].clientUid,
+            username: group.username
+        }, role);
     } catch (err) {
         // The list is unchanged so Vue will not reset what the user picked
-        select.value = sub.role.type;
+        select.value = group.role;
         fail(err);
     }
 
@@ -404,6 +508,8 @@ async function fetchSubscriptions() {
 // contact records (populated from CoT presence markers), keyed by client UID.
 async function loadTeams(subs: MissionSubscriptions) {
     const next = new Map<string, string>();
+    const nextCallsigns = new Map<string, string>();
+    const nextClients = new Map<string, string>();
 
     // The current user is never stored as a contact, their team is a profile setting
     try {
@@ -413,30 +519,135 @@ async function loadTeams(subs: MissionSubscriptions) {
         if (typeof takGroup === 'string' && takGroup && subs.some((sub) => sub.clientUid === selfUid)) {
             next.set(selfUid, takGroup);
         }
+
+        const takCallsign = (await ProfileConfig.get('tak_callsign'))?.value;
+        if (typeof takCallsign === 'string' && takCallsign && subs.some((sub) => sub.clientUid === selfUid)) {
+            nextCallsigns.set(selfUid, takCallsign);
+        }
     } catch (err) {
         console.error(err);
     }
 
     await Promise.all(subs.map(async (sub) => {
-        if (next.has(sub.clientUid)) return;
-
         try {
             const contact = await ContactManager.from(sub.clientUid);
-            if (contact && contact.team) next.set(sub.clientUid, contact.team);
+            if (!contact) return;
+            if (contact.team && !next.has(sub.clientUid)) next.set(sub.clientUid, contact.team);
+            if (contact.callsign && !nextCallsigns.has(sub.clientUid)) nextCallsigns.set(sub.clientUid, contact.callsign);
+            if (contact.takv) nextClients.set(sub.clientUid, String(contact.takv));
         } catch (err) {
             console.error(err);
         }
     }));
 
     teams.value = next;
+    callsigns.value = nextCallsigns;
+    clients.value = nextClients;
 }
 
-function toContact(sub: MissionSubscriptions[number]): ContactType {
+// One person can be subscribed from several clients (each has its own client UID),
+// so say which client a row is and when it joined to tell the rows apart
+function clientLabel(sub: MissionSubscriptions[number]): string {
+    if (sub.clientUid.includes('CloudTAK')) return 'CloudTAK';
+
+    const takv = clients.value.get(sub.clientUid);
+    if (takv) return takv;
+
+    return `Client ${sub.clientUid.slice(-6)}`;
+}
+
+function joinedLabel(sub: MissionSubscriptions[number]): string {
+    const date = new Date(sub.createTime);
+    return isNaN(date.getTime()) ? '' : `Joined ${date.toLocaleDateString()}`;
+}
+
+type UserGroup = {
+    /** The TAK Server username, empty when the server did not record one */
+    username: string;
+    key: string;
+    subs: MissionSubscriptions;
+    /** Empty when the clients of the user have different roles */
+    role: MissionRoleType | '';
+};
+
+function groupCallsign(group: UserGroup): string {
+    for (const sub of group.subs) {
+        const callsign = callsigns.value.get(sub.clientUid);
+        if (callsign) return callsign;
+    }
+
+    return group.username || group.subs[0].clientUid;
+}
+
+function groupRoleLabel(group: UserGroup): string {
+    return group.role ? roleLabel(group.role) : 'Mixed roles';
+}
+
+// The row of a user, or the only client of a user. Roles are changed per user
+// (TAK Server changes every client of a username together) but chatting with
+// and removing a client act on its client UID, so users with several clients
+// get one row per client underneath.
+// One short line per fact: the client (kept to a single line) and the join date apart from it
+function clientMeta(sub: MissionSubscriptions[number], group: UserGroup): string[] {
+    return [
+        [clientLabel(sub), group.role ? '' : roleLabel(sub.role.type)].filter(Boolean).join(' · '),
+        joinedLabel(sub),
+    ].filter(Boolean);
+}
+
+function groupMeta(group: UserGroup): string[] {
+    const callsign = groupCallsign(group);
+    const username = group.username && callsign !== group.username ? group.username : '';
+
+    if (group.subs.length > 1) {
+        return [
+            [groupRoleLabel(group), username, `${group.subs.length} clients`].filter(Boolean).join(' · '),
+        ];
+    }
+
+    const sub = group.subs[0];
+    return [
+        [groupRoleLabel(group), username, clientLabel(sub)].filter(Boolean).join(' · '),
+        joinedLabel(sub),
+    ].filter(Boolean);
+}
+
+function toGroupContact(group: UserGroup): ContactType {
+    const callsign = groupCallsign(group);
+    const single = group.subs.length === 1 ? group.subs[0] : undefined;
+
+    return {
+        uid: single ? single.clientUid : `user:${group.key}`,
+        callsign,
+        role: groupRoleLabel(group),
+        notes: single
+            ? [
+                groupRoleLabel(group),
+                group.username && callsign !== group.username ? group.username : '',
+                clientLabel(single),
+                joinedLabel(single),
+            ].filter(Boolean).join(' · ')
+            : [
+                groupRoleLabel(group),
+                group.username && callsign !== group.username ? group.username : '',
+                `${group.subs.length} clients`,
+            ].filter(Boolean).join(' · '),
+        team: group.subs.map((sub) => teams.value.get(sub.clientUid)).find(Boolean) || '',
+        takv: '',
+        filterGroups: null
+    };
+}
+
+function toClientContact(sub: MissionSubscriptions[number], group: UserGroup): ContactType {
     return {
         uid: sub.clientUid,
-        callsign: sub.username,
+        callsign: callsigns.value.get(sub.clientUid) || group.username || sub.clientUid,
         role: roleLabel(sub.role.type),
-        notes: roleLabel(sub.role.type),
+        notes: [
+            clientLabel(sub),
+            joinedLabel(sub),
+            group.role ? '' : roleLabel(sub.role.type),
+        ].filter(Boolean).join(' · '),
         team: teams.value.get(sub.clientUid) || '',
         takv: '',
         filterGroups: null

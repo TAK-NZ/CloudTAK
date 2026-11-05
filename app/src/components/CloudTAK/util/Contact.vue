@@ -30,6 +30,7 @@
 
             <div
                 class='flex-grow-1 d-flex flex-column gap-1'
+                style='min-width: 0;'
                 :class='{
                     "py-2": !compact,
                     "justify-content-center": !contact.notes || !contact.notes.trim()
@@ -41,8 +42,17 @@
                         v-text='contact.callsign'
                     />
                 </div>
+                <template v-if='props.meta && props.meta.length'>
+                    <div
+                        v-for='(line, i) of props.meta'
+                        :key='i'
+                        class='text-truncate subheader user-select-none'
+                        :title='line'
+                        v-text='line'
+                    />
+                </template>
                 <div
-                    v-if='contact.notes && contact.notes.trim()'
+                    v-else-if='contact.notes && contact.notes.trim()'
                     class='text-break subheader user-select-none'
                     v-text='contact.notes.trim()'
                 />
@@ -58,7 +68,7 @@
                     @click.stop='emit("chat", contact)'
                 >
                     <IconMessage
-                        :size='compact ? 20 : 32'
+                        :size='props.chatIconSize || (compact ? 20 : 32)'
                         stroke='1'
                     />
                 </TablerIconButton>
@@ -103,12 +113,18 @@ const props = withDefaults(defineProps<{
     buttonChat?: boolean;
     hover?: boolean;
     compact?: boolean;
+    /** Overrides the size of the chat icon, which is smaller in compact rows */
+    chatIconSize?: number;
+    /** One row per entry under the callsign, each kept to a single line, instead of the free text notes */
+    meta?: string[];
 }>(), {
     flyToClick: true,
     selected: false,
     buttonChat: true,
     hover: true,
-    compact: false
+    compact: false,
+    chatIconSize: undefined,
+    meta: undefined
 });
 
 const emit = defineEmits<{

@@ -40250,6 +40250,8 @@ export interface paths {
                         groups?: string[];
                         /** @description Role given to anyone who subscribes without an explicit role. Requires the MISSION_SET_ROLE permission */
                         defaultRole?: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
+                        /** @description New password, or null to remove the password. Requires the MISSION_SET_PASSWORD permission */
+                        password?: string | null;
                     };
                 };
             };
@@ -42785,7 +42787,7 @@ export interface paths {
                 };
             };
         };
-        /** Change the role of an existing mission subscriber */
+        /** Change the role of an existing mission subscriber. The last owner of a mission cannot be demoted */
         put: {
             parameters: {
                 query?: never;
@@ -42800,7 +42802,8 @@ export interface paths {
                 content: {
                     "application/json": {
                         clientUid: string;
-                        username: string;
+                        /** @description When set TAK Server changes every subscription of this username, otherwise only the one of the clientUid */
+                        username?: string;
                         role: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
                     };
                 };
@@ -43134,224 +43137,6 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/marti/missions/{:guid}/password": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set or change the password of a mission. Requires the MISSION_SET_PASSWORD permission */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":guid": string;
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        password: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-            };
-        };
-        post?: never;
-        /** Remove the password from a mission. Requires the MISSION_SET_PASSWORD permission */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    /** @description No Description */
-                    ":guid": string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful Response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                403: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-                /** @description Error Response */
-                500: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            status: number;
-                            message: string;
-                            /** @description Extended error details (ie: TAK Server exception trace) */
-                            details?: string;
-                        };
-                    };
-                };
-            };
-        };
         options?: never;
         head?: never;
         patch?: never;
@@ -44165,7 +43950,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission */
+        /** Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission. The last owner of a mission cannot be removed */
         delete: {
             parameters: {
                 query: {

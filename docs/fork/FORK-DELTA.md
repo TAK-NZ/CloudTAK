@@ -1015,19 +1015,35 @@ additions that would need to be proposed upstream separately.
 
 - **Removing a user.** The unsubscribe call TAK Server exposes is the "leave this mission"
   call of a client: it only drops the live connection and filters on the caller's username,
-  so it never removed anyone else. `MissionControl.removeSubscribers()` removes a
-  subscriber with a role-less `PUT .../role` instead (what ATAK does). It needs
+  so it never removed anyone else. `DELETE .../user` now calls node-tak's
+  `Mission.removeUser()` (a role-less `PUT .../role`, what ATAK does). It needs
   `MISSION_SET_ROLE`, so the button follows `canManageRoles`.
 - **Role changes.** TAK Server refuses a role below the mission's default role unless the
   mission has a password (`validateRoleAssignment`, hardcoded). `MissionUsers.vue` greys
   those roles out, and `serverMessage()` in `subscription.ts` unwraps TAK Server's JSON
   error text so the reason is shown.
-- **Default role and password.** `PATCH /marti/missions/:guid` accepts `defaultRole`;
-  node-tak's `Mission.update()` cannot send it, so `MissionControl.setDefaultRole()`
-  re-creates its request and adds the parameter. `PUT`/`DELETE .../password` are new. The
-  "Access" section of `MissionInfo.vue` shows and edits both. TAK Server returns
-  `defaultRole` in the mission JSON but node-tak's schema omits it, so the `GET`/`PATCH`
-  responses declare it with `Type.Composite`.
+- **Default role and password.** `PATCH /marti/missions/:guid` accepts `defaultRole` and
+  `password` (a string sets or replaces it, `null` removes it), using node-tak 12.36's
+  `Mission.update()`, `setPassword()` and `removePassword()`. The password calls pass the
+  acting user's UID as `creatorUid`. The "Access" section of `MissionInfo.vue` shows and
+  edits both through `Subscription.update()`. This follows upstream PR #2020; our earlier
+  `MissionControl` helpers and the `PUT`/`DELETE .../password` routes were removed.
+- **Chat and role fetches.** The Data Sync chat box needs `MISSION_WRITE` (TAK Server drops
+  chat from read-only subscribers). `Subscription.load` and `Subscription.update` no longer
+  fetch the caller's role more than once per subscribe.
+- **Subscriber list.** TAK Server stores one subscription per client UID, so a person using
+  CloudTAK, ATAK and WinTAK appears several times under the same username. `MissionUsers.vue`
+  groups rows by username (callsigns are neither unique nor stable). Roles are changed per
+  user: `PUT .../role` with a `username` makes TAK Server update every subscription of that
+  username (`setRoleByUsername`), without one only the given client UID
+  (`setRoleByClientUid`). Chatting with a client and removing it act on one client UID, so
+  users with several clients get an indented row per client for those two actions.
+- **Last owner.** TAK Server lets the last owner demote or remove themselves, and a CloudTAK
+  admin has no access to a Data Sync they are not subscribed to (only a TAK Server admin is
+  treated as owner). `MissionControl.assertOwnerRemains()` refuses with a 409 when a role
+  change or removal would leave no owner subscription, matching what TAK Server would touch
+  (username-wide for a role change with a username, one client UID otherwise). The UI greys
+  out the same actions. It only knows about owners that have a saved subscription.
 - **Stale local copy.** `Subscription.fetch()` now persists what it fetched, and
   `MenuMission.vue` refreshes in the background after opening from the local copy.
   Otherwise fields added later (`defaultRole`) stayed empty for missions opened before.
@@ -1040,10 +1056,12 @@ additions that would need to be proposed upstream separately.
   refreshing the role (`atlas-connection.ts`, `atlas-database.ts`). Nothing reads the
   platform value, and TAK Team Manager classifies CloudTAK from the Client UID alone.
   Revert the platform line to restore the honest name at the cost of ATAK's warning.
-- `api/derived-types.d.ts` is regenerated from Test (`openapi-typescript`), not edited.
+- `api/derived-types.d.ts` was edited by hand for the consolidated `PATCH` (the password
+  routes removed, `password` added to the body). Regenerate it from Test after deploying.
 
-Drop the individual pieces when upstream adopts them: a working removal and the default
-role/password controls would replace most of this; the stale-copy fix is a plain bug.
+Upstream now has the removal and the default role/password controls. What remains ours is
+the role-change guard in `MissionUsers.vue`, the stale-copy refresh, `t-x-m-r` handling and
+the `ATAK-CloudTAK` platform.
 
 ---
 
