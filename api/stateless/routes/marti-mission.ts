@@ -566,16 +566,25 @@ export default async function router(schema: Schema, config: ConfigStateless) {
         params: Type.Object({
             guid: Type.String(),
         }),
-        description: 'Change the role of an existing mission subscriber',
+        description: 'Change the role of an existing mission subscriber. The last owner of a mission cannot be demoted',
         body: Type.Object({
             clientUid: Type.String(),
-            username: Type.String(),
+            username: Type.Optional(Type.String({
+                description: 'When set TAK Server changes every subscription of this username, otherwise only the one of the clientUid',
+            })),
             role: Type.Enum(MissionSubscriberRole),
         }),
         res: StandardResponse,
     }, async (req, res) => {
         try {
             const { api, opts } = await missionControl.context(req, req.params.guid);
+
+            await missionControl.assertOwnerRemains(
+                api,
+                req.params.guid,
+                [{ clientUid: req.body.clientUid, username: req.body.username, role: req.body.role }],
+                opts,
+            );
 
             await api.Mission.setRole(
                 req.params.guid,
@@ -900,7 +909,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
     await schema.delete('/marti/missions/:guid/user', {
         name: 'Delete Mission User',
         group: 'MartiMissions',
-        description: 'Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission',
+        description: 'Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission. The last owner of a mission cannot be removed',
         params: Type.Object({
             guid: Type.String(),
         }),
@@ -913,6 +922,13 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const { api, opts } = await missionControl.context(req, req.params.guid);
 
             const uids = Array.isArray(req.query.uid) ? req.query.uid : [req.query.uid];
+
+            await missionControl.assertOwnerRemains(
+                api,
+                req.params.guid,
+                uids.map(clientUid => ({ clientUid })),
+                opts,
+            );
 
             for (const uid of uids) {
                 await api.Mission.removeUser(req.params.guid, { clientUid: uid }, opts);

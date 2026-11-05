@@ -641,7 +641,13 @@ export default class Subscription {
         if (error) throw new Error(serverMessage(error, 'Failed to invite user to mission, they may already be a member or have a pending invite'));
     }
 
-    async changeRole(sub: { clientUid: string, username: string }, role: MissionRoleType): Promise<void> {
+    /**
+     * Change the role of a subscriber
+     *
+     * With a username TAK Server changes every subscription of that username (all
+     * clients of one user), without one only the subscription of the clientUid.
+     */
+    async changeRole(sub: { clientUid: string, username?: string }, role: MissionRoleType): Promise<void> {
         const { error } = await server.PUT('/api/marti/missions/{:guid}/role', {
             params: {
                 path: { ':guid': this.guid }
@@ -649,7 +655,7 @@ export default class Subscription {
             headers: Subscription.headers(this.missiontoken),
             body: {
                 clientUid: sub.clientUid,
-                username: sub.username,
+                username: sub.username || undefined,
                 role
             }
         });

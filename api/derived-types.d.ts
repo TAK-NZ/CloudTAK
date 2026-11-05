@@ -42787,7 +42787,7 @@ export interface paths {
                 };
             };
         };
-        /** Change the role of an existing mission subscriber */
+        /** Change the role of an existing mission subscriber. The last owner of a mission cannot be demoted */
         put: {
             parameters: {
                 query?: never;
@@ -42802,7 +42802,8 @@ export interface paths {
                 content: {
                     "application/json": {
                         clientUid: string;
-                        username: string;
+                        /** @description When set TAK Server changes every subscription of this username, otherwise only the one of the clientUid */
+                        username?: string;
                         role: "MISSION_OWNER" | "MISSION_SUBSCRIBER" | "MISSION_READONLY_SUBSCRIBER";
                     };
                 };
@@ -43949,7 +43950,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission */
+        /** Remove one or more subscribers (by client UID) from a mission. Requires the MISSION_SET_ROLE permission. The last owner of a mission cannot be removed */
         delete: {
             parameters: {
                 query: {

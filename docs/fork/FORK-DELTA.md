@@ -1031,6 +1031,19 @@ additions that would need to be proposed upstream separately.
 - **Chat and role fetches.** The Data Sync chat box needs `MISSION_WRITE` (TAK Server drops
   chat from read-only subscribers). `Subscription.load` and `Subscription.update` no longer
   fetch the caller's role more than once per subscribe.
+- **Subscriber list.** TAK Server stores one subscription per client UID, so a person using
+  CloudTAK, ATAK and WinTAK appears several times under the same username. `MissionUsers.vue`
+  groups rows by username (callsigns are neither unique nor stable). Roles are changed per
+  user: `PUT .../role` with a `username` makes TAK Server update every subscription of that
+  username (`setRoleByUsername`), without one only the given client UID
+  (`setRoleByClientUid`). Chatting with a client and removing it act on one client UID, so
+  users with several clients get an indented row per client for those two actions.
+- **Last owner.** TAK Server lets the last owner demote or remove themselves, and a CloudTAK
+  admin has no access to a Data Sync they are not subscribed to (only a TAK Server admin is
+  treated as owner). `MissionControl.assertOwnerRemains()` refuses with a 409 when a role
+  change or removal would leave no owner subscription, matching what TAK Server would touch
+  (username-wide for a role change with a username, one client UID otherwise). The UI greys
+  out the same actions. It only knows about owners that have a saved subscription.
 - **Stale local copy.** `Subscription.fetch()` now persists what it fetched, and
   `MenuMission.vue` refreshes in the background after opening from the local copy.
   Otherwise fields added later (`defaultRole`) stayed empty for missions opened before.

@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import Err from '@openaddresses/batch-error';
 import type { Static } from '@sinclair/typebox';
 import type { TAKAPI } from '@tak-ps/node-tak';
 import type { MissionOptions } from '@tak-ps/node-tak/lib/api/mission';
@@ -51,5 +52,44 @@ export default class MissionControl {
         const opts = await this.options(req, user.email, guid);
 
         return { user, api, opts };
+    }
+
+    /**
+     * Refuse a change that would leave a Mission without an owner
+     *
+     * A Mission with no owner subscription can no longer have its roles, groups or
+     * password changed, and a CloudTAK admin has no access to a Mission they are
+     * not subscribed to. Only enforced while the Mission has an owner.
+     *
+     * `changes` lists subscribers being demoted or removed (`role` omitted means
+     * removed). It mirrors how TAK Server picks the rows a role change touches:
+     * with a `username` every subscription row of that username is changed,
+     * otherwise only the row of the `clientUid`.
+     */
+    async assertOwnerRemains(
+        api: TAKAPI,
+        guid: string,
+        changes: Array<{ clientUid: string; username?: string; role?: string }>,
+        opts: Static<typeof MissionOptions>,
+    ): Promise<void> {
+        const subscribers = await api.Mission.subscriptionRoles(guid, opts);
+
+        const owners = subscribers.data.filter(subscriber => subscriber.role.type === 'MISSION_OWNER');
+
+        if (!owners.length) return;
+
+        const demoted = changes.filter(change => change.role !== 'MISSION_OWNER');
+
+        const remaining = owners.filter((owner) => {
+            return !demoted.some((change) => {
+                return change.username
+                    ? owner.username === change.username
+                    : owner.clientUid === change.clientUid;
+            });
+        });
+
+        if (!remaining.length) {
+            throw new Err(409, null, 'A Data Sync must keep at least one owner');
+        }
     }
 }
