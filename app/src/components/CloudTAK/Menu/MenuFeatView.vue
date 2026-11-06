@@ -184,7 +184,7 @@ import { useMapStore } from '../../../stores/map.ts';
 import type { LngLatLike, MapGeoJSONFeature } from 'maplibre-gl';
 import type { Feature } from 'geojson';
 import pointOnFeature from '@turf/point-on-feature';
-import { server, getRuntimeToken } from '../../../std.ts';
+import { getRuntimeToken } from '../../../std.ts';
 import MenuTemplate from '../util/MenuTemplate.vue';
 import FeatureIcon from '../util/FeatureIcon.vue';
 import TrailPointBanner from '../util/TrailPointBanner.vue';
@@ -199,7 +199,7 @@ import PropertyElevation from '../Property/PropertyElevation.vue';
 import PropertyRemarks from '../Property/PropertyRemarks.vue';
 import { cutOverlayFeature, getFeatureOverlay } from '../util/featureCut.ts';
 import { featureHtmlDescription, proxyHtmlImages } from '../util/proxyImages.ts';
-import { renderTitleTemplate } from '../util/titleTemplate.ts';
+import { fetchTitleTemplate, featureTitle as resolveFeatureTitle } from '../util/titleTemplate.ts';
 import {
     TablerIconButton
 } from '@tak-ps/vue-tabler';
@@ -242,29 +242,13 @@ const titleTemplate = ref<string | null>(null);
 
 watch(overlay, async (ov) => {
     titleTemplate.value = null;
-    if (!ov || !ov.mode_id || !['basemap', 'overlay'].includes(ov.mode)) return;
-
-    const { data } = await server.GET('/api/basemap/{:basemapid}', {
-        params: { path: { ':basemapid': Number(ov.mode_id) } }
-    });
-
-    if (data && typeof data === 'object' && 'title' in data && data.title) {
-        titleTemplate.value = data.title;
-    }
+    const template = await fetchTitleTemplate(ov);
+    if (overlay.value === ov) titleTemplate.value = template;
 }, { immediate: true });
 
 const featureTitle = computed(() => {
     if (!feature.value) return 'No Name';
-    const props = feature.value.properties || {};
-
-    if (titleTemplate.value) {
-        // Handlebars.compile() needs 'unsafe-eval', which the CSP blocks, so
-        // the template is rendered from its AST instead
-        const result = renderTitleTemplate(titleTemplate.value, props);
-        if (result) return result;
-    }
-
-    return props.name || props.callsign || 'No Name';
+    return resolveFeatureTitle(feature.value.properties, titleTemplate.value);
 });
 
 const featureKey = computed(() => String(feature.value?.id ?? featureTitle.value));
