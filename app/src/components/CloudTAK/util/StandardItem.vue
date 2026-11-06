@@ -4,8 +4,8 @@
         :class='{ "standard-item--hover": interactive }'
         :tabindex='interactive ? 0 : undefined'
         :role='interactive ? "menuitem" : undefined'
-        @keydown.enter='interactive ? ($event.preventDefault(), $el.click()) : undefined'
-        @keydown.space='interactive ? ($event.preventDefault(), $el.click()) : undefined'
+        @keydown.enter='activate'
+        @keydown.space='activate'
     >
         <slot />
     </div>
@@ -25,6 +25,17 @@ const attrs = useAttrs();
 const interactive = computed(() => {
     return props.hover && typeof attrs.onClick === 'function';
 });
+
+// Enter and Space click the row, but only when the row itself has focus. A key
+// pressed in a control inside the row (a password input, a button) bubbles up
+// here too, and clicking the row then would act on it instead of the control
+// and block typing a space.
+function activate(event: KeyboardEvent): void {
+    if (!interactive.value || event.target !== event.currentTarget) return;
+
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).click();
+}
 </script>
 
 <style scoped>
