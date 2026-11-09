@@ -1056,6 +1056,11 @@ additions that would need to be proposed upstream separately.
   refreshing the role (`atlas-connection.ts`, `atlas-database.ts`). Nothing reads the
   platform value, and TAK Team Manager classifies CloudTAK from the Client UID alone.
   Revert the platform line to restore the honest name at the cost of ATAK's warning.
+- **Invite QR code.** `MissionInfo.vue` fetches the QR with a normal request that carries the
+  `MissionAuthorization` header and shows it from a blob URL. It was an `<img src>` with the
+  login token in the query string. An `<img>` cannot send the header, so the API fell back to
+  the token stored on the user's overlay, which a password protected Data Sync refused with
+  a 403. The route itself is unchanged from upstream.
 - `api/derived-types.d.ts` was edited by hand for the consolidated `PATCH` (the password
   routes removed, `password` added to the body). Regenerate it from Test after deploying.
 
