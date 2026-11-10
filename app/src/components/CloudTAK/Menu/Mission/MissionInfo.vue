@@ -356,8 +356,17 @@
         </div>
         <div class='modal-body invite-qr-body'>
             <div class='col-12 text-center'>
+                <TablerLoading
+                    v-if='qr.loading'
+                    desc='Loading QR Code...'
+                />
+                <TablerAlert
+                    v-else-if='qr.error'
+                    :err='qr.error'
+                />
                 <img
-                    :src='missionQRURL'
+                    v-else-if='qr.url'
+                    :src='qr.url'
                     class='invite-qr-image img-fluid'
                     :style='appStore.resolvedTheme === "dark" ? { filter: "invert(1)" } : undefined'
                 >
@@ -367,11 +376,10 @@
 </template>
 
 <script setup lang='ts'>
-import { ref, onMounted, computed, watch } from 'vue';
-import { Preferences } from '@capacitor/preferences';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import type { MissionSubscriptions, MissionRoleType } from '../../../../types.ts';
 import { useRoute, useRouter } from 'vue-router';
-import { stdurl } from '../../../../std.ts'
+import { stdurl, getRuntimeToken, bearer, fetchWithTimeout } from '../../../../std.ts'
 import Subscription from '../../../../base/subscription.ts';
 import MissionTemplate from '../../../../base/mission-template.ts';
 import CopyField from '../../util/CopyField.vue';
@@ -411,16 +419,51 @@ const emit = defineEmits(['subscribed']);
 const props = defineProps<{
     subscription: Subscription
 }>();
-const token = ref<string | null>(null);
 const error = ref<Error | undefined>(undefined);
 
 function fail(err: unknown): void {
     error.value = err instanceof Error ? err : new Error(String(err));
 }
 
-const missionQRURL = computed(() => {
-    return String(stdurl(`/api/marti/missions/${props.subscription.guid}/qr${token.value ? `?token=${encodeURIComponent(token.value)}` : ''}`));
-});
+const qr = ref<{ url?: string; loading: boolean; error?: Error }>({ loading: false });
+
+function releaseQR(): void {
+    if (qr.value.url) URL.revokeObjectURL(qr.value.url);
+    qr.value = { loading: false };
+}
+
+/**
+ * Fetch the invite QR code through a normal request instead of an <img src>.
+ * An <img> cannot send the MissionAuthorization header, so a password protected
+ * Data Sync was refused with 403. It also keeps the login token out of the URL.
+ */
+async function loadQR(): Promise<void> {
+    releaseQR();
+    qr.value = { loading: true };
+
+    try {
+        const token = await getRuntimeToken();
+        const res = await fetchWithTimeout(20000)(
+            stdurl(`/api/marti/missions/${encodeURIComponent(props.subscription.guid)}/qr`),
+            { headers: { ...bearer(token), ...props.subscription.headers() } },
+        );
+
+        if (!res.ok) {
+            let message = `Failed to load QR code (${res.status})`;
+            try {
+                const body = await res.json() as { message?: string };
+                if (body.message) message = body.message;
+            } catch {
+                // Not a JSON error body, keep the status message
+            }
+            throw new Error(message);
+        }
+
+        qr.value = { url: URL.createObjectURL(await res.blob()), loading: false };
+    } catch (err) {
+        qr.value = { loading: false, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+}
 
 const keywords = computed(() => {
     if (!Array.isArray(props.subscription.meta.keywords)) return [];
@@ -570,6 +613,17 @@ async function saveKeywords(nextKeywords: string[]): Promise<void> {
 }
 
 const showQR = ref(false);
+
+watch(showQR, (open) => {
+    if (open) {
+        loadQR();
+    } else {
+        releaseQR();
+    }
+});
+
+onUnmounted(releaseQR);
+
 const route = useRoute();
 const router = useRouter();
 
@@ -577,8 +631,6 @@ const subscriptions = ref<MissionSubscriptions>([]);
 const missionTemplate = ref<MissionTemplate>();
 
 onMounted(async () => {
-    token.value = (await Preferences.get({ key: 'token' })).value;
-
     loading.value.users = true;
     await fetchSubscriptions();
     loading.value.users = false;
