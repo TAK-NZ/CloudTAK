@@ -286,12 +286,28 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             const user = await Auth.as_user(config, req);
             const api = await takserver.asUser(user.email);
 
-            const mission = await api.Mission.create({
-                ...req.body,
+            // node-tak's Mission.create replaces the created Mission with the response of its
+            // keywords call when keywords are given, and that response has no `token`. TAK Server only
+            // returns the creator's token on creation, and without it a Data Sync with a password
+            // cannot be subscribed to afterwards ("No token role provided"). Set the keywords here so
+            // the token can be kept.
+            const { keywords, ...body } = req.body;
+
+            const created = await api.Mission.create({
+                ...body,
                 creatorUid: profileUid(user.email),
             });
 
-            res.json(mission);
+            if (keywords === undefined) {
+                res.json(created);
+                return;
+            }
+
+            const mission = await api.Mission.setKeywords(created.name, keywords, {
+                token: created.token,
+            });
+
+            res.json({ ...mission, token: created.token });
         } catch (err) {
             Err.respond(err, res);
         }
