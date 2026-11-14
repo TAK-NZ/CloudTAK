@@ -777,17 +777,25 @@ async function subscribe(next: boolean) {
 
 /* A QR code must be dark on a light background with a quiet zone of at least 4 modules,
    so it stays white in dark mode instead of being inverted */
+/* The QR SVG only has a viewBox, so it has no size of its own: the frame needs a definite width */
 .invite-qr-frame {
-    display: inline-block;
-    max-width: 100%;
+    box-sizing: border-box;
+    width: min(100%, 420px);
+    margin: 0 auto;
     padding: 2.5rem;
     background: #fff;
     border-radius: 0.5rem;
 }
 .invite-qr-image {
     display: block;
-    max-width: min(100%, 420px);
+    width: 100%;
+    max-width: 100%;
     height: auto;
+}
+@media (max-width: 576px) {
+    .invite-qr-frame {
+        padding: 1.5rem;
+    }
 }
 
 :global(html[data-bs-theme='dark']) .invite-qr-btn {
