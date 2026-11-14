@@ -2,11 +2,14 @@ import type { Request } from 'express';
 import Err from '@openaddresses/batch-error';
 import type { Static } from '@sinclair/typebox';
 import type { TAKAPI } from '@tak-ps/node-tak';
-import type { MissionOptions } from '@tak-ps/node-tak/lib/api/mission';
+import type { Mission, MissionListInput, MissionOptions } from '@tak-ps/node-tak/lib/api/mission';
 import Auth, { AuthUser } from '../../../common/auth.js';
 import TAKServerControl from '../../../common/control/takserver.js';
 import ProfileOverlayControl from '../../../common/control/profile-overlay.js';
 import type ConfigStateless from '../../config.js';
+
+const MISSION_LIST_PAGE_SIZE = 100;
+const MISSION_LIST_MAX_PAGES = 50;
 
 export type MissionContext = {
     user: AuthUser;
@@ -52,6 +55,54 @@ export default class MissionControl {
         const opts = await this.options(req, user.email, guid);
 
         return { user, api, opts };
+    }
+
+    /**
+     * List every Mission the user can see
+     *
+     * TAK Server's unpaged list (`GET /Marti/api/missions`) takes each Mission from its shared
+     * cache, copies it shallowly and then clears the copy's contents when the Mission has a
+     * password. The copy shares its collections with the cached Mission, so every list call
+     * empties the items, layers and files of every password protected Data Sync for everyone
+     * until TAK Server rebuilds the cache entry. The paged list reads from the database instead.
+     *
+     * Only needed when password protected Data Syncs are requested. Falls back to the unpaged
+     * list if the paged endpoint is not available.
+     */
+    async list(
+        api: TAKAPI,
+        query: Static<typeof MissionListInput>,
+    ): Promise<Static<typeof Mission>[]> {
+        if (!query.passwordProtected || query.paged !== undefined) {
+            return (await api.Mission.list(query)).data;
+        }
+
+        const items = new Map<string, Static<typeof Mission>>();
+
+        try {
+            for (let page = 0; page < MISSION_LIST_MAX_PAGES; page++) {
+                const res = await api.Mission.list({
+                    ...query,
+                    // The unpaged list defaults to the public tool, the paged one to every tool
+                    tool: query.tool ?? 'public',
+                    paged: true,
+                    page,
+                    pagesize: MISSION_LIST_PAGE_SIZE,
+                    // Names are unique, so the order is stable between pages
+                    sort: 'name',
+                    ascending: true,
+                });
+
+                for (const mission of res.data) items.set(mission.guid, mission);
+
+                if (res.data.length < MISSION_LIST_PAGE_SIZE) return Array.from(items.values());
+            }
+
+            throw new Err(500, null, 'Too many Data Syncs to list');
+        } catch (err) {
+            console.error('Paged Data Sync list failed, using the unpaged list', err);
+            return (await api.Mission.list(query)).data;
+        }
     }
 
     /**

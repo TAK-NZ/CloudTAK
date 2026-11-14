@@ -394,10 +394,12 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             const { sort, order, groups, ...query } = req.query;
 
-            const [missions, invites] = await Promise.all([
-                api.Mission.list(query),
+            const [list, invites] = await Promise.all([
+                missionControl.list(api, query),
                 api.MissionInvite.list(profileUid(user.email)),
             ]);
+
+            const missions = { data: list };
 
             if (groups) {
                 const groupList = groups.split(',');

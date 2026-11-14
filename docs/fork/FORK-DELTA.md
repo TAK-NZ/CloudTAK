@@ -1056,6 +1056,13 @@ additions that would need to be proposed upstream separately.
   refreshing the role (`atlas-connection.ts`, `atlas-database.ts`). Nothing reads the
   platform value, and TAK Team Manager classifies CloudTAK from the Client UID alone.
   Revert the platform line to restore the honest name at the cost of ATAK's warning.
+- **Listing Data Syncs.** `GET /marti/mission` with `passwordProtected=true` uses TAK Server's
+  paged list (`MissionControl.list`). TAK Server's unpaged list takes each Data Sync from its shared
+  cache, copies it shallowly (`Mission(Mission other)` shares the collections) and calls `clear()`
+  on the copy when the Data Sync has a password, so every list call emptied the items, layers and
+  files of every password protected Data Sync until the cache entry was rebuilt. `/cot` then
+  returned nothing. ATAK and WinTAK still trigger it when they list Data Syncs. Falls back to the
+  unpaged list if the paged endpoint fails. Remove once TAK Server is fixed.
 - **Creating a password protected Data Sync.** `POST /marti/mission` sets the keywords itself
   instead of leaving it to `Mission.create()`. node-tak (12.36.3 and earlier) replaces the created
   Mission with the response of its keywords call, and that response has no `token`; TAK Server
