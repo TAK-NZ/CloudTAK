@@ -70,7 +70,15 @@ export class BasemapProtocol implements BasemapProtocolInterface {
     static isValidStyle(type: string, layers: Array<unknown>): void {
         const sources: Record<string, unknown> = {};
         for (const l of layers as Array<Record<string, string>>) {
-            if (!sources[l.source]) sources[l.source] = { type };
+            if (l.source === undefined) continue; // background layers have no source
+            if (!sources[l.source]) {
+                // hillshade layers require a raster-dem source regardless of the
+                // basemap's own type - register them correctly so validation passes.
+                // '__terrain__' is a sentinel meaning "use whatever raster-dem source
+                // is active at runtime" - always treat it as raster-dem.
+                const isHillshadeOrTerrain = l.type === 'hillshade' || l.source === '__terrain__';
+                sources[l.source] = { type: isHillshadeOrTerrain ? 'raster-dem' : type };
+            }
         }
 
         const errors = validateStyleMin({
@@ -152,11 +160,17 @@ export class BasemapProtocol implements BasemapProtocolInterface {
         const type = config.type || 'raster';
         const isVectorType = type !== 'raster' && type !== 'raster-dem';
 
+        // TAK-NZ: only advertise vector_layers when we actually know them.
+        // Upstream defaults to [{ id: 'out' }], CloudTAK's own ETL convention, which
+        // is wrong for proxied third-party vector tiles (e.g. LINZ topographic-v2).
+        // MapLibre validates `source-layer` against this list and fires an error
+        // event per layer (~285 for a LINZ style). There is no vector_layers column
+        // on the basemaps table, so for database-backed basemaps it is always
+        // undefined. Omitting it when unknown is strictly more permissive; every
+        // frontend consumer guards with Array.isArray().
         let vector_layers: Array<Static<typeof TileJSON_VectorLayer>> | undefined;
-        if (isVectorType) {
-            vector_layers = config.vector_layers
-                ? [...config.vector_layers]
-                : [{ id: 'out', fields: {} }];
+        if (isVectorType && config.vector_layers) {
+            vector_layers = [...config.vector_layers];
         }
 
         return {
