@@ -74,11 +74,21 @@ describe('Mail Construct', () => {
     });
   });
 
-  it('archive is retained on stack deletion', () => {
+  it('archive is retained on stack deletion and replacement, but not when its create rolls back', () => {
     template.hasResource('AWS::SES::MailManagerArchive', {
-      DeletionPolicy: 'Retain',
+      DeletionPolicy: 'RetainExceptOnCreate',
+      UpdateReplacePolicy: 'Retain',
       Properties: { Retention: { RetentionPeriod: 'SIX_MONTHS' } }
     });
+  });
+  // A fixed name collided after a failed first deploy: a deleted archive stays in
+  // PENDING_DELETION and keeps its name reserved
+  it('archive has no fixed name, so a failed first deploy cannot block the next one', () => {
+    const archives = template.findResources('AWS::SES::MailManagerArchive');
+    expect(Object.keys(archives)).toHaveLength(1);
+    for (const archive of Object.values(archives)) {
+      expect(archive.Properties).not.toHaveProperty('ArchiveName');
+    }
   });
 
   it('rule set archives everything, then writes to S3 and invokes the router', () => {
