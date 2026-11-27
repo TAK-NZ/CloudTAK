@@ -367,6 +367,11 @@ export default class AtlasDatabase {
         for (const id of removed) this.cots.delete(id);
         this.persistRemoval(removed);
 
+        // TAK.NZ: tell the main thread when the set of online contacts changed (the Contacts
+        // badge and menu) and prune stale contacts. Runs after the removals above so a marker
+        // that just went stale is no longer counted
+        this.trackContacts(now);
+
         return diff;
     }
 

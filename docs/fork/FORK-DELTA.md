@@ -1311,7 +1311,12 @@ upper bound, hours limits, possible double counting with ArcGIS traffic).
   (route paths, store/prop names and DB fields stay `mission`/`missions`), and
   the `EmptyInfo` type check was corrected to match. Not yet applied
   everywhere - some menu titles under `Menu/Mission/` still say "Mission".
-- The contacts badge count is fixed and a manual refresh added.
+- The contacts badge counts contacts that have a live marker, not every stored contact. Upstream reads
+  `ContactManager.liveCount()` from the database instead. The worker (`atlas-database.ts`) keeps the count,
+  `trackContacts()` posts `Contact_Online_Change` when the set changes, and also prunes contacts that are
+  neither online nor seen within an hour. `diff()` must call `trackContacts()` on every refresh: it was
+  written without a caller, so the badge never updated and pruning never ran until this was fixed.
+  `workers/atlas-database-contacts.spec.ts` covers it. A manual refresh was added to the Contacts menu.
 - The video menu is hidden when no media server is configured.
 - Upstream's `.maplibregl-ctrl-scale` CSS overrides are removed to keep MapLibre's
   default styling; only `margin: 0` is re-added, because dropping the whole block
