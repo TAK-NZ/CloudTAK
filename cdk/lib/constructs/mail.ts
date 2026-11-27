@@ -25,7 +25,8 @@
  *   a filter and not as a security boundary. The DMARC record below is `p=none`
  *   (monitor only).
  * - Raw mail is kept in S3 for `mailExpirationDays` (default 7). Every message
- *   is also kept in the Mail Manager archive (RETAIN on stack deletion).
+ *   is also kept in the Mail Manager archive (kept on stack deletion and when
+ *   it is replaced, removed only when its first create rolls back).
  * - SES Mail Manager inbound is available in ap-southeast-2 (Sydney).
  *
  * DNS records created in the imported hosted zone:
@@ -147,11 +148,16 @@ export class Mail extends Construct {
     });
 
     // Archive: long-term storage of every received message. Kept on stack delete.
+    //
+    // No archiveName: CloudFormation generates one. A fixed name collided ("Archive already
+    // exists", 409) after a failed first deploy, because a deleted archive stays in
+    // PENDING_DELETION and keeps its name reserved. RETAIN_ON_UPDATE_OR_DELETE keeps the archive
+    // on delete and replacement, but still removes it when its own create rolls back, so a failed
+    // first deploy leaves no orphan behind.
     this.archive = new ses.CfnMailManagerArchive(this, 'Archive', {
-      archiveName: resourceName,
       retention: { retentionPeriod: archiveRetentionPeriod }
     });
-    this.archive.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+    this.archive.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE);
 
     // Raw MIME of every message delivered to layers, keyed by message ID. The
     // Lambda payload only carries headers, so layers read the body from here.

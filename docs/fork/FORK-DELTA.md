@@ -322,6 +322,13 @@ prefix is `/TAK-<Env>-CloudTAK/mail/layer/`, and the ETL grant is attached to
 `MX mail.<hostname>.<zone>` and `TXT _dmarc.mail.<hostname>.<zone>`. See
 [`../EMAIL.md`](../EMAIL.md) for the flow and security notes (the ingress point is
 a public, OPEN SMTP endpoint).
+The Mail Manager archive has no fixed name and uses `RETAIN_ON_UPDATE_OR_DELETE`
+(issue #244). A fixed name made every deploy after a failed first one fail with
+"Archive already exists", because a deleted archive stays in `PENDING_DELETION` and keeps
+its name reserved. The archive is still kept when the stack is deleted or the archive is
+replaced, and removed only when its own first create rolls back. On a stack deployed
+before this change, the first deploy replaces the archive: the old one stays behind with its mail,
+unused, and can be deleted by hand.
 
 ### CloudTAK web plugins (WEB_PLUGINS)
 
