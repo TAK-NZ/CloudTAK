@@ -82,6 +82,10 @@ const SELF_LOCATE_ZOOM = 14;
 const SELF_FOLLOW_RADIUS = 0.2;
 const SELF_FOLLOW_EASE_MS = 500;
 const LOCATION_PENDING_TIMEOUT_MS = 30000;
+// TAK.NZ: upstream turns compass orientation on by itself when the soft follow is armed (launch,
+// resume, locator tap), so the map spins with the phone. We keep north up, as before, and rotate
+// to the compass only when the user presses the compass button
+const SELF_FOLLOW_ROTATES_MAP = false;
 
 let lastSelf: { lat: number; lng: number } | null = null;
 let locationPendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -510,6 +514,7 @@ export const useMapStore = defineStore('cloudtak', {
         armSelfFollow: function(): void {
             this.selfFollow = true;
 
+            if (!SELF_FOLLOW_ROTATES_MAP) return;
             if (this.userOrientationMode) return;
 
             if (this.deviceHeading === null) {
