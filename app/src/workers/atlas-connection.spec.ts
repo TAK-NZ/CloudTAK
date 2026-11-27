@@ -29,6 +29,7 @@ function makeConnection(sharingPaused: boolean) {
         broadcastStandby: false,
         token: 'token',
         postMessage: vi.fn(),
+        profile: { sendStandbyFix: vi.fn() },
         sync: { started: false, fullSync: vi.fn(async () => undefined) },
     };
     return { atlas, conn: new AtlasConnection(atlas as never) };
@@ -119,11 +120,12 @@ describe('AtlasConnection broadcaster role', () => {
         expect(ws.sent).toHaveLength(1);
     });
 
-    it('sends a Take over straight away when the socket is open', () => {
-        const { conn } = makeConnection(false);
+    it('sends a Take over straight away when the socket is open, with a fix so it takes effect at once', () => {
+        const { atlas, conn } = makeConnection(false);
         conn.connect('alice');
         conn.claimBroadcast();
         expect(FakeWebSocket.instances[0].sent.map((raw) => JSON.parse(raw).type)).toEqual(['broadcast:claim']);
+        expect(atlas.profile.sendStandbyFix).toHaveBeenCalledTimes(1);
     });
 
     it('turns the status broadcast field into standby and tells the main thread', async () => {
@@ -136,7 +138,7 @@ describe('AtlasConnection broadcaster role', () => {
         await status({ active: false, by: 'Chrome on Windows' });
         expect(atlas.broadcastStandby).toBe(true);
         expect(atlas.postMessage).toHaveBeenCalledWith({
-            type: 'cloudtak:broadcast:state',
+            type: 'broadcast:state',
             body: { active: false, by: 'Chrome on Windows' },
         });
         await status({ active: true });
@@ -150,6 +152,6 @@ describe('AtlasConnection broadcaster role', () => {
             data: JSON.stringify({ type: 'status', data: { version: conn.version, time: 't' } }),
         });
         expect(atlas.broadcastStandby).toBe(false);
-        expect(atlas.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'cloudtak:broadcast:state' }));
+        expect(atlas.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'broadcast:state' }));
     });
 });

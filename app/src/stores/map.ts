@@ -52,6 +52,7 @@ import Config from '../base/config.ts';
 import { isNativePlatform, whenForegrounded } from '../utils/capacitor.ts';
 import { ssoLogoutRedirect } from '../utils/native-sso.ts';
 import { withTimeout } from '../utils/async.ts';
+import { CameraFollower } from '../utils/camera-follower.ts';
 import { db, suspendDatabase, resumeDatabase, liveQuery } from '../database.ts';
 import { serializeWorkerBootConfig } from '../utils/worker-boot.ts';
 
@@ -75,6 +76,18 @@ const WORKER_READY_TIMEOUT_MS = 20000;
 const WORKER_INIT_TIMEOUT_MS = 30000;
 const WORKER_LIFECYCLE_TIMEOUT_MS = 5000;
 const COT_REFRESH_INTERVAL_MS = 500;
+
+const SELF_LOCATE_ZOOM = 14;
+// Fraction of the smaller viewport dimension within which the puck stays sticky
+const SELF_FOLLOW_RADIUS = 0.2;
+const SELF_FOLLOW_EASE_MS = 500;
+const LOCATION_PENDING_TIMEOUT_MS = 30000;
+
+let lastSelf: { lat: number; lng: number } | null = null;
+let locationPendingTimer: ReturnType<typeof setTimeout> | null = null;
+// Compass rotation was enabled by the soft follow rather than by the user
+let selfFollowOrientation = false;
+let cameraFollower: CameraFollower | null = null;
 
 function waitForAtlasWorkerReady(worker: Worker): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -162,6 +175,15 @@ export const useMapStore = defineStore('cloudtak', {
         // Lock the map view to a given CoT - The last element is the currently locked value
         // this is an array so that things like the radial menu can temporarily lock state but remember the previous lock value when they are closed
         locked: Array<string>;
+
+        // Keep the map softly centred on the self puck while it stays near the centre of the view
+        selfFollow: boolean;
+        // Centre on the self puck when the next fix arrives
+        locateOnFix: boolean;
+        // Rotate the map to the compass once the follow is armed and a heading is known
+        orientOnHeading: boolean;
+        // A GPS fix has been requested and not yet delivered
+        locationPending: boolean;
 
         callsign: string;
         zoom: string;
@@ -278,6 +300,10 @@ export const useMapStore = defineStore('cloudtak', {
 
             lastUpdateCOTErrorSignature: null,
             locked: [],
+            selfFollow: true,
+            locateOnFix: false,
+            orientOnHeading: true,
+            locationPending: false,
             terrainEnabled: false,
             hasNoChannels: false,
             offlineTiles: new Set<string>(),
@@ -345,6 +371,15 @@ export const useMapStore = defineStore('cloudtak', {
         }
     },
     actions: {
+        setConnectionOpen: function(open: boolean): void {
+            this.isOpen = open;
+            if (open) {
+                this.connectionClosedAt = null;
+            } else if (this.connectionClosedAt === null) {
+                this.connectionClosedAt = Date.now();
+            }
+        },
+
         // A refreshed login token - the worker reconnects its WebSocket with it
         updateToken: async function(token: string): Promise<void> {
             if (!atlasWorker.value) return;
@@ -388,9 +423,14 @@ export const useMapStore = defineStore('cloudtak', {
             let battery: BatteryInfo = { level: null, charging: null };
             let batteryAt = 0;
 
+            if (!this.manualLocationMode && this.location !== LocationState.Preset) {
+                this.setLocationPending(true);
+            }
+
             await deviceStore.geolocation.startWatch(async (position: Position) => {
                 if (this.manualLocationMode || this.location === LocationState.Preset) return;
 
+                this.setLocationPending(false);
                 this.locationAccuracy = position.coords.accuracy;
                 this.gpsCoordinates = {
                     lat: position.coords.latitude,
@@ -445,6 +485,125 @@ export const useMapStore = defineStore('cloudtak', {
             } else {
                 const accuracy = this.location === LocationState.Preset ? 0 : this.locationAccuracy;
                 control.setLocation(this.gpsCoordinates, accuracy);
+            }
+
+            this.followSelf();
+        },
+        setLocationPending: function(pending: boolean): void {
+            if (locationPendingTimer) {
+                clearTimeout(locationPendingTimer);
+                locationPendingTimer = null;
+            }
+
+            this.locationPending = pending;
+            if (!pending) return;
+
+            locationPendingTimer = setTimeout(() => {
+                locationPendingTimer = null;
+                this.locationPending = false;
+                this.locateOnFix = false;
+            }, LOCATION_PENDING_TIMEOUT_MS);
+        },
+        /**
+         * Arm the soft follow, rotating the map to the device compass when one is available
+         */
+        armSelfFollow: function(): void {
+            this.selfFollow = true;
+
+            if (this.userOrientationMode) return;
+
+            if (this.deviceHeading === null) {
+                this.orientOnHeading = true;
+                return;
+            }
+
+            this.orientOnHeading = false;
+            selfFollowOrientation = true;
+            this.userOrientationMode = true;
+            cameraFollower?.setBearing(this.deviceHeading);
+        },
+        releaseSelfFollow: function(): void {
+            this.selfFollow = false;
+            this.orientOnHeading = false;
+            cameraFollower?.setCenter(null);
+
+            if (selfFollowOrientation) this.setOrientationMode(false);
+        },
+        setOrientationMode: function(enabled: boolean): void {
+            selfFollowOrientation = false;
+            this.orientOnHeading = false;
+            this.userOrientationMode = enabled;
+            if (!enabled) cameraFollower?.stop();
+            else if (this.deviceHeading !== null) cameraFollower?.setBearing(this.deviceHeading);
+        },
+        selfCameraBlocked: function(): boolean {
+            return this.locked.length > 0
+                || this.manualLocationMode
+                || this.draw.mode !== DrawToolMode.STATIC;
+        },
+        /**
+         * Jump to the self puck and re-arm the soft follow.
+         * Returns false when no location is known.
+         */
+        centerOnSelf: function(zoom = SELF_LOCATE_ZOOM): boolean {
+            this.armSelfFollow();
+
+            if (!this._map || !this.gpsCoordinates) return false;
+            if (![LocationState.Live, LocationState.Preset].includes(this.location)) return false;
+
+            cameraFollower?.setCenter(null);
+            this.map.jumpTo({ center: this.gpsCoordinates, zoom });
+            return true;
+        },
+        /**
+         * Launch / foreground behaviour: centre on the puck now if a location
+         * is known, otherwise as soon as the pending fix lands.
+         */
+        locateSelf: function(): void {
+            if (!this._map || this.selfCameraBlocked()) return;
+
+            const zoom = Math.max(this.map.getZoom(), SELF_LOCATE_ZOOM);
+            this.locateOnFix = !this.centerOnSelf(zoom);
+        },
+        followSelf: function(): void {
+            const prev = lastSelf;
+            const next = this.location === LocationState.Disabled || !this.gpsCoordinates
+                ? null
+                : { ...this.gpsCoordinates };
+            lastSelf = next;
+
+            if (!this._map || !next) return;
+
+            if (this.locateOnFix) {
+                this.locateOnFix = false;
+                if (!this.selfCameraBlocked()) {
+                    this.centerOnSelf(Math.max(this.map.getZoom(), SELF_LOCATE_ZOOM));
+                }
+                return;
+            }
+
+            if (!this.selfFollow || !prev) return;
+            if (prev.lng === next.lng && prev.lat === next.lat) return;
+            if (this.selfCameraBlocked()) return;
+
+            const map = this.map;
+            if (map.isMoving()) return;
+
+            const container = map.getContainer();
+            const radius = Math.min(container.clientWidth, container.clientHeight) * SELF_FOLLOW_RADIUS;
+
+            // The puck left the centre (pan, search flyTo, etc) - stay put
+            // until centerOnSelf() re-arms the follow
+            if (map.project(prev).dist(map.project(map.getCenter())) > radius) {
+                this.releaseSelfFollow();
+                return;
+            }
+
+            // The compass rotation and an ease cannot share the camera
+            if (this.userOrientationMode && this.deviceHeading !== null && cameraFollower) {
+                cameraFollower.setCenter(next);
+            } else {
+                map.easeTo({ center: next, duration: SELF_FOLLOW_EASE_MS });
             }
         },
         routingControl: function(): RoutingControl | undefined {
@@ -638,6 +797,18 @@ export const useMapStore = defineStore('cloudtak', {
             if (!this.backgrounded) return;
             this.backgrounded = false;
 
+            if (this.isMapLoadedFully) {
+                this.locateSelf();
+
+                if (
+                    useDeviceStore().geolocation.canStartWatch()
+                    && !this.manualLocationMode
+                    && this.location !== LocationState.Preset
+                ) {
+                    this.setLocationPending(true);
+                }
+            }
+
             // Main thread first so a worker write cannot re-run a liveQuery
             // against a still-suspended main-thread database
             resumeDatabase();
@@ -760,6 +931,9 @@ export const useMapStore = defineStore('cloudtak', {
                 }
                 this._history = undefined;
             }
+
+            cameraFollower?.stop();
+            cameraFollower = null;
 
             if (this._map) {
                 try {
@@ -1248,8 +1422,12 @@ export const useMapStore = defineStore('cloudtak', {
                     : undefined;
                 if (control) control.setHeading(heading);
 
-                if (this.userOrientationMode && heading !== null && this._map) {
-                    this.map.setBearing(heading);
+                if (heading !== null && this.orientOnHeading && this.selfFollow) {
+                    this.armSelfFollow();
+                }
+
+                if (this.userOrientationMode && heading !== null) {
+                    cameraFollower?.setBearing(heading);
                 }
             }, { getLocation: () => this.gpsCoordinates });
 
@@ -1312,6 +1490,7 @@ export const useMapStore = defineStore('cloudtak', {
                     this.syncGeolocateControl();
                     this.syncRoutingControl();
                 } else if (msg.type === WorkerMessageType.Profile_Location_Coordinates) {
+                    this.setLocationPending(false);
                     this.locationAccuracy = msg.body.accuracy;
                     this.gpsSpeed = finiteOrNull(msg.body.speed);
                     this.gpsAltitude = finiteOrNull(msg.body.altitude);
@@ -1344,16 +1523,14 @@ export const useMapStore = defineStore('cloudtak', {
                 } else if (msg.type === WorkerMessageType.Broadcast_State) {
                     useSharingStore().setBroadcast(msg.body.active === true, msg.body.by || null);
                 } else if (msg.type === WorkerMessageType.Connection_Open) {
-                    this.isOpen = true;
-                    this.connectionClosedAt = null;
+                    this.setConnectionOpen(true);
                 } else if (msg.type === WorkerMessageType.Connection_Close) {
-                    this.isOpen = false;
-                    if (this.connectionClosedAt === null) this.connectionClosedAt = Date.now();
+                    this.setConnectionOpen(false);
                 } else if (msg.type === WorkerMessageType.Connection_AuthFailure) {
-                    this.isOpen = false;
+                    this.setConnectionOpen(false);
                     await useAppStore().sessionExpired();
                 } else if (msg.type === WorkerMessageType.Connection_Revoked) {
-                    this.isOpen = false;
+                    this.setConnectionOpen(false);
                     await useAppStore().sessionRevoked();
                 } else if (msg.type === WorkerMessageType.Network_Change) {
                     this.isOnline = msg.body.online === true;
@@ -1613,12 +1790,15 @@ export const useMapStore = defineStore('cloudtak', {
                 this.isMapLoadedFully = true;
                 this.loadingStage = '';
 
+                this.locateSelf();
+
                 this.startRefreshTimer();
             });
 
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore Don't remove me unless npm run doc passes
             this._map = markRaw(map);
+            cameraFollower = new CameraFollower(map);
             this._draw = markRaw(new DrawTool(this));
             this._icons = markRaw(new IconManager(map, {
                 syncIcons: () => this.worker.sync.syncIcons(),
@@ -1680,7 +1860,7 @@ export const useMapStore = defineStore('cloudtak', {
             const wakeLockMode = (await ProfileConfig.get('display_wakelock'))?.value;
             if (!useSharingStore().paused) await deviceStore.wakeLock.applyPreference(wakeLockMode);
 
-            this.isOpen = await this.worker.conn.isOpen;
+            this.setConnectionOpen(await this.worker.conn.isOpen);
 
             this.loadingStage = '';
 

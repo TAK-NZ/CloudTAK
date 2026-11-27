@@ -49,6 +49,22 @@ describe('BroadcastChip', () => {
         expect(sharing.resume).not.toHaveBeenCalled();
     });
 
+    it('standby: shows a pending state after Take over until the broadcaster changes', async () => {
+        sharing.standby = true;
+        sharing.standbyBy = 'Pixel 8 (app)';
+        const wrapper = mount(BroadcastChip);
+        expect(wrapper.find('[data-test="broadcast-chip-pending"]').exists()).toBe(false);
+
+        await wrapper.find('[data-test="broadcast-chip-action"]').trigger('click');
+        expect(wrapper.find('[data-test="broadcast-chip-pending"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="broadcast-chip-action"]').attributes('disabled')).toBeDefined();
+
+        sharing.standbyBy = 'Laptop (browser)';
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-test="broadcast-chip-pending"]').exists()).toBe(false);
+        expect(wrapper.find('[data-test="broadcast-chip-action"]').attributes('disabled')).toBeUndefined();
+    });
+
     it('standby: still reads sensibly when the broadcaster has no label', () => {
         sharing.standby = true;
         const wrapper = mount(BroadcastChip);

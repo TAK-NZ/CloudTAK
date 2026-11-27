@@ -975,10 +975,16 @@ Every session of a user (browser, iOS app, Android app) builds the same self uid
 two sessions the marker jumped between them. A session with no GPS and no manual
 location also sent 0,0, which is what usually fought a phone's real fix.
 
-The design is in [README-MULTI-SESSION-HANDOVER.md](README-MULTI-SESSION-HANDOVER.md).
+**This is now upstream's design (v14.4.0, dfpc-coe/CloudTAK#2073), which grew out of ours.** The
+arbiter, its tests, the wiring in `hub/local.ts`, `connection-web.ts`, `connection-pool.ts` and
+`server/hub.ts`, the `selfLocation` field of `submitCots` and the follow camera are upstream's and
+are taken as they come. What stays ours is listed under "Kept on top of upstream" below.
+The earlier design is in [README-MULTI-SESSION-HANDOVER.md](README-MULTI-SESSION-HANDOVER.md).
+
 In short: one uid and one TAK Server connection are kept (chat, missions and packages
-all key on that uid), and the server picks one session as the broadcaster. Fixes from
-the others are dropped before they reach TAK Server. Sessions are identified by the JWT
+all key on that uid), and the server picks one session as the broadcaster. A fix from
+any other session is not written as the user: `toSecondary()` turns it into a plain marker of
+its own, named `Callsign (device)`. Sessions are identified by the JWT
 `s` claim, which both the WebSocket and the native location POST carry.
 
 Where the check lives matters. The native plugin POSTs `/api/profile/location` itself
@@ -987,18 +993,30 @@ paths therefore call the same `LocationArbiter` in the stateful hub (`submitCots
 takes an optional `selfLocation`, so the other callers of `submitCots` are untouched).
 The arbiter is in memory because the stateful service is fixed at one task.
 
-It fails open: no session, a sole session and a restart all forward. The mode comes from
-`CLOUDTAK_Location_Arbitration` (CDK `cloudtak.locationArbitration`): `off`, `observe`
-(the application default, logs what it would drop and drops nothing) or `enforce`. Both
-`dev-test` and `prod` set `enforce` in `cdk/cdk.json`. Clients are only
-told their state, and the relay of the broadcaster's position to the user's other
-sessions only runs, when enforcing, so observing changes nothing for users.
-
+It fails open: no session, a sole session and a restart all forward. There is no mode
+switch any more: the `CLOUDTAK_Location_Arbitration` variable and the CDK
+`cloudtak.locationArbitration` option were removed in the v14.4.0 sync, as upstream always
+enforces and both `dev-test` and `prod` already did.
 Client side, a session on standby keeps reporting a position (the server needs fresh
 fixes to promote it when the broadcaster goes quiet) but does not write it into its own
-self marker, which comes from the server's relay. No session sends 0,0 any more.
+self marker, which comes from the server's relay. A session with neither GPS nor a manual
+location sends 0,0, because TAK Server needs an SA to register the connection. The server
+drops that 0,0 while another session holds a fresh position. Status changes reach the clients
+at once (`ConnectionPool.sendStatus()`), and Take over sends a fix right away.
 Native Pause is unchanged and separate: Standby keeps the connection, push registration,
 wake lock and location watch, and is never persisted.
+
+**Kept on top of upstream** (what a sync has to preserve):
+- The Paused state: `stores/sharing.ts`, `utils/broadcast-chip.ts`, `BroadcastChip.vue` (Paused and
+  Standby in one banner, Resume claims the role, a spinner while a Take over is pending) and the
+  `Broadcast_State` message body `{ active, by }`, which feeds the sharing store. Upstream's chip
+  reads `mapStore.standbyFor` instead, so take ours on conflict.
+- `pendingClaim` in `atlas-connection.ts`: a claim made while the socket is closed is sent once it
+  opens. Upstream drops it.
+- `utils/connection-state.ts` and `ServerStatus.vue` with the `paused` state. Upstream's version has
+  three states and no Pause.
+- The session label for the app is "TAK.NZ app" (`utils/session-label.ts`), upstream says "CloudTAK app".
+
 The Android foreground-service notification text is fixed when the watch starts, so it
 no longer claims the team can see you.
 

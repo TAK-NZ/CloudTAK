@@ -35,10 +35,9 @@ export enum WorkerMessageType {
     Connection_Close = 'connection:close',
     Connection_AuthFailure = 'connection:authfailure',
     Connection_Revoked = 'connection:revoked',
+    Broadcast_State = 'broadcast:state',
 
     Session_Logout = 'session:logout',
-    // TAK.NZ: this session is, or is not, the broadcaster of the user's location
-    Broadcast_State = 'cloudtak:broadcast:state',
 
     Mission_Change_Feature = 'mission:change:feature',
     // A local Mission feature edit, drawn straight onto the overlay before it

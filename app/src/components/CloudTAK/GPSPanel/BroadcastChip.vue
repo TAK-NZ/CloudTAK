@@ -21,13 +21,19 @@
             data-test='broadcast-chip-action'
             @click.stop='act'
         >
+            <span
+                v-if='claiming'
+                class='spinner-border spinner-border-sm me-1 broadcast-chip-spinner'
+                role='status'
+                data-test='broadcast-chip-pending'
+            />
             {{ mode === 'paused' ? 'Resume' : 'Take over' }}
         </button>
     </div>
 </template>
 
 <script setup lang='ts'>
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { LocationState } from '../../../utils/events.ts';
 import { useMapStore } from '../../../stores/map.ts';
 import { useSharingStore } from '../../../stores/sharing.ts';
@@ -49,8 +55,24 @@ const hasPosition = computed(() => {
     return mapStore.location === LocationState.Live || mapStore.location === LocationState.Preset;
 });
 
+// A Take over is answered by the server's next status message. Until then the button
+// shows it is working, and it gives up waiting after a while in case no answer comes
+const CLAIM_TIMEOUT_MS = 10000;
+const claiming = ref(false);
+let claimTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(() => sharing.standbyBy, () => {
+    claiming.value = false;
+    clearTimeout(claimTimer);
+});
+watch(mode, () => {
+    claiming.value = false;
+    clearTimeout(claimTimer);
+});
+onBeforeUnmount(() => clearTimeout(claimTimer));
+
 const disabled = computed(() => {
-    if (sharing.busy) return true;
+    if (sharing.busy || claiming.value) return true;
     return mode.value === 'standby' && !hasPosition.value;
 });
 
@@ -62,7 +84,12 @@ const disabledReason = computed(() => {
 async function act(): Promise<void> {
     if (disabled.value) return;
     if (mode.value === 'paused') await sharing.resume();
-    else await sharing.takeOver();
+    else {
+        claiming.value = true;
+        clearTimeout(claimTimer);
+        claimTimer = setTimeout(() => { claiming.value = false; }, CLAIM_TIMEOUT_MS);
+        await sharing.takeOver();
+    }
 }
 </script>
 
@@ -90,5 +117,11 @@ async function act(): Promise<void> {
 .broadcast-chip-action {
     padding: 0.1rem 0.5rem;
     font-size: 0.75rem;
+}
+
+.broadcast-chip-spinner {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-width: 1.5px;
 }
 </style>

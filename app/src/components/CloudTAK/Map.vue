@@ -571,12 +571,12 @@ const humanPitch = computed(() => {
 
 const toggleCompass = () => {
     if (mapStore.userOrientationMode) {
-        mapStore.userOrientationMode = false;
+        mapStore.setOrientationMode(false);
         mapStore.map.setBearing(0);
     } else if (mapStore.bearing !== 0) {
         mapStore.map.setBearing(0);
     } else {
-        mapStore.userOrientationMode = true;
+        mapStore.setOrientationMode(true);
     }
 }
 
@@ -795,6 +795,8 @@ function closeRadial() {
 
 async function toLocation() {
     const location = await mapStore.worker.profile.location;
+
+    mapStore.armSelfFollow();
 
     if ([LocationState.Preset, LocationState.Live].includes(location.source)) {
         mapStore.map.jumpTo({
@@ -1175,6 +1177,10 @@ html[data-bs-theme='light'] .cloudtak-ctrl-btn:focus-within {
         /* Half of the 8px inset each box keeps from its own side of the viewport. */
         --map-attrib-gps-gap: 4px;
     }
+}
+
+.map-shell--broadcast-chip {
+    --map-gps-chip-size: 42px;
 }
 
 .maplibregl-ctrl-bottom-left {

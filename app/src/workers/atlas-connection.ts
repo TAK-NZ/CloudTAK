@@ -612,6 +612,10 @@ export default class AtlasConnection {
             return;
         }
         this.sendCOT({}, 'broadcast:claim');
+
+        // The claim takes effect on this session's next fix, so send one now rather
+        // than after the next timer tick
+        this.atlas.profile.sendStandbyFix();
     }
     /** @returns false if the WebSocket was not open and nothing was sent */
     sendCOT(data: object, type = 'cot'): boolean {

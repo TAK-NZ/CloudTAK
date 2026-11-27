@@ -107,6 +107,19 @@
                 </div>
             </StandardItem>
             <StandardItem
+                @click='router.push("/menu/settings/plugins")'
+            >
+                <div class='d-flex align-items-center px-2 py-2'>
+                    <IconPuzzle
+                        :size='32'
+                        stroke='1'
+                    />
+                    <div class='ms-2 flex-grow-1 font-weight-bold'>
+                        Plugins
+                    </div>
+                </div>
+            </StandardItem>
+            <StandardItem
                 @click='refreshApp()'
             >
                 <div class='d-flex align-items-center px-2 py-2'>
@@ -138,6 +151,7 @@ import {
     IconDeviceDesktop,
     IconBell,
     IconBellCog,
+    IconPuzzle,
 } from '@tabler/icons-vue';
 import { useDeviceStore } from '../../../stores/device.ts';
 

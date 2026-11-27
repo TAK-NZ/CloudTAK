@@ -5,7 +5,7 @@ import ConnectionGeofence from './lib/connection-geofence.js';
 import EventsPool from './lib/events-pool.js';
 import Groups from './lib/groups.js';
 import LocalHub from './lib/hub/local.js';
-import LocationArbiter, { arbiterModeFromEnv } from './lib/location-arbiter.js';
+import LocationArbiter from './lib/location-arbiter.js';
 import type { ConnectionWebSocket } from './lib/connection-web.js';
 
 /**
@@ -20,7 +20,6 @@ export default class ConfigStateful extends Config {
     events: EventsPool;
     groups: Groups;
     hub: LocalHub;
-    /** TAK.NZ: one location broadcaster per user. Mode comes from CLOUDTAK_Location_Arbitration (off | observe | enforce) */
     locationArbiter: LocationArbiter;
 
     constructor(init: ConfigInit) {
@@ -31,7 +30,7 @@ export default class ConfigStateful extends Config {
         this.events = new EventsPool(this.StackName);
         this.groups = new Groups(this);
         this.hub = new LocalHub(this);
-        this.locationArbiter = new LocationArbiter({}, arbiterModeFromEnv(process.env.CLOUDTAK_Location_Arbitration));
+        this.locationArbiter = new LocationArbiter();
     }
 
     /** Reconnect the admin connection (connection 0) with the new certificate */
