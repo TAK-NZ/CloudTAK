@@ -1016,6 +1016,10 @@ wake lock and location watch, and is never persisted.
 - `utils/connection-state.ts` and `ServerStatus.vue` with the `paused` state. Upstream's version has
   three states and no Pause.
 - The session label for the app is "TAK.NZ app" (`utils/session-label.ts`), upstream says "CloudTAK app".
+- **The map stays north up when the follow is armed.** Upstream's `armSelfFollow()` (`stores/map.ts`) also turns compass
+  orientation on, and it runs at launch, on resume and on every tap of the locator button, so the map spins with the
+  phone. `SELF_FOLLOW_ROTATES_MAP = false` makes it arm only the centring follow. Compass rotation still works when the
+  user presses the compass button. `stores/map-self-follow.spec.ts` covers it. On a sync, keep that guard.
 
 The Android foreground-service notification text is fixed when the watch starts, so it
 no longer claims the team can see you.
