@@ -58,6 +58,8 @@ export const ProfileConfigDefaults = {
 
     'menu::order': [],
 
+    'icon::favorites': [],
+
     'tak::phone': '',
 
     'tak::callsign': 'CloudTAK User',

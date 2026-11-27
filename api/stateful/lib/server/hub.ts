@@ -45,7 +45,6 @@ export function attachWebsocket(srv: Server, config: ConfigStateful): ws.WebSock
                 token: String(params.get('token')),
                 format: String(params.get('format') || 'raw'),
                 events,
-                // TAK.NZ: what this session is called when another session is told who is broadcasting
                 label: Array.from(String(params.get('label') || '')).filter((c) => c >= ' ' && c !== '\u007f').join('').trim().slice(0, 40),
             };
 

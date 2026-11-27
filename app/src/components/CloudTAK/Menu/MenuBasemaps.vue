@@ -359,7 +359,7 @@ async function setBasemap(basemap: Basemap) {
             frequency: basemap.frequency,
             url: `/api/basemap/${basemap.id}/tiles`,
             mode_id: String(basemap.id),
-            styles: basemap.styles,
+            styles: basemap.styles ?? [],
             args: basemap.args
         });
         await mapStore.reconcileOverlays();

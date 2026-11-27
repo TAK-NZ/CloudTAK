@@ -1,22 +1,20 @@
 # Multi-session location handover
 
-Status: implemented. `cloudtak.locationArbitration` is `enforce` in both `dev-test` and `prod` in `cdk/cdk.json`.
-The application default, with the variable unset, is `observe`. Mockups are in `docs/fork/mockups/`. The rationale
+Status: implemented, and since v14.4.0 maintained upstream. Mockups are in `docs/fork/mockups/`. The rationale
 is also summarised in [FORK-DELTA.md](FORK-DELTA.md).
 
-## Mode
+## Superseded in v14.4.0
+Upstream adopted this design in v14.4.0 (dfpc-coe/CloudTAK#2073) and extended it, and the sync took
+upstream's version. Three things in the text below no longer hold:
+- There is no `off` / `observe` / `enforce` mode. The arbiter always enforces, and the
+  `CLOUDTAK_Location_Arbitration` variable and CDK `cloudtak.locationArbitration` are gone.
+- A session with no position does send 0,0, because TAK Server needs an SA to register the connection.
+  The server drops it while another session holds a fresh position.
+- Fixes from a standby session are not discarded. They go to TAK Server as a plain marker of that
+  session (scenario 7), and are relayed to the user's other sessions.
 
-`CLOUDTAK_Location_Arbitration` on the stateful service takes one of three values:
-
-- `enforce`: fixes from sessions that are not the broadcaster are dropped, clients are told their state, and the
-  broadcaster's position is relayed to the user's other sessions.
-- `observe`: the arbiter logs `ok - location - ...` lines showing what it would drop, and nothing changes for users
-  except that no session sends 0,0.
-- `off`: the kill switch. Set it in `cdk/cdk.json` and redeploy, or set the variable on the task.
-
-The variable only changes with a CDK deploy, because it lives in the task definition. Restarting the stateful
-service rebuilds the in-memory state from the next fixes. Once `enforce` has run on prod without surprises, the
-mode and the CDK option can be removed so the arbiter always enforces.
+Upstream also pushes the status the moment the broadcaster changes, and Take over sends a fix at
+once. What stays ours is the Paused state, `pendingClaim` and the label. See FORK-DELTA.md.
 
 ## Problem
 

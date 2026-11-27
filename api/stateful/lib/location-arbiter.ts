@@ -1,36 +1,27 @@
 /**
- * TAK.NZ: one location broadcaster per user.
+ * Picks one session per user as the broadcaster of their location, as every
+ * session of a user shares one self CoT uid. Fixes from the other sessions are
+ * sent to the TAK Server as a plain marker of that session, not as the user.
  *
- * Every session of a user (browser, iOS app, Android app) builds the same self
- * CoT uid, so two sessions that both report a position make the marker jump
- * between them. The arbiter picks one session as the broadcaster ("live"); the
- * fixes of all other sessions ("standby") are discarded before they reach TAK
- * Server.
+ * In order: an explicit claim wins, GPS beats a manual location, the
+ * broadcaster keeps the role while it reports, a challenger needs a clearly
+ * better GPS fix and a silent broadcaster is replaced by the best fresh session.
  *
- * Sessions are identified by the login session id (the `s` claim of the JWT),
- * which both the WebSocket and the native location POST carry. Two tabs of one
- * browser share a session, which is right: they share a device and a position.
+ * A session without a position still sends an SA at 0,0, as TAK Server needs
+ * one to register the connection. It is never the broadcaster and is dropped
+ * while another session broadcasts a position.
  *
- * Rules, in order:
- *   1. An explicit claim (Take over / Resume) wins and stays until that session
- *      goes quiet or another session claims.
- *   2. A live GPS fix beats a manual location.
- *   3. The current broadcaster keeps the role while it reports fixes.
- *   4. A challenger replaces a healthy broadcaster only with a clearly better
- *      GPS fix.
- *   5. A broadcaster that stops reporting is replaced by the best fresh session.
- *
- * It fails open: a fix with no session, a sole session, and anything after a
- * restart (no state) is accepted. State is in memory because the stateful
- * service runs a single task.
+ * Fails open: a fix without a session, a sole session and any fix after a
+ * restart are accepted.
  */
+
+import { randomUUID } from 'node:crypto';
+import type CoT from '@tak-ps/node-cot';
 
 export type FixSource = 'gps' | 'manual' | 'none';
 
 /** Which path a fix arrived on. The native layer POSTs, the worker uses the WebSocket */
 export type FixChannel = 'ws' | 'post';
-
-export type ArbiterMode = 'off' | 'observe' | 'enforce';
 
 export type Fix = {
     session?: string;
@@ -47,6 +38,8 @@ export type Decision = {
     reason: string;
     /** The broadcaster changed as a result of this fix */
     changed: boolean;
+    /** A refused fix that is a real position, forwarded as a marker of its own instead */
+    secondary?: { uid: string; label?: string };
 };
 
 export type ArbiterOptions = {
@@ -61,7 +54,7 @@ export type ArbiterOptions = {
     now: () => number;
 };
 
-export const DEFAULT_ARBITER_OPTIONS: ArbiterOptions = {
+const DEFAULT_ARBITER_OPTIONS: ArbiterOptions = {
     staleMs: 15_000,
     betterRatio: 3,
     betterMeters: 50,
@@ -81,6 +74,8 @@ type SessionState = {
     /** Last time a valid fix arrived over the WebSocket - the richer source while the app is open */
     lastWsFix?: number;
     label?: string;
+    /** uid of the marker this session reports under while it is not the broadcaster */
+    uid: string;
 };
 
 type UserState = {
@@ -99,40 +94,10 @@ const RANK: Record<FixSource, number> = { gps: 2, manual: 1, none: 0 };
 
 export default class LocationArbiter {
     opts: ArbiterOptions;
-    mode: ArbiterMode;
     users: Map<string, UserState> = new Map();
-    /** Last logged outcome per user and session, so a steady state is logged once */
-    logged: Map<string, string> = new Map();
 
-    constructor(opts: Partial<ArbiterOptions> = {}, mode: ArbiterMode = 'observe') {
+    constructor(opts: Partial<ArbiterOptions> = {}) {
         this.opts = { ...DEFAULT_ARBITER_OPTIONS, ...opts };
-        this.mode = mode;
-    }
-
-    /**
-     * Decide what to do with a fix according to the mode:
-     *   off      - forward everything, arbitrate nothing
-     *   observe  - arbitrate and log what would have been dropped, forward everything
-     *   enforce  - drop what the rules refuse
-     */
-    gate(user: string, fix: Fix): { forward: boolean; decision?: Decision } {
-        if (this.mode === 'off') return { forward: true };
-        const decision = this.decide(user, fix);
-        const key = `${user}|${fix.session ?? '-'}`;
-        const outcome = `${decision.accept ? 'accept' : 'drop'}:${decision.reason}`;
-        if (decision.changed || this.logged.get(key) !== outcome) {
-            // Session ids are one per login, so this must not grow without bound
-            if (this.logged.size > 5000) this.logged.clear();
-            this.logged.set(key, outcome);
-            console.log(`ok - location - ${user} - session ${fix.session ?? 'none'} (${fix.channel}, ${fix.source}) ${decision.accept ? 'forwarded' : (this.mode === 'enforce' ? 'dropped' : 'would drop')}: ${decision.reason}${decision.changed ? ' [broadcaster changed]' : ''}`);
-        }
-        return { forward: this.mode === 'enforce' ? decision.accept : true, decision };
-    }
-
-    /** Only reported to clients when decisions are enforced, so observing changes nothing for users */
-    clientState(user: string, session: string | undefined): { active: boolean; by?: string } | undefined {
-        if (this.mode !== 'enforce') return undefined;
-        return this.state(user, session);
     }
 
     #user(user: string): UserState {
@@ -190,7 +155,7 @@ export default class LocationArbiter {
             existing.label = label;
         } else {
             state.sessions.set(session, {
-                seen: this.opts.now(), lastFix: 0, gap: 0, source: 'none', label,
+                seen: this.opts.now(), lastFix: 0, gap: 0, source: 'none', label, uid: randomUUID(),
             });
         }
     }
@@ -206,14 +171,30 @@ export default class LocationArbiter {
 
     /** Decide whether a fix from `fix.session` should be forwarded */
     decide(user: string, fix: Fix): Decision {
+        const decision = this.#decide(user, fix);
+        if (decision.changed) {
+            console.log(`ok - location - ${user} - session ${fix.session} (${fix.channel}, ${fix.source}) is now the broadcaster: ${decision.reason}`);
+        }
+        return decision;
+    }
+
+    #decide(user: string, fix: Fix): Decision {
         const now = this.opts.now();
 
         // A token without a session (server minted) cannot be arbitrated
-        if (!fix.session) return { accept: fix.source !== 'none', reason: fix.source === 'none' ? 'no position' : 'no session', changed: false };
+        if (!fix.session) return { accept: true, reason: 'no session', changed: false };
 
         if (fix.source === 'none') {
-            // Never a candidate, and never forwarded: 0,0 is not a position
-            return { accept: false, reason: 'no position', changed: false };
+            // TAK Server registers the connection from the first SA it carries, so a
+            // 0,0 SA is forwarded unless another session is broadcasting a position
+            const known = this.users.get(user);
+            if (known?.holder === fix.session) {
+                known.holder = undefined;
+                known.pinned = false;
+            }
+            const holder = known?.holder ? known.sessions.get(known.holder) : undefined;
+            if (this.#fresh(holder, now)) return { accept: false, reason: 'standby', changed: false };
+            return { accept: true, reason: 'no position', changed: false };
         }
 
         const state = this.#user(user);
@@ -226,6 +207,11 @@ export default class LocationArbiter {
             accuracy: typeof fix.accuracy === 'number' && fix.accuracy > 0 ? fix.accuracy : undefined,
             lastWsFix: fix.channel === 'ws' ? now : previous?.lastWsFix,
             label: previous?.label,
+            uid: previous?.uid ?? randomUUID(),
+        };
+        const standby: Decision = {
+            accept: false, reason: 'standby', changed: false,
+            secondary: { uid: session.uid, label: session.label },
         };
 
         // While the open app reports over the WebSocket (battery, takv), its native
@@ -274,11 +260,11 @@ export default class LocationArbiter {
                 promote(fix.session, false);
                 return { accept: true, reason: 'broadcaster went quiet', changed };
             }
-            return { accept: false, reason: 'standby', changed: false };
+            return standby;
         }
 
         // Rule 1 again: a pinned broadcaster is only replaced by an explicit claim
-        if (state.pinned) return { accept: false, reason: 'standby', changed: false };
+        if (state.pinned) return standby;
 
         const holderSession = holder as SessionState;
 
@@ -297,7 +283,7 @@ export default class LocationArbiter {
             return { accept: true, reason: 'clearly better fix', changed };
         }
 
-        return { accept: false, reason: 'standby', changed: false };
+        return standby;
     }
 
     /**
@@ -312,11 +298,6 @@ export default class LocationArbiter {
         const holder = state.sessions.get(state.holder);
         if (!this.#fresh(holder, this.opts.now())) return { active: true };
         return { active: false, by: holder?.label };
-    }
-
-    /** True when `session` is the broadcaster, or no broadcaster is known */
-    isBroadcaster(user: string, session: string | undefined): boolean {
-        return this.state(user, session).active;
     }
 }
 
@@ -340,7 +321,19 @@ export function sourceOf(
     return { source: 'manual' };
 }
 
-export function arbiterModeFromEnv(value: string | undefined): ArbiterMode {
-    if (value === 'off' || value === 'enforce' || value === 'observe') return value;
-    return 'observe';
+/**
+ * Turn a self position into a plain marker of the session that reported it, so
+ * a device that is not the broadcaster stays on the map without moving the user
+ */
+export function toSecondary(cot: CoT, secondary: NonNullable<Decision['secondary']>): void {
+    const callsign = cot.callsign();
+    const detail = cot.detail();
+
+    cot.uid(secondary.uid);
+    delete detail.__group;
+    delete detail.takv;
+    delete detail.uid;
+    detail.contact = {
+        _attributes: { callsign: secondary.label ? `${callsign} (${secondary.label})` : callsign },
+    };
 }

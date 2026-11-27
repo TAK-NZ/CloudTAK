@@ -10,13 +10,16 @@ const store = reactive({
     location: LocationState.Live,
     locationAccuracy: 3 as number | undefined,
     manualLocationMode: false,
+    locationPending: false,
     distanceUnit: 'mile',
     elevationUnit: 'feet',
     speedUnit: 'mi/h',
     gpsAltitude: 1728 as number | null,
     gpsSpeed: 0 as number | null,
     gpsHeading: 90 as number | null,
-    deviceHeading: 154 as number | null
+    deviceHeading: 154 as number | null,
+    standbyFor: null as string | null,
+    worker: { conn: { claimBroadcast: vi.fn() } }
 });
 
 vi.mock('../../../stores/map.ts', () => ({
@@ -167,6 +170,24 @@ describe('GPSPanel', () => {
         expect(wrapper.find('[data-test="speed"]').text()).toBe('-- MPH');
 
         store.location = LocationState.Live;
+    });
+
+    it('shows a spinner while a GPS lock is pending', async () => {
+        const wrapper = mountPanel();
+        expect(wrapper.find('[data-test="location-pending"]').exists()).toBe(false);
+
+        store.locationPending = true;
+        await wrapper.vm.$nextTick();
+
+        expect(wrapper.find('[data-test="location-pending"]').exists()).toBe(true);
+        expect(wrapper.find('[data-test="accuracy"]').text()).toBe('Acquiring');
+
+        store.location = LocationState.Preset;
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find('[data-test="location-pending"]').exists()).toBe(false);
+
+        store.location = LocationState.Live;
+        store.locationPending = false;
     });
 
     it('emits location events', async () => {

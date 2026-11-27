@@ -1434,11 +1434,6 @@
         "query": false,
         "res": true
     },
-    "POST /plugin": {
-        "body": true,
-        "query": false,
-        "res": true
-    },
     "PATCH /plugin/:plugin": {
         "body": true,
         "query": false,
@@ -1449,9 +1444,9 @@
         "query": false,
         "res": true
     },
-    "POST /plugin/:plugin/bundle": {
+    "POST /plugin/bundle": {
         "body": true,
-        "query": true,
+        "query": false,
         "res": true
     },
     "GET /plugin/:plugin/bundle": {

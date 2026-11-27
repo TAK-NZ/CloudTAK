@@ -253,31 +253,17 @@ export default class AtlasProfile {
         if (this.atlas.sharingPaused) return;
 
         this.timerSelf = setInterval(async () => {
-            // TAK.NZ: only a position the device really has is sent - a GPS fix or a
-            // manual location. 0,0 is not a position, and sending it made a session
-            // with no GPS fight a phone that had one for the user's single marker
-            let gps = false;
-            if (this.location.accuracy) {
-                gps = true;
-            } else if (!this.manualCoordinates()) {
-                return;
-            }
+            // Falls back to the manual location, then to 0,0 as TAK Server
+            // needs an SA to register the connection
             if (this.atlas.broadcastStandby) {
-                // Another of the user's sessions is the broadcaster. Keep reporting so
-                // the server can promote this one if the broadcaster goes quiet, but
-                // leave the local self marker to the position the server relays back
-                const feat = gps
-                    ? this.selfFeature(this.location.coordinates, this.location.accuracy, this.location.altitude)
-                    : this.selfFeature();
-                feat.properties.archived = false;
-                this.atlas.conn.sendCOT(feat);
+                // Keep reporting so the server can promote this session, the
+                // local self marker comes from the broadcaster's relayed position
+                this.sendStandbyFix();
                 return;
             }
-            if (gps) {
-                await this.CoT(this.location.coordinates, this.location.accuracy, this.location.altitude);
-            } else {
-                await this.CoT();
-            }
+
+            await this.CoT(...this.selfArgs());
+
             const me = await this.atlas.db.get(this.uid());
             if (me) {
                 // Clone - as_feature() hands out live references and the
@@ -290,6 +276,19 @@ export default class AtlasProfile {
                 this.atlas.conn.sendCOT(feat)
             }
         }, (this.profile_loc_freq && this.profile_loc_freq.value) ? Number(this.profile_loc_freq.value) : 5000);
+    }
+
+    private selfArgs(): [number[]?, number?, (number | null)?] {
+        return this.location.accuracy
+            ? [this.location.coordinates, this.location.accuracy, this.location.altitude]
+            : [];
+    }
+
+    /** Report this session's position without touching the local self marker */
+    sendStandbyFix(): void {
+        const feat = this.selfFeature(...this.selfArgs());
+        feat.properties.archived = false;
+        this.atlas.conn.sendCOT(feat);
     }
 
     async loadServer(): Promise<Server> {
@@ -568,12 +567,6 @@ export default class AtlasProfile {
         return uid;
     }
 
-    /** The manual location, when the user has set one */
-    manualCoordinates(): number[] | null {
-        const value = this.profile_loc && this.profile_loc.value as { coordinates?: number[] } | undefined;
-        if (value && Array.isArray(value.coordinates) && value.coordinates.length >= 2) return value.coordinates;
-        return null;
-    }
     async CoT(coords?: number[], accuracy?: number, altitude?: number | null): Promise<void> {
         await this.atlas.db.add(this.selfFeature(coords, accuracy, altitude));
     }

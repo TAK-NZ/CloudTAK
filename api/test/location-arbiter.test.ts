@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert';
-import LocationArbiter, { sourceOf, arbiterModeFromEnv } from '../stateful/lib/location-arbiter.js';
+import LocationArbiter, { sourceOf } from '../stateful/lib/location-arbiter.js';
 import type { Fix } from '../stateful/lib/location-arbiter.js';
 
 function setup() {
@@ -23,17 +23,40 @@ test('LocationArbiter: a lone session is always accepted', () => {
     assert.deepEqual(arbiter.state(U, 'a'), { active: true });
 });
 
-test('LocationArbiter: 0,0 is never forwarded and never becomes the broadcaster', () => {
+test('LocationArbiter: 0,0 is forwarded to register the connection but never becomes the broadcaster', () => {
     const { arbiter } = setup();
-    const none = arbiter.decide(U, { session: 'a', source: 'none', channel: 'ws' });
-    assert.equal(none.accept, false);
+    const none: Fix = { session: 'a', source: 'none', channel: 'ws' };
+    assert.equal(arbiter.decide(U, none).accept, true);
+    assert.deepEqual(arbiter.state(U, 'b'), { active: true });
     assert.equal(arbiter.decide(U, gps('b', 20)).accept, true);
+    assert.equal(arbiter.decide(U, none).accept, false);
 });
 
-test('LocationArbiter: a fix without a session is accepted unless it has no position', () => {
+test('LocationArbiter: 0,0 is forwarded again once the broadcaster goes quiet', () => {
+    const { arbiter, advance } = setup();
+    const none: Fix = { session: 'a', source: 'none', channel: 'ws' };
+    assert.equal(arbiter.decide(U, gps('b', 20)).accept, true);
+    assert.equal(arbiter.decide(U, none).accept, false);
+    advance(60_000);
+    assert.equal(arbiter.decide(U, none).accept, true);
+});
+
+test('LocationArbiter: a broadcaster that loses its position gives up the role', () => {
+    const { arbiter, advance } = setup();
+    assert.equal(arbiter.decide(U, gps('a', 8)).accept, true);
+    advance(1000);
+    assert.equal(arbiter.decide(U, gps('b', 10)).accept, false);
+    advance(1000);
+    assert.equal(arbiter.decide(U, { session: 'a', source: 'none', channel: 'ws' }).accept, true);
+    advance(1000);
+    assert.equal(arbiter.decide(U, gps('b', 10)).accept, true);
+    assert.deepEqual(arbiter.state(U, 'b'), { active: true });
+});
+
+test('LocationArbiter: a fix without a session is accepted', () => {
     const { arbiter } = setup();
     assert.equal(arbiter.decide(U, { source: 'gps', accuracy: 5, channel: 'ws' }).accept, true);
-    assert.equal(arbiter.decide(U, { source: 'none', channel: 'ws' }).accept, false);
+    assert.equal(arbiter.decide(U, { source: 'none', channel: 'ws' }).accept, true);
 });
 
 test('LocationArbiter: a second session with a similar fix stays on standby', () => {
@@ -225,9 +248,16 @@ test('sourceOf: tells GPS, manual and no position apart', () => {
     assert.deepEqual(sourceOf([NaN, 1], 8), { source: 'none' });
 });
 
-test('arbiterModeFromEnv: defaults to observe', () => {
-    assert.equal(arbiterModeFromEnv(undefined), 'observe');
-    assert.equal(arbiterModeFromEnv('bogus'), 'observe');
-    assert.equal(arbiterModeFromEnv('enforce'), 'enforce');
-    assert.equal(arbiterModeFromEnv('off'), 'off');
+test('LocationArbiter: a standby fix carries a stable marker uid and the session label', () => {
+    const { arbiter, advance } = setup();
+    arbiter.label(U, 'laptop', 'Chrome on Windows');
+    assert.equal(arbiter.decide(U, gps('phone', 8)).secondary, undefined);
+    advance(1000);
+    const first = arbiter.decide(U, gps('laptop', 10)).secondary;
+    advance(1000);
+    const second = arbiter.decide(U, gps('laptop', 10)).secondary;
+    assert.ok(first?.uid);
+    assert.deepEqual(second, first);
+    assert.equal(first.label, 'Chrome on Windows');
+    assert.equal(arbiter.decide(U, { session: 'laptop', source: 'none', channel: 'ws' }).secondary, undefined);
 });

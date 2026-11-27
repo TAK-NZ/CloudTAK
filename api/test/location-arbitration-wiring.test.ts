@@ -6,7 +6,6 @@ import type CoT from '@tak-ps/node-cot';
 import { TAKGroup, TAKRole } from '@tak-ps/node-tak/lib/api/types';
 import LocalHub from '../stateful/lib/hub/local.js';
 import LocationArbiter from '../stateful/lib/location-arbiter.js';
-import type { ArbiterMode } from '../stateful/lib/location-arbiter.js';
 import { ConnectionWebSocket } from '../stateful/lib/connection-web.js';
 import type { ConnectionClient } from '../stateful/lib/connection-pool.js';
 import { ProfileConnConfig } from '../common/connection-config.js';
@@ -16,14 +15,16 @@ import type ConfigStateful from '../stateful/config.js';
 
 const USER = 'test@example.com';
 
-function rig(mode: ArbiterMode) {
+function rig() {
     const clock = { t: 1_000_000 };
-    const arbiter = new LocationArbiter({ now: () => clock.t }, mode);
+    const arbiter = new LocationArbiter({ now: () => clock.t });
     const written: CoT[][] = [];
     const relayed: Array<{ cots: CoT[]; excludeSession?: string }> = [];
+    const statuses: string[] = [];
     const config = {
         locationArbiter: arbiter,
         conns: {
+            sendStatus: (id: string) => { statuses.push(id); },
             cots: async (_conn: unknown, cots: CoT[], opts: { excludeSession?: string } = {}) => {
                 relayed.push({ cots, excludeSession: opts.excludeSession });
             },
@@ -35,7 +36,7 @@ function rig(mode: ArbiterMode) {
         tak: { write: (cots: CoT[]) => { written.push(cots); } },
     } as unknown as ConnectionClient;
     (config.conns as unknown as { get: () => ConnectionClient }).get = () => client;
-    return { arbiter, config, profile, client, written, relayed, advance: (ms: number) => { clock.t += ms; } };
+    return { arbiter, config, profile, client, written, relayed, statuses, advance: (ms: number) => { clock.t += ms; } };
 }
 
 async function selfCot(longitude: number, latitude: number, accuracy?: number): Promise<CoT> {
@@ -66,7 +67,7 @@ function socket(client: ConnectionClient, session: string) {
 }
 
 test('LocalHub.submitCots: the broadcaster is forwarded and relayed to the other sessions', async () => {
-    const { config, written, relayed } = rig('enforce');
+    const { config, written, relayed } = rig();
     const hub = new LocalHub(config);
     await hub.submitCots({
         connection: USER,
@@ -78,8 +79,8 @@ test('LocalHub.submitCots: the broadcaster is forwarded and relayed to the other
     assert.equal(relayed[0].excludeSession, 'phone');
 });
 
-test('LocalHub.submitCots: a second session is dropped without an error', async () => {
-    const { config, written, relayed, advance } = rig('enforce');
+test('LocalHub.submitCots: a second session is forwarded as a marker of its own', async () => {
+    const { config, written, relayed, advance } = rig();
     const hub = new LocalHub(config);
     const send = async (session: string, accuracy: number) => hub.submitCots({
         connection: USER,
@@ -89,56 +90,44 @@ test('LocalHub.submitCots: a second session is dropped without an error', async 
     await send('phone', 8);
     advance(1000);
     await send('tablet', 10);
-    assert.equal(written.length, 1);
-    assert.equal(relayed.length, 1);
+    assert.equal(written.length, 2);
+    assert.equal(relayed.length, 2);
+    assert.equal(relayed[1].excludeSession, 'tablet');
+
+    const self = written[0][0];
+    const marker = written[1][0];
+    assert.notEqual(marker.uid(), self.uid());
+    assert.equal(marker.callsign(), 'TEST');
+    assert.equal(marker.detail().__group, undefined);
+    assert.equal(marker.detail().contact?._attributes.endpoint, undefined);
+    assert.deepEqual(marker.position(), self.position());
+
+    advance(1000);
+    await send('tablet', 10);
+    assert.equal(written[2][0].uid(), marker.uid(), 'the marker keeps its uid');
 });
 
-test('LocalHub.submitCots: 0,0 is not forwarded', async () => {
-    const { config, written } = rig('enforce');
+test('LocalHub.submitCots: 0,0 is forwarded but not relayed while no session has a position', async () => {
+    const { config, written, relayed } = rig();
     const hub = new LocalHub(config);
     await hub.submitCots({
         connection: USER,
         cots: [await selfCot(0, 0, 8)],
         selfLocation: { session: 'phone', source: 'none' },
     });
-    assert.equal(written.length, 0);
-});
-
-test('LocalHub.submitCots: observe mode forwards everything and relays nothing', async () => {
-    const { config, written, relayed, advance } = rig('observe');
-    const hub = new LocalHub(config);
-    const send = async (session: string) => hub.submitCots({
-        connection: USER,
-        cots: [await selfCot(174.77, -41.28, 8)],
-        selfLocation: { session, source: 'gps', accuracy: 8 },
-    });
-    await send('phone');
-    advance(1000);
-    await send('tablet');
-    assert.equal(written.length, 2);
+    assert.equal(written.length, 1);
     assert.equal(relayed.length, 0);
 });
 
-test('LocalHub.submitCots: off mode never consults the arbiter', async () => {
-    const { config, written } = rig('off');
-    const hub = new LocalHub(config);
-    await hub.submitCots({
-        connection: USER,
-        cots: [await selfCot(0, 0)],
-        selfLocation: { session: 'phone', source: 'none' },
-    });
-    assert.equal(written.length, 1);
-});
-
 test('LocalHub.submitCots: CoTs without selfLocation are untouched', async () => {
-    const { config, written } = rig('enforce');
+    const { config, written } = rig();
     const hub = new LocalHub(config);
     await hub.submitCots({ connection: USER, cots: [await selfCot(0, 0)] });
     assert.equal(written.length, 1);
 });
 
-test('ConnectionWebSocket: the user\'s own position is gated, relayed and 0,0 is refused', async () => {
-    const { client, written, relayed, advance } = rig('enforce');
+test('ConnectionWebSocket: the user\'s own position is arbitrated and relayed, 0,0 is dropped while another session broadcasts', async () => {
+    const { client, written, relayed, advance } = rig();
     const phone = socket(client, 'phone');
     const laptop = socket(client, 'laptop');
 
@@ -149,38 +138,36 @@ test('ConnectionWebSocket: the user\'s own position is gated, relayed and 0,0 is
 
     advance(1000);
     await laptop({ type: 'cot', data: selfFeature(174.77, -41.28, 12) });
-    assert.equal(written.length, 1, 'standby session is not forwarded');
+    assert.equal(written.length, 2);
+    assert.notEqual(written[1][0].uid(), written[0][0].uid(), 'standby session is forwarded as its own marker');
 
     await laptop({ type: 'cot', data: selfFeature(0, 0) });
-    assert.equal(written.length, 1, '0,0 is not forwarded');
+    assert.equal(written.length, 2, '0,0 is not forwarded over a live broadcaster');
 });
 
 test('ConnectionWebSocket: Take over moves the role on the claimant\'s next fix', async () => {
-    const { client, written, advance } = rig('enforce');
+    const { client, written, statuses, advance } = rig();
     const phone = socket(client, 'phone');
     const laptop = socket(client, 'laptop');
     await phone({ type: 'cot', data: selfFeature(174.77, -41.28, 8) });
     advance(1000);
     await laptop({ type: 'broadcast:claim' });
+    statuses.length = 0;
     await laptop({ type: 'cot', data: selfFeature(174.80, -41.30) });
     assert.equal(written.length, 2);
+    assert.deepEqual(statuses, [USER], 'the user\'s sessions are told straight away');
+    assert.equal(written[1][0].uid(), written[0][0].uid(), 'the laptop is now the user');
     advance(1000);
     await phone({ type: 'cot', data: selfFeature(174.77, -41.28, 8) });
-    assert.equal(written.length, 2, 'the phone is now on standby');
+    assert.notEqual(written[2][0].uid(), written[0][0].uid(), 'the phone is now on standby');
 });
 
 test('ConnectionWebSocket: other CoTs from the user are not arbitrated', async () => {
-    const { client, written } = rig('enforce');
+    const { client, written } = rig();
     const phone = socket(client, 'phone');
     const marker = selfFeature(174.77, -41.28, 8);
     marker.id = 'some-other-marker';
     await phone({ type: 'cot', data: marker });
     await phone({ type: 'cot', data: marker });
     assert.equal(written.length, 2);
-});
-
-test('LocationArbiter.clientState: only reported when enforcing', () => {
-    assert.equal(new LocationArbiter({}, 'observe').clientState(USER, 'a'), undefined);
-    assert.equal(new LocationArbiter({}, 'off').clientState(USER, 'a'), undefined);
-    assert.deepEqual(new LocationArbiter({}, 'enforce').clientState(USER, 'a'), { active: true });
 });

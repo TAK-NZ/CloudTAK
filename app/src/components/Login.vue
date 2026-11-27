@@ -173,7 +173,7 @@
                                         Login with SSO
                                     </button>
                                 </template>
-                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled && !isNativePlatform()'>
+                                <template v-if='brandStore.passkey.enabled && !loading && !albOidcEnabled && !isBundledPlatform()'>
                                     <div class='my-3 d-flex align-items-center'>
                                         <hr class='flex-grow-1 m-0'>
                                         <span class='mx-2 text-muted small'>or</span>
@@ -276,7 +276,7 @@
                     </div>
                     <div class='card-body p-0'>
                         <div
-                            v-if='isNativePlatform()'
+                            v-if='isBundledPlatform()'
                             class='px-3 pt-2 pb-2 border-bottom'
                         >
                             <button
@@ -363,7 +363,7 @@ import { startAuthentication, WebAuthnAbortService } from '@simplewebauthn/brows
 import type { PublicKeyCredentialRequestOptionsJSON, AuthenticationResponseJSON } from '@simplewebauthn/browser';
 import Config from '../base/config.ts';
 import type { FullConfig } from '../base/config.ts';
-import { isNativePlatform, supportsServiceWorker } from '../utils/capacitor.ts';
+import { isBundledPlatform, isNativePlatform, supportsServiceWorker } from '../utils/capacitor.ts';
 import { getCurrentEntryBuildId } from '../utils/service-worker.ts';
 import { useRouter, useRoute } from 'vue-router'
 import { server, stdurl } from '../std.ts';
@@ -546,7 +546,7 @@ function applyConfig(config: Partial<FullConfig>): void {
 }
 
 function startPasskeyIfAllowed(): void {
-    if (brandStore.passkey.enabled && !albOidcEnabled.value && !isNativePlatform() && !passkeyStarted) {
+    if (brandStore.passkey.enabled && !albOidcEnabled.value && !isBundledPlatform() && !passkeyStarted) {
         passkeyStarted = true;
         startConditionalPasskey();
     }
