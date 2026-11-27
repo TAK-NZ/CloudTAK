@@ -274,4 +274,13 @@ describe('inbound email wiring', () => {
     const on = synthTemplate('dev-test', { ...PREBUILT_CONTEXT, enableInboundMail: 'true' });
     on.resourceCountIs('AWS::SES::MailManagerIngressPoint', 1);
   });
+  // The Demo pipeline deploys the prod profile to test it, and must not open a public SMTP endpoint
+  it('can turn inbound mail off for the prod profile via context', () => {
+    const off = synthTemplate('prod', { ...PREBUILT_CONTEXT, enableInboundMail: 'false' });
+    off.resourceCountIs('AWS::SES::MailManagerIngressPoint', 0);
+    off.resourceCountIs('AWS::SES::MailManagerRuleSet', 1);
+    const mx = Object.values(off.findResources('AWS::Route53::RecordSet'))
+      .filter((r: any) => r.Properties?.Type === 'MX');
+    expect(mx).toHaveLength(0);
+  });
 });

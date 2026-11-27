@@ -98,6 +98,9 @@ graph TD
 4. **deploy-and-test**: Deploy with prod profile and run tests
 5. **revert-to-dev-test**: Always revert to dev-test configuration
 
+Every CDK command in this workflow passes "--context enableInboundMail=false", so Demo never gets the
+SES Mail Manager ingress point that the prod profile would otherwise create.
+
 ### 6.3 Production Deployment Workflow (`production-deploy.yml`)
 
 **Triggers:**
