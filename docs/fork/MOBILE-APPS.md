@@ -107,10 +107,14 @@ The web plugins are built into the app. The list is `cloudtak.webPlugins` of the
 list, which the Demo and Test stack run.
 
 The release is rolling: every run deletes the previous `android-latest` release and its tag, then
-creates them again, so only the latest build is kept. The download link does not change:
+creates them again, so only the latest build is kept, with all its files. The release page does not change:
 
-    https://github.com/TAK-NZ/CloudTAK/releases/download/android-latest/TAK-NZ-CloudTAK.apk
+    https://github.com/TAK-NZ/CloudTAK/releases/tag/android-latest
 
+The APK name carries the app version and the workflow run number, for example
+`TAK-NZ-CloudTAK-14.4.0-build4.apk`, so the direct download link changes with every build. Link to the
+release page, not to the file. The name has no parentheses or spaces because GitHub rewrites special
+characters in file names. The run number counts every run of the workflow, including unpublished ones.
 The release has a `.sha256` file next to the APK. Testers install the APK and allow installs from
 unknown sources. A new build installs over the old one, as long as it is signed with the same key.
 The tag must not start with `v`: `release.yml` turns every `v*` tag into a release that triggers
@@ -188,7 +192,7 @@ fingerprint was signed with a different key, and phones refuse to update an inst
 
     SHA-256: 31:ae:c2:e1:c8:27:9c:ab:6b:07:24:7c:36:db:54:50:3d:74:b6:38:e7:22:cb:33:00:b5:a3:b6:9a:a5:9c:47
 
-Check a download with `apksigner verify --print-certs TAK-NZ-CloudTAK.apk` and compare the SHA-256
+Check a download with `apksigner verify --print-certs <the APK file>` and compare the SHA-256
 digest, which `apksigner` prints without colons.
 
 **If the key is lost or leaked.** Create a new keystore (steps 1 to 4, a new alias is fine) and run the
