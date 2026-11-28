@@ -7,6 +7,7 @@ import {
     toEnum, Profile_Stale, Profile_Speed, Profile_Elevation, Profile_Area, Profile_Distance, Profile_Text, Profile_Projection, Profile_Zoom, Profile_Style, Profile_Coordinate, Profile_Radiation_Dose, Profile_Wake_Lock,
 } from '../../../common/enums.js';
 import { ProfileResponse } from '../../../common/types.js';
+import { isSystemAdminIdpManaged } from '../../../common/auth.js';
 import { coordinateModes, isCoordinateMode } from '../../../common/coordinate-systems.js';
 import ProfileOverlayControl from '../../../common/control/profile-overlay.js';
 
@@ -190,6 +191,10 @@ export default class ProfileControl {
             delete (profile as Record<string, unknown>)[`tak_${field}_managed`];
             (profile as Record<string, unknown>)[`tak_${field}_locked`] = syncEnabled && managed;
         }
+
+        // The SSO login rewrites system_admin from the IdP group, so admins must
+        // not be offered a toggle that reverts on the user's next sign-in.
+        (profile as Record<string, unknown>).system_admin_locked = isSystemAdminIdpManaged(profile.username);
 
         const presence = await this.config.hub.wsPresence([profile.username]);
 

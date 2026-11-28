@@ -71,6 +71,39 @@ export interface ContextEnvironmentConfig {
      * When false the rest of the mail stack stays deployed, but inbound mail bounces.
      */
     enableInboundMail?: boolean;
+    /**
+     * The CloudTAK break-glass account (`ckadmin`): its sealed password, the role that reads it, and the alarms.
+     * See docs/BREAK_GLASS.md. Every field is optional.
+     */
+    breakGlass?: {
+      /**
+       * Seal the credential: deny every reader except the break-glass role and the two functions (account
+       * administrators included), and alarm on a read of the secret, on any LDAP bind as the account, and on a
+       * change to the secret's policy. Defaults to false (Demo, Test), where the secret behaves as before.
+       */
+      sealed?: boolean;
+      /** Addresses that receive the alarms. When empty the alarms still exist but nobody is notified. */
+      alertEmails?: string[];
+      /**
+       * IAM role or user ARNs that may assume the break-glass role. When empty the role trusts the account, so
+       * anyone in the account who may call `sts:AssumeRole` can assume it.
+       */
+      roleTrustedPrincipals?: string[];
+      /**
+       * IAM role ARN patterns (`*` allowed) that may assume the break-glass role, matched with `ArnLike` on
+       * `aws:PrincipalArn`. Use this for IAM Identity Center permission sets, whose role ARN gets a new suffix if the
+       * permission set is removed from the account and added again; an exact ARN in `roleTrustedPrincipals` then stops
+       * matching. Example: `arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*`.
+       * Combined with `roleTrustedPrincipals`: either is enough.
+       */
+      roleTrustedPrincipalPatterns?: string[];
+      /**
+       * Require MFA on the call that assumes the role. Defaults to true. Turn it off only when the trusted
+       * principals are IAM Identity Center roles, whose sessions carry no MFA flag (MFA is then the identity
+       * provider's).
+       */
+      roleRequireMfa?: boolean;
+    };
   };
   ecr: {
     imageRetentionCount: number;

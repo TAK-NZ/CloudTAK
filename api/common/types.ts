@@ -623,6 +623,9 @@ export const ProfileResponse = Type.Composite([
         tak_role_locked: Type.Boolean({
             description: 'Role is supplied by the identity provider and cannot be changed by the user',
         }),
+        system_admin_locked: Type.Boolean({
+            description: 'System Administrator is granted by the identity provider group and cannot be changed in CloudTAK',
+        }),
     }),
     Profile,
 ]);

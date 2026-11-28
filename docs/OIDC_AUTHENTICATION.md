@@ -134,6 +134,10 @@ Enable per environment in `cdk.json`:
 }
 ```
 
+`ckadmin` is the break-glass account: its password is a sealed secret that nothing injects, it is read through a
+role that needs MFA, and in production every read and every sign-in raises an alarm. See
+[BREAK_GLASS.md](BREAK_GLASS.md).
+
 ## SCIM user provisioning (optional)
 
 CloudTAK accepts SCIM 2.0 at `/api/scim/v2` (`Users`, plus `Groups`, which are accepted but not stored).
@@ -179,6 +183,11 @@ Authentik group membership maps to CloudTAK authorisation:
 
 - `OIDC_SYSTEM_ADMIN_GROUP` → `system_admin`
 - `OIDC_AGENCY_ADMIN_GROUP_PREFIX{N}` → `agency_admin: [N, …]`
+
+Every SSO login rewrites both values from the user's current groups, so they cannot be set in CloudTAK. When
+OIDC is enabled, the System Administrator toggle on `/admin/user/<username>` is read-only and
+`PATCH /api/user/:username` rejects a changed `system_admin` (`system_admin_locked` in the user response).
+Accounts in `LOCAL_ONLY_ACCOUNTS` never sign in through SSO, so their flag stays editable.
 
 User attributes map to TAK identity: `takCallsign` → `tak::callsign` (suffixed `" (Web)"` so a browser
 session doesn't collide with the same person's ATAK/WinTAK device callsign), `takColor` → `tak::group`,

@@ -41,7 +41,6 @@ export interface CloudTakApiProps {
   connectionStringSecret: secretsmanager.ISecret;
   assetBucketName: string;
   signingSecret: secretsmanager.ISecret;
-  adminPasswordSecret: secretsmanager.ISecret;
   geofenceSecret: secretsmanager.ISecret;
   serviceUrl: string;
   /** OIDC client ID from the Authentik OAuth2 provider (set when cloudtak.oidcEnabled is true) */
@@ -95,7 +94,6 @@ export class CloudTakApi extends Construct {
       connectionStringSecret,
       assetBucketName,
       signingSecret,
-      adminPasswordSecret,
       geofenceSecret,
       serviceUrl,
       oidcClientId,
@@ -407,7 +405,6 @@ export class CloudTakApi extends Construct {
     signingSecret.grantRead(executionRole);
     takAdminCertSecret.grantRead(taskRole); // Task role for application access
     connectionStringSecret.grantRead(executionRole);
-    adminPasswordSecret.grantRead(executionRole);
     geofenceSecret.grantRead(executionRole);
     
     // Grant access to the scoped Authentik service-account token if OIDC is
@@ -481,6 +478,8 @@ export class CloudTakApi extends Construct {
         'AWS_REGION': cdk.Stack.of(this).region,
         'CLOUDTAK_Mode': 'AWS',
         'StackName': `TAK-${envConfig.stackName}-CloudTAK`,
+        // The break-glass account's name. Its password is a sealed secret that never reaches this container.
+        'CLOUDTAK_ADMIN_USERNAME': CLOUDTAK_CONSTANTS.DEFAULT_ADMIN_USERNAME,
         // Stateless tier: serves the web app and REST API, holds no TAK Server
         // connections. Without hubAlbDnsName the container stays in single-service
         // 'both' mode, which is what runs before the split is wired.
@@ -538,8 +537,6 @@ export class CloudTakApi extends Construct {
       secrets: {
         'SigningSecret': ecs.Secret.fromSecretsManager(signingSecret),
         'POSTGRES': ecs.Secret.fromSecretsManager(connectionStringSecret),
-        'CLOUDTAK_ADMIN_USERNAME': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'username'),
-        'CLOUDTAK_ADMIN_PASSWORD': ecs.Secret.fromSecretsManager(adminPasswordSecret, 'password'),
         'CLOUDTAK_Config_geofence_password': ecs.Secret.fromSecretsManager(geofenceSecret),
         ...(envConfig.cloudtak.oidcEnabled && oidcClientSecret && {
           'OIDC_CLIENT_SECRET': ecs.Secret.fromSecretsManager(oidcClientSecret),

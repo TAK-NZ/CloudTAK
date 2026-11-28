@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Err from '@openaddresses/batch-error';
-import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced } from '../../common/auth.js';
+import Auth, { AuthUserAccess, isOidcEnabled, isOidcForced, isLocalOnlyAccount } from '../../common/auth.js';
 // `Config` (the base) is what oidcConfig() needs - it only reads API_URL, so it
 // stays usable from either server half. The router itself gets ConfigStateless.
 import type Config from '../../common/config.js';
@@ -340,9 +340,7 @@ export default async function router(schema: Schema, config: ConfigStateless) {
             // as the same local-only account and lands back here: an infinite
             // SSO <-> /login redirect loop that never surfaces `sso_error` to
             // the user (nothing reads it - see Login.vue).
-            const localOnlyAccounts = (process.env.LOCAL_ONLY_ACCOUNTS || '')
-                .split(',').map((a: string) => a.trim()).filter(Boolean);
-            if (localOnlyAccounts.includes(email)) {
+            if (isLocalOnlyAccount(email)) {
                 if (fromApp) return redirectToApp(res, { sso_error: 'This account requires local login' });
                 return res.redirect(`/login?local=true&sso_error=${encodeURIComponent('This account requires local login. Use /login?local=true')}`);
             }

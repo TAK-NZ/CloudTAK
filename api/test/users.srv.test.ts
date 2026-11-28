@@ -308,6 +308,65 @@ test('PATCH: api/user/:username - disabled', async () => {
     await flight.config!.models.Profile.delete('toggle@example.com');
 });
 
+test('PATCH: api/user/:username - system_admin is locked for SSO users', async () => {
+    const username = 'sso-admin@example.com';
+    await flight.config!.models.Profile.generate({ username, auth: null, last_login: null });
+    const saved = {
+        OIDC_ENABLED: process.env.OIDC_ENABLED,
+        LOCAL_ONLY_ACCOUNTS: process.env.LOCAL_ONLY_ACCOUNTS,
+    };
+    try {
+        // Without SSO the value is CloudTAK's to set
+        delete process.env.OIDC_ENABLED;
+        const open = await flight.fetch(`/api/user/${username}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { system_admin: true },
+        }, true);
+        assert.equal(open.body.system_admin, true);
+        assert.equal(open.body.system_admin_locked, false);
+
+        // With SSO the IdP group owns it: changes are rejected, re-sending the stored value is not
+        process.env.OIDC_ENABLED = 'true';
+        const get = await flight.fetch(`/api/user/${username}`, {
+            method: 'GET',
+            auth: { bearer: flight.token.admin },
+        }, true);
+        assert.equal(get.body.system_admin_locked, true);
+
+        const rejected = await flight.fetch(`/api/user/${username}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { system_admin: false },
+        }, false);
+        assert.equal(rejected.status, 400);
+        assert.match(rejected.body.message, /managed by the identity provider/);
+        assert.equal((await flight.config!.models.Profile.from(username)).system_admin, true);
+
+        const same = await flight.fetch(`/api/user/${username}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { system_admin: true, disabled: false },
+        }, true);
+        assert.equal(same.body.system_admin, true);
+
+        // Local-only accounts never sign in through SSO, so the stored value stays editable
+        process.env.LOCAL_ONLY_ACCOUNTS = `other@example.com, ${username}`;
+        const local = await flight.fetch(`/api/user/${username}`, {
+            method: 'PATCH',
+            auth: { bearer: flight.token.admin },
+            body: { system_admin: false },
+        }, true);
+        assert.equal(local.body.system_admin, false);
+        assert.equal(local.body.system_admin_locked, false);
+    } finally {
+        for (const [key, value] of Object.entries(saved)) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+        }
+        await flight.config!.models.Profile.delete(username);
+    }
+});
 test('DELETE: api/user/:username', async () => {
     const username = 'erase@example.com';
     const models = flight.config!.models;

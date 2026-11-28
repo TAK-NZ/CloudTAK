@@ -389,10 +389,13 @@ export default class Config {
             // guarantees the profile row exists with the right flag, so a fresh
             // stack is reachable without manual DB surgery.
             //
+            // Only the username is used. The account's password is the sealed
+            // break-glass secret and is deliberately never given to this process.
+            //
             // Lives inside the envInitOnce block so it runs once per process, and
             // uses `models` directly because envInit() returns a ConfigInit rather
             // than a constructed Config.
-            if (process.env.CLOUDTAK_ADMIN_USERNAME && process.env.CLOUDTAK_ADMIN_PASSWORD) {
+            if (process.env.CLOUDTAK_ADMIN_USERNAME) {
                 try {
                     try {
                         await models.Profile.from(process.env.CLOUDTAK_ADMIN_USERNAME);

@@ -2,7 +2,7 @@ import { Type, Static } from '@sinclair/typebox';
 import { sql, eq, asc, desc, getTableColumns } from 'drizzle-orm';
 import Schema from '@openaddresses/batch-schema';
 import Err from '@openaddresses/batch-error';
-import Auth from '../../common/auth.js';
+import Auth, { isSystemAdminIdpManaged } from '../../common/auth.js';
 import { revokeSessions } from '../lib/user/session.js';
 import { StandardResponse, ProfileResponse, ProfileListResponse, CertificateResponse } from '../../common/types.js';
 import type ConfigStateless from '../config.js';
@@ -126,6 +126,15 @@ export default async function router(schema: Schema, config: ConfigStateless) {
 
             if (profileBody.disabled && req.params.username === user.email) {
                 throw new Err(400, null, 'A System Administrator cannot disable their own account');
+            }
+
+            // SSO logins overwrite system_admin from the Authentik group, so a change
+            // made here would silently revert. Re-sending the current value is harmless.
+            if (profileBody.system_admin !== undefined && isSystemAdminIdpManaged(req.params.username)) {
+                const current = await config.models.Profile.from(req.params.username);
+                if (current.system_admin !== profileBody.system_admin) {
+                    throw new Err(400, null, `System Administrator is managed by the identity provider group ${process.env.OIDC_SYSTEM_ADMIN_GROUP || 'CloudTAKSystemAdmin'} and cannot be changed in CloudTAK`);
+                }
             }
 
             const profile_body: { system_admin?: boolean } = {};
