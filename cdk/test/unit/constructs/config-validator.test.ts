@@ -76,17 +76,6 @@ describe('ConfigValidator', () => {
       expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
     });
 
-    it('accepts {account} in place of the account id, for principals and patterns', () => {
-      expect(() => validate({ roleTrustedPrincipals: ['arn:aws:iam::{account}:role/Ops', 'arn:aws:iam::{account}:user/chris'] })).not.toThrow();
-      expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::{account}:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
-    });
-
-    it('accepts an exact role ARN as a pattern (no wildcard needs no minimum length), but not a bare account', () => {
-      expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipalPatterns: ['arn:aws:iam::{account}:role/Admin'] })).not.toThrow();
-      expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/'] })).toThrow(/roleTrustedPrincipalPatterns/);
-      expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::{account}:role/*'] })).toThrow(/roleTrustedPrincipalPatterns/);
-    });
-
     it('rejects a pattern that is too broad, so a wildcard cannot trust every role', () => {
       for (const pattern of [
         '*',

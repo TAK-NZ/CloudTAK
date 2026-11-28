@@ -265,18 +265,6 @@ describe('BreakGlass construct', () => {
       expect(statements.some((st) => st.Condition.ArnLike)).toBe(true);
     });
 
-    test('{account} becomes the deployment account, in principals and in patterns', () => {
-      const { template } = build({
-        roleRequireMfa: false,
-        roleTrustedPrincipals: ['arn:aws:iam::{account}:user/chris'],
-        roleTrustedPrincipalPatterns: ['arn:aws:iam::{account}:role/Admin']
-      });
-      const json = JSON.stringify(trustOf(template));
-      expect(json).toContain('arn:aws:iam::123456789012:user/chris');
-      expect(json).toContain('arn:aws:iam::123456789012:role/Admin');
-      expect(json).not.toContain('{account}');
-    });
-
     test('with nothing configured, trusts the account and requires MFA, and never an unconditioned account trust', () => {
       const statements = trustOf(build().template);
       expect(statements).toHaveLength(1);

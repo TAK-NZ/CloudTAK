@@ -59,9 +59,7 @@
         "breakGlass": {
           "sealed": false,
           "alertEmails": [],
-          "roleTrustedPrincipals": [],
-          "roleTrustedPrincipalPatterns": ["arn:aws:iam::{account}:role/Admin"],
-          "roleRequireMfa": false
+          "roleTrustedPrincipals": []
         }
       },
       "ecr": {
@@ -123,9 +121,7 @@
         "breakGlass": {
           "sealed": true,
           "alertEmails": [],
-          "roleTrustedPrincipals": [],
-          "roleTrustedPrincipalPatterns": ["arn:aws:iam::{account}:role/Admin"],
-          "roleRequireMfa": false
+          "roleTrustedPrincipals": []
         }
       },
       "ecr": {

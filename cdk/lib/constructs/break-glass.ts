@@ -171,10 +171,8 @@ export class BreakGlass extends Construct {
     });
 
     // ---- The break-glass role: the only reader of the sealed secret ----
-    // `{account}` stands for the account the stack is deployed to, so one value in cdk.json serves Test, Demo and production
-    const forThisAccount = (arn: string) => arn.replace(/\{account\}/g, stack.account);
-    const principals = (settings.roleTrustedPrincipals ?? []).filter(Boolean).map(forThisAccount);
-    const patterns = (settings.roleTrustedPrincipalPatterns ?? []).filter(Boolean).map(forThisAccount);
+    const principals = (settings.roleTrustedPrincipals ?? []).filter(Boolean);
+    const patterns = (settings.roleTrustedPrincipalPatterns ?? []).filter(Boolean);
     const requireMfa = settings.roleRequireMfa ?? true;
     const mfa = requireMfa ? { Bool: { 'aws:MultiFactorAuthPresent': 'true' } } : {};
     // Who may assume the role: the named principals, or anyone whose role ARN matches a pattern (the account is the

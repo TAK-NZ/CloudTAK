@@ -88,14 +88,9 @@ export interface ContextEnvironmentConfig {
        * IAM role or user ARNs that may assume the break-glass role. When empty the role trusts the account, so
        * anyone in the account who may call `sts:AssumeRole` can assume it.
        */
-      /**
-       * Exact IAM role or user ARNs. `{account}` stands for the account the stack is deployed to. IAM checks that the
-       * principal exists when the role is created, so a role that does not exist in that account fails the deploy; use
-       * `roleTrustedPrincipalPatterns` for a role that may be missing somewhere.
-       */
       roleTrustedPrincipals?: string[];
       /**
-       * IAM role ARN patterns (`*` allowed, `{account}` for the deployment account) that may assume the break-glass role, matched with `ArnLike` on
+       * IAM role ARN patterns (`*` allowed) that may assume the break-glass role, matched with `ArnLike` on
        * `aws:PrincipalArn`. Use this for IAM Identity Center permission sets, whose role ARN gets a new suffix if the
        * permission set is removed from the account and added again; an exact ARN in `roleTrustedPrincipals` then stops
        * matching. Example: `arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*`.
