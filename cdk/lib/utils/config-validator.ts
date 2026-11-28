@@ -39,14 +39,17 @@ export class ConfigValidator {
     }
     const patterns = (settings.roleTrustedPrincipalPatterns ?? []).filter(Boolean);
     for (const pattern of patterns) {
-      // The account must be spelled out, and enough of the role name before the first wildcard that the pattern
-      // names one permission set or role family, not "any role" or "any role starting with a".
-      const match = /^arn:aws[a-z-]*:iam::\d{12}:role\/([^*]*)/.exec(pattern);
-      if (!match || match[1].length < 20 || /\s/.test(pattern)) {
+      // The account must be spelled out. A pattern with a wildcard must also keep enough of the role path and name before
+      // the first wildcard that it names one permission set or role family, not "any role" or "any role starting with a".
+      // A pattern without a wildcard is one exact role ARN and can be as short as the role name.
+      const match = /^arn:aws[a-z-]*:iam::\d{12}:role\/([^*]*)(\*.*)?$/.exec(pattern);
+      const hasWildcard = pattern.includes('*');
+      if (!match || /\s/.test(pattern) || match[1].length === 0 || (hasWildcard && match[1].length < 20)) {
         throw new Error(
           `cloudtak.breakGlass.roleTrustedPrincipalPatterns: "${pattern}" must be an IAM role ARN with the account id, ` +
-          'and at least 20 characters of the role path and name before any wildcard ' +
-          '(for example arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*)'
+          'and with a wildcard at least 20 characters of the role path and name before it ' +
+          '(for example arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*, ' +
+          'or arn:aws:iam::123456789012:role/Admin without one)'
         );
       }
     }

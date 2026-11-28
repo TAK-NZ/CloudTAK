@@ -76,6 +76,16 @@ describe('ConfigValidator', () => {
       expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
     });
 
+    it('accepts an exact role ARN as a pattern, however short the role name', () => {
+      expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/Admin'] })).not.toThrow();
+    });
+
+    it('still rejects a bare account, an empty role name, and a wildcard right after a short name', () => {
+      for (const pattern of ['arn:aws:iam::123456789012:role/', 'arn:aws:iam::123456789012:role/Admin*', 'arn:aws:iam::123456789012:role/*']) {
+        expect(() => validate({ roleTrustedPrincipalPatterns: [pattern] })).toThrow(/roleTrustedPrincipalPatterns/);
+      }
+    });
+
     it('rejects a pattern that is too broad, so a wildcard cannot trust every role', () => {
       for (const pattern of [
         '*',
