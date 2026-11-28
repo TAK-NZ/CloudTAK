@@ -24,8 +24,12 @@ In `cdk/cdk.json`, per environment, under `cloudtak.breakGlass`. Every field is 
 |---|---|---|
 | `sealed` | `true` seals the secret and turns the alarms on. Default `false`. | `breakGlassSealed=true` |
 | `alertEmails` | Addresses that receive the alarms. | `breakGlassAlertEmails=a@x.nz,b@x.nz` |
-| `roleTrustedPrincipals` | IAM role or user ARNs that may assume the break-glass role. Empty: the role trusts the account, so anyone in it with `sts:AssumeRole` rights, with MFA. | `breakGlassRoleTrustedPrincipals=arn:...,arn:...` |
+| `roleTrustedPrincipals` | Exact IAM role or user ARNs that may assume the break-glass role. | `breakGlassRoleTrustedPrincipals=arn:...,arn:...` |
+| `roleTrustedPrincipalPatterns` | IAM role ARN patterns (`*` allowed) that may assume it, for Identity Center permission sets. See the next section. | `breakGlassRoleTrustedPrincipalPatterns=arn:...*` |
+
 | `roleRequireMfa` | Require MFA on the assume-role call. Default `true`. Set `false` only with named principals that are IAM Identity Center roles, whose sessions carry no MFA flag. | `breakGlassRoleRequireMfa=false` |
+
+With neither, the role trusts the account, so anyone in it with `sts:AssumeRole` rights, with MFA.
 
 ### Demo and Test compared with production
 
@@ -45,27 +49,40 @@ notified. A deploy-time warning says so.
 ## Who can assume the role, and MFA
 
 The role asks for MFA on the assume-role call by default (`roleRequireMfa: true`). That works for IAM users with an MFA
-device. **It does not work for IAM Identity Center (SSO) users**: an SSO session carries no `aws:MultiFactorAuthPresent`
-flag, so the condition would refuse everyone. If you sign in to AWS through SSO, set, for that environment:
+device. **It does not work for IAM Identity Center (SSO) sessions**: they carry no `aws:MultiFactorAuthPresent` flag, so
+the condition would refuse everyone. If you reach AWS through SSO, trust the permission set by a role ARN pattern and
+switch the AWS-side MFA condition off, for that environment:
 
 ```json
 "breakGlass": {
   "roleRequireMfa": false,
-  "roleTrustedPrincipals": ["arn:aws:iam::<account>:role/aws-reserved/sso.amazonaws.com/<sso-region>/AWSReservedSSO_<PermissionSet>_<hash>"]
+  "roleTrustedPrincipalPatterns": [
+    "arn:aws:iam::<account>:role/aws-reserved/sso.amazonaws.com/<sso-region>/AWSReservedSSO_<PermissionSet>_*"
+  ]
 }
 ```
 
-(`roleRequireMfa: false` is accepted only with named principals, so the role never trusts the whole account without MFA.)
+(or `-c breakGlassRoleRequireMfa=false -c breakGlassRoleTrustedPrincipalPatterns=<pattern>`). `roleRequireMfa: false` is
+accepted only together with named principals or patterns, so the role never trusts the whole account without MFA.
 
-- Find the ARN after `aws sso login`: `aws sts get-caller-identity` shows
-  `arn:aws:sts::<account>:assumed-role/AWSReservedSSO_<PermissionSet>_<hash>/<you>`. The role to trust is the same name
-  under `role/aws-reserved/sso.amazonaws.com/<sso-region>/`. It is the permission set that is trusted, so everyone who
-  holds that permission set in that account can assume the break-glass role.
-- Trust the narrowest permission set that fits, not an administrator-wide one if a smaller group will do.
-- If the permission set is deleted and recreated, its role ARN changes and the trust stops matching. Update the
-  configuration and deploy.
+- **Find the pattern** from the session you already use, whether you export `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+  and `AWS_SESSION_TOKEN` from the SSO portal or run `aws sso login`. `aws sts get-caller-identity` shows
+  `arn:aws:sts::<account>:assumed-role/AWSReservedSSO_<PermissionSet>_<hash>/<you>`. Take the role name, replace the
+  trailing `<hash>` with `*`, and put it under `role/aws-reserved/sso.amazonaws.com/<sso-region>/`. If IAM Identity Center
+  is homed in `us-east-1`, the ARN has no `<sso-region>/` segment.
+- **Why a pattern, not the exact ARN:** if every assignment of a permission set is removed from the account and added
+  again, Identity Center creates a new role with a new suffix. An exact ARN would then silently stop matching, in the
+  middle of the emergency you built this for. The `*` after the permission set name survives that.
+- **Narrow it.** The pattern trusts everyone who holds that permission set in that account. The configuration refuses a
+  pattern that does not name the account and at least 20 characters of the path and role name before the first `*`.
+  Choose the narrowest permission set that fits, not an administrator-wide one if a smaller group will do.
+- **The permission set must be allowed to call `sts:AssumeRole`** on the break-glass role: with a pattern the account is
+  the trusted principal, so the caller's own policy has to permit it too. `AdministratorAccess` does. A narrower set needs
+  `sts:AssumeRole` on `TAK-<stack>-CloudTAK-BreakGlass`.
+- `roleTrustedPrincipals` still takes exact role or user ARNs, for example an IAM user with an MFA device. It can be used
+  together with patterns: either is enough, and each keeps its own conditions.
 - Without MFA on the AWS side, the protection is the strength of the SSO sign-in itself (enforce MFA at the identity
-  provider if you can), the short session, and the alarms on every read and every sign-in.
+  provider if you can), the short session, the narrow permission set, and the alarms on every read and every sign-in.
 
 ## Using it in an emergency (production)
 
@@ -90,8 +107,10 @@ and prints the username and password on standard output. Nothing is written to a
    `scripts/break-glass.sh TAK-Prod-CloudTAK rotate --no-mfa` (it runs the rotation as the role).
 5. Restart the LDAP service (below), because until you do, the old password still works.
 
-For your own commands as the role, `eval "$(scripts/break-glass.sh TAK-Prod-CloudTAK credentials)"` puts the role's
-temporary credentials in the current shell. Run it in a shell you close afterwards.
+For your own commands as the role, use a subshell, so that your own session keys come back afterwards:
+`( eval "$(scripts/break-glass.sh TAK-Prod-CloudTAK credentials --no-mfa)"; aws sts get-caller-identity )`. Without the
+parentheses the role's keys replace the `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN` you exported
+for your own session.
 
 Without the script, by hand: `aws sts assume-role --role-arn <BreakGlassRoleArn> --role-session-name emergency
 --duration-seconds 900` (plus `--serial-number <your MFA device ARN> --token-code <code>` when MFA is required),

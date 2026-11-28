@@ -236,4 +236,39 @@ describe('BreakGlass construct', () => {
       expect(JSON.stringify(role.Properties.AssumeRolePolicyDocument)).not.toContain('MultiFactorAuthPresent');
     });
   });
+
+  describe('trust by role ARN pattern (IAM Identity Center permission sets)', () => {
+    const SSO = 'arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_PlatformAdmin_*';
+    const trustOf = (template: Template) => {
+      const role = Object.values(template.findResources('AWS::IAM::Role')).find((r: any) => r.Properties.RoleName === 'TAK-DevTest-CloudTAK-BreakGlass') as any;
+      return role.Properties.AssumeRolePolicyDocument.Statement as any[];
+    };
+
+    test('trusts the account, narrowed by an ArnLike condition on the principal, with no MFA condition when it is off', () => {
+      const { template } = build({ roleRequireMfa: false, roleTrustedPrincipalPatterns: [SSO] });
+      const statements = trustOf(template);
+      expect(statements).toHaveLength(1);
+      expect(JSON.stringify(statements[0].Principal)).toContain(':root');
+      expect(statements[0].Condition).toEqual({ ArnLike: { 'aws:PrincipalArn': [SSO] } });
+    });
+
+    test('keeps the MFA condition next to the pattern when MFA is on', () => {
+      const { template } = build({ roleTrustedPrincipalPatterns: [SSO] });
+      expect(trustOf(template)[0].Condition).toEqual({ Bool: { 'aws:MultiFactorAuthPresent': 'true' }, ArnLike: { 'aws:PrincipalArn': [SSO] } });
+    });
+
+    test('with named principals as well, each gets its own statement, so either is enough', () => {
+      const { template } = build({ roleTrustedPrincipalPatterns: [SSO], roleTrustedPrincipals: ['arn:aws:iam::123456789012:user/chris'] });
+      const statements = trustOf(template);
+      expect(statements).toHaveLength(2);
+      expect(statements.some((st) => st.Principal.AWS === 'arn:aws:iam::123456789012:user/chris')).toBe(true);
+      expect(statements.some((st) => st.Condition.ArnLike)).toBe(true);
+    });
+
+    test('with nothing configured, trusts the account and requires MFA, and never an unconditioned account trust', () => {
+      const statements = trustOf(build().template);
+      expect(statements).toHaveLength(1);
+      expect(statements[0].Condition).toEqual({ Bool: { 'aws:MultiFactorAuthPresent': 'true' } });
+    });
+  });
 });

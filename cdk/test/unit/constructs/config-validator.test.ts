@@ -71,6 +71,29 @@ describe('ConfigValidator', () => {
       }
     });
 
+    it('accepts an Identity Center permission-set pattern, with or without a Region segment', () => {
+      expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
+      expect(() => validate({ roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
+    });
+
+    it('rejects a pattern that is too broad, so a wildcard cannot trust every role', () => {
+      for (const pattern of [
+        '*',
+        'arn:aws:iam::123456789012:role/*',
+        'arn:aws:iam::123456789012:role/a*',
+        'arn:aws:iam::123456789012:role/aws-reserved/*',
+        'arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_PlatformAdmin_*',
+        'arn:aws:iam::123456789012:user/chris*',
+        'AWSReservedSSO_PlatformAdmin_*'
+      ]) {
+        expect(() => validate({ roleTrustedPrincipalPatterns: [pattern] })).toThrow(/roleTrustedPrincipalPatterns/);
+      }
+    });
+
+    it('lets MFA be switched off with a pattern as the named principal', () => {
+      expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_PlatformAdmin_*'] })).not.toThrow();
+    });
+
     it('does not let MFA be switched off while the role trusts the whole account', () => {
       expect(() => validate({ roleRequireMfa: false })).toThrow(/needs roleTrustedPrincipals/);
       expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipals: [] })).toThrow(/needs roleTrustedPrincipals/);

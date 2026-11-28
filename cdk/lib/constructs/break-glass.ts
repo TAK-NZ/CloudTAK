@@ -172,18 +172,41 @@ export class BreakGlass extends Construct {
 
     // ---- The break-glass role: the only reader of the sealed secret ----
     const principals = (settings.roleTrustedPrincipals ?? []).filter(Boolean);
-    const trusted: iam.IPrincipal = principals.length > 0
-      ? new iam.CompositePrincipal(...principals.map((arn) => new iam.ArnPrincipal(arn)))
-      : new iam.AccountRootPrincipal();
+    const patterns = (settings.roleTrustedPrincipalPatterns ?? []).filter(Boolean);
     const requireMfa = settings.roleRequireMfa ?? true;
+    const mfa = requireMfa ? { Bool: { 'aws:MultiFactorAuthPresent': 'true' } } : {};
+    // Who may assume the role: the named principals, or anyone whose role ARN matches a pattern (the account is the
+    // principal and the pattern is the condition, which is what AWS recommends for Identity Center permission sets).
+    // With neither, the account itself, which then always requires MFA (the validator forbids switching it off).
+    const trust = new iam.PolicyDocument();
+    if (principals.length > 0) {
+      trust.addStatements(new iam.PolicyStatement({
+        actions: ['sts:AssumeRole'],
+        principals: principals.map((arn) => new iam.ArnPrincipal(arn)),
+        conditions: { ...mfa }
+      }));
+    }
+    if (patterns.length > 0) {
+      trust.addStatements(new iam.PolicyStatement({
+        actions: ['sts:AssumeRole'],
+        principals: [new iam.AccountRootPrincipal()],
+        conditions: { ...mfa, ArnLike: { 'aws:PrincipalArn': patterns } }
+      }));
+    }
+    if (principals.length === 0 && patterns.length === 0) {
+      trust.addStatements(new iam.PolicyStatement({
+        actions: ['sts:AssumeRole'],
+        principals: [new iam.AccountRootPrincipal()],
+        conditions: { Bool: { 'aws:MultiFactorAuthPresent': 'true' } }
+      }));
+    }
     this.role = new iam.Role(this, 'Role', {
       roleName: `${prefix}-BreakGlass`,
       description: 'Reads the sealed CloudTAK break-glass credential and rotates it',
-      assumedBy: requireMfa
-        ? new iam.PrincipalWithConditions(trusted, { Bool: { 'aws:MultiFactorAuthPresent': 'true' } })
-        : trusted,
+      assumedBy: new iam.AccountRootPrincipal(), // replaced by the document below
       maxSessionDuration: cdk.Duration.hours(1)
     });
+    (this.role.node.defaultChild as iam.CfnRole).assumeRolePolicyDocument = trust;
     adminPasswordSecret.grantRead(this.role);
     // Read only: decrypting the secret needs no data key
     this.role.addToPolicy(new iam.PolicyStatement({

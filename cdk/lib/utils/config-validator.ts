@@ -37,10 +37,23 @@ export class ConfigValidator {
         throw new Error(`cloudtak.breakGlass.roleTrustedPrincipals: "${arn}" is not an IAM role or user ARN`);
       }
     }
-    if (settings.roleRequireMfa === false && principals.length === 0) {
+    const patterns = (settings.roleTrustedPrincipalPatterns ?? []).filter(Boolean);
+    for (const pattern of patterns) {
+      // The account must be spelled out, and enough of the role name before the first wildcard that the pattern
+      // names one permission set or role family, not "any role" or "any role starting with a".
+      const match = /^arn:aws[a-z-]*:iam::\d{12}:role\/([^*]*)/.exec(pattern);
+      if (!match || match[1].length < 20 || /\s/.test(pattern)) {
+        throw new Error(
+          `cloudtak.breakGlass.roleTrustedPrincipalPatterns: "${pattern}" must be an IAM role ARN with the account id, ` +
+          'and at least 20 characters of the role path and name before any wildcard ' +
+          '(for example arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*)'
+        );
+      }
+    }
+    if (settings.roleRequireMfa === false && principals.length === 0 && patterns.length === 0) {
       throw new Error(
-        'cloudtak.breakGlass.roleRequireMfa=false needs roleTrustedPrincipals: without named principals the role trusts ' +
-        'the whole account, and that must require MFA'
+        'cloudtak.breakGlass.roleRequireMfa=false needs roleTrustedPrincipals or roleTrustedPrincipalPatterns: without ' +
+        'named principals the role trusts the whole account, and that must require MFA'
       );
     }
   }

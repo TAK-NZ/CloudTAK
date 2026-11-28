@@ -54,6 +54,7 @@ export function applyContextOverrides(
         sealed: app.node.tryGetContext('breakGlassSealed') !== undefined ? String(app.node.tryGetContext('breakGlassSealed')) === 'true' : baseConfig.cloudtak.breakGlass?.sealed,
         alertEmails: app.node.tryGetContext('breakGlassAlertEmails') !== undefined ? splitList(app.node.tryGetContext('breakGlassAlertEmails')) : baseConfig.cloudtak.breakGlass?.alertEmails,
         roleTrustedPrincipals: app.node.tryGetContext('breakGlassRoleTrustedPrincipals') !== undefined ? splitList(app.node.tryGetContext('breakGlassRoleTrustedPrincipals')) : baseConfig.cloudtak.breakGlass?.roleTrustedPrincipals,
+        roleTrustedPrincipalPatterns: app.node.tryGetContext('breakGlassRoleTrustedPrincipalPatterns') !== undefined ? splitList(app.node.tryGetContext('breakGlassRoleTrustedPrincipalPatterns')) : baseConfig.cloudtak.breakGlass?.roleTrustedPrincipalPatterns,
         roleRequireMfa: app.node.tryGetContext('breakGlassRoleRequireMfa') !== undefined ? String(app.node.tryGetContext('breakGlassRoleRequireMfa')) === 'true' : baseConfig.cloudtak.breakGlass?.roleRequireMfa,
       },
     },

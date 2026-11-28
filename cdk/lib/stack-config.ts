@@ -90,6 +90,14 @@ export interface ContextEnvironmentConfig {
        */
       roleTrustedPrincipals?: string[];
       /**
+       * IAM role ARN patterns (`*` allowed) that may assume the break-glass role, matched with `ArnLike` on
+       * `aws:PrincipalArn`. Use this for IAM Identity Center permission sets, whose role ARN gets a new suffix if the
+       * permission set is removed from the account and added again; an exact ARN in `roleTrustedPrincipals` then stops
+       * matching. Example: `arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_*`.
+       * Combined with `roleTrustedPrincipals`: either is enough.
+       */
+      roleTrustedPrincipalPatterns?: string[];
+      /**
        * Require MFA on the call that assumes the role. Defaults to true. Turn it off only when the trusted
        * principals are IAM Identity Center roles, whose sessions carry no MFA flag (MFA is then the identity
        * provider's).

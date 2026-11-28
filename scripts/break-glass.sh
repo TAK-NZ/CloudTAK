@@ -20,7 +20,8 @@
 #   --role-arn ARN     the role (default: the BreakGlassRoleArn output of the stack)
 #   --duration SEC     lifetime of the temporary credentials, 900 to 3600 (default 900)
 #
-# Run it with your own credentials (an IAM user with an MFA device). The role's credentials are used only for the one
+# Run it with your own credentials: exported AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN (as copied from the
+# SSO portal), or a profile (after `aws sso login`). The role's credentials are used only for the one
 # command, and are never written to a file. The session name carries your user name, so CloudTrail shows who it was.
 set -euo pipefail
 

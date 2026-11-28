@@ -70,6 +70,7 @@ describe('Context Overrides', () => {
           breakGlassSealed: 'true',
           breakGlassAlertEmails: 'a@example.test, b@example.test',
           breakGlassRoleTrustedPrincipals: 'arn:aws:iam::123456789012:role/Ops',
+          breakGlassRoleTrustedPrincipalPatterns: 'arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_A_*',
           breakGlassRoleRequireMfa: 'false'
         }
       });
@@ -78,6 +79,7 @@ describe('Context Overrides', () => {
         sealed: true,
         alertEmails: ['a@example.test', 'b@example.test'],
         roleTrustedPrincipals: ['arn:aws:iam::123456789012:role/Ops'],
+        roleTrustedPrincipalPatterns: ['arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_A_*'],
         roleRequireMfa: false
       });
     });
