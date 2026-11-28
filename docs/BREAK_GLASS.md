@@ -33,7 +33,7 @@ With neither, the role trusts the account, so anyone in it with `sts:AssumeRole`
 
 ### Demo and Test compared with production
 
-Production has `sealed: true`; Demo and Test have `sealed: false`. Everything else is the same everywhere.
+Production has `sealed: true`; Demo and Test have `sealed: false`. (The Demo pipeline deploys with the production profile for its test window and then reverts to the dev-test profile, so Demo is sealed during that window and not outside it. No change to this configuration is needed for that: a policy change made by a deploy is not an alarm.) Everything else is the same everywhere.
 
 | | Demo and Test (`sealed: false`) | Production (`sealed: true`) |
 |---|---|---|
@@ -57,7 +57,7 @@ switch the AWS-side MFA condition off, for that environment:
 "breakGlass": {
   "roleRequireMfa": false,
   "roleTrustedPrincipalPatterns": [
-    "arn:aws:iam::<account>:role/aws-reserved/sso.amazonaws.com/<sso-region>/AWSReservedSSO_<PermissionSet>_*"
+    "arn:aws:iam::<account or {account}>:role/aws-reserved/sso.amazonaws.com/<sso-region>/AWSReservedSSO_<PermissionSet>_*"
   ]
 }
 ```
@@ -73,6 +73,13 @@ accepted only together with named principals or patterns, so the role never trus
 - **Why a pattern, not the exact ARN:** if every assignment of a permission set is removed from the account and added
   again, Identity Center creates a new role with a new suffix. An exact ARN would then silently stop matching, in the
   middle of the emergency you built this for. The `*` after the permission set name survives that.
+- **A plain role instead of a permission set** (for example `assumed-role/Admin/<you>` from `aws sts get-caller-identity`):
+  its ARN does not change, so trust it by name with `{account}` standing for the account the stack is deployed to, which
+  lets one value serve every environment: `"roleTrustedPrincipalPatterns": ["arn:aws:iam::{account}:role/Admin"]`.
+  The ARN of the role has no session name and, if the role has no path, nothing between `role/` and the name; check with
+  `aws iam get-role --role-name Admin --query Role.Arn`. Use `roleTrustedPrincipalPatterns` rather than
+  `roleTrustedPrincipals` for this: an exact principal must exist in the account when the role is created, or the deploy
+  fails, while a pattern never does.
 - **Narrow it.** The pattern trusts everyone who holds that permission set in that account. The configuration refuses a
   pattern that does not name the account and at least 20 characters of the path and role name before the first `*`.
   Choose the narrowest permission set that fits, not an administrator-wide one if a smaller group will do.
