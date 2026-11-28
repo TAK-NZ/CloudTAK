@@ -36,7 +36,7 @@ Production has `sealed: true`; Demo and Test have `sealed: false`. Everything el
 | Deploy | Never resets the `ckadmin` password | Same |
 | CloudTAK container | Username only | Same |
 | Reading the secret | Any account administrator, no alarm | Only the break-glass role. Everyone else is denied, administrators included. |
-| Alarms | None | An email on any read of the secret (except by the two functions), on any LDAP bind as `ckadmin`, and on a change to the secret's resource policy |
+| Alarms | None | An email on any read of the secret or refused attempt to read it (except by the two functions), on any LDAP bind as `ckadmin`, and on a change to the secret's resource policy (a change made by a deploy is not one) |
 | Signing in as `ckadmin` | Works, no alert | Works, and alerts |
 
 With `sealed: true` and no `alertEmails`, the alarms still exist and show in CloudWatch and EventBridge, but nobody is
@@ -128,7 +128,7 @@ date as the evidence of the test.
   seal is reported (policy change alarm), but not prevented.
 - **CloudTrail must log read events.** The read alarm depends on a trail that logs management events, read and write,
   in the Region (base-infra creates it). Without it GetSecretValue is never seen.
-- **A failed LDAP bind counts too.** The bind alarm fires on any attempt as `ckadmin`, successful or not.
+- **Refused attempts count too.** The read alarm fires when an administrator is denied (the sealed secret refuses everyone but the break-glass role), and the bind alarm fires on any LDAP attempt as `ckadmin`, successful or not. CloudTrail redacts the request of a refused call, so the read rule also matches the secret's name in the error message.
 
 ## Recovering a sealed secret that no role can read
 

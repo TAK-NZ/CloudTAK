@@ -96,3 +96,43 @@ describe('break-glass rotation', () => {
     await expect(handler()).rejects.toThrow(/must be set/);
   });
 });
+
+describe('break-glass rotation, deployed wiring', () => {
+  const saved = { ...process.env };
+  afterEach(() => { process.env = { ...saved }; jest.resetModules(); });
+
+  test('after promoting, removes the pending label from the new current version', async () => {
+    const sent: any[] = [];
+    jest.doMock('@aws-sdk/client-secrets-manager', () => {
+      class Cmd { constructor(public input: any) {} }
+      return {
+        SecretsManagerClient: class {
+          async send(cmd: any) {
+            sent.push({ name: cmd.constructor.name, input: cmd.input });
+            if (cmd.constructor.name === 'DescribeSecretCommand') return { VersionIdsToStages: { old1: ['AWSCURRENT'], new1: ['AWSPENDING'] } };
+            if (cmd.constructor.name === 'GetSecretValueCommand') return { SecretString: JSON.stringify({ username: 'ckadmin', password: 'old', token: 't', userPk: 13 }) };
+            return {};
+          }
+        },
+        GetSecretValueCommand: class GetSecretValueCommand extends Cmd {},
+        PutSecretValueCommand: class PutSecretValueCommand extends Cmd {},
+        DescribeSecretCommand: class DescribeSecretCommand extends Cmd {},
+        UpdateSecretVersionStageCommand: class UpdateSecretVersionStageCommand extends Cmd {}
+      };
+    }, { virtual: true });
+    Object.assign(process.env, ENV, { AWS_REGION: 'us-west-2' });
+    (global as any).fetch = jest.fn(async () => ({ ok: true, status: 204, text: async () => '' }));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { handler } = require('../../../lib/lambda/break-glass-rotate.cjs');
+    const result = await handler();
+    expect(result.status).toBe('rotated');
+    const stages = sent.filter((c) => c.name === 'UpdateSecretVersionStageCommand').map((c) => c.input);
+    expect(stages).toHaveLength(2);
+    expect(stages[0]).toMatchObject({ VersionStage: 'AWSCURRENT', MoveToVersionId: result.secretVersion, RemoveFromVersionId: 'old1' });
+    expect(stages[1]).toEqual({ SecretId: 'admin-secret', VersionStage: 'AWSPENDING', RemoveFromVersionId: result.secretVersion });
+    // the order matters: promote first, then tidy
+    const put = sent.findIndex((c) => c.name === 'PutSecretValueCommand');
+    expect(put).toBeGreaterThanOrEqual(0);
+    expect(sent[put].input.VersionStages).toEqual(['AWSPENDING']);
+  });
+});

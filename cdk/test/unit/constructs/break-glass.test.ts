@@ -155,7 +155,9 @@ describe('BreakGlass construct', () => {
       template.hasResourceProperties('AWS::SecretsManager::Secret', { Name: 'TAK-DevTest-CloudTAK/API/Admin-Password' });
       const rules = Object.values(template.findResources('AWS::Events::Rule')) as any[];
       for (const rule of rules) {
-        const ids = rule.Properties.EventPattern.detail.requestParameters.secretId;
+        const detail = rule.Properties.EventPattern.detail;
+        const byRequest = detail.requestParameters ?? detail.$or.find((b: any) => b.requestParameters).requestParameters;
+        const ids = byRequest.secretId;
         expect(ids[0]).toEqual({ prefix: 'TAK-DevTest-CloudTAK/API/Admin-Password' });
         expect(JSON.stringify(ids[1].prefix)).toContain(':secretsmanager:us-west-2:123456789012:secret:TAK-DevTest-CloudTAK/API/Admin-Password');
       }
@@ -175,14 +177,18 @@ describe('BreakGlass construct', () => {
       Annotations.fromStack(stack).hasWarning('*', Match.stringLikeRegexp('alertEmails is empty'));
     });
 
-    test('alarms on a read of the secret by anyone but the two functions, including read-only events', () => {
+    test('alarms on a read of the secret, and on a refused attempt, by anyone but the two functions', () => {
       const { template } = build(sealed);
       const rules = Object.values(template.findResources('AWS::Events::Rule')) as any[];
       const read = rules.find((r) => JSON.stringify(r.Properties.EventPattern).includes('GetSecretValue'));
       expect(read.Properties.State).toBe('ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS');
       const detail = read.Properties.EventPattern.detail;
-      // the name and the full ARN, since the caller may use either
-      expect(detail.requestParameters.secretId).toHaveLength(2);
+      // a successful read names the secret in requestParameters (the name or the full ARN, as the caller used either)
+      const byRequest = detail.$or.find((b: any) => b.requestParameters);
+      expect(byRequest.requestParameters.secretId).toHaveLength(2);
+      // a refused read has requestParameters redacted by CloudTrail, so the errorMessage must be matched too
+      const byError = detail.$or.find((b: any) => b.errorMessage);
+      expect(byError.errorMessage).toEqual([{ wildcard: '*TAK-DevTest-CloudTAK/API/Admin-Password*' }]);
       const except = JSON.stringify(detail.userIdentity.arn);
       expect(except).toContain('anything-but');
       expect(except).toContain('BreakGlassProvision');

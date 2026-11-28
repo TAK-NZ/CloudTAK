@@ -229,21 +229,28 @@ export class BreakGlass extends Construct {
       ];
       // GetSecretValue is a read-only management event: the rule must be told to receive those, and the account
       // needs a CloudTrail trail that logs management events (read and write) in this Region (base-infra).
+      // A refused read is the call most worth an email, and CloudTrail redacts its requestParameters (null). The secret
+      // is then named only in the errorMessage (and in `resources` when the caller used the full ARN), so the rule
+      // matches either a successful read by requestParameters, or any read whose errorMessage names the secret.
       const readRule = new events.Rule(this, 'SecretReadRule', {
-        description: 'Alert on every read of the sealed CloudTAK break-glass credential',
+        description: 'Alert on every read of the sealed CloudTAK break-glass credential, and on every refused attempt',
         eventPattern: {
           source: ['aws.secretsmanager'],
           detailType: ['AWS API Call via CloudTrail'],
           detail: {
             eventName: ['GetSecretValue'],
-            // The caller may pass the name or the full ARN
-            requestParameters: { secretId: [{ prefix: secretName }, { prefix: `arn:${stack.partition}:secretsmanager:${stack.region}:${stack.account}:secret:${secretName}` }] },
-            userIdentity: { arn: [{ 'anything-but': { prefix: exceptRoles } }] }
+            userIdentity: { arn: [{ 'anything-but': { prefix: exceptRoles } }] },
+            $or: [
+              // The caller may pass the name or the full ARN
+              { requestParameters: { secretId: [{ prefix: secretName }, { prefix: `arn:${stack.partition}:secretsmanager:${stack.region}:${stack.account}:secret:${secretName}` }] } },
+              { errorMessage: [{ wildcard: `*${secretName}*` }] }
+            ]
           }
         },
         targets: [new targets.SnsTopic(topic, {
           message: events.RuleTargetInput.fromText(
-            `TAK.NZ ${stackName}: the sealed CloudTAK break-glass credential was READ. ` +
+            `TAK.NZ ${stackName}: the sealed CloudTAK break-glass credential was READ or a read was ATTEMPTED. ` +
+            `Outcome: ${events.EventField.fromPath('$.detail.errorCode')} (empty means the read succeeded), ` +
             `Caller: ${events.EventField.fromPath('$.detail.userIdentity.arn')}, ` +
             `source address: ${events.EventField.fromPath('$.detail.sourceIPAddress')}, ` +
             `time: ${events.EventField.fromPath('$.detail.eventTime')}. ` +

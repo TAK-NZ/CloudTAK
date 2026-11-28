@@ -87,6 +87,12 @@ function getDeployed() {
             MoveToVersionId: versionId,
             RemoveFromVersionId: from ? from[0] : undefined
           }));
+          // The version is current now. Drop its pending label, so that it does not look unfinished.
+          await client.send(new UpdateSecretVersionStageCommand({
+            SecretId: id,
+            VersionStage: 'AWSPENDING',
+            RemoveFromVersionId: versionId
+          })).catch(() => {});
         }
       },
       fetchFn: fetch,
