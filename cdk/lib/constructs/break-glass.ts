@@ -84,6 +84,17 @@ export class BreakGlass extends Construct {
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')]
     });
 
+    // The two secrets are encrypted with the stack's key, which is imported by ARN. CDK cannot tell that an imported key
+    // is in this account, so Secret.grantRead/grantWrite add no KMS permission for it. The key policy delegates to IAM,
+    // so the roles need these statements themselves (the same shape cloudtak-api.ts uses), limited to Secrets Manager.
+    const secretsKmsAccess = () => new iam.PolicyStatement({
+      actions: ['kms:Decrypt', 'kms:GenerateDataKey'],
+      resources: [kmsKey.keyArn],
+      conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${stack.region}.amazonaws.com` } }
+    });
+    provisionRole.addToPolicy(secretsKmsAccess());
+    rotateRole.addToPolicy(secretsKmsAccess());
+
     // The Authentik admin token belongs to auth-infra, which encrypts it with its own key
     const adminTokenArn = `arn:${stack.partition}:secretsmanager:${stack.region}:${stack.account}:secret:TAK-${stackName}-AuthInfra/Authentik/Admin-API-Token-*`;
     provisionRole.addToPolicy(new iam.PolicyStatement({ actions: ['secretsmanager:GetSecretValue'], resources: [adminTokenArn] }));
@@ -174,6 +185,12 @@ export class BreakGlass extends Construct {
       maxSessionDuration: cdk.Duration.hours(1)
     });
     adminPasswordSecret.grantRead(this.role);
+    // Read only: decrypting the secret needs no data key
+    this.role.addToPolicy(new iam.PolicyStatement({
+      actions: ['kms:Decrypt'],
+      resources: [kmsKey.keyArn],
+      conditions: { StringEquals: { 'kms:ViaService': `secretsmanager.${stack.region}.amazonaws.com` } }
+    }));
     this.rotateFunction.grantInvoke(this.role);
 
     // ---- Sealing and alarms (production) ----

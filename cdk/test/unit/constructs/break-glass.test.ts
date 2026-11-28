@@ -9,7 +9,9 @@ import { MOCK_CONFIGS } from '../../__fixtures__/mock-configs';
 function build(breakGlass?: ContextEnvironmentConfig['cloudtak']['breakGlass']) {
   const app = new cdk.App();
   const stack = new cdk.Stack(app, 'TestStack', { env: { account: '123456789012', region: 'us-west-2' } });
-  const kmsKey = new kms.Key(stack, 'Key');
+  // Imported by ARN from an export, as in the real stack. CDK then cannot see that the key is in this account and
+  // adds no KMS permission by itself, which is what the construct has to make up for.
+  const kmsKey = kms.Key.fromKeyArn(stack, 'Key', cdk.Fn.importValue('TAK-DevTest-BaseInfra-KmsKeyArn'));
   const envConfig: ContextEnvironmentConfig = {
     ...MOCK_CONFIGS.DEV_TEST,
     cloudtak: { ...MOCK_CONFIGS.DEV_TEST.cloudtak, breakGlass }
@@ -85,6 +87,26 @@ describe('BreakGlass construct', () => {
       const policies = Object.values(template.findResources('AWS::IAM::Policy')) as any[];
       const forRole = policies.filter((p) => JSON.stringify(p.Properties.Roles).includes('BreakGlassRole'));
       expect(JSON.stringify(forRole)).toContain('secretsmanager:GetSecretValue');
+    });
+
+    test('each role can use the stack key through Secrets Manager, since the key is imported and CDK adds nothing', () => {
+      const { template } = build();
+      const policies = Object.values(template.findResources('AWS::IAM::Policy')) as any[];
+      const statementsFor = (roleLogicalPrefix: string) => {
+        const policy = policies.find((p) => JSON.stringify(p.Properties.Roles).includes(roleLogicalPrefix));
+        return (policy.Properties.PolicyDocument.Statement as any[]).filter((st) => JSON.stringify(st.Action).includes('kms:'));
+      };
+      const viaSecretsManager = { StringEquals: { 'kms:ViaService': 'secretsmanager.us-west-2.amazonaws.com' } };
+      for (const [role, actions] of [
+        ['ProvisionRole', ['kms:Decrypt', 'kms:GenerateDataKey']],
+        ['RotateRole', ['kms:Decrypt', 'kms:GenerateDataKey']],
+        ['BreakGlassRole', ['kms:Decrypt']]
+      ] as [string, string[]][]) {
+        const onKey = statementsFor(role).find((st) => JSON.stringify(st.Resource).includes('TAK-DevTest-BaseInfra-KmsKeyArn'));
+        expect(onKey).toBeDefined();
+        expect([].concat(onKey.Action)).toEqual(actions);
+        expect(onKey.Condition).toEqual(viaSecretsManager);
+      }
     });
 
     test('exports the names an operator needs', () => {
