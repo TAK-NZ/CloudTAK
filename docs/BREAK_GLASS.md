@@ -42,27 +42,60 @@ Production has `sealed: true`; Demo and Test have `sealed: false`. Everything el
 With `sealed: true` and no `alertEmails`, the alarms still exist and show in CloudWatch and EventBridge, but nobody is
 notified. A deploy-time warning says so.
 
+## Who can assume the role, and MFA
+
+The role asks for MFA on the assume-role call by default (`roleRequireMfa: true`). That works for IAM users with an MFA
+device. **It does not work for IAM Identity Center (SSO) users**: an SSO session carries no `aws:MultiFactorAuthPresent`
+flag, so the condition would refuse everyone. If you sign in to AWS through SSO, set, for that environment:
+
+```json
+"breakGlass": {
+  "roleRequireMfa": false,
+  "roleTrustedPrincipals": ["arn:aws:iam::<account>:role/aws-reserved/sso.amazonaws.com/<sso-region>/AWSReservedSSO_<PermissionSet>_<hash>"]
+}
+```
+
+(`roleRequireMfa: false` is accepted only with named principals, so the role never trusts the whole account without MFA.)
+
+- Find the ARN after `aws sso login`: `aws sts get-caller-identity` shows
+  `arn:aws:sts::<account>:assumed-role/AWSReservedSSO_<PermissionSet>_<hash>/<you>`. The role to trust is the same name
+  under `role/aws-reserved/sso.amazonaws.com/<sso-region>/`. It is the permission set that is trusted, so everyone who
+  holds that permission set in that account can assume the break-glass role.
+- Trust the narrowest permission set that fits, not an administrator-wide one if a smaller group will do.
+- If the permission set is deleted and recreated, its role ARN changes and the trust stops matching. Update the
+  configuration and deploy.
+- Without MFA on the AWS side, the protection is the strength of the SSO sign-in itself (enforce MFA at the identity
+  provider if you can), the short session, and the alarms on every read and every sign-in.
+
 ## Using it in an emergency (production)
 
-1. Assume the break-glass role with MFA. The role ARN is the stack output `BreakGlassRoleArn`.
+`scripts/break-glass.sh` does the assume-role and the read in one step. Run it with your own credentials (after
+`aws sso login` for an SSO profile, with `AWS_PROFILE` set as usual):
 
-   ```bash
-   aws sts assume-role --role-arn <BreakGlassRoleArn> --role-session-name emergency \
-     --serial-number <your MFA device ARN> --token-code <code>
-   ```
+```bash
+# IAM user with an MFA device: it finds your device and asks for the code
+scripts/break-glass.sh TAK-Prod-CloudTAK read
 
-   Use the returned credentials for the next command.
+# IAM Identity Center, or any role that does not require MFA
+scripts/break-glass.sh TAK-Prod-CloudTAK read --no-mfa
+```
 
-2. Read the credential. **This sends the alarm email.**
+It assumes the role (15 minutes, session name `break-glass-<you>` so CloudTrail shows who), reads the secret as the role,
+and prints the username and password on standard output. Nothing is written to a file. **The read sends the alarm email.**
 
-   ```bash
-   aws secretsmanager get-secret-value --secret-id TAK-<stack>-CloudTAK/API/Admin-Password \
-     --query SecretString --output text
-   ```
+1. Run the command above.
+2. Sign in to CloudTAK with that username and password. **This sends the second alarm email.**
+3. Fix what you came to fix, and sign out.
+4. **Rotate the password**, so the value you read is replaced. Do this every time, whatever the reason:
+   `scripts/break-glass.sh TAK-Prod-CloudTAK rotate --no-mfa` (it runs the rotation as the role).
+5. Restart the LDAP service (below), because until you do, the old password still works.
 
-3. Sign in to CloudTAK with that username and password. **This sends the second alarm email.**
-4. Fix what you came to fix, and sign out.
-5. **Rotate the password** (below), so the value you read is replaced. Do this every time, whatever the reason. Then restart the LDAP outpost (see the next section), because until you do, the old password still works.
+For your own commands as the role, `eval "$(scripts/break-glass.sh TAK-Prod-CloudTAK credentials)"` puts the role's
+temporary credentials in the current shell. Run it in a shell you close afterwards.
+
+Without the script, by hand: `aws sts assume-role --role-arn <BreakGlassRoleArn> --role-session-name emergency
+--duration-seconds 900` (plus `--serial-number <your MFA device ARN> --token-code <code>` when MFA is required),
+then use the returned keys for `aws secretsmanager get-secret-value --secret-id <BreakGlassSecretName>`.
 
 ## Rotating the password
 
@@ -95,7 +128,7 @@ aws lambda invoke --function-name TAK-<stack>-CloudTAK-BreakGlassRotate \
   --cli-binary-format raw-in-base64-out --payload '{}' --region <region> /dev/stdout
 ```
 
-Run it from any terminal or CloudShell, with the break-glass role or an account administrator. It returns
+Run it from any terminal or CloudShell, as the break-glass role or as an account administrator. It returns
 `{"status":"rotated","secretVersion":"..."}` and never the password. Rotation never runs on a schedule.
 
 What it does, in order: it generates a new password and stores it as a pending version of the secret (the current
@@ -116,8 +149,8 @@ run the rotation once. The new password then exists only in the sealed secret.
 
 ## Quarterly test
 
-Once a quarter, in production: assume the role, read the secret, sign in to CloudTAK as `ckadmin`, confirm that you can
-reach the administration pages, sign out, and rotate. Confirm that both alarm emails arrived, and keep the emails and the
+Once a quarter, in production: run `scripts/break-glass.sh <stack> read`, sign in to CloudTAK as `ckadmin`, confirm that
+you can reach the administration pages, sign out, rotate, and restart the LDAP service. Confirm that both alarm emails arrived, and keep the emails and the
 date as the evidence of the test.
 
 ## What the alarms do not cover
