@@ -6,6 +6,11 @@
 import * as cdk from 'aws-cdk-lib';
 import { ContextEnvironmentConfig } from '../stack-config';
 
+/** `-c key=a,b` -> ['a', 'b'] (an empty value gives an empty list) */
+function splitList(value: unknown): string[] {
+  return String(value).split(',').map((item) => item.trim()).filter(Boolean);
+}
+
 export function applyContextOverrides(
   app: cdk.App, 
   baseConfig: ContextEnvironmentConfig
@@ -44,6 +49,13 @@ export function applyContextOverrides(
       useS3CloudTAKConfigFile: app.node.tryGetContext('useS3CloudTAKConfigFile') ? app.node.tryGetContext('useS3CloudTAKConfigFile') === 'true' : baseConfig.cloudtak.useS3CloudTAKConfigFile,
       enableInboundMail: app.node.tryGetContext('enableInboundMail') !== undefined ? String(app.node.tryGetContext('enableInboundMail')) === 'true' : baseConfig.cloudtak.enableInboundMail,
       pmtilesProvisionedConcurrency: app.node.tryGetContext('pmtilesProvisionedConcurrency') !== undefined ? Number(app.node.tryGetContext('pmtilesProvisionedConcurrency')) : baseConfig.cloudtak.pmtilesProvisionedConcurrency,
+      breakGlass: {
+        ...baseConfig.cloudtak.breakGlass,
+        sealed: app.node.tryGetContext('breakGlassSealed') !== undefined ? String(app.node.tryGetContext('breakGlassSealed')) === 'true' : baseConfig.cloudtak.breakGlass?.sealed,
+        alertEmails: app.node.tryGetContext('breakGlassAlertEmails') !== undefined ? splitList(app.node.tryGetContext('breakGlassAlertEmails')) : baseConfig.cloudtak.breakGlass?.alertEmails,
+        roleTrustedPrincipals: app.node.tryGetContext('breakGlassRoleTrustedPrincipals') !== undefined ? splitList(app.node.tryGetContext('breakGlassRoleTrustedPrincipals')) : baseConfig.cloudtak.breakGlass?.roleTrustedPrincipals,
+        roleRequireMfa: app.node.tryGetContext('breakGlassRoleRequireMfa') !== undefined ? String(app.node.tryGetContext('breakGlassRoleRequireMfa')) === 'true' : baseConfig.cloudtak.breakGlass?.roleRequireMfa,
+      },
     },
     ecr: {
       ...baseConfig.ecr,

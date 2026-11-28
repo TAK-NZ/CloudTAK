@@ -134,6 +134,10 @@ Enable per environment in `cdk.json`:
 }
 ```
 
+`ckadmin` is the break-glass account: its password is a sealed secret that nothing injects, it is read through a
+role that needs MFA, and in production every read and every sign-in raises an alarm. See
+[BREAK_GLASS.md](BREAK_GLASS.md).
+
 ## SCIM user provisioning (optional)
 
 CloudTAK accepts SCIM 2.0 at `/api/scim/v2` (`Users`, plus `Groups`, which are accepted but not stored).

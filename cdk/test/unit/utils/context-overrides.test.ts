@@ -56,4 +56,36 @@ describe('Context Overrides', () => {
       }
     );
   });
+
+  describe('break-glass overrides', () => {
+    it('leaves the base block alone when nothing is overridden', () => {
+      const base = { ...MOCK_CONFIGS.DEV_TEST, cloudtak: { ...MOCK_CONFIGS.DEV_TEST.cloudtak, breakGlass: { sealed: true, alertEmails: ['a@example.test'] } } };
+      const result = applyContextOverrides(new App(), base);
+      expect(result.cloudtak.breakGlass).toMatchObject({ sealed: true, alertEmails: ['a@example.test'] });
+    });
+
+    it('overrides each setting from -c, with comma-separated lists', () => {
+      const app = new App({
+        context: {
+          breakGlassSealed: 'true',
+          breakGlassAlertEmails: 'a@example.test, b@example.test',
+          breakGlassRoleTrustedPrincipals: 'arn:aws:iam::123456789012:role/Ops',
+          breakGlassRoleRequireMfa: 'false'
+        }
+      });
+      const result = applyContextOverrides(app, MOCK_CONFIGS.DEV_TEST);
+      expect(result.cloudtak.breakGlass).toEqual({
+        sealed: true,
+        alertEmails: ['a@example.test', 'b@example.test'],
+        roleTrustedPrincipals: ['arn:aws:iam::123456789012:role/Ops'],
+        roleRequireMfa: false
+      });
+    });
+
+    it('an empty override clears a list from the base config', () => {
+      const base = { ...MOCK_CONFIGS.DEV_TEST, cloudtak: { ...MOCK_CONFIGS.DEV_TEST.cloudtak, breakGlass: { alertEmails: ['a@example.test'] } } };
+      const result = applyContextOverrides(new App({ context: { breakGlassAlertEmails: '' } }), base);
+      expect(result.cloudtak.breakGlass?.alertEmails).toEqual([]);
+    });
+  });
 });

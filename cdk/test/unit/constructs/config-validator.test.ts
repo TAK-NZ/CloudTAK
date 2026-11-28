@@ -46,4 +46,35 @@ describe('ConfigValidator', () => {
       ConfigValidator.validateEnvironmentConfig(invalidConfig, 'dev-test');
     }).toThrow('cloudtak.hostname is required in environment configuration');
   });
+
+  describe('cloudtak.breakGlass', () => {
+    const withBreakGlass = (breakGlass: any) => ({ ...MOCK_CONFIGS.DEV_TEST, cloudtak: { ...MOCK_CONFIGS.DEV_TEST.cloudtak, breakGlass } });
+    const validate = (breakGlass: any) => ConfigValidator.validateEnvironmentConfig(withBreakGlass(breakGlass), 'prod');
+
+    it('accepts an empty block, and a full one', () => {
+      expect(() => validate({})).not.toThrow();
+      expect(() => validate({
+        sealed: true,
+        alertEmails: ['ops@example.test'],
+        roleTrustedPrincipals: ['arn:aws:iam::123456789012:role/Ops', 'arn:aws:iam::123456789012:user/chris', 'arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/ap-southeast-2/AWSReservedSSO_Admin_abc'],
+        roleRequireMfa: true
+      })).not.toThrow();
+    });
+
+    it('rejects an alert address that is not an email address, so a typo cannot silence the alarm', () => {
+      expect(() => validate({ alertEmails: ['ops@example.test', 'not-an-address'] })).toThrow(/not-an-address.*not an email address/);
+    });
+
+    it('rejects a trusted principal that is not an IAM role or user ARN (an account root or a service would widen the trust)', () => {
+      for (const arn of ['arn:aws:iam::123456789012:root', 'ops', 'arn:aws:s3:::bucket', 'arn:aws:iam::123:role/Ops', 'lambda.amazonaws.com']) {
+        expect(() => validate({ roleTrustedPrincipals: [arn] })).toThrow(/not an IAM role or user ARN/);
+      }
+    });
+
+    it('does not let MFA be switched off while the role trusts the whole account', () => {
+      expect(() => validate({ roleRequireMfa: false })).toThrow(/needs roleTrustedPrincipals/);
+      expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipals: [] })).toThrow(/needs roleTrustedPrincipals/);
+      expect(() => validate({ roleRequireMfa: false, roleTrustedPrincipals: ['arn:aws:iam::123456789012:role/Ops'] })).not.toThrow();
+    });
+  });
 });

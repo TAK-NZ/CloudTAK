@@ -34,7 +34,7 @@ import { Alarms } from './constructs/alarms';
 import { HubLoadBalancer } from './constructs/hub-load-balancer';
 import { CloudTakStateful } from './constructs/cloudtak-stateful';
 import { Dashboard } from './constructs/dashboard';
-import { AuthentikUserCreator } from './constructs/authentik-user-creator';
+import { BreakGlass } from './constructs/break-glass';
 import { Webhooks } from './constructs/webhooks';
 import { Mail } from './constructs/mail';
 import { EtlRole } from './constructs/etl-role';
@@ -467,7 +467,6 @@ export class CloudTakStack extends cdk.Stack {
       connectionStringSecret: database.connectionStringSecret,
       assetBucketName: s3Resources.assetBucket.bucketName,
       signingSecret: secrets.signingSecret,
-      adminPasswordSecret: secrets.adminPasswordSecret,
       geofenceSecret: secrets.geofenceSecret,
       serviceUrl: route53Records.serviceUrl,
       oidcClientId,
@@ -576,16 +575,16 @@ export class CloudTakStack extends cdk.Stack {
       resources: [mail.bucket.arnForObjects('*')]
     }));
 
-    // Create Authentik user for CloudTAK admin
+    // The CloudTAK break-glass account (`ckadmin`): created in Authentik if missing, its password sealed in
+    // Secrets Manager, rotated on demand. The password never reaches the CloudTAK container.
     const authentikUrl = cdk.Fn.importValue(`TAK-${envConfig.stackName}-AuthInfra-AuthentikUrl`);
-    
-    new AuthentikUserCreator(this, 'AuthentikUserCreator', {
-      stackName: envConfig.stackName,
+    new BreakGlass(this, 'BreakGlass', {
+      envConfig,
       adminPasswordSecret: secrets.adminPasswordSecret,
-      authentikUrl: authentikUrl,
+      kmsKey,
+      authentikUrl,
       takAdminEmail: envConfig.cloudtak.takAdminEmail
     });
-
     // Ensure ECS services wait for database and Route53 records
     cloudtakApi.service.node.addDependency(database.cluster);
     cloudtakApi.service.node.addDependency(database.connectionStringSecret);
