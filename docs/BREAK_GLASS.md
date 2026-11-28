@@ -62,13 +62,31 @@ notified. A deploy-time warning says so.
 
 3. Sign in to CloudTAK with that username and password. **This sends the second alarm email.**
 4. Fix what you came to fix, and sign out.
-5. **Rotate the password** (below), so the value you read no longer works. Do this every time, whatever the reason.
+5. **Rotate the password** (below), so the value you read is replaced. Do this every time, whatever the reason. Then restart the LDAP outpost (see the next section), because until you do, the old password still works.
 
 ## Rotating the password
 
 ```bash
 scripts/rotate-break-glass.sh TAK-Prod-CloudTAK ap-southeast-2
 ```
+
+### The old password keeps working until the LDAP outpost forgets it
+
+Rotation changes the password in Authentik and in the secret at once. CloudTAK checks the password through the LDAP
+outpost, and the outpost runs in *cached* bind mode: it remembers a password it has accepted, keyed on the account and
+the password, for the rest of that login session (one hour here; reuse does not extend it). A rotation does not clear
+that memory. On Test, after a rotation the old password was still accepted at every check for several minutes, and was
+refused as soon as the LDAP service restarted.
+
+So after a rotation that has to take effect now (every use of the credential in production), restart the LDAP service.
+It is a rolling restart, so LDAP stays available:
+
+```bash
+aws ecs update-service --cluster TAK-<stack>-BaseInfra --service <the LDAPService service of TAK-<stack>-AuthInfra> \
+  --force-new-deployment
+```
+
+Without the restart the old password stops working by itself within an hour of the last time it was accepted.
 
 The script looks up the function name from the stack output and invokes it. The same thing by hand:
 
