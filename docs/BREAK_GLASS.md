@@ -100,8 +100,11 @@ then use the returned keys for `aws secretsmanager get-secret-value --secret-id 
 ## Rotating the password
 
 ```bash
-scripts/rotate-break-glass.sh TAK-Prod-CloudTAK ap-southeast-2
+scripts/break-glass.sh TAK-Prod-CloudTAK rotate --no-mfa       # as the break-glass role (drop --no-mfa to use an MFA device)
+scripts/rotate-break-glass.sh TAK-Prod-CloudTAK ap-southeast-2 # with your own credentials, if you may invoke the function
 ```
+
+Either one looks up the function name from the stack output and invokes it. It never prints the password.
 
 ### The old password keeps working until the LDAP outpost forgets it
 
