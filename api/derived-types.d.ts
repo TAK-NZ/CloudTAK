@@ -59117,6 +59117,8 @@ export interface paths {
                             tak_group_locked: boolean;
                             /** @description Role is supplied by the identity provider and cannot be changed by the user */
                             tak_role_locked: boolean;
+                            /** @description System Administrator is granted by the identity provider group and cannot be changed in CloudTAK */
+                            system_admin_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_phone: string;
@@ -59326,6 +59328,8 @@ export interface paths {
                             tak_group_locked: boolean;
                             /** @description Role is supplied by the identity provider and cannot be changed by the user */
                             tak_role_locked: boolean;
+                            /** @description System Administrator is granted by the identity provider group and cannot be changed in CloudTAK */
+                            system_admin_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_phone: string;
@@ -63785,6 +63789,8 @@ export interface paths {
                             tak_group_locked: boolean;
                             /** @description Role is supplied by the identity provider and cannot be changed by the user */
                             tak_role_locked: boolean;
+                            /** @description System Administrator is granted by the identity provider group and cannot be changed in CloudTAK */
+                            system_admin_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_phone: string;
@@ -64081,6 +64087,8 @@ export interface paths {
                             tak_group_locked: boolean;
                             /** @description Role is supplied by the identity provider and cannot be changed by the user */
                             tak_role_locked: boolean;
+                            /** @description System Administrator is granted by the identity provider group and cannot be changed in CloudTAK */
+                            system_admin_locked: boolean;
                             tak_callsign: string;
                             tak_remarks: string;
                             tak_phone: string;

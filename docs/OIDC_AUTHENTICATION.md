@@ -184,6 +184,11 @@ Authentik group membership maps to CloudTAK authorisation:
 - `OIDC_SYSTEM_ADMIN_GROUP` → `system_admin`
 - `OIDC_AGENCY_ADMIN_GROUP_PREFIX{N}` → `agency_admin: [N, …]`
 
+Every SSO login rewrites both values from the user's current groups, so they cannot be set in CloudTAK. When
+OIDC is enabled, the System Administrator toggle on `/admin/user/<username>` is read-only and
+`PATCH /api/user/:username` rejects a changed `system_admin` (`system_admin_locked` in the user response).
+Accounts in `LOCAL_ONLY_ACCOUNTS` never sign in through SSO, so their flag stays editable.
+
 User attributes map to TAK identity: `takCallsign` → `tak::callsign` (suffixed `" (Web)"` so a browser
 session doesn't collide with the same person's ATAK/WinTAK device callsign), `takColor` → `tak::group`,
 `takRole` → `tak::role`.

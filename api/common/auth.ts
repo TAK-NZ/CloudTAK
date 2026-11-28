@@ -647,3 +647,25 @@ export function isOidcEnabled(): boolean {
 export function isOidcForced(): boolean {
     return process.env.OIDC_FORCED === 'true';
 }
+
+/**
+ * Accounts (as stored in Profile.username) that are exempt from SSO and only
+ * ever sign in with a local password, per the LOCAL_ONLY_ACCOUNTS env var.
+ */
+export function isLocalOnlyAccount(username: string): boolean {
+    return (process.env.LOCAL_ONLY_ACCOUNTS || '')
+        .split(',').map((a: string) => a.trim()).filter(Boolean)
+        .includes(username);
+}
+
+/**
+ * Whether a user's System Administrator flag is owned by the identity provider.
+ *
+ * Every SSO login rewrites `system_admin` from membership of the
+ * OIDC_SYSTEM_ADMIN_GROUP group, so a value set in CloudTAK would silently
+ * revert at the user's next sign-in. Local-only accounts never go through SSO
+ * and keep the value CloudTAK stores.
+ */
+export function isSystemAdminIdpManaged(username: string): boolean {
+    return isOidcEnabled() && !isLocalOnlyAccount(username);
+}

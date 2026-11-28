@@ -66,7 +66,15 @@
                     <TablerToggle
                         v-model='user.system_admin'
                         label='System Administrator'
+                        :disabled='user.system_admin_locked'
                     />
+                    <div
+                        v-if='user.system_admin_locked'
+                        class='text-muted small'
+                    >
+                        Managed by the identity provider. Add or remove this user in the CloudTAK system administrator
+                        group in Authentik to change it - it is reset from that group on every sign-in.
+                    </div>
                 </div>
 
                 <div class='col-12 pb-4'>
@@ -346,7 +354,7 @@ const eraseConfirm = ref('');
 const user = ref<User>(await fetchUser());
 
 const getRemainingKeys = <T extends object>(obj: T) => Object.keys(obj).filter((key) => {
-    return !key.startsWith('display') && !key.startsWith('tak') && key !== 'certificate';
+    return !key.startsWith('display') && !key.startsWith('tak') && key !== 'certificate' && key !== 'system_admin_locked';
 }) as Array<keyof T>
 
 const getDisplayKeys = <T extends object>(obj: T) => Object.keys(obj).filter((key) => {
@@ -369,7 +377,8 @@ async function saveUser(): Promise<void> {
             }
         },
         body: {
-            system_admin: user.value.system_admin,
+            // The IdP group owns this flag for SSO users; the API rejects changes to it
+            ...(user.value.system_admin_locked ? {} : { system_admin: user.value.system_admin }),
             disabled: user.value.disabled
         }
     });
